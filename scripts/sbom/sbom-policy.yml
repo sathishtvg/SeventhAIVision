@@ -1,0 +1,93 @@
+# SBOM vulnerability and license policy — Gap 17
+# Seventh AI Vision supply chain security gates
+#
+# This file defines:
+#   vulnerability_policy — which CVE severities block a release
+#   license_policy       — which SPDX license IDs are allowed / blocked
+#
+# Enforcement: scripts/sbom/generate-sbom.sh exits non-zero when thresholds are crossed.
+# CI/CD: reference this file in .github/workflows/sbom.yml (or equivalent pipeline).
+
+vulnerability_policy:
+  # fail_on: release is blocked if the component count at this severity exceeds `count`
+  fail_on:
+    - severity: critical
+      count: 0
+      rationale: "Zero tolerance for critical CVEs in production releases"
+    - severity: high
+      count: 5
+      rationale: "Up to 5 high-severity CVEs allowed pending upstream fixes; must have tracker tickets"
+  # warn_on: pipeline warns but does not block
+  warn_on:
+    - severity: medium
+      count: 20
+    - severity: low
+      count: 100
+  # CVE-specific exceptions (add only when upstream fix is unavailable and risk is accepted)
+  exceptions: []
+  # Example exception:
+  # exceptions:
+  #   - id: CVE-2023-12345
+  #     reason: "No upstream fix; mitigated by network policy — no external exposure"
+  #     expires: "2026-12-31"
+  #     approved_by: security@seventh.ai
+
+license_policy:
+  # All packages must carry a machine-readable SPDX identifier
+  require_spdx_id: true
+
+  # Licenses approved for use without legal review
+  allowed:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+    - Python-2.0
+    - PSF-2.0
+    - Unlicense
+    - CC0-1.0
+    - BlueOak-1.0.0
+    - WTFPL
+    - 0BSD
+
+  # Copyleft / reciprocal licenses blocked from the dependency graph
+  blocked:
+    - GPL-2.0
+    - GPL-2.0-only
+    - GPL-2.0-or-later
+    - GPL-3.0
+    - GPL-3.0-only
+    - GPL-3.0-or-later
+    - AGPL-3.0
+    - AGPL-3.0-only
+    - AGPL-3.0-or-later
+    - LGPL-2.0
+    - LGPL-2.0-only
+    - LGPL-2.1
+    - LGPL-2.1-only
+    - LGPL-3.0
+    - LGPL-3.0-only
+    - SSPL-1.0
+    - EUPL-1.1
+    - EUPL-1.2
+
+  # Licenses that require legal review before inclusion
+  review_required:
+    - LGPL-2.0-or-later
+    - LGPL-2.1-or-later
+    - LGPL-3.0-or-later
+    - CC-BY-SA-4.0
+    - MPL-2.0
+    - EPL-1.0
+    - EPL-2.0
+    - CDDL-1.0
+
+# Grype scanner settings referenced by the generate script
+grype_config:
+  fail_on_severity: critical
+  ignore_wont_fix: true
+  ignore_unfixed: false
+  output_formats:
+    - json
+    - table

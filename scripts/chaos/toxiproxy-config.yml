@@ -1,0 +1,97 @@
+# Toxiproxy proxy and scenario configuration — Gap 16
+# Seventh AI Vision chaos engineering network fault injection
+#
+# Toxiproxy REST API: http://localhost:8474
+# Deploy with: docker compose -f docker/docker-compose.yml -f docker/docker-compose.chaos.yml up -d toxiproxy
+#
+# Proxies intercept connections between services. To inject a fault:
+#   1. Point the target service at the proxy port (e.g. DATABASE_URL uses port 5433)
+#   2. Apply the desired scenario via toxiproxy-cli or the REST API
+#   3. Run your load/smoke test
+#   4. Remove the toxic to restore normal traffic
+#
+# Example — enable latency on postgres:
+#   toxiproxy-cli toxic add --toxicName latency_500ms --type latency \
+#     --attribute latency=500 --attribute jitter=50 postgres_proxy
+
+proxies:
+  - name: postgres_proxy
+    listen: "0.0.0.0:5433"
+    upstream: "postgres:5432"
+    enabled: true
+
+  - name: redis_proxy
+    listen: "0.0.0.0:6380"
+    upstream: "redis:6379"
+    enabled: true
+
+  - name: api_proxy
+    listen: "0.0.0.0:8001"
+    upstream: "api:8000"
+    enabled: true
+
+scenarios:
+  - name: postgres_latency_500ms
+    proxy: postgres_proxy
+    toxic_type: latency
+    toxic_name: latency_500ms
+    stream: downstream
+    attributes:
+      latency: 500
+      jitter: 50
+    toxicity: 1.0
+
+  - name: postgres_bandwidth_1kbps
+    proxy: postgres_proxy
+    toxic_type: bandwidth
+    toxic_name: bandwidth_1kbps
+    stream: downstream
+    attributes:
+      rate: 1
+    toxicity: 1.0
+
+  - name: postgres_write_throttle
+    proxy: postgres_proxy
+    toxic_type: bandwidth
+    toxic_name: write_throttle
+    stream: upstream
+    attributes:
+      rate: 1
+    toxicity: 1.0
+
+  - name: redis_timeout_200ms
+    proxy: redis_proxy
+    toxic_type: timeout
+    toxic_name: timeout_200ms
+    stream: downstream
+    attributes:
+      timeout: 200
+    toxicity: 1.0
+
+  - name: redis_latency_100ms
+    proxy: redis_proxy
+    toxic_type: latency
+    toxic_name: latency_100ms
+    stream: downstream
+    attributes:
+      latency: 100
+      jitter: 20
+    toxicity: 1.0
+
+  - name: ingestion_network_partition
+    proxy: api_proxy
+    toxic_type: reset_peer
+    toxic_name: network_partition
+    stream: downstream
+    attributes:
+      timeout: 0
+    toxicity: 1.0
+
+  - name: api_slow_close
+    proxy: api_proxy
+    toxic_type: slow_close
+    toxic_name: slow_close_1s
+    stream: downstream
+    attributes:
+      delay: 1000
+    toxicity: 0.5

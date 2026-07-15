@@ -1,0 +1,10 @@
+frontend/node_modules
+mobile/node_modules
+desktop/node_modules
+**/.git
+**/__pycache__
+**/*.pyc
+**/dist
+**/build
+**/.env.local
+**/.env.*.local

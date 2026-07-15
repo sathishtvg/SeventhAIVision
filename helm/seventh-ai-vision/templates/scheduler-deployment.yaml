@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-scheduler
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: scheduler
+  template:
+    metadata:
+      labels:
+        {{- include "seventh-ai-vision.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: scheduler
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "seventh-ai-vision.serviceAccountName" . }}
+      containers:
+        - name: scheduler
+          image: "{{ .Values.images.backend.repository }}:{{ .Values.images.backend.tag }}"
+          imagePullPolicy: {{ .Values.images.backend.pullPolicy }}
+          command: ["python", "-m", "app.scheduler_main"]
+          workingDir: /app/backend
+          envFrom:
+            - configMapRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-config
+            - secretRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-secret
+          {{- if not .Values.minio.enabled }}
+          volumeMounts:
+            - name: evidence
+              mountPath: /data/evidence
+          {{- end }}
+          resources:
+            {{- toYaml .Values.scheduler.resources | nindent 12 }}
+      {{- if not .Values.minio.enabled }}
+      volumes:
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+      {{- end }}
+      {{- with .Values.scheduler.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scheduler.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

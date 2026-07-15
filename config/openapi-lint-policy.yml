@@ -1,0 +1,75 @@
+# OpenAPI Spec Lint Policy — Gap 24
+# Seventh AI Vision
+#
+# Enforcement tool: Spectral (https://stoplight.io/open-source/spectral)
+# Ruleset: config/.spectral.yml  (extends spectral:oas)
+#
+# Usage:
+#   scripts/lint/lint-openapi.sh --export          # Export FastAPI spec to JSON
+#   scripts/lint/lint-openapi.sh --lint            # Run Spectral on exported spec
+#   scripts/lint/lint-openapi.sh --export --lint   # Export + lint in one pass
+#
+# Why lint the OpenAPI spec:
+#   - operationId required for SDK generation and client mocking
+#   - All paths must be under /api/v1/ for the versioning policy (Gap 20)
+#   - Every non-public operation must declare its security scheme
+#   - Response schemas prevent silent 500s from returning unexpected shapes
+
+version: "1.0"
+metadata:
+  tool: spectral
+  ruleset: config/.spectral.yml
+  spec_output: reports/openapi/openapi.json
+  effective_date: "2026-07-01"
+  owner: platform@seventh.ai
+  review_cycle: quarterly
+
+# ── CI gate ────────────────────────────────────────────────────────────────────
+ci_gate:
+  fail_on_errors: true      # Spectral "error" severity → CI fails
+  fail_on_warnings: false   # "warn" severity → reported only; does not fail
+  export_before_lint: true  # Always re-export from the running FastAPI app
+
+# ── Severity mapping ──────────────────────────────────────────────────────────
+severity_mapping:
+  error:   fail      # operationId missing, unknown path parameters, invalid schema
+  warn:    report    # missing description, missing tags
+  info:    ignore
+  hint:    ignore
+
+# ── Required rules ─────────────────────────────────────────────────────────────
+# These must appear in config/.spectral.yml and must be set to "error" (not "warn" or "off").
+required_error_rules:
+  - operation-operationId       # every endpoint must have a stable machine-readable ID
+  - oas3-valid-schema           # all JSON Schema references must resolve
+  - path-params                 # path template params must be documented
+
+# ── Spec export ────────────────────────────────────────────────────────────────
+export:
+  format: json
+  output_path: reports/openapi/openapi.json
+  # Command to export the spec from the running FastAPI app:
+  command: "python -c \"import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))\""
+
+# ── Path conventions (validated by test suite, not Spectral) ──────────────────
+path_conventions:
+  api_prefix: /api/v1
+  allowed_prefixes:
+    - /api/v1/     # all versioned REST endpoints
+    - /health      # public health check (no auth)
+    - /ws/         # WebSocket endpoints
+    - /metrics     # Prometheus metrics scrape
+    - /docs        # Swagger UI (dev only; disabled in prod)
+    - /openapi.json  # spec self-endpoint
+  versioning_required: true   # All REST endpoints must be under /api/v{N}/
+
+# ── Security requirements ──────────────────────────────────────────────────────
+security:
+  # Paths that are intentionally public (no Bearer token required)
+  public_paths:
+    - /health
+    - /metrics
+    - /docs
+    - /openapi.json
+    - /api/v1/auth/login
+    - /api/v1/auth/refresh

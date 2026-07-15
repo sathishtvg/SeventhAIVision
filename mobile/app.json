@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "7th AI Vision",
+    "slug": "seventh-ai-vision",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#080818"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.seventh.vision",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to quickly and securely sign in to Seventh AI Vision.",
+        "NSLocationWhenInUseUsageDescription": "Seventh AI Vision uses your location to verify guard check-in/check-out at the assigned site."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#080818"
+      },
+      "package": "ai.seventh.vision",
+      "permissions": [
+        "INTERNET",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Seventh AI Vision uses your location to verify guard check-in/check-out at the assigned site."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#6C63FF",
+          "sounds": []
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fa024d50-5cd2-4dc4-8129-d36a095ebe49"
+      }
+    }
+  }
+}

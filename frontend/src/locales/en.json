@@ -1,0 +1,58 @@
+{
+  "nav": {
+    "command_centre": "Command Centre",
+    "dashboard": "Dashboard",
+    "alerts": "Alerts",
+    "incidents": "Incidents",
+    "live_wall": "Live Wall",
+    "sites": "Sites",
+    "cameras": "Cameras",
+    "recordings": "Recordings",
+    "playback": "Playback",
+    "detections": "Detections",
+    "watchlists": "Watchlists",
+    "zones": "Zones",
+    "evidence": "Evidence",
+    "audit_logs": "Audit Logs",
+    "analytics": "Analytics",
+    "export": "Export",
+    "guard_ops": "Guard Ops",
+    "roster": "Roster",
+    "post_orders": "Post Orders",
+    "reports": "Reports",
+    "users": "Users",
+    "roles": "Roles",
+    "settings": "Settings",
+    "notifications": "Notifications",
+    "tenants": "Tenants"
+  },
+  "common": {
+    "sign_out": "Sign out",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "create": "Create",
+    "search": "Search",
+    "loading": "Loading…",
+    "no_data": "No data",
+    "close": "Close",
+    "confirm": "Confirm"
+  },
+  "status": {
+    "open": "Open",
+    "acknowledged": "Acknowledged",
+    "resolved": "Resolved",
+    "dismissed": "Dismissed",
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "severity": {
+    "info": "Info",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical"
+  }
+}

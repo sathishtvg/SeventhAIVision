@@ -1,0 +1,86 @@
+# Load & Performance Test Policy — Gap 23
+# Seventh AI Vision
+#
+# Enforcement tool: Locust (https://locust.io)
+# Locust file: locustfiles/load_test_api.py
+#
+# Usage:
+#   scripts/load-test/run-load-tests.sh --smoke      # 30s sanity, 5 users
+#   scripts/load-test/run-load-tests.sh --load       # 5 min normal load, 50 users
+#   scripts/load-test/run-load-tests.sh --stress     # 10 min stress, 200 users
+#   scripts/load-test/run-load-tests.sh --report     # generate HTML report only
+
+version: "1.0"
+metadata:
+  tool: locust
+  locustfile: locustfiles/load_test_api.py
+  effective_date: "2026-07-01"
+  owner: platform@seventh.ai
+  review_cycle: quarterly
+
+# ── Scenarios ─────────────────────────────────────────────────────────────────
+# Three profiles: smoke (CI pre-deploy), load (nightly), stress (monthly).
+scenarios:
+  - name: smoke
+    description: "Quick sanity check — validates endpoints respond under minimal load"
+    users: 5
+    spawn_rate: 1
+    duration: 30s
+    ci_gate: true               # Run in CI pre-deployment; fails block the deploy
+
+  - name: load
+    description: "Normal production-level load — simulates expected concurrent users"
+    users: 50
+    spawn_rate: 5
+    duration: 5m
+    ci_gate: false              # Nightly job; too slow for pre-deploy CI
+
+  - name: stress
+    description: "Find breaking point — ramp until error rate exceeds threshold"
+    users: 200
+    spawn_rate: 10
+    duration: 10m
+    ci_gate: false              # Monthly; explicit performance regression check
+
+# ── Performance thresholds ────────────────────────────────────────────────────
+# These must be consistent with the SLO definitions in observability/slo/slo-definitions.yml.
+# If a threshold is tightened here, tighten the corresponding SLO too, and vice versa.
+thresholds:
+  # P95 latency (milliseconds) — must stay below these values during the load scenario
+  p95_latency_ms:
+    GET /health: 100
+    POST /api/v1/auth/login: 1000
+    GET /api/v1/alerts: 500         # mirrors slo-definitions.yml api_p95_latency threshold_ms
+    GET /api/v1/cameras: 500
+    GET /api/v1/incidents: 500
+    GET /api/v1/system/version: 200
+
+  # Overall error rate: must stay below this percentage across all endpoints
+  error_rate_percent: 1.0           # mirrors api_availability SLO (target: 0.999 → 0.1% budget)
+
+  # Failure floor: smoke scenario must achieve 0% errors (pre-deploy gate)
+  smoke_error_rate_percent: 0.0
+
+# ── Target ────────────────────────────────────────────────────────────────────
+target:
+  # Overridden by LOCUST_HOST env var at runtime; this is the default for docker-compose runs
+  base_url: "http://api:8000"
+  health_endpoint: /health
+  api_prefix: /api/v1
+
+# ── Test credentials ──────────────────────────────────────────────────────────
+# Locust reads these from environment variables — never hardcoded here.
+# For CI: inject from the CI secrets store.
+# For local: set in .env.test (git-ignored).
+credentials:
+  env_var_email: LOAD_TEST_USER_EMAIL
+  env_var_password: LOAD_TEST_USER_PASSWORD
+  env_var_tenant_slug: LOAD_TEST_TENANT_SLUG
+  note: "Use a dedicated read-only test user; never use a production admin account"
+
+# ── Report configuration ───────────────────────────────────────────────────────
+output:
+  report_dir: reports/load-tests
+  html_report: true
+  csv_report: true
+  report_filename_pattern: "locust-{scenario}-{date}"

@@ -1,0 +1,72 @@
+# Gap 14 — OpenTelemetry Collector configuration for Seventh AI Vision
+# Reference: https://opentelemetry.io/docs/collector/configuration/
+#
+# Usage with Docker Compose overlay:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.otel.yml up -d
+#
+# The collector receives OTLP telemetry from all services (API, workers, ingestion),
+# forwards traces to Jaeger for visualization, and re-exports metrics to Prometheus.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Self-monitoring: scrape the collector's own /metrics endpoint
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["localhost:8888"]
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  resource:
+    attributes:
+      - key: service.namespace
+        value: seventh-ai-vision
+        action: upsert
+      - key: deployment.environment
+        from_env: DEPLOYMENT_ENV
+        action: insert
+
+exporters:
+  # Jaeger receives traces via OTLP gRPC
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Re-export OTEL metrics so Prometheus can scrape them
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: seventh_ai
+
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger, debug]
+
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

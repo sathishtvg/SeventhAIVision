@@ -1,0 +1,117 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-prometheus
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  serviceName: {{ include "seventh-ai-vision.fullname" . }}-prometheus
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prometheus
+  template:
+    metadata:
+      labels:
+        {{- include "seventh-ai-vision.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: "{{ .Values.prometheus.image.repository }}:{{ .Values.prometheus.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --web.enable-lifecycle
+          ports:
+            - name: web
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: web
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: web
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: prometheus-data
+              mountPath: /prometheus
+          resources:
+            {{- toYaml .Values.prometheus.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "seventh-ai-vision.fullname" . }}-prometheus-config
+  volumeClaimTemplates:
+    - metadata:
+        name: prometheus-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.prometheus.storage.size | quote }}
+        {{- if .Values.prometheus.storage.storageClass }}
+        storageClassName: {{ .Values.prometheus.storage.storageClass | quote }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-prometheus
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: web
+      protocol: TCP
+      name: web
+  selector:
+    {{- include "seventh-ai-vision.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-prometheus-config
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+      - job_name: api
+        static_configs:
+          - targets: ["{{ include "seventh-ai-vision.fullname" . }}-api:8000"]
+
+      - job_name: ingestion
+        static_configs:
+          - targets: ["{{ include "seventh-ai-vision.fullname" . }}-ingestion:8001"]
+
+      - job_name: scheduler
+        static_configs:
+          - targets: ["{{ include "seventh-ai-vision.fullname" . }}-scheduler:8001"]
+{{- range .Values.aiWorkers }}
+{{- if .enabled }}
+      - job_name: ai-worker-{{ .name | replace "_" "-" }}
+        static_configs:
+          - targets: ["{{ include "seventh-ai-vision.fullname" $ }}-ai-worker-{{ .name | replace "_" "-" }}:8001"]
+{{- end }}
+{{- end }}
+{{- end }}

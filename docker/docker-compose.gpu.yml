@@ -1,0 +1,167 @@
+# GPU override for Docker Compose.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d
+#
+# Prerequisites:
+#   - NVIDIA GPU with driver >= 525
+#   - NVIDIA Container Toolkit installed (see scripts/gpu-setup.sh)
+#   - Docker daemon configured for nvidia runtime:
+#       nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
+#
+# Each AI worker gets exclusive access to one GPU by default (count: 1).
+# For multi-GPU hosts, change count or use "all" to share across workers.
+# Shared memory (shm_size) is increased to 2 GB for CUDA tensor operations.
+#
+# Workers automatically detect CUDA via resolve_device() in device.py when
+# DEVICE=cuda is set; CPU fallback applies when the env var is absent or "cpu".
+
+services:
+
+  ai-worker-lpr:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-face:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-intrusion:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-ppe:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-crowd:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-fire-smoke:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-weapon:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-behavior:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-tampering:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-abandoned:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  ai-worker-fall:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '2gb'
+
+  # Optional: NVIDIA Data Center GPU Manager exporter for Prometheus GPU metrics.
+  # Exposes GPU temperature, memory usage, power draw, etc. at :9400/metrics.
+  # Add to prometheus.yml scrape targets before enabling.
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.4.0-ubuntu22.04
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    cap_add: [SYS_ADMIN]
+    ports: ["9400:9400"]
+    profiles: [gpu-metrics]

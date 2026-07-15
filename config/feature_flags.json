@@ -1,0 +1,120 @@
+{
+  "version": "1.0",
+  "description": "Seventh AI Vision feature flag catalog — mirrors FLAG_DEFINITIONS in backend/app/core/feature_flags.py",
+  "flags": [
+    {
+      "name": "live_wall",
+      "type": "boolean",
+      "default": true,
+      "description": "Multi-camera LiveWall page with up to 4x4 stream grid"
+    },
+    {
+      "name": "electron_desktop",
+      "type": "boolean",
+      "default": true,
+      "description": "Windows Electron desktop app packaging and first-run wizard"
+    },
+    {
+      "name": "dark_mode_only",
+      "type": "boolean",
+      "default": false,
+      "description": "Force dark glassmorphism theme and disable light-mode toggle"
+    },
+    {
+      "name": "enhanced_dashboard",
+      "type": "boolean",
+      "default": true,
+      "description": "Phase 10 enhanced dashboard with site selector, sparklines, health strip"
+    },
+    {
+      "name": "face_enrollment_ui",
+      "type": "boolean",
+      "default": true,
+      "description": "Face enrollment dialog in Watchlists page (requires insightface model)"
+    },
+    {
+      "name": "stream_validation",
+      "type": "boolean",
+      "default": true,
+      "description": "Test Connection button for RTSP URL validation before saving"
+    },
+    {
+      "name": "pgvector_face_matching",
+      "type": "boolean",
+      "default": true,
+      "description": "Use pgvector ANN for face matching instead of brute-force Python"
+    },
+    {
+      "name": "gpu_acceleration",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable GPU device for AI workers (requires NVIDIA Container Toolkit)"
+    },
+    {
+      "name": "scim_provisioning",
+      "type": "boolean",
+      "default": true,
+      "description": "SCIM 2.0 user/group provisioning endpoint (/api/v1/scim/v2)"
+    },
+    {
+      "name": "webhooks",
+      "type": "boolean",
+      "default": true,
+      "description": "Outbound webhook subscriptions for platform events"
+    },
+    {
+      "name": "sso_saml",
+      "type": "boolean",
+      "default": false,
+      "description": "SAML 2.0 / OAuth2 single sign-on (requires SSO provider config)"
+    },
+    {
+      "name": "platform_licensing",
+      "type": "boolean",
+      "default": true,
+      "description": "Per-tenant product licensing API (/api/v1/platform)"
+    },
+    {
+      "name": "opentelemetry_tracing",
+      "type": "boolean",
+      "default": false,
+      "description": "OpenTelemetry distributed tracing (requires otel-collector sidecar)"
+    },
+    {
+      "name": "prometheus_metrics",
+      "type": "boolean",
+      "default": true,
+      "description": "Expose /metrics endpoint for Prometheus scraping"
+    },
+    {
+      "name": "s3_evidence_storage",
+      "type": "boolean",
+      "default": false,
+      "description": "Route evidence files through MinIO/S3 (STORAGE_BACKEND=s3)"
+    },
+    {
+      "name": "stream_recording",
+      "type": "boolean",
+      "default": true,
+      "description": "Per-stream MP4 recording (start/stop via API, stored in recordings_data volume)"
+    },
+    {
+      "name": "max_cameras_per_tenant",
+      "type": "number",
+      "default": 0,
+      "description": "Maximum cameras per tenant (0 = unlimited); enforced at camera:create"
+    },
+    {
+      "name": "max_webhook_endpoints_per_tenant",
+      "type": "number",
+      "default": 20,
+      "description": "Maximum active webhook subscriptions per tenant"
+    },
+    {
+      "name": "max_watchlist_faces_per_tenant",
+      "type": "number",
+      "default": 0,
+      "description": "Maximum face watchlist entries per tenant (0 = unlimited)"
+    }
+  ]
+}

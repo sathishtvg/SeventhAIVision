@@ -1,0 +1,204 @@
+# Dependency Update Policy — Gap 29
+# Seventh AI Vision
+#
+# Defines the update cadence, merge strategy, grouping rules, and CI gate
+# requirements for all dependency types across the monorepo.
+#
+# Automation tool: Renovate Bot (renovate.json in project root)
+# Manual check:    scripts/dependencies/check-outdated.sh
+# Tests:           backend/tests/test_dependency_policy.py
+
+version: "1.0"
+metadata:
+  effective_date: "2026-07-02"
+  owner: platform@seventh.ai
+  review_cycle: quarterly
+  rationale: >
+    Stale dependencies are a primary attack surface. This policy ensures
+    the platform stays within 90 days of any dependency's latest release,
+    with stricter SLAs for security patches.
+
+# ── Scope — which files are managed ──────────────────────────────────────────
+scope:
+  manifests:
+    - path: backend/pyproject.toml
+      ecosystem: pip
+      lockfile: backend/uv.lock
+    - path: ai-worker/pyproject.toml
+      ecosystem: pip
+      lockfile: ai-worker/uv.lock
+    - path: frontend/package.json
+      ecosystem: npm
+      lockfile: frontend/package-lock.json
+    - path: mobile/package.json
+      ecosystem: npm
+      lockfile: mobile/package-lock.json
+    - path: desktop/package.json
+      ecosystem: npm
+      lockfile: desktop/package-lock.json
+    - path: docker/backend.Dockerfile
+      ecosystem: docker
+    - path: docker/ai-worker.Dockerfile
+      ecosystem: docker
+    - path: docker/docker-compose.yml
+      ecosystem: docker-compose
+
+# ── Update cadence ────────────────────────────────────────────────────────────
+update_schedule:
+  security_patch:
+    max_age_days: 3          # CVE/security release must be merged within 3 days
+    auto_merge: true         # Auto-merge if tests pass — no review delay on security patches
+    priority: critical
+
+  patch_version:             # x.y.Z → x.y.Z+1
+    max_age_days: 14
+    auto_merge: true         # Low risk — patch increments only
+    schedule: "every monday" # Batch all weekly patch bumps on Monday
+
+  minor_version:             # x.Y.z → x.Y+1.z
+    max_age_days: 30
+    auto_merge: false        # Require one reviewer
+    schedule: "every first monday of the month"
+
+  major_version:             # X.y.z → X+1.y.z
+    max_age_days: 90
+    auto_merge: false        # Require two reviewers + manual testing
+    schedule: "on demand"
+    notes: >
+      Major bumps are batched into a dedicated sprint item. If a major version
+      is also a security release it follows the security_patch cadence instead.
+
+# ── Grouping rules — which packages are updated together ─────────────────────
+groups:
+  - name: fastapi-stack
+    description: "FastAPI, Uvicorn, Starlette, Pydantic — always upgraded together"
+    matches:
+      - fastapi
+      - uvicorn
+      - starlette
+      - pydantic
+      - pydantic-settings
+    update_type: minor
+
+  - name: sqlalchemy-stack
+    description: "SQLAlchemy + async drivers — upgrade together to avoid API drift"
+    matches:
+      - sqlalchemy
+      - asyncpg
+      - psycopg
+      - alembic
+    update_type: minor
+
+  - name: ai-models
+    description: "AI inference libraries — upgrade together and test end-to-end"
+    matches:
+      - ultralytics
+      - insightface
+      - onnxruntime
+      - onnxruntime-gpu
+      - paddlepaddle
+      - paddleocr
+      - torch
+      - pgvector
+    update_type: major
+    auto_merge: false
+    notes: >
+      AI model package upgrades may change inference results. Every merge
+      must pass the AI worker integration tests (ai-worker/tests/).
+
+  - name: react-ecosystem
+    description: "React + MUI — upgrade together to avoid peer-dep conflicts"
+    matches:
+      - react
+      - react-dom
+      - "@mui/*"
+      - "@emotion/*"
+    update_type: minor
+
+  - name: electron
+    description: "Electron + electron-builder — upgrade together"
+    matches:
+      - electron
+      - electron-builder
+      - electron-store
+    update_type: major
+    auto_merge: false
+
+  - name: security-tools
+    description: "Security scanning tools — keep as current as possible"
+    matches:
+      - detect-secrets
+      - pip-audit
+      - safety
+    update_type: patch
+    auto_merge: true
+
+  - name: test-tools
+    description: "pytest and test utilities — auto-merge patch/minor"
+    matches:
+      - pytest
+      - pytest-asyncio
+      - pytest-cov
+      - httpx
+    update_type: minor
+    auto_merge: true
+
+# ── Ignore rules — packages frozen intentionally ──────────────────────────────
+ignore:
+  - package: paddlepaddle
+    reason: "PaddlePaddle GPU build must be pinned to match paddleocr and CUDA version"
+    max_version: null   # Do not auto-update
+
+  - package: torch
+    reason: "PyTorch GPU wheels are version-specific; manual upgrade with GPU validation required"
+    max_version: null
+
+  - package: node
+    reason: "Node.js version is pinned to LTS in Dockerfile; change requires infra review"
+    max_version: null
+
+# ── Vulnerability SLA ─────────────────────────────────────────────────────────
+vulnerability_sla:
+  # Time from CVE publication to merged fix (aligns with security_patch cadence)
+  critical:
+    fix_within_days: 3
+    escalate_to: ["security@seventh.ai", "cto@seventh.ai"]
+  high:
+    fix_within_days: 7
+    escalate_to: ["security@seventh.ai"]
+  medium:
+    fix_within_days: 30
+    escalate_to: []
+  low:
+    fix_within_days: 90
+    escalate_to: []
+
+# ── CI gate requirements ──────────────────────────────────────────────────────
+ci_gates:
+  on_dependency_pr:
+    - run_tests: true
+    - run_security_scan: true    # pip-audit / npm audit
+    - require_lockfile_update: true
+    - block_on_new_critical_vuln: true
+
+  weekly_audit:
+    script: "scripts/dependencies/check-outdated.sh --audit"
+    fail_on: ["critical", "high"]   # Severities that block the audit
+    report_path: "security-reports/dependency-audit.txt"
+
+# ── Lockfile policy ───────────────────────────────────────────────────────────
+lockfiles:
+  required: true    # All manifests must have a lockfile
+  commit_lockfile: true   # Lockfile changes must be committed alongside manifest changes
+  verify_no_drift: true   # CI checks that lockfile is in sync with manifest
+
+# ── Docker base image policy ──────────────────────────────────────────────────
+docker:
+  pin_digest: false    # Tags only for now; digest pinning is a future hardening step
+  max_age_days: 30     # Base images must be refreshed within 30 days
+  preferred_tags:
+    python: "3.11-slim"
+    node: "20-alpine"
+    postgres: "16"
+    redis: "7-alpine"
+    nginx: "alpine"

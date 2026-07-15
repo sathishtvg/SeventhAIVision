@@ -1,0 +1,37 @@
+# Chaos Engineering overlay for Docker Compose — Gap 16
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.chaos.yml up -d toxiproxy
+#
+# Adds:
+#   toxiproxy — Shopify Toxiproxy 2.9.0 (network fault injection proxy)
+#               REST API (control plane): http://localhost:8474
+#               Proxied postgres:         localhost:5433 → postgres:5432
+#               Proxied redis:            localhost:6380 → redis:6379
+#               Proxied api:              localhost:8001 → api:8000
+#
+# When running chaos experiments, redirect target service connections through
+# the proxy ports so Toxiproxy can inject faults.
+#
+# Experiment definitions: scripts/chaos/chaos-experiments.yml
+# Scenario configs:       scripts/chaos/toxiproxy-config.yml
+
+services:
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    ports:
+      - "8474:8474"   # REST API / control plane
+      - "5433:5433"   # postgres_proxy (upstream: postgres:5432)
+      - "6380:6380"   # redis_proxy   (upstream: redis:6379)
+      - "8001:8001"   # api_proxy     (upstream: api:8000)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8474/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      - postgres
+      - redis
+      - api

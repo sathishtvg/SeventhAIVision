@@ -1,0 +1,29 @@
+# Trivy CVE exception list — Gap 19
+# Seventh AI Vision — accepted/deferred vulnerability exceptions
+#
+# Format (one exception per block):
+#   CVE-YYYY-NNNNN
+#   exp:YYYY-MM-DD      <- mandatory expiry; exception auto-expires, CI picks it up again
+#   reason: <free text> <- mandatory justification for the record
+#
+# Rules:
+#   1. Every entry MUST have an expiry date (exp:). No permanent exceptions.
+#   2. Every entry MUST have a documented reason.
+#   3. Entries are reviewed in the monthly security triage meeting.
+#   4. Expired entries are removed; if still unpatched a tracker ticket is required.
+#
+# Add entries only when ALL of these conditions are true:
+#   a) No upstream fix is available yet
+#   b) The attack vector is not reachable in our deployment topology
+#   c) A compensating control exists (e.g. network policy blocks the exploitable port)
+#   d) A tracker ticket is open with the upstream maintainer or our security team
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# Active exceptions (none at initial release — start clean)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Example (DO NOT REMOVE — reference for security team):
+# CVE-2023-12345
+# exp:2026-12-31
+# reason: Affects only the FTP server component; this image has no FTP service.
+#         Upstream fix expected in next minor release. Tracker: SEC-0042.

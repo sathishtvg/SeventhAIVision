@@ -1,0 +1,58 @@
+{
+  "nav": {
+    "command_centre": "Pusat Kawalan",
+    "dashboard": "Papan Pemuka",
+    "alerts": "Amaran",
+    "incidents": "Insiden",
+    "live_wall": "Dinding Langsung",
+    "sites": "Tapak",
+    "cameras": "Kamera",
+    "recordings": "Rakaman",
+    "playback": "Main Semula",
+    "detections": "Pengesanan",
+    "watchlists": "Senarai Pantau",
+    "zones": "Zon",
+    "evidence": "Bukti",
+    "audit_logs": "Log Audit",
+    "analytics": "Analitik",
+    "export": "Eksport",
+    "guard_ops": "Operasi Pengawal",
+    "roster": "Jadual Tugas",
+    "post_orders": "Arahan Pos",
+    "reports": "Laporan",
+    "users": "Pengguna",
+    "roles": "Peranan",
+    "settings": "Tetapan",
+    "notifications": "Pemberitahuan",
+    "tenants": "Penyewa"
+  },
+  "common": {
+    "sign_out": "Log keluar",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Padam",
+    "edit": "Sunting",
+    "add": "Tambah",
+    "create": "Cipta",
+    "search": "Cari",
+    "loading": "Memuatkan…",
+    "no_data": "Tiada data",
+    "close": "Tutup",
+    "confirm": "Sahkan"
+  },
+  "status": {
+    "open": "Terbuka",
+    "acknowledged": "Diakui",
+    "resolved": "Diselesaikan",
+    "dismissed": "Ditolak",
+    "online": "Dalam Talian",
+    "offline": "Luar Talian"
+  },
+  "severity": {
+    "info": "Maklumat",
+    "low": "Rendah",
+    "medium": "Sederhana",
+    "high": "Tinggi",
+    "critical": "Kritikal"
+  }
+}

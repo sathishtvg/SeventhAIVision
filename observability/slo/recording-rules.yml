@@ -1,0 +1,142 @@
+# Prometheus Recording Rules — SLO time-window materialization — Gap 18
+#
+# These rules pre-compute SLI rates over multiple time windows so that
+# alert expressions and Grafana dashboards can query pre-aggregated series
+# rather than running expensive range queries at dashboard load time.
+#
+# Naming convention: slo:<service>:<metric>:<window>
+# Loaded via prometheus.yml → rule_files.
+
+groups:
+  # ──────────────────────────────────────────────────────────────────────
+  # API Availability SLI — success rate over multiple windows
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_api_availability_windows
+    interval: 30s
+    rules:
+      - record: slo:api_request_success_rate:5m
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="api"}[5m]))
+
+      - record: slo:api_request_success_rate:30m
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[30m]))
+          /
+          sum(rate(http_requests_total{job="api"}[30m]))
+
+      - record: slo:api_request_success_rate:1h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[1h]))
+          /
+          sum(rate(http_requests_total{job="api"}[1h]))
+
+      - record: slo:api_request_success_rate:2h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[2h]))
+          /
+          sum(rate(http_requests_total{job="api"}[2h]))
+
+      - record: slo:api_request_success_rate:6h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[6h]))
+          /
+          sum(rate(http_requests_total{job="api"}[6h]))
+
+      - record: slo:api_request_success_rate:24h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[24h]))
+          /
+          sum(rate(http_requests_total{job="api"}[24h]))
+
+  # ──────────────────────────────────────────────────────────────────────
+  # API Latency SLI — fraction of requests completing under 500 ms
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_api_latency_windows
+    interval: 30s
+    rules:
+      - record: slo:api_p95_latency_good_rate:5m
+        expr: |
+          sum(rate(http_request_duration_seconds_bucket{job="api",le="0.5"}[5m]))
+          /
+          sum(rate(http_request_duration_seconds_count{job="api"}[5m]))
+
+      - record: slo:api_p95_latency_good_rate:30m
+        expr: |
+          sum(rate(http_request_duration_seconds_bucket{job="api",le="0.5"}[30m]))
+          /
+          sum(rate(http_request_duration_seconds_count{job="api"}[30m]))
+
+      - record: slo:api_p95_latency_good_rate:1h
+        expr: |
+          sum(rate(http_request_duration_seconds_bucket{job="api",le="0.5"}[1h]))
+          /
+          sum(rate(http_request_duration_seconds_count{job="api"}[1h]))
+
+      - record: slo:api_p95_latency_good_rate:6h
+        expr: |
+          sum(rate(http_request_duration_seconds_bucket{job="api",le="0.5"}[6h]))
+          /
+          sum(rate(http_request_duration_seconds_count{job="api"}[6h]))
+
+  # ──────────────────────────────────────────────────────────────────────
+  # AI Worker Processing SLI — frame success rate over multiple windows
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_ai_worker_windows
+    interval: 30s
+    rules:
+      - record: slo:ai_worker_success_rate:5m
+        expr: |
+          sum(rate(frames_processed_total[5m]))
+          /
+          clamp_min(sum(rate(frames_consumed_total[5m])), 1)
+
+      - record: slo:ai_worker_success_rate:30m
+        expr: |
+          sum(rate(frames_processed_total[30m]))
+          /
+          clamp_min(sum(rate(frames_consumed_total[30m])), 1)
+
+      - record: slo:ai_worker_success_rate:1h
+        expr: |
+          sum(rate(frames_processed_total[1h]))
+          /
+          clamp_min(sum(rate(frames_consumed_total[1h])), 1)
+
+      - record: slo:ai_worker_success_rate:6h
+        expr: |
+          sum(rate(frames_processed_total[6h]))
+          /
+          clamp_min(sum(rate(frames_consumed_total[6h])), 1)
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Error Budget Remaining — rolling 30-day burn fraction
+  # 1.0 = full budget remaining, 0.0 = fully exhausted
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_error_budgets
+    interval: 60s
+    rules:
+      - record: slo:api_availability_error_budget_remaining:30d
+        expr: |
+          1 - (
+            (1 - slo:api_request_success_rate:1h)
+            /
+            (1 - 0.999)
+          )
+
+      - record: slo:api_latency_error_budget_remaining:30d
+        expr: |
+          1 - (
+            (1 - slo:api_p95_latency_good_rate:1h)
+            /
+            (1 - 0.99)
+          )
+
+      - record: slo:ai_worker_error_budget_remaining:30d
+        expr: |
+          1 - (
+            (1 - slo:ai_worker_success_rate:1h)
+            /
+            (1 - 0.995)
+          )

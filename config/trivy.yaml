@@ -1,0 +1,88 @@
+# Trivy security scanner configuration — Gap 19
+# Seventh AI Vision container and IaC security scanning
+#
+# Used by: scripts/scan/scan-containers.sh
+# Documentation: https://aquasecurity.github.io/trivy/latest/docs/configuration/
+#
+# To run manually:
+#   trivy image --config config/trivy.yaml seventh-ai-vision/api:latest
+#   trivy config --config config/trivy.yaml docker/
+
+# ── Scan behaviour ────────────────────────────────────────────────────────────
+
+# Report CRITICAL and HIGH vulnerabilities; skip LOW/MEDIUM to reduce noise.
+# MEDIUM vulnerabilities are reviewed in the weekly security triage meeting.
+severity:
+  - CRITICAL
+  - HIGH
+
+# Exit non-zero when vulnerabilities matching `severity` are found.
+# CI pipelines gate on this: exit code 0 = clean, 1 = findings present.
+exit-code: 1
+
+# Include vulnerabilities that have no upstream fix yet.
+# Set to true if you want to hide noise from unfixable CVEs, but risk masking
+# real risks — default is false (show everything, decide exceptions in .trivyignore).
+ignore-unfixed: false
+
+# ── Output ────────────────────────────────────────────────────────────────────
+
+format: json
+output: ""  # stdout by default; scan-containers.sh redirects to reports/trivy/
+
+# ── Vulnerability scanning scope ──────────────────────────────────────────────
+
+vulnerability:
+  type:
+    - os          # OS package manager vulnerabilities (apt, apk, etc.)
+    - library     # Language-level packages (pip, npm, etc.)
+  ignore-unfixed: false
+
+# ── Secret scanning ───────────────────────────────────────────────────────────
+# Detect hardcoded secrets (API keys, passwords, tokens) in image layers and
+# config files. Runs automatically; no additional config required.
+
+secret:
+  enable-builtin-rules: true
+
+# ── License scanning ──────────────────────────────────────────────────────────
+# Complements the SBOM license policy (scripts/sbom/sbom-policy.yml).
+# Trivy license scanning runs in addition to Grype (Gap 17) for defence-in-depth.
+
+license:
+  enable: true
+  forbidden:
+    - GPL-2.0
+    - GPL-2.0-only
+    - GPL-2.0-or-later
+    - GPL-3.0
+    - GPL-3.0-only
+    - GPL-3.0-or-later
+    - AGPL-3.0
+    - AGPL-3.0-only
+    - AGPL-3.0-or-later
+    - SSPL-1.0
+  ignored: []
+
+# ── Misconfiguration scanning (IaC / Dockerfile) ────────────────────────────
+# `trivy config` mode; checks Dockerfiles and docker-compose files for
+# best-practice violations (e.g. running as root, missing HEALTHCHECK).
+
+misconfiguration:
+  include-non-failures: false
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+
+cache:
+  dir: ".trivycache"
+  backend: "fs"
+
+# ── DB ────────────────────────────────────────────────────────────────────────
+
+db:
+  skip-update: false
+  no-progress: false
+
+# ── Scan timeout ─────────────────────────────────────────────────────────────
+
+timeout: 10m0s

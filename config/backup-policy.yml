@@ -1,0 +1,113 @@
+# Backup & Restore Policy — Gap 25
+# Seventh AI Vision
+#
+# Defines backup schedules, retention windows, encryption requirements,
+# and restore verification procedures for all persistent data stores.
+#
+# Scripts:
+#   scripts/backup/backup-postgres.sh    — create encrypted PostgreSQL dumps
+#   scripts/backup/restore-postgres.sh   — restore from a dump + verify health
+#
+# Backup target: PostgreSQL 16 (primary data store)
+# Encryption: age (same key infrastructure as SOPS — see .sops.yaml)
+# Storage: local volume (Docker named volume) + optional S3/remote
+
+version: "1.0"
+metadata:
+  effective_date: "2026-07-01"
+  owner: platform@seventh.ai
+  review_cycle: quarterly
+  rto_hours: 4           # Recovery Time Objective — system back online within 4h
+  rpo_hours: 24          # Recovery Point Objective — lose at most 24h of data
+
+# ── Backup targets ─────────────────────────────────────────────────────────────
+targets:
+  - name: postgres-full
+    description: "Full pg_dump of the seventh_ai_vision database"
+    type: postgresql
+    host_env: POSTGRES_HOST          # read from environment at runtime
+    port: 5432
+    database_env: POSTGRES_DB        # e.g. seventh_ai_vision
+    user_env: POSTGRES_USER
+    password_env: POSTGRES_PASSWORD
+    format: custom                   # pg_dump -Fc: compressed binary, supports partial restore
+    compression_level: 9             # 0-9; 9 = smallest file
+
+  - name: evidence-volume
+    description: "Snapshot of the evidence_data Docker volume (JPEG files)"
+    type: volume
+    volume_name: docker_evidence_data
+    compress: true
+    notes: >-
+      Evidence files are read-only after creation. This backup is secondary;
+      the database rows (which reference file paths) are the primary record.
+      A full restore requires: (1) postgres-full restore, then (2) evidence-volume restore.
+
+# ── Schedule ───────────────────────────────────────────────────────────────────
+schedule:
+  full_backup:
+    frequency: daily
+    time_utc: "02:00"            # Low-traffic window (2 AM UTC)
+    cron: "0 2 * * *"
+  incremental:
+    enabled: false               # Not implemented — WAL archiving is the upgrade path
+    notes: "Incremental via WAL archiving requires pg_basebackup + archive_mode=on; planned for production hardening"
+
+# ── Retention ─────────────────────────────────────────────────────────────────
+retention:
+  daily_backups_kept: 7         # Keep the last 7 daily backups
+  weekly_backups_kept: 4        # Keep one backup per week for 4 weeks
+  monthly_backups_kept: 3       # Keep one backup per month for 3 months
+  min_backups_always_kept: 3   # Safety floor — never delete below this count
+
+# ── Encryption ────────────────────────────────────────────────────────────────
+encryption:
+  required: true                    # Backups MUST be encrypted before storing
+  tool: age                         # Same as SOPS (see .sops.yaml)
+  public_key_env: BACKUP_AGE_PUBLIC_KEY   # The backup recipient's age public key
+  private_key_env: SOPS_AGE_KEY_FILE      # Path to private key (for restore)
+  encrypted_extension: ".age"
+  notes: >-
+    The backup age key pair is separate from the SOPS application keys.
+    Private key stored in: HashiCorp Vault (prod), 1Password vault (dev/staging).
+
+# ── Backup file naming ────────────────────────────────────────────────────────
+naming:
+  pattern: "{target}-{date}-{time}.{ext}.age"
+  date_format: "%Y%m%d"
+  time_format: "%H%M%S"
+  examples:
+    - "postgres-full-20260701-020005.dump.age"
+    - "evidence-volume-20260701-020130.tar.gz.age"
+
+# ── Storage locations ─────────────────────────────────────────────────────────
+storage:
+  local:
+    path_env: BACKUP_LOCAL_PATH      # e.g. /data/backups
+    enabled: true
+  remote:
+    enabled: false                   # S3/Wasabi offload — planned for production
+    provider: s3
+    bucket_env: BACKUP_S3_BUCKET
+    prefix: "seventh-ai-vision/backups/"
+    notes: "Enable by setting BACKUP_S3_BUCKET and configuring aws-cli or rclone"
+
+# ── Restore verification ───────────────────────────────────────────────────────
+restore_verification:
+  post_restore_checks:
+    - step: decrypt_and_restore
+      description: "age --decrypt | pg_restore -d <database>"
+    - step: health_check
+      description: "GET /health returns HTTP 200"
+    - step: row_count_check
+      description: "SELECT COUNT(*) FROM tenants returns >= 1"
+    - step: rls_check
+      description: "Run test_rls.py subset to verify tenant isolation intact"
+  drill_frequency: monthly           # Test the restore procedure monthly
+  drill_documented_in: docs/UPGRADE.md
+
+# ── Alerting ──────────────────────────────────────────────────────────────────
+alerting:
+  alert_on_backup_failure: true
+  alert_channel: notification_channels    # Uses the platform notification system
+  max_age_before_alert_hours: 26         # Alert if no backup in last 26h (tolerates 2h drift)

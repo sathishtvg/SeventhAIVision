@@ -1,0 +1,33 @@
+{
+  "name": "seventh-ai-vision-desktop",
+  "version": "1.0.0",
+  "description": "7th AI Vision — Windows Desktop Application",
+  "author": "Seventh AI",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "icons": "node scripts/build-icons.js",
+    "start": "electron electron/main.js",
+    "build:frontend": "cd ../frontend && npm run build",
+    "copy:dist": "xcopy /E /I /Y ..\\frontend\\dist dist",
+    "predist": "node scripts/build-icons.js",
+    "dist": "npm run build:frontend && npm run copy:dist && electron-builder --win"
+  },
+  "dependencies": {
+    "electron-store": "^7.0.3",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "extends": "./electron-builder.yml",
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ]
+  }
+}

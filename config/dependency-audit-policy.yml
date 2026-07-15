@@ -1,0 +1,71 @@
+# Dependency Vulnerability Audit Policy — Gap 22
+# Seventh AI Vision
+#
+# Enforcement tool: pip-audit (https://github.com/pypa/pip-audit)
+# Vulnerability database: OSV (https://osv.dev) — default for pip-audit
+#
+# Usage:
+#   scripts/audit/audit-dependencies.sh --scan           # scan all targets
+#   scripts/audit/audit-dependencies.sh --check-exceptions  # validate no expired exceptions
+#   scripts/audit/audit-dependencies.sh --report         # generate consolidated JSON report
+
+version: "1.0"
+metadata:
+  tool: pip-audit
+  vulnerability_database: osv
+  effective_date: "2026-07-01"
+  owner: security@seventh.ai
+  review_cycle: monthly
+
+# ── Scan targets ───────────────────────────────────────────────────────────────
+# Two independent Python environments — each must pass independently.
+scan_targets:
+  - label: api-backend
+    path: backend
+    pyproject: backend/pyproject.toml
+    description: "FastAPI backend (api, ingestion, scheduler services)"
+
+  - label: ai-worker
+    path: ai-worker
+    pyproject: ai-worker/pyproject.toml
+    description: "AI worker services (LPR, face, intrusion, PPE, crowd, etc.)"
+
+# ── Severity gates ─────────────────────────────────────────────────────────────
+# CI fails immediately if any unfixed vulnerability matches fail_on severities.
+severity_gates:
+  fail_on:
+    - CRITICAL
+    - HIGH
+  warn_on:
+    - MEDIUM
+  ignore:
+    - LOW
+
+# ── Fix timing requirements ────────────────────────────────────────────────────
+# When a fix IS available, these are the maximum days before CI begins failing.
+fix_policy:
+  auto_fix: false                    # Never auto-modify pyproject.toml in CI
+  pr_on_fix_available: true          # Open a PR when pip-audit --fix finds a resolution
+  max_fix_delay_days:
+    CRITICAL: 7
+    HIGH: 30
+    MEDIUM: 90
+
+# ── Exception policy ───────────────────────────────────────────────────────────
+# CVEs may be temporarily excepted when:
+#   - No fix exists yet (upstream fix in progress)
+#   - The vulnerable code path is demonstrably unreachable in our deployment
+# All exceptions must be documented in config/vulnerability-exceptions.yml.
+exception_policy:
+  exceptions_file: config/vulnerability-exceptions.yml
+  require_expiry: true              # Every exception must have an expires: date
+  max_exception_days: 90           # No exception may be valid longer than 90 days
+  require_justification: true      # reason: field is mandatory
+  require_ticket: false            # ticket: field is recommended but not enforced yet
+
+# ── Report configuration ───────────────────────────────────────────────────────
+output:
+  format: json
+  report_dir: reports/dependency-audit
+  report_filename_pattern: "pip-audit-{label}-{date}.json"
+  save_on_clean: true              # Save a report even when there are no findings

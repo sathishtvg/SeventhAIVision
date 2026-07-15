@@ -1,0 +1,66 @@
+# OpenTelemetry overlay for Docker Compose — Gap 14
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.otel.yml up -d
+#
+# Adds:
+#   jaeger          — Jaeger all-in-one backend, UI at http://localhost:16686
+#   otel-collector  — OpenTelemetry Collector (OTLP gRPC :4317, HTTP :4318)
+#
+# The api service is extended with OTEL env vars so traces flow automatically.
+# Other services (workers, ingestion) can opt in by adding
+# OTEL_EXPORTER_OTLP_ENDPOINT to their environment blocks.
+#
+# When this overlay is NOT active the base compose file leaves OTEL_ENABLED
+# unset, which causes tracing.py to treat tracing as disabled — zero overhead.
+
+services:
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: "10000"
+    ports:
+      - "16686:16686"   # Jaeger UI (browser)
+      - "14250:14250"   # Thrift compact gRPC (legacy agents)
+      - "14268:14268"   # Thrift HTTP (legacy collectors)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    command: ["--config=/etc/otelcol-contrib/config.yml"]
+    volumes:
+      - ../observability/otel-collector-config.yml:/etc/otelcol-contrib/config.yml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC (services send spans here)
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus scrape endpoint (OTEL metrics re-export)
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Extend the api service with OTEL settings when this overlay is active
+  api:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_SERVICE_NAME: "seventh-ai-vision-api"
+      OTEL_SERVICE_VERSION: "${APP_VERSION:-1.0.0}"
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_SAMPLE_RATIO:-1.0}"
+      DEPLOYMENT_ENV: "${DEPLOYMENT_ENV:-development}"
+    depends_on:
+      otel-collector:
+        condition: service_healthy

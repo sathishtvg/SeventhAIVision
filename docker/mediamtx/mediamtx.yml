@@ -1,0 +1,66 @@
+# MediaMTX config for the client-demo environment (Task: wire up looping
+# camera feeds). No motion-video footage was available, so each cam{N} path
+# loops a real photograph indefinitely as an H.264 stream: ffmpeg re-reads a
+# still image (bus.jpg — real photo of pedestrians, good for intrusion/crowd
+# person-detection; zidane.jpg — real photo with two clear faces, for face
+# recognition) and republishes it back into this same server over RTSP. This
+# makes the existing ingestion service's `rtsp://mediamtx:8554/cam{N}` URLs
+# (baked into scripts/seed_demo.py) real, continuously-live sources with zero
+# ingestion-side changes — the AI workers genuinely run inference against
+# real photographic content, they just see the same frame on a loop instead
+# of new footage each cycle.
+#
+# Requires the `bluenviron/mediamtx:*-ffmpeg` image variant (bundles ffmpeg
+# for runOnInit to invoke) — the plain image ships only the static Go binary.
+#
+# Demo scale-up round: re-enabled cam2-cam9. The original OOM crashes were
+# traced to the frame_jobs Redis stream, not the ffmpeg loops themselves —
+# it held ~1.24GB with only 2 of 9 consumer groups draining it (see
+# ingestion_main.py's XADD maxlen comment). cam2-cam8/cam9 loop static
+# JPEGs (-tune stillimage), which is cheap to encode — the earlier 1-camera
+# trim bought time to find the actual bottleneck, not a permanent ceiling.
+logLevel: info
+rtspAddress: :8554
+# Only RTSP is needed by the ingestion service; skip the extra listeners.
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+
+# -tune stillimage + -preset ultrafast: cheap to encode since the source
+# frame never changes. -rtsp_transport tcp: more reliable than UDP across
+# Docker's bridge network. -re: paces output at the target fps instead of
+# dumping frames as fast as the CPU can encode them.
+paths:
+  # Marina Bay Tower — Lobby Entrance [face, intrusion] — intrusion is the
+  # flagship live-alert demo (zone breach -> alert in real time), prioritized.
+  # Real motion video: OpenCV's own vtest.avi pedestrian-walking test clip
+  # (samples/data/vtest.avi in github.com/opencv/opencv), looped indefinitely.
+  cam1:
+    runOnInit: ffmpeg -re -stream_loop -1 -i /videos/vtest.avi -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 12 -keyint_min 12 -r 12 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam1
+    runOnInitRestart: yes
+
+  cam2:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam2
+    runOnInitRestart: yes
+  cam3:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam3
+    runOnInitRestart: yes
+  cam4:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam4
+    runOnInitRestart: yes
+  cam5:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam5
+    runOnInitRestart: yes
+  cam6:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam6
+    runOnInitRestart: yes
+  cam7:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam7
+    runOnInitRestart: yes
+  cam8:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam8
+    runOnInitRestart: yes
+  cam9:
+    runOnInit: ffmpeg -re -loop 1 -i /videos/zidane.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam9
+    runOnInitRestart: yes

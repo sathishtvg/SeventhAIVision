@@ -1,0 +1,155 @@
+# Chaos Engineering Experiment Catalog — Gap 16
+# Seventh AI Vision platform resilience verification
+#
+# Each experiment documents:
+#   hypothesis        — the expected platform behaviour under this fault
+#   services_affected — Docker Compose service names in blast radius
+#   blast_radius      — single_service | single_dependency | tenant_scope | full_blast
+#   abort_conditions  — stop the experiment if these thresholds are crossed
+#   sla_assertions    — pass/fail criteria measured at end of experiment
+#   toxiproxy_scenario — name of the matching entry in toxiproxy-config.yml (null = non-network fault)
+#
+# Run with: docker compose -f docker/docker-compose.yml -f docker/docker-compose.chaos.yml up -d
+
+experiments:
+
+  - name: postgres_latency_500ms
+    description: Inject 500ms latency on all PostgreSQL connections via Toxiproxy
+    hypothesis: "API response times remain under P95 < 1000ms with 500ms DB latency injected"
+    services_affected:
+      - api
+      - ingestion
+    blast_radius: single_dependency
+    duration_seconds: 120
+    toxiproxy_scenario: postgres_latency_500ms
+    abort_conditions:
+      - metric: error_rate_pct
+        threshold: 5.0
+        operator: exceeds
+      - metric: p99_latency_ms
+        threshold: 10000
+        operator: exceeds
+    sla_assertions:
+      - metric: p95_latency_ms
+        threshold: 1000
+        operator: below
+      - metric: p99_latency_ms
+        threshold: 2000
+        operator: below
+      - metric: error_rate_pct
+        threshold: 2.0
+        operator: below
+
+  - name: redis_connection_timeout
+    description: Drop all Redis connections after 200ms (simulates Redis unavailability)
+    hypothesis: "API health endpoint returns 200; queued Redis ops are retried on reconnect"
+    services_affected:
+      - api
+      - ai-worker-lpr
+      - ai-worker-face
+      - ai-worker-intrusion
+    blast_radius: single_dependency
+    duration_seconds: 60
+    toxiproxy_scenario: redis_timeout_200ms
+    abort_conditions:
+      - metric: error_rate_pct
+        threshold: 20.0
+        operator: exceeds
+      - metric: p99_latency_ms
+        threshold: 15000
+        operator: exceeds
+    sla_assertions:
+      - metric: health_endpoint_status
+        threshold: 200
+        operator: equals
+      - metric: error_rate_pct
+        threshold: 10.0
+        operator: below
+
+  - name: postgres_bandwidth_throttle
+    description: Throttle PostgreSQL write bandwidth to 1 kbps (near-full disk simulation)
+    hypothesis: "API returns 503 (not 500) under DB write starvation; no data corruption on recovery"
+    services_affected:
+      - api
+    blast_radius: single_dependency
+    duration_seconds: 90
+    toxiproxy_scenario: postgres_bandwidth_1kbps
+    abort_conditions:
+      - metric: p99_latency_ms
+        threshold: 30000
+        operator: exceeds
+    sla_assertions:
+      - metric: http_4xx_5xx_ratio
+        threshold: 0.9
+        operator: below
+      - metric: data_integrity_check
+        threshold: 1.0
+        operator: equals
+
+  - name: network_partition_ingestion
+    description: Cut all network to the ingestion service (simulates total camera feed loss)
+    hypothesis: "AI workers drain existing stream work gracefully; API p95 stays under 500ms"
+    services_affected:
+      - ingestion
+    blast_radius: single_service
+    duration_seconds: 180
+    toxiproxy_scenario: ingestion_network_partition
+    abort_conditions:
+      - metric: api_error_rate_pct
+        threshold: 2.0
+        operator: exceeds
+    sla_assertions:
+      - metric: api_p95_latency_ms
+        threshold: 500
+        operator: below
+      - metric: redis_stream_lag
+        threshold: 10000
+        operator: below
+
+  - name: ai_worker_crash_recovery
+    description: Kill one AI worker mid-processing to verify Redis Streams XCLAIM recovery
+    hypothesis: "Unacked messages are reclaimed by the same worker within 30 seconds of restart"
+    services_affected:
+      - ai-worker-lpr
+    blast_radius: single_service
+    duration_seconds: 120
+    toxiproxy_scenario: null
+    abort_conditions:
+      - metric: pending_messages_age_seconds
+        threshold: 300
+        operator: exceeds
+    sla_assertions:
+      - metric: recovery_time_seconds
+        threshold: 30
+        operator: below
+      - metric: messages_lost
+        threshold: 0
+        operator: equals
+
+  - name: redis_latency_100ms
+    description: Inject 100ms latency on all Redis operations (slow Pub/Sub and Streams)
+    hypothesis: "WebSocket push events are delayed but delivered; no events silently dropped"
+    services_affected:
+      - api
+      - ai-worker-lpr
+      - ai-worker-face
+      - ai-worker-intrusion
+      - ai-worker-ppe
+      - ai-worker-crowd
+    blast_radius: single_dependency
+    duration_seconds: 120
+    toxiproxy_scenario: redis_latency_100ms
+    abort_conditions:
+      - metric: error_rate_pct
+        threshold: 5.0
+        operator: exceeds
+      - metric: p99_latency_ms
+        threshold: 5000
+        operator: exceeds
+    sla_assertions:
+      - metric: p95_latency_ms
+        threshold: 600
+        operator: below
+      - metric: messages_lost
+        threshold: 0
+        operator: equals

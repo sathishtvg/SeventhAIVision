@@ -1,0 +1,370 @@
+x-app-env: &app-env
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET_KEY_CURRENT: "${JWT_SECRET_KEY_CURRENT:-change_me_dev_only}"
+  JWT_SECRET_KEY_PREVIOUS: "${JWT_SECRET_KEY_PREVIOUS:-}"
+  JWT_ACTIVE_KID: "${JWT_ACTIVE_KID:-2026-06}"
+  JWT_PREVIOUS_KID: "${JWT_PREVIOUS_KID:-}"
+  JWT_ALGORITHM: HS256
+  EVIDENCE_ROOT: /data/evidence
+  RECORDINGS_ROOT: /data/recordings
+  EMPLOYEE_DOCS_ROOT: /data/employee_docs
+  ATTENDANCE_PHOTOS_ROOT: /data/attendance_photos
+  LPR_CONFIDENCE_THRESHOLD: "${LPR_CONFIDENCE_THRESHOLD:-0.55}"
+  FACE_MATCH_THRESHOLD: "${FACE_MATCH_THRESHOLD:-0.6}"
+  INTRUSION_BREACH_COOLDOWN_SECONDS: "${INTRUSION_BREACH_COOLDOWN_SECONDS:-60}"
+  EVIDENCE_RETENTION_DAYS: "${EVIDENCE_RETENTION_DAYS:-90}"
+  # Phase 4: SMTP (email notifications) — leave blank to disable email delivery
+  SMTP_HOST: "${SMTP_HOST:-localhost}"
+  SMTP_PORT: "${SMTP_PORT:-587}"
+  SMTP_USER: "${SMTP_USER:-}"
+  SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+  SMTP_FROM: "${SMTP_FROM:-noreply@seventh.ai}"
+  # Phase 4: Twilio (SMS notifications) — leave blank to disable SMS delivery
+  TWILIO_ACCOUNT_SID: "${TWILIO_ACCOUNT_SID:-}"
+  TWILIO_AUTH_TOKEN: "${TWILIO_AUTH_TOKEN:-}"
+  TWILIO_FROM_NUMBER: "${TWILIO_FROM_NUMBER:-}"
+  # Task 8: Object storage — default "local" keeps Phase-1 on-disk behaviour;
+  # set STORAGE_BACKEND=s3 to route evidence through MinIO.
+  STORAGE_BACKEND: "${STORAGE_BACKEND:-local}"
+  S3_ENDPOINT_URL: "${S3_ENDPOINT_URL:-http://minio:9000}"
+  S3_BUCKET: "${S3_BUCKET:-evidence}"
+  S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+  S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+  S3_PRESIGN_TTL_SECONDS: "${S3_PRESIGN_TTL_SECONDS:-3600}"
+  WS_MAX_CONNECTIONS_PER_IP: "${WS_MAX_CONNECTIONS_PER_IP:-10}"
+  # Gap 33: Credential Encryption at Rest — leave empty for dev (built-in fallback key used);
+  # production must set a 44-char URL-safe base64 Fernet key via this env var.
+  CREDENTIALS_ENCRYPTION_KEY: "${CREDENTIALS_ENCRYPTION_KEY:-}"
+
+services:
+  postgres:
+    build: { context: .., dockerfile: docker/postgres.Dockerfile }
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-seventh_ai_vision}"
+      # Bootstrap superuser — used ONLY for running Alembic migrations. No running
+      # service connects with these credentials (see svc_app below / plan §16, §2).
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-change_me_dev_only}"
+      # Restricted runtime role every service's DATABASE_URL actually uses.
+      POSTGRES_APP_USER: "${POSTGRES_APP_USER:-svc_app}"
+      POSTGRES_APP_PASSWORD: "${POSTGRES_APP_PASSWORD:-change_me_dev_only}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: { context: .., dockerfile: docker/backend.Dockerfile }
+    command: ["sh", "-c", "cd /app/backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      # Alembic uses a separate sync URL with the superuser (DDL requires elevated privileges).
+      # alembic/env.py reads POSTGRES_HOST + POSTGRES_USER + POSTGRES_PASSWORD automatically.
+      POSTGRES_HOST: postgres
+      APP_VERSION: "${APP_VERSION:-0.1.0}"
+      GIT_SHA: "${GIT_SHA:-dev}"
+      BUILD_DATE: "${BUILD_DATE:-dev}"
+      BACKUP_ROOT: "/data/backups"
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:-change_me_dev_only}"
+      POSTGRES_DB: "${POSTGRES_DB:-seventh_ai_vision}"
+    volumes:
+      - evidence_data:/data/evidence
+      - recordings_data:/data/recordings
+      - employee_docs_data:/data/employee_docs
+      - attendance_photos_data:/data/attendance_photos
+      - models_data:/root/.insightface  # persist insightface model cache (buffalo_l ~330 MB)
+      - backups_data:/data/backups
+    ports: ["8000:8000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Separate container so an RTSP decode crash never takes the API down. Async -> asyncpg, like `api`.
+  ingestion:
+    build: { context: .., dockerfile: docker/backend.Dockerfile }
+    command: ["python", "-m", "app.ingestion_main"]
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      METRICS_PORT: "8001"
+    volumes:
+      - recordings_data:/data/recordings
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis,os; redis.from_url(os.environ['REDIS_URL']).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ai-worker-lpr: &ai_worker_base
+    build: { context: .., dockerfile: docker/ai-worker.Dockerfile }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      WORKER_MODULE: lpr
+      METRICS_PORT: "8001"
+      # Sync psycopg driver — the consumer loop is synchronous, unlike api/ingestion above.
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      LPR_WEIGHT_PATH: /app/ai-worker/models/yolov8s-lpr.pt
+    volumes:
+      - evidence_data:/data/evidence
+      - model_cache:/root/.insightface
+      # Bind-mount host ai-worker source so code changes are reflected without rebuild.
+      - ../ai-worker:/app/ai-worker
+      # Keep host models directory overlay (already covered by the source mount above,
+      # but explicit for clarity and so the path survives if source mount is removed).
+      - ../ai-worker/models:/app/ai-worker/models
+    # --- GPU passthrough: uncomment per-worker on a host with NVIDIA Container Toolkit ---
+    # deploy: { resources: { reservations: { devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }] } } }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis,os; redis.from_url(os.environ['REDIS_URL']).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  ai-worker-face:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: face
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+
+  ai-worker-intrusion:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: intrusion
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+
+  ai-worker-ppe:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: ppe
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      PPE_WEIGHT_PATH: /app/ai-worker/models/yolov8s-ppe.pt
+      PPE_CONFIDENCE_THRESHOLD: "${PPE_CONFIDENCE_THRESHOLD:-0.5}"
+
+  ai-worker-crowd:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: crowd
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      CROWD_ALERT_THRESHOLD_RATIO: "${CROWD_ALERT_THRESHOLD_RATIO:-0.8}"
+      CROWD_BREACH_COOLDOWN_SECONDS: "${CROWD_BREACH_COOLDOWN_SECONDS:-60}"
+
+  ai-worker-fire-smoke:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: fire_smoke
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      FIRE_SMOKE_WEIGHT_PATH: /app/ai-worker/models/yolov8s-fire-smoke.pt
+      FIRE_SMOKE_CONFIDENCE_THRESHOLD: "${FIRE_SMOKE_CONFIDENCE_THRESHOLD:-0.45}"
+
+  ai-worker-weapon:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: weapon
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      WEAPON_WEIGHT_PATH: /app/ai-worker/models/yolov8s-weapon.pt
+      WEAPON_CONFIDENCE_THRESHOLD: "${WEAPON_CONFIDENCE_THRESHOLD:-0.55}"
+
+  ai-worker-behavior:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: behavior
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      BEHAVIOR_LOITERING_DWELL_SECONDS: "${BEHAVIOR_LOITERING_DWELL_SECONDS:-30}"
+      BEHAVIOR_BREACH_COOLDOWN_SECONDS: "${BEHAVIOR_BREACH_COOLDOWN_SECONDS:-120}"
+
+  # Phase 5: advanced safety modules — tampering, abandoned objects, fall detection
+  ai-worker-tampering:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: tampering
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      TAMPERING_HIST_THRESHOLD: "${TAMPERING_HIST_THRESHOLD:-0.35}"
+      TAMPERING_BLUR_THRESHOLD: "${TAMPERING_BLUR_THRESHOLD:-30.0}"
+      TAMPERING_COOLDOWN_SECONDS: "${TAMPERING_COOLDOWN_SECONDS:-300}"
+
+  ai-worker-abandoned:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: abandoned
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      ABANDONED_MIN_AREA: "${ABANDONED_MIN_AREA:-1500}"
+      ABANDONED_CENTROID_DIST: "${ABANDONED_CENTROID_DIST:-40}"
+
+  ai-worker-fall:
+    <<: *ai_worker_base
+    environment:
+      <<: *app-env
+      WORKER_MODULE: fall
+      METRICS_PORT: "8001"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      FALL_CONFIDENCE_THRESHOLD: "${FALL_CONFIDENCE_THRESHOLD:-0.45}"
+
+  # Demo: looping sample-video RTSP source so the seeded "aegis" demo tenant's
+  # camera streams (rtsp://mediamtx:8554/cam{1..9}) are live feeds the ingestion
+  # service can actually decode, instead of dead URLs. *-ffmpeg image variant
+  # bundles ffmpeg so mediamtx.yml's runOnInit can loop local sample videos.
+  mediamtx:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    volumes:
+      - ../docker/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - ../docker/mediamtx/videos:/videos:ro
+    ports:
+      - "8554:8554"   # RTSP
+    restart: unless-stopped
+
+  # Task 8: MinIO S3-compatible object store.
+  # Active when STORAGE_BACKEND=s3; harmless when left at default "local".
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${S3_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${S3_SECRET_KEY:-minioadmin}"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-shot container: creates the evidence bucket on first startup then exits.
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${S3_ACCESS_KEY:-minioadmin} $${S3_SECRET_KEY:-minioadmin} &&
+        mc mb --ignore-existing local/$${S3_BUCKET:-evidence} &&
+        echo 'bucket ready'
+      "
+    environment:
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+      S3_BUCKET: "${S3_BUCKET:-evidence}"
+    restart: on-failure
+
+  # Daily partition maintenance + evidence/audit retention (plan §16.1).
+  scheduler:
+    build: { context: .., dockerfile: docker/backend.Dockerfile }
+    command: ["python", "-m", "app.scheduler_main"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      AUDIT_RETENTION_YEARS: "${AUDIT_RETENTION_YEARS:-7}"
+      SCHEDULER_INTERVAL_SECONDS: "${SCHEDULER_INTERVAL_SECONDS:-86400}"
+      # Backup config — pg_dump runs as the superuser (requires DDL access for schema)
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:-change_me_dev_only}"
+      POSTGRES_DB: "${POSTGRES_DB:-seventh_ai_vision}"
+      BACKUP_ROOT: "/data/backups"
+      BACKUP_KEEP_DAILY: "${BACKUP_KEEP_DAILY:-7}"
+    volumes:
+      - evidence_data:/data/evidence
+      - audit_archive:/data/archive
+      - backups_data:/data/backups
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    ports:
+      - "5173:80"   # HTTP — redirects to HTTPS
+      - "443:443"   # HTTPS (TLS terminates here)
+    volumes:
+      - certs_data:/etc/nginx/certs  # persists self-signed cert; replace with real cert here
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+
+volumes:
+  postgres_data: {}
+  evidence_data: {}
+  recordings_data: {}
+  employee_docs_data: {}
+  attendance_photos_data: {}
+  model_cache: {}
+  models_data: {}
+  audit_archive: {}
+  prometheus_data: {}
+  grafana_data: {}
+  minio_data: {}
+  certs_data: {}    # TLS certificate — auto-populated with self-signed on first boot
+  backups_data: {}  # Daily pg_dump backups; keep last BACKUP_KEEP_DAILY (default 7)

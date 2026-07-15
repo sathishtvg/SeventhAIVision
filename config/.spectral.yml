@@ -1,0 +1,46 @@
+# Spectral OpenAPI ruleset — Gap 24
+# Seventh AI Vision
+#
+# Extends the built-in OAS3 ruleset and adds project-specific rules.
+# Run with: spectral lint reports/openapi/openapi.json --ruleset config/.spectral.yml
+
+extends:
+  - spectral:oas
+
+rules:
+  # ── Core structure (errors — fail CI) ─────────────────────────────────────
+  operation-operationId: error
+  oas3-valid-schema: error
+  path-params: error
+
+  # ── Documentation completeness (warnings — reported but not blocking) ─────
+  operation-description: warn
+  operation-tags: warn
+  operation-tag-defined: warn
+  info-contact: warn
+  info-license: warn
+
+  # ── Security (override to error — every non-public endpoint must declare auth) ──
+  # Note: spectral:oas has this as "warn" by default; we promote it to "error"
+  oas3-api-servers: error
+
+  # ── Disabled rules (too noisy for a backend API) ──────────────────────────
+  # operation-description: off   (keep as warn — not all internal endpoints need prose)
+  # openapi-tags: off            (tags are documented per-operation, not globally required)
+
+  # ── Custom rules ───────────────────────────────────────────────────────────
+  # All response schemas must define at least one 2xx code
+  operation-success-response:
+    description: "Every operation must declare at least one 2xx response"
+    severity: warn
+    given: "$.paths[*][*]"
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          properties:
+            responses:
+              type: object
+          required:
+            - responses

@@ -1,0 +1,93 @@
+{{- range .Values.aiWorkers }}
+{{- if .enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" $ }}-ai-worker-{{ .name | replace "_" "-" }}
+  labels:
+    {{- include "seventh-ai-vision.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: ai-worker
+    ai.seventh/module: {{ .name | quote }}
+spec:
+  replicas: {{ .replicas }}
+  selector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: ai-worker
+      ai.seventh/module: {{ .name | quote }}
+  template:
+    metadata:
+      labels:
+        {{- include "seventh-ai-vision.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: ai-worker
+        ai.seventh/module: {{ .name | quote }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "seventh-ai-vision.serviceAccountName" $ }}
+      {{- if .gpu.enabled }}
+      runtimeClassName: nvidia
+      {{- end }}
+      containers:
+        - name: ai-worker-{{ .name | replace "_" "-" }}
+          image: "{{ $.Values.images.aiWorker.repository }}:{{ $.Values.images.aiWorker.tag }}"
+          imagePullPolicy: {{ $.Values.images.aiWorker.pullPolicy }}
+          env:
+            - name: WORKER_MODULE
+              value: {{ .name | quote }}
+            {{- if .gpu.enabled }}
+            - name: DEVICE
+              value: cuda
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "seventh-ai-vision.fullname" $ }}-config
+            - secretRef:
+                name: {{ include "seventh-ai-vision.fullname" $ }}-secret
+          volumeMounts:
+            {{- if not $.Values.minio.enabled }}
+            - name: evidence
+              mountPath: /data/evidence
+            {{- end }}
+            {{- if .gpu.enabled }}
+            - name: dshm
+              mountPath: /dev/shm
+            {{- end }}
+          resources:
+            requests:
+              {{- toYaml .resources.requests | nindent 14 }}
+            limits:
+              {{- toYaml .resources.limits | nindent 14 }}
+              {{- if .gpu.enabled }}
+              {{ .gpu.resourceKey }}: {{ .gpu.count }}
+              {{- end }}
+      volumes:
+        {{- if not $.Values.minio.enabled }}
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" $ }}-evidence
+        {{- end }}
+        {{- if .gpu.enabled }}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "{{ .gpu.shmSize | default "2Gi" }}"
+        {{- end }}
+      {{- with .nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      tolerations:
+        {{- with .tolerations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .gpu.enabled }}
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        {{- end }}
+{{- end }}
+{{- end }}

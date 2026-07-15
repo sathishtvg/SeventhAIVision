@@ -1,0 +1,111 @@
+# Structured Logging Policy — Gap 27
+# Seventh AI Vision
+#
+# Defines the logging format, required fields, PII masking rules, log levels per
+# environment, and retention requirements for all services in the platform.
+#
+# Module: backend/app/core/logging.py
+# Script: scripts/logging/validate-logging.sh
+# Tests:  backend/tests/test_logging_policy.py
+
+version: "1.0"
+metadata:
+  effective_date: "2026-07-02"
+  owner: platform@seventh.ai
+  review_cycle: quarterly
+  scope:
+    - api
+    - ingestion
+    - ai-worker-lpr
+    - ai-worker-face
+    - ai-worker-intrusion
+    - ai-worker-ppe
+    - ai-worker-crowd
+    - ai-worker-fire-smoke
+    - ai-worker-weapon
+    - ai-worker-behavior
+    - scheduler
+
+# ── Log format ────────────────────────────────────────────────────────────────
+format:
+  type: json
+  # Every log line must be a valid JSON object — not plain text.
+  # This enables log aggregators (Loki, Elasticsearch, CloudWatch) to parse
+  # fields directly without brittle regex extraction.
+  #
+  # Example output:
+  # {"timestamp":"2026-07-02T02:00:05.123Z","level":"INFO","service":"api",
+  #  "request_id":"req-uuid","tenant_id":"t-uuid","message":"Alert created"}
+  timestamp_format: iso8601           # e.g. 2026-07-02T02:00:05.123456+00:00
+  timezone: utc
+
+# ── Required fields in every log record ──────────────────────────────────────
+required_fields:
+  - timestamp          # ISO-8601 with UTC offset
+  - level              # DEBUG / INFO / WARNING / ERROR / CRITICAL
+  - service            # service name (api, ingestion, ai-worker-lpr, ...)
+  - message            # human-readable log message
+  - request_id         # correlates all log lines for one HTTP request (nullable for background tasks)
+  - tenant_id          # RLS-scoped tenant, nullable when no tenant context (system tasks)
+
+# ── PII masking ───────────────────────────────────────────────────────────────
+pii_masking:
+  enabled: true
+  # Fields and patterns that must NEVER appear unmasked in log output.
+  # The logging formatter applies redaction before the record is emitted.
+  fields:
+    - email             # user email addresses (GDPR Art. 4 personal data)
+    - phone             # phone numbers (PDPA sensitive data)
+    - ip_address        # client IP — log only hashed or truncated form
+    - password          # MUST never appear — catch accidental logging of credentials
+    - token             # JWT tokens — catch accidental logging of auth tokens
+    - plate_number      # LPR output — tenant data, must not leak cross-tenant
+  patterns:
+    # Regex patterns applied to the rendered message string.
+    # Match → replace with the redaction_placeholder below.
+    email_pattern: '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}'
+    phone_pattern: '\+?[\d\s\-\(\)]{7,15}'
+    ip_v4_pattern: '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+  redaction_placeholder: "[REDACTED]"
+  ci_gate:
+    fail_on_pii_in_logs: true   # CI log scanner must fail the build if PII found
+
+# ── Log levels per environment ─────────────────────────────────────────────────
+log_levels:
+  production: warning      # Suppress DEBUG+INFO noise; surface only actionable events
+  staging: info            # INFO for integration testing without debug spam
+  development: debug       # Full verbosity for local development
+  ci: warning              # Same as production to catch log-level regression
+  valid_levels:            # Must match Python logging module level names
+    - debug
+    - info
+    - warning
+    - error
+    - critical
+  env_var: LOG_LEVEL       # Runtime override — takes precedence over environment default
+
+# ── Retention ─────────────────────────────────────────────────────────────────
+retention:
+  application_logs_days: 30    # API/worker logs — 30-day rolling window
+  security_logs_days: 90       # Auth events, permission denied, 2FA — 90 days (PDPA §26)
+  audit_logs_days: 2555        # 7 years (ISO 27001 A.12.4.1 / SOC 2 CC7.2 requirement)
+  # These thresholds are enforced by the log aggregator pipeline, NOT by the
+  # application. Application is responsible for structured output; retention is
+  # an infrastructure concern.
+  log_aggregator: loki         # Grafana Loki (current); upgrade path to Elasticsearch
+
+# ── Correlation IDs ────────────────────────────────────────────────────────────
+correlation:
+  request_id_header: "X-Request-ID"
+  # API middleware generates a UUID v4 request_id per HTTP request, attaches it
+  # to the response header and injects it into the logging context via
+  # contextvars so every log line in the request's call stack carries the same ID.
+  tenant_id_source: jwt_claim   # Extracted from the decoded JWT token
+
+# ── Uvicorn/ASGI integration ──────────────────────────────────────────────────
+asgi:
+  override_uvicorn_access_log: true
+  # Route uvicorn access log through our JSON formatter so access log lines
+  # carry the same structure as application log lines.
+  disable_uvicorn_default_log_config: true
+  log_config_key: log_config   # Passed as uvicorn.run(log_config=...) kwarg

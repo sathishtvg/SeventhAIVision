@@ -1,0 +1,172 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate Bot configuration — Gap 29 — Seventh AI Vision",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":separatePatchReleases",
+    "group:allNonMajor"
+  ],
+
+  "timezone": "Asia/Singapore",
+  "schedule": ["every monday"],
+
+  "labels": ["dependencies", "automated"],
+  "assignees": [],
+  "reviewers": [],
+
+  "prConcurrentLimit": 5,
+  "prCreation": "immediate",
+  "rebaseWhen": "conflicted",
+  "commitMessagePrefix": "chore(deps):",
+
+  "packageRules": [
+    {
+      "description": "Security patches — auto-merge immediately",
+      "matchUpdateTypes": ["patch"],
+      "matchCategories": ["security"],
+      "automerge": true,
+      "automergeType": "pr",
+      "schedule": "at any time",
+      "labels": ["dependencies", "security", "auto-merge"]
+    },
+    {
+      "description": "Patch versions — auto-merge on Monday after tests pass",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "labels": ["dependencies", "patch", "auto-merge"]
+    },
+    {
+      "description": "Minor versions — require one reviewer",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "reviewers": ["team:platform"],
+      "labels": ["dependencies", "minor"]
+    },
+    {
+      "description": "Major versions — require two reviewers and manual testing",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "reviewers": ["team:platform", "team:leads"],
+      "labels": ["dependencies", "major", "manual-test-required"],
+      "schedule": "on demand"
+    },
+    {
+      "description": "FastAPI ecosystem — group together",
+      "matchPackageNames": ["fastapi", "uvicorn", "starlette", "pydantic", "pydantic-settings"],
+      "groupName": "fastapi-stack",
+      "automerge": false
+    },
+    {
+      "description": "SQLAlchemy stack — group together",
+      "matchPackageNames": ["sqlalchemy", "asyncpg", "psycopg", "alembic"],
+      "groupName": "sqlalchemy-stack",
+      "automerge": false
+    },
+    {
+      "description": "AI inference libraries — manual upgrade required",
+      "matchPackageNames": [
+        "ultralytics",
+        "insightface",
+        "onnxruntime",
+        "onnxruntime-gpu",
+        "paddlepaddle",
+        "paddleocr",
+        "torch",
+        "torchvision",
+        "pgvector"
+      ],
+      "groupName": "ai-models",
+      "automerge": false,
+      "schedule": "on demand",
+      "labels": ["dependencies", "ai-models", "manual-test-required"]
+    },
+    {
+      "description": "React + MUI ecosystem — group together",
+      "matchPackagePatterns": ["^react$", "^react-dom$", "^@mui/", "^@emotion/"],
+      "groupName": "react-ecosystem",
+      "automerge": false
+    },
+    {
+      "description": "Electron — manual upgrade, requires desktop testing",
+      "matchPackageNames": ["electron", "electron-builder", "electron-store"],
+      "groupName": "electron",
+      "automerge": false,
+      "schedule": "on demand",
+      "labels": ["dependencies", "electron", "manual-test-required"]
+    },
+    {
+      "description": "Security tools — keep current, auto-merge patch",
+      "matchPackageNames": ["detect-secrets", "pip-audit", "safety"],
+      "groupName": "security-tools",
+      "automerge": true,
+      "schedule": "at any time"
+    },
+    {
+      "description": "Test tooling — auto-merge minor",
+      "matchPackageNames": ["pytest", "pytest-asyncio", "pytest-cov", "httpx"],
+      "groupName": "test-tools",
+      "automerge": true,
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "description": "PyTorch — frozen; manual upgrade only (GPU wheel pinning)",
+      "matchPackageNames": ["torch", "torchvision", "torchaudio"],
+      "enabled": false
+    },
+    {
+      "description": "PaddlePaddle — frozen; manual upgrade (CUDA version coupling)",
+      "matchPackageNames": ["paddlepaddle", "paddlepaddle-gpu"],
+      "enabled": false
+    },
+    {
+      "description": "Docker base images — refresh monthly",
+      "matchDatasources": ["docker"],
+      "automerge": false,
+      "schedule": ["every first monday of the month"],
+      "labels": ["dependencies", "docker"]
+    },
+    {
+      "description": "GitHub Actions — auto-merge patch",
+      "matchManagers": ["github-actions"],
+      "automerge": true,
+      "matchUpdateTypes": ["patch"]
+    }
+  ],
+
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security", "vulnerability"],
+    "schedule": "at any time",
+    "prPriority": 10
+  },
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["every first monday of the month"],
+    "commitMessageAction": "refresh"
+  },
+
+  "ignoreDeps": [],
+
+  "pip_requirements": {
+    "fileMatch": ["(^|/)requirements\\.txt$"]
+  },
+
+  "pipenv": {
+    "fileMatch": ["(^|/)Pipfile$"]
+  },
+
+  "pep621": {
+    "fileMatch": ["(^|/)pyproject\\.toml$"]
+  },
+
+  "npm": {
+    "fileMatch": ["(^|/)package\\.json$"]
+  },
+
+  "docker-compose": {
+    "fileMatch": ["(^|/)docker-compose[^/]*\\.ya?ml$"]
+  }
+}

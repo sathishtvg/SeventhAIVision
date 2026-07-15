@@ -1,0 +1,63 @@
+{
+  "title": "Seventh AI Vision — Overview",
+  "uid": "seventh-ai-vision-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "API request rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[1m])) by (status_code)", "legendFormat": "{{status_code}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Active WebSocket connections (per tenant)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "ws_connections_active", "legendFormat": "{{tenant_id}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Frames processed per second (per AI module)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(frames_processed_total[1m])) by (module_type)", "legendFormat": "{{module_type}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Frames failed per second (per AI module)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(frames_failed_total[1m])) by (module_type)", "legendFormat": "{{module_type}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Alerts created per second (per module)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "sum(rate(alerts_created_total[1m])) by (module_type)", "legendFormat": "{{module_type}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Consumer group lag (per module)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "consumer_group_lag", "legendFormat": "{{module_type}}" }
+      ]
+    }
+  ]
+}

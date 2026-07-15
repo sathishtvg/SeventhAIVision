@@ -1,0 +1,17 @@
+apiVersion: v2
+name: seventh-ai-vision
+description: Enterprise AI video surveillance SaaS platform (multi-tenant, GPU-ready)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - surveillance
+  - ai
+  - video-analytics
+  - security
+  - face-recognition
+  - lpr
+home: https://seventh.ai
+maintainers:
+  - name: Seventh AI Team
+    email: platform@seventh.ai

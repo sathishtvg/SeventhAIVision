@@ -1,0 +1,78 @@
+# API Version Lifecycle & Deprecation Policy — Gap 20
+# Seventh AI Vision
+#
+# RFC compliance:
+#   RFC 8594  — Sunset HTTP Header Field
+#   RFC 9745  — Deprecation HTTP Header Field
+#
+# Middleware reads this file at startup.
+# File: backend/app/middleware/deprecation.py
+#
+# Workflow for deprecating a version:
+#   1. Set status: deprecated + deprecated_on: <ISO date>
+#   2. Set sunset_date: <ISO date> (minimum 180 days after deprecated_on)
+#   3. Announce to all tenants via email and release notes
+#   4. Monitor Deprecation/Sunset header usage in access logs
+#   5. On sunset_date: set status: sunset, deploy v{N+1} as the stable version
+
+version: "1.0"
+metadata:
+  policy: api-version-lifecycle
+  team: platform
+  effective_date: "2026-07-01"
+  rfc_compliance:
+    - "RFC 8594"   # Sunset HTTP Header Field
+    - "RFC 9745"   # Deprecation HTTP Header Field
+  review_cycle: quarterly
+
+# ── Default timing windows ────────────────────────────────────────────────────
+# How much advance notice must be given before sunsetting a version.
+default_deprecation_notice_days: 180   # 6 months minimum notice
+default_support_overlap_days: 90       # v{N} stays alive 90 days after v{N+1} is stable
+
+# ── API version lifecycle entries ─────────────────────────────────────────────
+versions:
+  - version: "v1"
+    status: active           # active | deprecated | sunset
+    released: "2026-01-01"
+    deprecated_on: null      # null = not yet deprecated; set to ISO date when notice is given
+    sunset_date: null        # null = no sunset date set; set minimum 180 days after deprecated_on
+    notes: >-
+      Current stable production API version.
+      No sunset is planned until v2 reaches stability.
+      All new features are added here until v2 is ready.
+
+  - version: "v2"
+    status: planned
+    planned_release: "2027-Q1"
+    deprecated_on: null
+    sunset_date: null
+    notes: >-
+      Next major version — planned breaking changes:
+      - Unified response envelope {data, meta, errors}
+      - Cursor-based pagination replacing offset/limit
+      - Renamed modules to snake_case consistently
+      Will be documented in full in the v2 migration guide before release.
+
+# ── Sunset response header configuration (RFC 8594) ──────────────────────────
+sunset_header:
+  enabled: true
+  # Add a Warning: 299 response header when the version's sunset date
+  # is within this many days, giving clients urgent notice to migrate.
+  warn_within_days: 30
+  # Date format for the Sunset header value (HTTP-date per RFC 7231).
+  date_format: "RFC 7231"
+
+# ── Deprecation response header configuration (RFC 9745) ─────────────────────
+deprecation_header:
+  enabled: true
+  # When deprecated_on is null but status is 'deprecated', fall back to
+  # the boolean form: Deprecation: true (per RFC 9745 §2).
+  fallback_value: "true"
+
+# ── Link header for discovery (RFC 8288) ─────────────────────────────────────
+# Add a Link: <url>; rel="deprecation" header pointing to the migration guide.
+link_header:
+  enabled: true
+  migration_guide_url: "https://docs.seventh.ai/api/migration"
+  changelog_url: "https://docs.seventh.ai/api/changelog"

@@ -1,0 +1,54 @@
+appId: ai.seventh.vision.desktop
+productName: "7th AI Vision"
+copyright: "Copyright © 2026 Seventh AI"
+
+directories:
+  output: release
+  buildResources: assets
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+    # MSI for silent/managed deployment via Group Policy / Intune / SCCM (Gap 94)
+    - target: msi
+      arch: [x64]
+  # Authenticode code signing (Gap 94). electron-builder signs automatically
+  # when the CSC_LINK (path or base64 of the .pfx) and CSC_KEY_PASSWORD
+  # environment variables are present; without them the build is unsigned
+  # (unchanged from before). publisherName must match the certificate's
+  # subject CN — override via the WIN_PUBLISHER_NAME env var at build time.
+  publisherName: ${env.WIN_PUBLISHER_NAME}
+  signtoolOptions:
+    # rfc3161TimeStampServer keeps signatures valid after the cert expires.
+    rfc3161TimeStampServer: http://timestamp.digicert.com
+    signingHashAlgorithms:
+      - sha256
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "7th AI Vision"
+
+msi:
+  oneClick: false
+  perMachine: true
+  runAfterFinish: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "7th AI Vision"
+  # Stable UpgradeCode so future MSIs upgrade in place instead of installing
+  # side-by-side. Generated once; must never change across releases.
+  upgradeCode: "5F3A9C21-8B47-4E2D-9A16-7C0E1F2B3D4A"
+
+# verifyUpdateCodeSignature only applies to signed builds; harmless when unsigned.
+publish: null
+
+extraResources:
+  - from: dist
+    to: dist
+    filter: "**/*"

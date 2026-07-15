@@ -1,0 +1,53 @@
+# Syft SBOM scanner configuration — Gap 17
+# Seventh AI Vision component cataloging
+#
+# Documentation: https://github.com/anchore/syft#configuration
+# Used by: scripts/sbom/generate-sbom.sh
+
+# Output files are controlled by the --output flag in the script;
+# these entries define the format only (file paths may be overridden)
+output:
+  - format: cyclonedx-json
+    file: sbom/seventh-ai-vision.cdx.json
+  - format: spdx-json
+    file: sbom/seventh-ai-vision.spdx.json
+
+source:
+  name: seventh-ai-vision
+  version: "1.0.0"
+
+# Paths to exclude from cataloging
+exclude:
+  - "**/.git/**"
+  - "**/node_modules/**"
+  - "**/__pycache__/**"
+  - "**/.venv/**"
+  - "**/venv/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/.eggs/**"
+  - "**/site-packages/**"
+  - "**/sbom/**"
+  - "**/*.pyc"
+  - "**/*.pyo"
+  - "**/geoguard_screenshots/**"
+  - "**/ppt_screenshots/**"
+
+# Which catalogers to run (default covers most project types)
+catalogers:
+  enabled:
+    - python-package-cataloger
+    - python-index-cataloger
+    - javascript-package-cataloger
+    - dockerfile-cataloger
+    - java-pom-cataloger
+
+# Always pull images rather than using cached layers
+default_image_pull_source: always
+
+# Include packages with no license info (flag for manual review)
+package:
+  cataloger:
+    enabled: true
+  search:
+    scope: squashed

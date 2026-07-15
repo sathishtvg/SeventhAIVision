@@ -1,0 +1,34 @@
+{{- if not .Values.minio.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-evidence
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.evidence.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.evidence.size | quote }}
+  {{- if .Values.persistence.evidence.storageClass }}
+  storageClassName: {{ .Values.persistence.evidence.storageClass | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-recordings
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.recordings.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.recordings.size | quote }}
+  {{- if .Values.persistence.recordings.storageClass }}
+  storageClassName: {{ .Values.persistence.recordings.storageClass | quote }}
+  {{- end }}
+{{- end }}

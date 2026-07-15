@@ -1,0 +1,538 @@
+# Default values for seventh-ai-vision.
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Image settings per service type
+images:
+  backend:
+    repository: seventh-ai-vision/backend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  aiWorker:
+    repository: seventh-ai-vision/ai-worker
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: seventh-ai-vision/frontend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  postgres:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+  redis:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  minio:
+    repository: minio/minio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+
+# ─── API (FastAPI backend) ────────────────────────────────────────────────────
+api:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  livenessProbe:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 5
+    failureThreshold: 3
+  service:
+    type: ClusterIP
+    port: 8000
+  nodeSelector: {}
+  tolerations: []
+
+# ─── Camera ingestion service ─────────────────────────────────────────────────
+ingestion:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  nodeSelector: {}
+  tolerations: []
+
+# ─── Daily maintenance scheduler ─────────────────────────────────────────────
+scheduler:
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  nodeSelector: {}
+  tolerations: []
+
+# ─── AI worker pipelines ──────────────────────────────────────────────────────
+# Set enabled: false to skip a particular module.
+# Set gpu.enabled: true on a node with NVIDIA Container Toolkit installed.
+aiWorkers:
+  - name: lpr
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: face
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: intrusion
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: ppe
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: crowd
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: fire_smoke
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: weapon
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: behavior
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "4Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: tampering
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: abandoned
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+  - name: fall
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+    gpu:
+      enabled: false
+      count: 1
+      resourceKey: "nvidia.com/gpu"
+      shmSize: "2Gi"
+    nodeSelector: {}
+    tolerations: []
+
+# ─── Frontend (React/nginx) ───────────────────────────────────────────────────
+frontend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  service:
+    type: ClusterIP
+    port: 80
+  nodeSelector: {}
+  tolerations: []
+
+# ─── PostgreSQL (internal; set enabled: false + supply externalUrl) ───────────
+postgres:
+  enabled: true
+  externalUrl: ""
+  database: seventh_ai_vision
+  username: svc_app
+  password: change_me_in_production
+  superuserUsername: postgres
+  superuserPassword: change_me_in_production
+  storage:
+    size: 50Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+# ─── Redis (internal; set enabled: false + supply externalUrl) ────────────────
+redis:
+  enabled: true
+  externalUrl: ""
+  storage:
+    size: 2Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# ─── MinIO object storage (set enabled: false to use local PVCs) ──────────────
+minio:
+  enabled: false
+  externalEndpoint: ""
+  bucket: evidence
+  accessKey: minioadmin
+  secretKey: change_me_in_production
+  storage:
+    size: 200Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+# ─── Persistent volumes (evidence/recordings — used when minio.enabled=false) ─
+persistence:
+  evidence:
+    size: 100Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
+  recordings:
+    size: 200Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
+
+# ─── Application runtime configuration (non-sensitive) ───────────────────────
+config:
+  storageBackend: local         # "local" or "s3"
+  lprConfidenceThreshold: "0.55"
+  faceMatchThreshold: "0.6"
+  intrusionBreachCooldownSeconds: "60"
+  evidenceRetentionDays: "90"
+  wsMaxConnectionsPerIp: "10"
+  s3PresignTtlSeconds: "3600"
+  s3EndpointUrl: ""
+  s3Bucket: evidence
+  smtp:
+    host: ""
+    port: "587"
+    user: ""
+    from: "noreply@seventh.ai"
+  twilio:
+    fromNumber: ""
+  appVersion: "1.0.0"
+  gitSha: "unknown"
+  buildDate: "unknown"
+
+# ─── Sensitive credentials (use Sealed Secrets / Vault in production) ─────────
+secrets:
+  jwtSecretKeyCurrent: change_me_in_production
+  jwtSecretKeyPrevious: ""
+  jwtActiveKid: "2026-06"
+  jwtPreviousKid: ""
+  smtpPassword: ""
+  twilioAccountSid: ""
+  twilioAuthToken: ""
+
+# ─── Ingress ──────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  host: vision.example.com
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: seventh-ai-vision-tls
+
+# ─── Prometheus + Grafana (simple on-cluster; set enabled: false if using
+#     external observability stack) ────────────────────────────────────────────
+prometheus:
+  enabled: true
+  image:
+    repository: prom/prometheus
+    tag: v2.55.1
+  storage:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+grafana:
+  enabled: true
+  image:
+    repository: grafana/grafana
+    tag: "11.4.0"
+  adminPassword: admin
+  storage:
+    size: 2Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  service:
+    type: ClusterIP
+    port: 3000
+
+# ─── NVIDIA DCGM Exporter (GPU metrics for Prometheus) ───────────────────────
+# Exposes GPU temperature, memory, utilisation, power draw at :9400/metrics.
+# Set enabled: true on clusters where AI workers run on GPU nodes.
+# The exporter must run on every GPU node; use a DaemonSet in production
+# (configure via your cluster's Helm chart for dcgm-exporter separately, or
+# set this to true for a single-node deployment convenience).
+dcgmExporter:
+  enabled: false
+  image:
+    repository: nvcr.io/nvidia/k8s/dcgm-exporter
+    tag: "3.3.5-3.4.0-ubuntu22.04"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  nodeSelector:
+    nvidia.com/gpu: "true"
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"

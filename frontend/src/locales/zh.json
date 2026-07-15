@@ -1,0 +1,58 @@
+{
+  "nav": {
+    "command_centre": "指挥中心",
+    "dashboard": "仪表板",
+    "alerts": "警报",
+    "incidents": "事件",
+    "live_wall": "实时监控墙",
+    "sites": "场所",
+    "cameras": "摄像头",
+    "recordings": "录像",
+    "playback": "回放",
+    "detections": "检测",
+    "watchlists": "监视名单",
+    "zones": "区域",
+    "evidence": "证据",
+    "audit_logs": "审计日志",
+    "analytics": "分析",
+    "export": "导出",
+    "guard_ops": "保安操作",
+    "roster": "排班",
+    "post_orders": "岗位守则",
+    "reports": "报告",
+    "users": "用户",
+    "roles": "角色",
+    "settings": "设置",
+    "notifications": "通知",
+    "tenants": "租户"
+  },
+  "common": {
+    "sign_out": "登出",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "create": "创建",
+    "search": "搜索",
+    "loading": "加载中…",
+    "no_data": "无数据",
+    "close": "关闭",
+    "confirm": "确认"
+  },
+  "status": {
+    "open": "待处理",
+    "acknowledged": "已确认",
+    "resolved": "已解决",
+    "dismissed": "已忽略",
+    "online": "在线",
+    "offline": "离线"
+  },
+  "severity": {
+    "info": "信息",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "critical": "严重"
+  }
+}

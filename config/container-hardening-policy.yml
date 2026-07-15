@@ -1,0 +1,200 @@
+# Container Hardening Policy — Gap 30
+# Seventh AI Vision
+#
+# Defines the required security controls for all Docker images and containers
+# in the platform. Every Dockerfile and Compose service must comply.
+#
+# Validation script: scripts/security/check-container-hardening.sh
+# Seccomp profile:   docker/security/seccomp-profile.json
+# Tests:             backend/tests/test_container_hardening.py
+
+version: "1.0"
+metadata:
+  effective_date: "2026-07-02"
+  owner: security@seventh.ai
+  review_cycle: quarterly
+  references:
+    - CIS Docker Benchmark v1.6
+    - NIST SP 800-190 (Application Container Security Guide)
+    - OWASP Docker Security Cheat Sheet
+
+# ── Scope — which images are governed ────────────────────────────────────────
+scope:
+  dockerfiles:
+    - docker/backend.Dockerfile
+    - docker/ai-worker.Dockerfile
+    - docker/frontend.Dockerfile
+    - docker/postgres.Dockerfile
+  compose_files:
+    - docker/docker-compose.yml
+    - docker/docker-compose.gpu.yml
+    - docker/docker-compose.chaos.yml
+    - docker/docker-compose.otel.yml
+
+# ── Build-time controls (enforced by Dockerfile checks) ──────────────────────
+build_controls:
+  base_image:
+    severity: high
+    rule: use_official_minimal_images
+    description: >
+      Base images must come from trusted, official registries (docker.io/library,
+      gcr.io, quay.io, ghcr.io). Alpine or *-slim variants are preferred to
+      reduce attack surface.
+    preferred_tags:
+      - "python:3.11-slim"
+      - "node:20-alpine"
+      - "nginx:alpine"
+      - "redis:7-alpine"
+      - "postgres:16"
+    prohibited_patterns:
+      - ":latest"    # Unpinned latest tags are forbidden
+      - "ubuntu:.*"  # Full Ubuntu base is too heavy; use slim/alpine
+
+  non_root_user:
+    severity: critical
+    rule: define_non_root_user
+    description: >
+      Every Dockerfile that builds a custom application image MUST define a
+      non-root USER before the ENTRYPOINT/CMD. Running as root inside a container
+      escalates host privilege if the container runtime is compromised.
+    required_instruction: USER
+    exceptions:
+      - docker/postgres.Dockerfile    # postgres image manages its own uid
+    required_uid_range: "1000-65535"
+
+  no_privileged_commands:
+    severity: high
+    rule: no_sudo_or_su
+    description: >
+      Dockerfiles must not use sudo, su, or install sudo. Privilege escalation
+      inside the build context is never necessary — use multi-stage builds or
+      a build-arg for the specific case.
+    prohibited_patterns:
+      - "sudo "
+      - "su "
+      - "apt-get install.*sudo"
+      - "apk add.*sudo"
+
+  copy_not_add:
+    severity: medium
+    rule: prefer_copy_over_add
+    description: >
+      Use COPY instead of ADD unless the remote-URL or tar-auto-extract feature
+      of ADD is explicitly required. ADD can introduce unexpected behaviour.
+    preferred_instruction: COPY
+    exception: "ADD is permitted only when extracting a local tar archive"
+
+  no_secrets_in_build:
+    severity: critical
+    rule: no_secret_env_vars_in_dockerfile
+    description: >
+      ENV instructions must not set secret values. Secrets leak into image layers
+      and are visible in 'docker history'. All secrets must come from runtime
+      environment variables or Docker secrets.
+    prohibited_env_keys:
+      - PASSWORD
+      - SECRET
+      - API_KEY
+      - TOKEN
+      - PRIVATE_KEY
+
+  healthcheck_required:
+    severity: medium
+    rule: include_healthcheck
+    description: >
+      Application images (api, ingestion, ai-worker-*, scheduler) must define a
+      HEALTHCHECK instruction so Compose and Kubernetes know when the container
+      is ready. Docker-compose healthcheck overrides are acceptable.
+    applies_to:
+      - docker/backend.Dockerfile
+      - docker/ai-worker.Dockerfile
+    exception: "Healthcheck may be defined in docker-compose.yml instead of Dockerfile"
+
+  pin_package_versions:
+    severity: medium
+    rule: pin_apt_apk_packages
+    description: >
+      System packages installed via apt-get or apk must use version pinning
+      where feasible. Unpinned installs introduce non-deterministic builds.
+    recommendation: "Use apt-get install -y package=version or apk add package=version"
+
+# ── Runtime controls (enforced by Compose service checks) ────────────────────
+runtime_controls:
+  no_privileged_mode:
+    severity: critical
+    rule: no_privileged_true
+    description: >
+      No Compose service may run with privileged: true. This grants all Linux
+      capabilities and effectively makes the container root on the host.
+
+  drop_all_capabilities:
+    severity: high
+    rule: cap_drop_all
+    description: >
+      Every service should drop all Linux capabilities (cap_drop: [ALL]) and
+      add back only the minimum required (cap_add: [NET_BIND_SERVICE] for port <1024).
+    recommended_cap_drop: [ALL]
+    allowed_cap_add: [NET_BIND_SERVICE, CHOWN, SETGID, SETUID]
+
+  resource_limits:
+    severity: medium
+    rule: set_memory_limits
+    description: >
+      All services should define memory limits to prevent a runaway process from
+      starving other containers. AI workers should have more headroom for model
+      loading.
+    recommended_limits:
+      api: "512m"
+      ingestion: "256m"
+      ai_worker: "4g"        # Model loading can peak at 2-3 GB
+      scheduler: "128m"
+      frontend: "64m"
+
+  read_only_root_fs:
+    severity: low
+    rule: prefer_read_only_rootfs
+    description: >
+      Application containers should use read_only: true for the root filesystem
+      where possible. Writable paths (evidence, models, logs) must use named
+      volumes or tmpfs mounts.
+    note: >
+      Not currently enforced (compose services write to volumes), but targeted
+      for the next hardening sprint. Tests will warn, not fail.
+
+  no_host_network:
+    severity: high
+    rule: no_host_network_mode
+    description: >
+      No service may use network_mode: host. All inter-service communication
+      must go through Docker's virtual network.
+
+  seccomp_profile:
+    severity: medium
+    rule: apply_seccomp_profile
+    description: >
+      Services should apply the platform seccomp profile
+      (docker/security/seccomp-profile.json) rather than using the Docker
+      default. The platform profile is more restrictive (blocks ptrace, kexec_load,
+      mount, and other dangerous syscalls).
+    profile_path: docker/security/seccomp-profile.json
+
+# ── Image scanning requirements ───────────────────────────────────────────────
+scanning:
+  tool: trivy    # Gap 19 — runs in CI
+  fail_on_severity: high
+  scan_frequency: on_push
+  scan_report_path: "security-reports/trivy/"
+  exclude_unfixed: false
+
+# ── CI integration ────────────────────────────────────────────────────────────
+ci_integration:
+  check_script: "scripts/security/check-container-hardening.sh --check"
+  fail_on_severity: high
+  run_on: ["push", "pull_request"]
+
+# ── Severity reference ────────────────────────────────────────────────────────
+severity_actions:
+  critical: block        # Must be fixed before merge
+  high: block
+  medium: warn           # Logged in CI; tracked as tech debt
+  low: info              # Advisory only

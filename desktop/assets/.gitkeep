@@ -1,0 +1,3 @@
+# Place icon.ico and tray-icon.png here before building.
+# icon.ico     → 256x256 .ico for installer + taskbar
+# tray-icon.png → 16x16 or 32x32 PNG for system tray

@@ -1,0 +1,92 @@
+# Database Migration Safety Policy — Gap 26
+# Seventh AI Vision
+#
+# Defines safety rules for Alembic migration files: what patterns require review,
+# what is prohibited without annotation, and how the chain must be maintained.
+#
+# Script:  scripts/migrate/check-migration-safety.sh
+# Tests:   backend/tests/test_migration_safety.py
+
+version: "1.0"
+metadata:
+  effective_date: "2026-07-02"
+  owner: platform@seventh.ai
+  review_cycle: quarterly
+  tool: alembic
+  alembic_ini: backend/alembic.ini
+  migrations_dir: backend/alembic/versions
+
+# ── Core safety rules ─────────────────────────────────────────────────────────
+rules:
+
+  downgrade_required: true
+  # Every migration MUST implement downgrade() — not just a pass.
+  # A migration without a real downgrade is an irreversible change and blocks
+  # the documented rollback procedure (docs/UPGRADE.md §rollback).
+
+  chain_validation:
+    enforce_unbroken_chain: true
+    enforce_unique_revisions: true
+    # Each migration's down_revision must reference a real existing revision.
+    # Duplicate revision IDs would silently fork the chain and cause alembic
+    # to error or apply the wrong migration order on a fresh database.
+
+  destructive_patterns:
+    # These SQL patterns appearing inside upgrade() require an annotation comment
+    # in the migration file docstring or on the preceding lines explaining WHY
+    # the destructive operation is safe (e.g. column migrated to new name/table,
+    # data backfilled, feature flag turned off, all readers updated).
+    require_annotation:
+      - DROP TABLE
+      - DROP COLUMN
+      - TRUNCATE TABLE
+    severity: error
+    annotation_marker: "# DESTRUCTIVE:"
+    exception_allowed: true
+    exception_requires:
+      - docstring_explanation: true   # migration-level docstring must mention the drop
+      - approved_by: null             # no ticket required for v1 policy
+
+  create_index_policy:
+    prefer_concurrent: true
+    severity: warn
+    # CREATE INDEX without CONCURRENTLY acquires a table-level lock that blocks
+    # reads+writes for the duration of the build — risky on large tables in prod.
+    # Use op.execute("CREATE INDEX CONCURRENTLY ...") instead of op.create_index().
+
+  not_null_without_default_policy:
+    severity: error
+    # ALTER TABLE ... ADD COLUMN ... NOT NULL without a server_default forces a
+    # full table rewrite on Postgres < 11 and may fail with existing rows on Postgres 11+.
+    # Always supply a server_default or make the column nullable then backfill.
+
+  naming_convention:
+    pattern: "^[0-9]{4}_[a-z0-9_]+\\.py$"
+    # Migrations must be named with a 4-digit zero-padded sequence prefix.
+    # e.g. 0047_webhook_subscriptions.py — not "new_migration.py" or "fix.py".
+
+# ── Review gates ──────────────────────────────────────────────────────────────
+review_gates:
+  # Any migration that includes one of these categories requires an explanatory
+  # comment in the file (either in the module docstring or inline).
+  require_review_comment_for:
+    - destructive           # DROP TABLE, DROP COLUMN, TRUNCATE
+    - data_migration        # UPDATE ... SET ... (backfill writes)
+    - index_drop            # DROP INDEX, including implicit in DROP TABLE
+  review_comment_marker: "# REVIEW:"
+
+# ── CI integration ────────────────────────────────────────────────────────────
+ci_integration:
+  check_on_pr: true
+  fail_on_error: true
+  fail_on_warning: false
+  script: scripts/migrate/check-migration-safety.sh --check
+  run_in_stage: pre-deploy
+
+# ── Rollback discipline ────────────────────────────────────────────────────────
+rollback:
+  procedure_documented_in: docs/UPGRADE.md
+  drill_frequency: monthly
+  max_downgrade_steps: 5
+  # Rollback more than 5 steps requires a restore-from-backup instead — the
+  # cumulative risk of chained downgrades exceeds the restore path at that depth.

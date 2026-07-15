@@ -1,0 +1,184 @@
+# Prometheus Alert Rules — Multi-window burn rate SLO alerts — Gap 18
+#
+# Implements the Google SRE multi-window, multi-burn-rate alerting pattern.
+# Two windows are required to fire: a short window (catches fast failures)
+# AND a long window (confirms the failure is sustained, reducing noise).
+#
+# Burn-rate tiers:
+#   fast   (14.4x) — short 5m  + long 1h  — 2 % budget gone in ~1 h  — page immediately
+#   medium  (6x)   — short 30m + long 6h  — 5 % budget gone in ~6 h  — ticket urgently
+#
+# Loaded via prometheus.yml → rule_files.
+# Recording rules that feed these expressions are in recording-rules.yml.
+
+groups:
+  # ──────────────────────────────────────────────────────────────────────
+  # API Availability (SLO target: 99.9 %)
+  # Error budget: (1 - 0.999) = 0.001
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_api_availability_alerts
+    rules:
+      - alert: SLOApiAvailabilityFastBurn
+        expr: |
+          (1 - slo:api_request_success_rate:1h)  > (14.4 * (1 - 0.999))
+          and
+          (1 - slo:api_request_success_rate:5m)  > (14.4 * (1 - 0.999))
+        for: 2m
+        labels:
+          severity: critical
+          slo: api_availability
+          burn_rate: fast
+          team: platform
+        annotations:
+          summary: "API availability fast burn — 2 % error budget consumed per hour"
+          description: >-
+            API error rate {{ $value | humanizePercentage }} is 14.4× above the SLO target.
+            At this rate the monthly error budget will be exhausted in ~70 minutes.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-api-availability-fast-burn"
+
+      - alert: SLOApiAvailabilityMediumBurn
+        expr: |
+          (1 - slo:api_request_success_rate:6h)  > (6 * (1 - 0.999))
+          and
+          (1 - slo:api_request_success_rate:30m) > (6 * (1 - 0.999))
+        for: 15m
+        labels:
+          severity: warning
+          slo: api_availability
+          burn_rate: medium
+          team: platform
+        annotations:
+          summary: "API availability medium burn — 5 % error budget consumed in ~6 h"
+          description: >-
+            Sustained elevated API error rate burning SLO budget at 6× the sustainable rate.
+            Investigate and remediate within 2 hours to protect remaining error budget.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-api-availability-medium-burn"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # API Latency (SLO target: 99 % of requests < 500 ms)
+  # Error budget: (1 - 0.99) = 0.01
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_api_latency_alerts
+    rules:
+      - alert: SLOApiLatencyFastBurn
+        expr: |
+          (1 - slo:api_p95_latency_good_rate:1h)  > (14.4 * (1 - 0.99))
+          and
+          (1 - slo:api_p95_latency_good_rate:5m)  > (14.4 * (1 - 0.99))
+        for: 2m
+        labels:
+          severity: critical
+          slo: api_p95_latency
+          burn_rate: fast
+          team: platform
+        annotations:
+          summary: "API latency fast burn — p95 latency significantly above 500 ms"
+          description: >-
+            {{ $value | humanizePercentage }} of API requests are exceeding the 500 ms latency threshold,
+            14.4× above the allowed rate. Check for slow DB queries or upstream bottlenecks.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-api-latency-fast-burn"
+
+      - alert: SLOApiLatencyMediumBurn
+        expr: |
+          (1 - slo:api_p95_latency_good_rate:6h)  > (6 * (1 - 0.99))
+          and
+          (1 - slo:api_p95_latency_good_rate:30m) > (6 * (1 - 0.99))
+        for: 15m
+        labels:
+          severity: warning
+          slo: api_p95_latency
+          burn_rate: medium
+          team: platform
+        annotations:
+          summary: "API latency medium burn — sustained p95 latency degradation"
+          description: >-
+            Sustained API latency above 500 ms is consuming the monthly error budget at 6× rate.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-api-latency-medium-burn"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # AI Worker Frame Processing (SLO target: 99.5 %)
+  # Error budget: (1 - 0.995) = 0.005
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_ai_worker_alerts
+    rules:
+      - alert: SLOAiWorkerFastBurn
+        expr: |
+          (1 - slo:ai_worker_success_rate:1h)  > (14.4 * (1 - 0.995))
+          and
+          (1 - slo:ai_worker_success_rate:5m)  > (14.4 * (1 - 0.995))
+        for: 2m
+        labels:
+          severity: critical
+          slo: ai_worker_processing
+          burn_rate: fast
+          team: ai-platform
+        annotations:
+          summary: "AI worker fast burn — frame processing failure rate critical"
+          description: >-
+            AI worker frame success rate {{ $value | humanizePercentage }} is 14.4× below
+            the 99.5 % SLO target. Detection coverage is severely impacted.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-ai-worker-fast-burn"
+
+      - alert: SLOAiWorkerMediumBurn
+        expr: |
+          (1 - slo:ai_worker_success_rate:6h)  > (6 * (1 - 0.995))
+          and
+          (1 - slo:ai_worker_success_rate:30m) > (6 * (1 - 0.995))
+        for: 15m
+        labels:
+          severity: warning
+          slo: ai_worker_processing
+          burn_rate: medium
+          team: ai-platform
+        annotations:
+          summary: "AI worker medium burn — sustained frame processing failures"
+          description: >-
+            Sustained AI worker failure rate burning the 99.5 % SLO error budget at 6× rate.
+            Review worker logs for OOM, model errors, or Redis stream lag.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-ai-worker-medium-burn"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Error Budget Exhaustion warnings (cross-SLO)
+  # ──────────────────────────────────────────────────────────────────────
+  - name: slo_error_budget_alerts
+    rules:
+      - alert: SLOApiAvailabilityErrorBudgetLow
+        expr: slo:api_availability_error_budget_remaining:30d < 0.25
+        for: 5m
+        labels:
+          severity: warning
+          slo: api_availability
+          team: platform
+        annotations:
+          summary: "API availability error budget below 25 %"
+          description: >-
+            Only {{ $value | humanizePercentage }} of the 30-day API availability error budget remains.
+            Current month's deployment velocity and risk tolerance must be reduced.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-error-budget-low"
+
+      - alert: SLOApiAvailabilityErrorBudgetExhausted
+        expr: slo:api_availability_error_budget_remaining:30d < 0.05
+        for: 5m
+        labels:
+          severity: critical
+          slo: api_availability
+          team: platform
+        annotations:
+          summary: "API availability error budget nearly exhausted (<5 % remaining)"
+          description: >-
+            The 30-day API availability error budget is almost gone.
+            Freeze all non-critical changes immediately.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-error-budget-exhausted"
+
+      - alert: SLOAiWorkerErrorBudgetLow
+        expr: slo:ai_worker_error_budget_remaining:30d < 0.25
+        for: 5m
+        labels:
+          severity: warning
+          slo: ai_worker_processing
+          team: ai-platform
+        annotations:
+          summary: "AI worker error budget below 25 %"
+          description: >-
+            Only {{ $value | humanizePercentage }} of the 30-day AI worker error budget remains.
+          runbook: "https://wiki.seventh.ai/runbooks/slo-error-budget-low"

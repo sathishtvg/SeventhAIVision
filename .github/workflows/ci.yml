@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Backend tests (run inside Docker Compose, matching local dev) ──────────
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('docker/backend.Dockerfile', 'backend/pyproject.toml', 'shared/pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-buildx-
+
+      - name: Copy env file
+        run: cp .env.example .env
+
+      - name: Build images
+        run: docker compose -f docker/docker-compose.yml build --progress=plain api
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Start core services
+        run: |
+          docker compose -f docker/docker-compose.yml up -d postgres redis
+          docker compose -f docker/docker-compose.yml up -d api
+
+      - name: Wait for API (which runs migrations on startup)
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose -f docker/docker-compose.yml exec -T api curl -sf http://localhost:8000/health; then
+              echo "API is ready"
+              break
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 5
+          done
+
+      - name: Run backend tests
+        run: |
+          docker compose -f docker/docker-compose.yml exec -T api \
+            python -m pytest /app/backend/tests/ -v --tb=short \
+            --junitxml=/app/backend/test-results.xml
+
+      - name: Extract test results
+        if: always()
+        run: |
+          docker cp "$(docker compose -f docker/docker-compose.yml ps -q api)":/app/backend/test-results.xml \
+            ./test-results.xml 2>/dev/null || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: test-results.xml
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down -v
+
+  # ── Frontend (typecheck + lint + build) ────────────────────────────────────
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Type check
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: http://localhost:8000

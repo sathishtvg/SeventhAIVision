@@ -1,0 +1,36 @@
+# Secrets — never commit
+.env
+docker/.env
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.venv-worker/
+.pytest_cache/
+
+# Build artifacts
+frontend/dist/
+desktop/dist/
+desktop/release/
+
+# Generated reports / scan output
+reports/*
+!reports/.gitkeep
+
+# Leftover nested-repo metadata (moved aside during git init, not source)
+mobile/.git.bak-nested-repo/
+
+# Claude Code local-only files (not shared)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log

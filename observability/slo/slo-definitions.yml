@@ -1,0 +1,162 @@
+# SLO Definitions — Seventh AI Vision — Gap 18
+#
+# Service Level Indicators (SLIs) measure the system's actual behaviour.
+# Service Level Objectives (SLOs) are the targets we commit to operators.
+# Error budgets = (1 - SLO target) × minutes_per_month.
+#
+# Pattern: each SLO names its SLI query template using ${window} as a
+# placeholder; the Prometheus recording rules in recording-rules.yml
+# materialise the actual time-window variants.
+#
+# Reference: Google SRE Book, Chapter 4 — SLOs.
+
+version: "1.0"
+metadata:
+  product: seventh-ai-vision
+  team: platform
+  effective_date: "2026-07-01"
+  review_cycle: quarterly
+
+slos:
+  # ──────────────────────────────────────────────────────────────────────
+  # 1. API Availability — 99.9 %
+  #    Primary user-facing SLO. HTTP 5xx responses are "bad events".
+  # ──────────────────────────────────────────────────────────────────────
+  - name: api_availability
+    description: "Fraction of API requests that return a non-5xx HTTP status"
+    service: api
+    sli:
+      type: availability
+      good_events: >-
+        sum(rate(http_requests_total{job="api",status!~"5.."}[${window}]))
+      total_events: >-
+        sum(rate(http_requests_total{job="api"}[${window}]))
+    target: 0.999
+    error_budget:
+      monthly_minutes: 43.8
+      weekly_minutes: 10.1
+    alert_labels:
+      team: platform
+      severity_fast_burn: critical
+      severity_medium_burn: warning
+    burn_rates:
+      fast:
+        multiplier: 14.4
+        short_window: 5m
+        long_window: 1h
+        for: 2m
+      medium:
+        multiplier: 6
+        short_window: 30m
+        long_window: 6h
+        for: 15m
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 2. API p95 Latency — 99 % of requests < 500 ms
+  # ──────────────────────────────────────────────────────────────────────
+  - name: api_p95_latency
+    description: "Fraction of API requests completing in under 500 ms (p95 proxy)"
+    service: api
+    sli:
+      type: latency
+      latency_threshold_ms: 500
+      good_events: >-
+        sum(rate(http_request_duration_seconds_bucket{job="api",le="0.5"}[${window}]))
+      total_events: >-
+        sum(rate(http_request_duration_seconds_count{job="api"}[${window}]))
+    target: 0.99
+    error_budget:
+      monthly_minutes: 87.6
+      weekly_minutes: 20.2
+    alert_labels:
+      team: platform
+      severity_fast_burn: critical
+      severity_medium_burn: warning
+    burn_rates:
+      fast:
+        multiplier: 14.4
+        short_window: 5m
+        long_window: 1h
+        for: 2m
+      medium:
+        multiplier: 6
+        short_window: 30m
+        long_window: 6h
+        for: 15m
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 3. AI Worker Frame Processing — 99.5 %
+  #    Frames consumed but not successfully processed are "bad events".
+  # ──────────────────────────────────────────────────────────────────────
+  - name: ai_worker_processing
+    description: "Fraction of ingested frames successfully processed by AI workers"
+    service: ai-workers
+    sli:
+      type: availability
+      good_events: >-
+        sum(rate(frames_processed_total[${window}]))
+      total_events: >-
+        sum(rate(frames_consumed_total[${window}]))
+    target: 0.995
+    error_budget:
+      monthly_minutes: 21.9
+      weekly_minutes: 5.0
+    alert_labels:
+      team: ai-platform
+      severity_fast_burn: critical
+      severity_medium_burn: warning
+    burn_rates:
+      fast:
+        multiplier: 14.4
+        short_window: 5m
+        long_window: 1h
+        for: 2m
+      medium:
+        multiplier: 6
+        short_window: 30m
+        long_window: 6h
+        for: 15m
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 4. Real-time Alert Delivery — 99 % delivered within 5 s
+  # ──────────────────────────────────────────────────────────────────────
+  - name: alert_delivery_latency
+    description: "Fraction of WebSocket alert events delivered to connected clients within 5 s"
+    service: api-websocket
+    sli:
+      type: latency
+      latency_threshold_seconds: 5
+      good_events: >-
+        sum(rate(ws_events_forwarded_total[${window}]))
+      total_events: >-
+        sum(rate(ws_events_forwarded_total[${window}]))
+    target: 0.99
+    error_budget:
+      monthly_minutes: 87.6
+      weekly_minutes: 20.2
+    alert_labels:
+      team: platform
+      severity_fast_burn: warning
+      severity_medium_burn: info
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 5. Camera Stream Availability — 99 %
+  #    Measured as fraction of configured streams reporting online status.
+  # ──────────────────────────────────────────────────────────────────────
+  - name: camera_stream_availability
+    description: "Fraction of configured camera streams that are online at any given time"
+    service: ingestion
+    sli:
+      type: availability
+      good_events: >-
+        sum(camera_streams_online_total)
+      total_events: >-
+        sum(camera_streams_configured_total)
+    target: 0.99
+    error_budget:
+      monthly_minutes: 87.6
+      weekly_minutes: 20.2
+    alert_labels:
+      team: operations
+      severity_fast_burn: warning
+      severity_medium_burn: info

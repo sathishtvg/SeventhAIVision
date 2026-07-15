@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write   # needed to create GitHub Releases and upload assets
+
+jobs:
+  build-desktop:
+    name: Build Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── Build React frontend ────────────────────────────────────────────────
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: http://localhost:8000
+
+      # ── Copy frontend dist into desktop ────────────────────────────────────
+      - name: Copy dist to desktop
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path desktop\dist
+          Copy-Item -Recurse -Force frontend\dist\* desktop\dist\
+
+      # ── Build Electron installer ────────────────────────────────────────────
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Generate icon assets
+        run: node scripts/build-icons.js
+        working-directory: desktop
+
+      - name: Build installer
+        run: npx electron-builder --win --publish never
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Create GitHub Release with installer artifacts ─────────────────────
+      - name: Find build artifacts
+        id: artifacts
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/release/*.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($installer) {
+            echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+            echo "INSTALLER_NAME=$($installer.Name)" >> $env:GITHUB_OUTPUT
+          }
+          $portable = Get-ChildItem desktop/release/*portable*.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($portable) {
+            echo "PORTABLE_PATH=$($portable.FullName)" >> $env:GITHUB_OUTPUT
+            echo "PORTABLE_NAME=$($portable.Name)" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Seventh AI Vision ${{ github.ref_name }}
+          body: |
+            ## Seventh AI Vision ${{ github.ref_name }}
+
+            ### Installation
+
+            - **Installer** (`*-Setup.exe`): Standard NSIS installer with Start Menu shortcut
+            - **Portable** (`*-portable.exe`): No installation required, run directly
+
+            ### Requirements
+
+            - Windows 10/11 (64-bit)
+            - A running Seventh AI Vision backend server on your local network
+
+            ### First Run
+
+            Enter your backend server URL (e.g. `http://192.168.1.100:8000`) in the setup wizard.
+          draft: false
+          prerelease: false
+          files: |
+            desktop/release/*.exe
+            desktop/release/*.yml

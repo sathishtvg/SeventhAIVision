@@ -1,0 +1,60 @@
+# SOPS encryption rules — Gap 21
+# Seventh AI Vision secret management
+#
+# SOPS (Secrets OPerationS) encrypts YAML / JSON / ENV files in-place.
+# Only the *values* are encrypted; keys and structure remain readable.
+#
+# Key type: age (https://age-encryption.org)
+#   - age is modern, audited, and has no key-server dependency.
+#   - Each environment (dev / staging / prod) has its own age key pair.
+#   - The *public* key is stored here; the *private* key never touches the repo.
+#
+# Setup (once per environment):
+#   age-keygen -o ~/.config/sops/age/seventh-ai-vision-dev.txt
+#   # Copy the "public key: age1..." line into the age: fields below.
+#
+# Encrypting a file:
+#   sops --encrypt --in-place config/secrets/dev.env
+#
+# Decrypting (requires private key on SOPS_AGE_KEY_FILE or in ~/.config/sops/age/):
+#   sops --decrypt config/secrets/dev.env
+#
+# CI/CD:
+#   Set SOPS_AGE_KEY env var to the private key content (from Vault / GitHub secret).
+#   sops --decrypt config/secrets/ci.env > .env
+
+creation_rules:
+  # ── .env files (environment-specific secrets) ────────────────────────────
+  # Matches: config/secrets/dev.env, config/secrets/prod.env, etc.
+  - path_regex: config/secrets/.*\.env$
+    key_groups:
+      - age:
+          # Replace with the real age public key generated per environment.
+          # Format: age1<bech32-encoded-public-key>
+          # Example key (PLACEHOLDER — never use this in production):
+          - age1qyy9z4pzn8yd78g2c7v3x5k6m1nj0r4e8t2s9u3w7f6h1d4a5b3l0qcp8xyz
+    # Encrypt all values; keep key names readable
+    encrypted_regex: "^(.*)$"
+
+  # ── YAML secret config files ─────────────────────────────────────────────
+  # Matches: config/secrets/*.yml, config/secrets/*.yaml
+  - path_regex: config/secrets/.*\.ya?ml$
+    key_groups:
+      - age:
+          - age1qyy9z4pzn8yd78g2c7v3x5k6m1nj0r4e8t2s9u3w7f6h1d4a5b3l0qcp8xyz
+    # Only encrypt leaf values under known secret keys
+    encrypted_regex: "^(password|secret|key|token|credential|api_key|private_key|db_url|smtp_password|twilio_token)$"
+
+  # ── Kubernetes / Helm secret manifests ───────────────────────────────────
+  # Matches: helm/*/secrets.yaml, k8s/*/secret.yaml
+  - path_regex: (helm|k8s)/.*secret.*\.ya?ml$
+    key_groups:
+      - age:
+          - age1qyy9z4pzn8yd78g2c7v3x5k6m1nj0r4e8t2s9u3w7f6h1d4a5b3l0qcp8xyz
+    encrypted_regex: "^(data|stringData)$"
+
+# ── Key management notes ───────────────────────────────────────────────────
+# dev private key:     stored in developer 1Password / Bitwarden vault
+# staging private key: stored in GitHub Actions secret SOPS_AGE_KEY_STAGING
+# prod private key:    stored in HashiCorp Vault path secret/sops/prod-age-key
+#                      accessed via Vault Agent in the CI pipeline
