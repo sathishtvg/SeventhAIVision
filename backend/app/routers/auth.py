@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,16 @@ class TwoFAVerifyRequest(BaseModel):
 
 class LoginRequestExtended(LoginRequest):
     device_name: str | None = None
+
+
+class ForgotPasswordRequest(BaseModel):
+    tenant_slug: str
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)
 
 
 @router.get("/me/permissions")
@@ -100,6 +110,22 @@ async def refresh(request: Request, body: RefreshRequest) -> TokenPair:
     return await auth_service.rotate_refresh_token(
         body.refresh_token, client_ip=client_ip
     )
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, body: ForgotPasswordRequest):
+    """Always returns the same generic message regardless of whether the
+    tenant/email exists — see request_password_reset's docstring for why."""
+    await auth_service.request_password_reset(body.tenant_slug, body.email)
+    return {"message": "If an account with that email exists, a password reset link has been sent."}
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request, body: ResetPasswordRequest):
+    await auth_service.confirm_password_reset(body.token, body.new_password)
+    return {"message": "Password has been reset. Please log in with your new password."}
 
 
 @router.post("/users/{user_id}/unlock", dependencies=[Depends(require_permission("user:update"))])

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -12,6 +13,8 @@ from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import AsyncSessionLocal
 from app.schemas.auth import TokenPair
+
+logger = logging.getLogger(__name__)
 
 _MAX_FAILED_ATTEMPTS = 10
 _LOCKOUT_MINUTES = 30
@@ -236,6 +239,101 @@ async def authenticate_and_issue_tokens(
         tenant=tenant_info,
         licensed_products=licensed,
     )
+
+
+async def request_password_reset(tenant_slug: str, email: str) -> None:
+    """Always succeeds from the caller's perspective, regardless of whether the
+    tenant/email exists — mirrors login's identical-shape-on-failure discipline
+    (test_login_wrong_password_and_nonexistent_email_identical_shape) so this
+    endpoint can't be used to enumerate valid accounts. A match silently gets
+    a one-time reset link emailed; a non-match is a silent no-op."""
+    async with AsyncSessionLocal() as db:
+        tenant_row = (await db.execute(
+            text("SELECT id FROM tenants WHERE slug = :slug AND is_active = TRUE"),
+            {"slug": tenant_slug},
+        )).first()
+        if tenant_row is None:
+            return
+        tenant_id = tenant_row.id
+
+        await db.execute(text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": str(tenant_id)})
+
+        user_row = (await db.execute(
+            text("SELECT id FROM users WHERE email = :email AND is_active = TRUE"),
+            {"email": email},
+        )).first()
+        if user_row is None:
+            return
+
+        # Opaque token shape mirrors _generate_refresh_token's tenant-prefix
+        # trick (see its docstring) so confirm_password_reset can set the RLS
+        # context before querying this RLS-protected table.
+        raw_token = f"{tenant_id}.{secrets.token_urlsafe(48)}"
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        await db.execute(
+            text(
+                "INSERT INTO password_reset_tokens (tenant_id, user_id, token_hash, expires_at) "
+                "VALUES (:tid, :uid, :hash, :exp)"
+            ),
+            {"tid": tenant_id, "uid": user_row.id, "hash": _hash_token(raw_token), "exp": expires_at},
+        )
+        await db.commit()
+
+    base = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else ""
+    reset_url = f"{base}/reset-password?token={raw_token}"
+    body = (
+        "A password reset was requested for your Seventh AI Vision account.\n\n"
+        f"Reset your password: {reset_url}\n\n"
+        "This link expires in 1 hour. If you did not request this, you can safely ignore this email."
+    )
+    from app.notifications.providers.email import send_raw_email
+    try:
+        await send_raw_email([email], "Reset your Seventh AI Vision password", body)
+    except Exception:
+        logger.exception("password reset email failed to send to=%s", email)
+
+
+async def confirm_password_reset(raw_token: str, new_password: str) -> None:
+    """Consumes a one-time reset token: sets the new password and revokes every
+    outstanding refresh token for that user, so a session already in an
+    attacker's hands (the reason the user is resetting) doesn't survive it."""
+    invalid = HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset link")
+    try:
+        tenant_id_str, _secret = raw_token.split(".", 1)
+        UUID(tenant_id_str)
+    except ValueError:
+        raise invalid
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id_str})
+
+        token_hash = _hash_token(raw_token)
+        row = (await db.execute(
+            text(
+                "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens "
+                "WHERE token_hash = :hash"
+            ),
+            {"hash": token_hash},
+        )).first()
+        if row is None or row.used_at is not None or row.expires_at < datetime.now(timezone.utc):
+            raise invalid
+
+        await db.execute(
+            text(
+                "UPDATE users SET hashed_password = :hashed, failed_login_count = 0, locked_until = NULL "
+                "WHERE id = :uid"
+            ),
+            {"hashed": hash_password(new_password), "uid": row.user_id},
+        )
+        await db.execute(
+            text("UPDATE password_reset_tokens SET used_at = now() WHERE id = :id"),
+            {"id": row.id},
+        )
+        await db.execute(
+            text("UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = :uid AND revoked_at IS NULL"),
+            {"uid": row.user_id},
+        )
+        await db.commit()
 
 
 async def unlock_user_account(tenant_id: str, user_id: str) -> None:

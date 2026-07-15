@@ -32,3 +32,19 @@ export async function resolveSubdomain(subdomain: string): Promise<TenantInfo> {
   )
   return data
 }
+
+export async function forgotPassword(tenantSlug: string, email: string): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/api/v1/auth/forgot-password', {
+    tenant_slug: tenantSlug,
+    email,
+  })
+  return data
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/api/v1/auth/reset-password', {
+    token,
+    new_password: newPassword,
+  })
+  return data
+}

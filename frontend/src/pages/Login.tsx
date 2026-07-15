@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import {
   Box, Button, CircularProgress, Collapse,
-  TextField, Typography, Alert, InputAdornment, IconButton, Chip,
+  TextField, Typography, Alert, InputAdornment, IconButton, Chip, Link,
 } from '@mui/material'
 import ShieldIcon from '@mui/icons-material/Shield'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -410,6 +410,19 @@ export default function Login() {
                   },
                 }}
               />
+
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: -1 }}>
+                <Link
+                  component={RouterLink}
+                  to="/forgot-password"
+                  sx={{
+                    color: 'text.secondary', fontSize: '0.76rem', textDecoration: 'none',
+                    '&:hover': { color: accentColor, textDecoration: 'underline' },
+                  }}
+                >
+                  Forgot password?
+                </Link>
+              </Box>
 
               <Button
                 type="submit"

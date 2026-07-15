@@ -6,6 +6,8 @@ import { useColorMode } from '@/context/ColorMode'
 import { getBranding } from '@/api/branding'
 import { AppShell } from '@/components/layout/AppShell'
 import Login from '@/pages/Login'
+import ForgotPassword from '@/pages/ForgotPassword'
+import ResetPassword from '@/pages/ResetPassword'
 import Dashboard from '@/pages/Dashboard'
 import Alerts from '@/pages/Alerts'
 import Incidents from '@/pages/Incidents'
@@ -91,6 +93,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/"
         element={

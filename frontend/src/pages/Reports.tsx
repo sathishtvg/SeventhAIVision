@@ -2,14 +2,17 @@ import React, { useState } from 'react'
 import {
   Box, Tab, Tabs, Typography, Button, Paper, Table, TableBody, TableCell,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, CircularProgress, Alert, Grid,
+  TextField, MenuItem, CircularProgress, Alert, Grid, Checkbox, FormControlLabel,
+  List, ListItem, Divider,
 } from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   downloadSiteSummaryReport, downloadDobReport, downloadIncidentReport,
-  getDsars, createDsar, updateDsar,
+  getDsars, createDsar, updateDsar, executeDsarErasure, type ErasureExecuteResult,
 } from '@/api/reports'
 import { getSites } from '@/api/sites'
+import { getFaceWatchlist, getPlateWatchlist } from '@/api/watchlist'
+import { listVisitors } from '@/api/visitors'
 import { GlassCard } from '@/components/common/GlassCard'
 
 export default function Reports() {
@@ -197,6 +200,7 @@ function DsarTab() {
   const qc = useQueryClient()
   const [openCreate, setOpenCreate] = useState(false)
   const [openFulfill, setOpenFulfill] = useState<any>(null)
+  const [openErase, setOpenErase] = useState<any>(null)
   const [createForm, setCreateForm] = useState({
     request_type: 'access',
     data_subject_name: '',
@@ -275,9 +279,16 @@ function DsarTab() {
                     </TableCell>
                     <TableCell>
                       {!['fulfilled', 'rejected'].includes(d.status) && (
-                        <Button size="small" onClick={() => { setOpenFulfill(d); setFulfillForm({ status: 'fulfilled', fulfillment_notes: '', records_erased: '' }) }}>
-                          Update
-                        </Button>
+                        <>
+                          {d.request_type === 'erasure' && (
+                            <Button size="small" color="error" onClick={() => setOpenErase(d)} sx={{ mr: 1 }}>
+                              Execute Erasure
+                            </Button>
+                          )}
+                          <Button size="small" onClick={() => { setOpenFulfill(d); setFulfillForm({ status: 'fulfilled', fulfillment_notes: '', records_erased: '' }) }}>
+                            Update
+                          </Button>
+                        </>
                       )}
                     </TableCell>
                   </TableRow>
@@ -352,6 +363,137 @@ function DsarTab() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Execute Erasure */}
+      {openErase && (
+        <ErasureExecuteDialog
+          dsar={openErase}
+          onClose={() => setOpenErase(null)}
+          onDone={() => { qc.invalidateQueries({ queryKey: ['dsars'] }); setOpenErase(null) }}
+        />
+      )}
     </Box>
+  )
+}
+
+// ── Execute Erasure ──────────────────────────────────────────────────────────
+
+function ErasureExecuteDialog({ dsar, onClose, onDone }: { dsar: any; onClose: () => void; onDone: () => void }) {
+  const [faceIds, setFaceIds] = useState<string[]>([])
+  const [plateIds, setPlateIds] = useState<string[]>([])
+  const [visitorIds, setVisitorIds] = useState<string[]>([])
+  const [evidenceIdsText, setEvidenceIdsText] = useState('')
+  const [result, setResult] = useState<ErasureExecuteResult | null>(null)
+
+  const { data: faceEntries = [] } = useQuery({ queryKey: ['face-watchlist'], queryFn: () => getFaceWatchlist() })
+  const { data: plateEntries = [] } = useQuery({ queryKey: ['plate-watchlist'], queryFn: () => getPlateWatchlist() })
+  const { data: visitors = [] } = useQuery({ queryKey: ['visitors'], queryFn: () => listVisitors() })
+
+  const eraseMut = useMutation({
+    mutationFn: () => {
+      const evidence_ids = evidenceIdsText.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+      return executeDsarErasure(dsar.id, {
+        face_watchlist_entry_ids: faceIds,
+        plate_watchlist_entry_ids: plateIds,
+        visitor_ids: visitorIds,
+        evidence_ids,
+      })
+    },
+    onSuccess: (data) => setResult(data),
+  })
+
+  const toggle = (list: string[], setList: (v: string[]) => void, id: string) =>
+    setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
+
+  const nothingSelected = faceIds.length === 0 && plateIds.length === 0 && visitorIds.length === 0 && !evidenceIdsText.trim()
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Execute Erasure — {dsar.data_subject_name}</DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+        {result ? (
+          <Alert severity="success">
+            Erased: {result.erased_counts.face_watchlist_entries} face watchlist,{' '}
+            {result.erased_counts.plate_watchlist_entries} plate watchlist,{' '}
+            {result.erased_counts.visitors} visitors,{' '}
+            {result.erased_counts.evidence} evidence files.
+            <br />Total records erased on this DSAR to date: {result.records_erased}.
+            <br />Set the DSAR status to "Fulfilled" via Update once done.
+          </Alert>
+        ) : (
+          <>
+            <Alert severity="warning">
+              This permanently deletes the selected records (biometric embeddings, plate
+              watchlist entries, visitor records) and redacts matching historical detection
+              rows. This cannot be undone.
+            </Alert>
+
+            <Typography variant="subtitle2">Face Watchlist Entries</Typography>
+            <List dense sx={{ maxHeight: 140, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              {(faceEntries as any[]).map((f) => (
+                <ListItem key={f.id} dense>
+                  <FormControlLabel
+                    control={<Checkbox size="small" checked={faceIds.includes(f.id)} onChange={() => toggle(faceIds, setFaceIds, f.id)} />}
+                    label={`${f.person_name} (${f.list_type})`}
+                  />
+                </ListItem>
+              ))}
+              {faceEntries.length === 0 && <ListItem><Typography variant="caption" color="text.secondary">No entries</Typography></ListItem>}
+            </List>
+
+            <Typography variant="subtitle2">Plate Watchlist Entries</Typography>
+            <List dense sx={{ maxHeight: 140, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              {(plateEntries as any[]).map((p) => (
+                <ListItem key={p.id} dense>
+                  <FormControlLabel
+                    control={<Checkbox size="small" checked={plateIds.includes(p.id)} onChange={() => toggle(plateIds, setPlateIds, p.id)} />}
+                    label={`${p.plate_number} (${p.list_type})`}
+                  />
+                </ListItem>
+              ))}
+              {plateEntries.length === 0 && <ListItem><Typography variant="caption" color="text.secondary">No entries</Typography></ListItem>}
+            </List>
+
+            <Typography variant="subtitle2">Visitors</Typography>
+            <List dense sx={{ maxHeight: 140, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              {(visitors as any[]).map((v) => (
+                <ListItem key={v.id} dense>
+                  <FormControlLabel
+                    control={<Checkbox size="small" checked={visitorIds.includes(v.id)} onChange={() => toggle(visitorIds, setVisitorIds, v.id)} />}
+                    label={`${v.full_name}${v.id_number ? ` (${v.id_number})` : ''}`}
+                  />
+                </ListItem>
+              ))}
+              {visitors.length === 0 && <ListItem><Typography variant="caption" color="text.secondary">No visitors</Typography></ListItem>}
+            </List>
+
+            <Divider />
+            <TextField
+              label="Evidence IDs (comma or newline separated)"
+              helperText="Find IDs on the Evidence page — evidence has no name search, so paste IDs directly."
+              value={evidenceIdsText}
+              onChange={(e) => setEvidenceIdsText(e.target.value)}
+              multiline rows={2} fullWidth
+            />
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {result ? (
+          <Button variant="contained" onClick={onDone}>Close</Button>
+        ) : (
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button
+              variant="contained" color="error"
+              onClick={() => eraseMut.mutate()}
+              disabled={nothingSelected || eraseMut.isPending}
+            >
+              {eraseMut.isPending ? <CircularProgress size={18} /> : 'Erase Selected'}
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   )
 }

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.uploads import MAX_CSV_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
@@ -109,7 +110,7 @@ async def bulk_import_plates(
     """Upload a CSV with columns: plate_number, list_type, reason (opt), expires_at (opt ISO date).
     Returns { total, imported, duplicates, errors }.
     """
-    content = await file.read()
+    content = await read_upload_limited(file, MAX_CSV_UPLOAD_BYTES)
     try:
         text_content = content.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -203,7 +204,7 @@ async def enroll_face(
 ):
     if file.content_type not in ("image/jpeg", "image/jpg", "image/png"):
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Only JPEG/PNG images are accepted")
-    image_bytes = await file.read()
+    image_bytes = await read_upload_limited(file, MAX_IMAGE_UPLOAD_BYTES)
     try:
         embedding = await asyncio.to_thread(_extract_embedding_sync, image_bytes)
     except RuntimeError as exc:

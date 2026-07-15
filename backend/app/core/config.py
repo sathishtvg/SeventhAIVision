@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     EVIDENCE_RETENTION_DAYS: int = 90
     AUDIT_RETENTION_YEARS: int = 7
 
+    # Base URL of the web frontend — used to build links inside outbound emails
+    # (e.g. the password reset link). No default guess is safe across deployments,
+    # so this falls back to a same-origin-relative link if unset.
+    FRONTEND_URL: str = ""
+
     # SMTP (email notifications)
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 587
