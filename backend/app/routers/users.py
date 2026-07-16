@@ -117,7 +117,16 @@ async def list_users(db: AsyncSession = Depends(get_db_with_tenant)):
 
 async def _assert_assignable_role(db: AsyncSession, role_id: int) -> None:
     """A user may be assigned a built-in role or one of this tenant's own
-    custom roles (Gap 91) — never another tenant's custom role."""
+    custom roles (Gap 91) — never another tenant's custom role, and never
+    the platform super_admin role (id 1), which is a cross-tenant role with
+    no tenant_id and would otherwise slip through the "built-in role"
+    branch below. Without this exclusion, any tenant Admin holding
+    user:create/user:update could self-assign role_id=1 and, via
+    tenants.py's get_raw_db (which bypasses RLS entirely), read/modify
+    every tenant on the platform."""
+    if role_id == 1:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Invalid role_id for this tenant")
     row = (await db.execute(
         text("SELECT 1 FROM roles WHERE id = :id AND "
              "(tenant_id IS NULL OR tenant_id = current_setting('app.current_tenant')::uuid)"),

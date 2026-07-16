@@ -1,0 +1,121 @@
+# Fully-resolved third-party dependency versions, captured via `pip freeze`
+# from the actual running docker-api-1 container (backend/pyproject.toml
+# only declares range pins — >=x,<y — so two `pip install`s months apart
+# can silently resolve different transitive versions; this file is the
+# reproducible-build reference the original project plan called for but
+# never shipped). Does NOT include seventh-ai-vision-backend/-shared
+# themselves — those are always installed editable from local source
+# (see docker/backend.Dockerfile), never from a registry.
+#
+# To use for a reproducible install:
+#   pip install -r backend/requirements-lock.txt
+#   pip install -e shared && pip install -e backend
+#
+# To refresh after intentionally changing a dependency in pyproject.toml:
+#   docker exec docker-api-1 pip freeze | grep -v '^-e ' > backend/requirements-lock.txt
+#   (then re-add this header, and manually drop the two seventh-ai-vision-* comment lines)
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.1
+aiosignal==1.4.0
+aiosmtplib==5.1.2
+alembic==1.18.5
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.14.1
+asyncpg==0.31.0
+attrs==26.1.0
+bcrypt==5.0.0
+boto3==1.43.42
+botocore==1.43.42
+certifi==2026.6.17
+cffi==2.1.0
+charset-normalizer==3.4.9
+ciso8601==2.3.3
+click==8.4.2
+coverage==7.15.0
+cryptography==49.0.0
+Deprecated==1.3.1
+ecdsa==0.19.2
+fastapi==0.139.0
+flatbuffers==25.12.19
+frozenlist==1.8.0
+greenlet==3.5.3
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+idna==3.18
+ImageIO==2.37.3
+iniconfig==2.3.0
+insightface==1.0.1
+isodate==0.7.2
+jmespath==1.1.0
+lazy-loader==0.5
+ldap3==2.9.1
+limits==5.8.0
+lxml==6.1.1
+Mako==1.3.12
+MarkupSafe==3.0.3
+ml_dtypes==0.5.4
+multidict==6.7.1
+networkx==3.6.1
+numpy==2.4.6
+onnx==1.22.0
+onnxruntime==1.27.0
+onvif-zeep-async==4.2.1
+opencv-python==5.0.0.93
+opencv-python-headless==5.0.0.93
+packaging==26.2
+pillow==12.3.0
+platformdirs==4.10.0
+pluggy==1.6.0
+prometheus_client==0.25.0
+propcache==0.5.2
+protobuf==7.35.1
+psycopg==3.3.4
+psycopg-binary==3.3.4
+pyasn1==0.6.3
+pycparser==3.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
+pydantic_core==2.46.4
+Pygments==2.20.0
+PyOTP==2.10.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-timeout==2.4.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
+python-jose==3.5.0
+python-multipart==0.0.32
+python3-saml==1.16.0
+PyYAML==6.0.3
+qrcode==8.2
+redis==8.0.1
+reportlab==5.0.0
+requests==2.34.2
+requests-file==3.0.1
+requests-toolbelt==1.0.0
+rsa==4.9.1
+s3transfer==0.19.0
+scikit-image==0.26.0
+scipy==1.17.1
+six==1.17.0
+slowapi==0.1.10
+SQLAlchemy==2.0.51
+starlette==1.3.1
+stripe==15.3.0
+tifffile==2026.3.3
+tqdm==4.68.4
+typing-inspection==0.4.2
+typing_extensions==4.16.0
+urllib3==2.7.0
+uvicorn==0.51.0
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==16.0
+wrapt==2.2.2
+xmlsec==1.3.17
+yarl==1.24.2
+zeep==4.3.3

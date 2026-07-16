@@ -289,8 +289,22 @@ async def get_preferences(guard_user_id: str, db: AsyncSession = Depends(get_db_
     return dict(row._mapping)
 
 
+_GUARD_ROLES = {4, 5}
+
+
 @router.put("/preferences/{guard_user_id}", dependencies=[Depends(require_permission("shift:read"))])
-async def set_preferences(guard_user_id: str, body: PreferencesUpsert, db: AsyncSession = Depends(get_db_with_tenant)):
+async def set_preferences(
+    guard_user_id: str,
+    body: PreferencesUpsert,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    # shift:read (held by guards themselves) gates this endpoint, not a write
+    # permission — so without this check any guard could overwrite any other
+    # guard's preferences. Mirrors the self-ownership check already used in
+    # leave.py/attendance.py for the same class of guard-tier write.
+    if token.role_id in _GUARD_ROLES and guard_user_id != str(token.user_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot set another guard's preferences")
     if body.preferred_shift_type is not None and body.preferred_shift_type not in ("day", "night"):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "preferred_shift_type must be 'day' or 'night'")
     result = await db.execute(

@@ -88,6 +88,10 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast, before touching Postgres/Redis, if this is a production
+    # deployment still running on dev-default secrets (see config.py).
+    settings.assert_production_secrets_configured()
+
     # Mark any recordings that were left stuck as 'recording' from a prior crash
     from app.db.session import AsyncSessionLocal
     from sqlalchemy import text as _text

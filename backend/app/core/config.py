@@ -69,6 +69,37 @@ class Settings(BaseSettings):
     GIT_SHA: str = "dev"
     BUILD_DATE: str = "dev"
 
+    # "development" (default) | "production" — gates the dev-default-secrets
+    # startup check below. Never defaults to "production" so existing dev/CI
+    # setups that don't set this explicitly are unaffected.
+    ENVIRONMENT: str = "development"
+
+    def assert_production_secrets_configured(self) -> None:
+        """Refuses to start in production with any secret still at its
+        literal dev-default value. Without this, a deployer who forgets to
+        override .env gets a fully-working server whose JWT signing key,
+        audit-HMAC key, DB password, and credential-encryption key are all
+        publicly-known strings from the open-source repo — silent, total
+        compromise rather than a loud failure at boot. No-op outside
+        ENVIRONMENT=production so it never affects dev/test/CI."""
+        if self.ENVIRONMENT != "production":
+            return
+        offenders = []
+        if self.JWT_SECRET_KEY_CURRENT == "change_me_dev_only":
+            offenders.append("JWT_SECRET_KEY_CURRENT")
+        if self.AUDIT_HMAC_KEY == "audit_change_me_dev_only":
+            offenders.append("AUDIT_HMAC_KEY")
+        if not self.CREDENTIALS_ENCRYPTION_KEY:
+            offenders.append("CREDENTIALS_ENCRYPTION_KEY (empty — falls back to an insecure dev key)")
+        if "change_me_dev_only" in self.DATABASE_URL:
+            offenders.append("DATABASE_URL (still contains the dev-default password)")
+        if offenders:
+            raise RuntimeError(
+                "Refusing to start with ENVIRONMENT=production while these secrets "
+                "still hold their dev-default values: " + ", ".join(offenders) +
+                ". Set real values in the environment/.env before deploying."
+            )
+
     @property
     def jwt_signing_keys(self) -> dict[str, str]:
         """kid -> secret. New tokens are always signed with JWT_ACTIVE_KID; tokens
