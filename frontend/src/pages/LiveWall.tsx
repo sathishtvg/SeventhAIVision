@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Box, Button, ButtonGroup, Checkbox, Chip, Dialog, DialogActions,
-  DialogContent, DialogTitle, FormControlLabel, Grid, IconButton, List,
-  ListItemButton, ListItemText, MenuItem, Select, Switch, TextField,
+  DialogContent, DialogTitle, Fade, FormControlLabel, Grid, IconButton,
+  ListItemText, ListSubheader, MenuItem, Select, Switch, TextField,
   Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
+import DvrIcon from '@mui/icons-material/Dvr'
+import AddToQueueIcon from '@mui/icons-material/AddToQueue'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import HighlightAltIcon from '@mui/icons-material/HighlightAlt'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
@@ -18,7 +20,7 @@ import FullscreenIcon from '@mui/icons-material/Fullscreen'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
-import { useFocusModeStore } from '@/store/focusMode'
+import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { apiClient } from '@/api/client'
 import { getSites } from '@/api/sites'
@@ -33,7 +35,13 @@ import { HlsPlayer } from '@/components/common/HlsPlayer'
 import { DetectionOverlay } from '@/components/common/DetectionOverlay'
 import { RestrictedZoneDialog } from '@/components/common/RestrictedZoneDialog'
 import { AlertResponseDialog, type AlertSummary } from '@/components/common/AlertResponseDialog'
+import { CameraPicker, WallScreenEditor } from '@/components/common/WallScreenEditor'
+import { WallProfileSetupDialog, MAX_PROFILE_SCREENS } from '@/components/common/WallProfileSetupDialog'
 import { openLiveWallWindow } from '@/lib/liveWallWindow'
+import {
+  listWallProfiles, addWallProfileScreen, deleteWallProfile,
+  type WallProfile, type WallProfileScreenInput,
+} from '@/api/wallProfiles'
 
 type GridSize = 1 | 4 | 9 | 16
 
@@ -42,6 +50,9 @@ interface WallCell {
   stream_id: string
   camera_name: string
   site_name?: string
+  /** Per-camera analytics override; undefined = inherit the wall/screen
+   * selection. Persisted with the cell, so it survives save + reopen. */
+  analytics_modules?: string[] | null
 }
 
 const WALL_KEY = 'seventh_ai_live_wall'
@@ -72,77 +83,6 @@ function saveWall(cells: WallCell[]) {
   localStorage.setItem(WALL_KEY, JSON.stringify(cells))
 }
 
-interface CameraPickerProps {
-  open: boolean
-  onClose: () => void
-  onAdd: (cell: WallCell) => void
-  existing: WallCell[]
-}
-
-function CameraPicker({ open, onClose, onAdd, existing }: CameraPickerProps) {
-  const [siteFilter, setSiteFilter] = useState('')
-  const token = useAuthStore((s) => s.accessToken)
-  const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
-  const { data: cameras = [] } = useQuery({
-    queryKey: ['cameras'],
-    queryFn: () => apiClient.get('/api/v1/cameras').then((r) => r.data),
-    enabled: open,
-  })
-
-  const existingSet = new Set(existing.map((c) => `${c.camera_id}:${c.stream_id}`))
-
-  const filteredCameras = siteFilter
-    ? cameras.filter((c: any) => c.site_id === siteFilter)
-    : cameras
-
-  const handleCameraSelect = async (camera: any) => {
-    // Get first stream for camera
-    const streams = await apiClient.get(`/api/v1/cameras/${camera.id}/streams`).then((r) => r.data)
-    if (!streams || streams.length === 0) return
-    const stream = streams[0]
-    const key = `${camera.id}:${stream.id}`
-    if (existingSet.has(key)) return
-    const site = sites.find((s: any) => s.id === camera.site_id)
-    onAdd({ camera_id: camera.id, stream_id: stream.id, camera_name: camera.name, site_name: site?.name })
-    onClose()
-  }
-
-  if (!token) return null
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Camera to Wall</DialogTitle>
-      <DialogContent>
-        <Select
-          size="small"
-          value={siteFilter}
-          onChange={(e) => setSiteFilter(e.target.value)}
-          displayEmpty
-          fullWidth
-          sx={{ mb: 1 }}
-        >
-          <MenuItem value="">All Sites</MenuItem>
-          {sites.map((s: any) => (
-            <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-          ))}
-        </Select>
-        <List dense>
-          {filteredCameras.map((c: any) => {
-            return (
-              <ListItemButton key={c.id} onClick={() => handleCameraSelect(c)}>
-                <ListItemText primary={c.name} secondary={c.site_name ?? c.location ?? 'No site'} />
-              </ListItemButton>
-            )
-          })}
-          {filteredCameras.length === 0 && (
-            <Typography color="text.secondary" p={2}>No cameras available</Typography>
-          )}
-        </List>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 type StreamMode = 'mjpeg' | 'hls'
 
 interface LiveCellProps {
@@ -153,10 +93,19 @@ interface LiveCellProps {
   activeModules: string[]
   onDrawZone: () => void
   onOpenAlert: () => void
+  /** True when the wall is height-constrained to the viewport (kiosk/full
+   * screen) — the cell fills its CSS-grid track instead of sizing itself
+   * from a fixed 16:9 aspect ratio, so N rows always fill the screen with
+   * no dead space. See the fix for the "doesn't fit screen" bug. */
+  fill?: boolean
 }
 
-function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOpenAlert }: LiveCellProps) {
+function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOpenAlert, fill = false }: LiveCellProps) {
   const alertTitle = alert?.title ?? null
+  // Per-camera override if one is set on this cell, else the wall/screen-wide
+  // selection. `null`/undefined means "inherit"; an empty array is a real
+  // choice (show nothing on this camera) and is respected as such.
+  const effectiveModules = cell.analytics_modules ?? activeModules
   const token = useAuthStore((s) => s.accessToken)
   const qc = useQueryClient()
   const [recordingId, setRecordingId] = useState<string | null>(null)
@@ -203,7 +152,7 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
           bgcolor: 'rgba(0,0,0,0.7)',
           borderRadius: 1,
           overflow: 'hidden',
-          aspectRatio: '16/9',
+          ...(fill ? { height: '100%', width: '100%' } : { aspectRatio: '16/9' }),
           border: alertTitle ? '2px solid #FF4560' : '1px solid rgba(255,255,255,0.08)',
           '& .cell-hover-controls': { opacity: 0, transition: 'opacity 0.15s' },
           '&:hover .cell-hover-controls, &:focus-within .cell-hover-controls': { opacity: 1 },
@@ -217,7 +166,7 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
         }}
       >
         {mode === 'hls' && hlsUrl ? (
-          <HlsPlayer src={hlsUrl} sx={{ aspectRatio: '16/9' }} />
+          <HlsPlayer src={hlsUrl} sx={fill ? { height: '100%', width: '100%' } : { aspectRatio: '16/9' }} />
         ) : liveUrl ? (
           <Box
             component="img"
@@ -228,7 +177,14 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
         ) : null}
 
         {/* AI annotation layer (Gap 92), filtered to the operator's selected modules */}
-        <DetectionOverlay cameraId={cell.camera_id} enabled={activeModules.length > 0} moduleFilter={activeModules} />
+        {/* Per-camera override wins over the wall/screen-wide selection, so an
+            operator can watch e.g. only LPR on the gate camera while the rest
+            of the wall shows intrusion. */}
+        <DetectionOverlay
+          cameraId={cell.camera_id}
+          enabled={effectiveModules.length > 0}
+          moduleFilter={effectiveModules}
+        />
 
         {/* Overlay — top */}
         <Box
@@ -239,9 +195,15 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
             display: 'flex', alignItems: 'center', gap: 0.5,
           }}
         >
-          <Typography variant="caption" color="white" fontWeight={700} noWrap sx={{ flex: 1 }}>
-            {cell.camera_name}
-          </Typography>
+          {/* Keyed by camera_id (not array index) so a camera swap fully
+           * remounts the label instead of morphing old text into new text
+           * in place — fixes the overlapping-label glitch during auto-pop
+           * swaps, where the grid cell's DOM node was being reused. */}
+          <Fade in key={cell.camera_id} timeout={250}>
+            <Typography variant="caption" color="white" fontWeight={700} noWrap sx={{ flex: 1 }}>
+              {cell.camera_name}
+            </Typography>
+          </Fade>
           {alertTitle && (
             <Chip
               label={alertTitle}
@@ -341,8 +303,7 @@ export function LiveWallPage() {
   const [gridSize, setGridSize] = useState<GridSize>(4)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [autoPop, setAutoPop] = useState(() => localStorage.getItem(AUTOPOP_KEY) !== 'false')
-  const [kiosk, setKiosk] = useState(false)
-  const setFocusMode = useFocusModeStore((s) => s.setFocusMode)
+  const { kiosk, toggleKiosk } = useKioskToggle()
   const [streamMode, setStreamMode] = useState<StreamMode>(
     () => (localStorage.getItem(MODE_KEY) as StreamMode) || 'mjpeg')
 
@@ -469,49 +430,6 @@ export function LiveWallPage() {
     localStorage.setItem(AUTOPOP_KEY, String(next))
   }
 
-  // ── Kiosk / fullscreen: Electron gets true kiosk mode; browsers get the
-  // Fullscreen API. Both also flip focus-mode so AppShell hides its own
-  // sidebar/topbar — fullscreening the window alone doesn't hide the app's
-  // own chrome. Focus-mode is the primary, always-applied toggle; the
-  // Fullscreen API call is best-effort on top of it (browsers can reject
-  // requestFullscreen for reasons outside our control — e.g. missing
-  // transient user activation — and that must not block hiding our own
-  // chrome, which is the actual ask). Esc exits browser fullscreen
-  // (Electron handles Esc itself); the fullscreenchange listener below
-  // keeps focus-mode in sync when a real fullscreen session ends.
-  // Branches on our own `kiosk` state, not document.fullscreenElement — if
-  // requestFullscreen() is ever rejected (missing user gesture, browser
-  // policy), fullscreenElement stays null while kiosk is already true, and
-  // keying off fullscreenElement would re-enter instead of exit, leaving
-  // the user stuck with no way to bring the chrome back via this button.
-  const toggleKiosk = async () => {
-    if (window.electronAPI?.setKiosk) {
-      const now = await window.electronAPI.setKiosk(!kiosk)
-      setKiosk(now)
-      setFocusMode(now)
-      return
-    }
-    if (kiosk) {
-      setKiosk(false)
-      setFocusMode(false)
-      if (document.fullscreenElement) {
-        try { await document.exitFullscreen() } catch { /* already exiting */ }
-      }
-      return
-    }
-    setKiosk(true)
-    setFocusMode(true)
-    try { await document.documentElement.requestFullscreen() } catch { /* focus mode still applies */ }
-  }
-
-  useEffect(() => {
-    const sync = () => {
-      if (!document.fullscreenElement) { setKiosk(false); setFocusMode(false) }
-    }
-    document.addEventListener('fullscreenchange', sync)
-    return () => document.removeEventListener('fullscreenchange', sync)
-  }, [setFocusMode])
-
   const addCell = (cell: WallCell) => updateCells([...cells, cell].slice(0, gridSize))
   const removeCell = (idx: number) => updateCells(cells.filter((_, i) => i !== idx))
 
@@ -533,6 +451,7 @@ export function LiveWallPage() {
       stream_id: c.stream_id,
       camera_name: c.camera_name,
       site_name: c.site_name ?? undefined,
+      analytics_modules: c.analytics_modules ?? undefined,
     })))
     setLayoutId(layout.id)
   }
@@ -582,9 +501,79 @@ export function LiveWallPage() {
     setSaveOpen(true)
   }
 
+  // ── Multi-screen profiles: a named set of N saved screens, launched
+  // together. Screen 1 applies to the current window; screens 2..N pop out
+  // as new windows (each auto-applying its own layout via ?layout=<id>,
+  // the same mechanism used for a single-layout pop-out). A small stagger
+  // avoids every window trying to open in the same instant.
+  const [profileSetupOpen, setProfileSetupOpen] = useState(false)
+  const { data: profiles = [] } = useQuery({ queryKey: ['wall-profiles'], queryFn: listWallProfiles })
+
+  // The profile currently driving this wall — tracked so an operator can grow
+  // or delete the set after the fact ("if need more screen more camera need
+  // that option to") without rebuilding it from scratch.
+  const [activeProfileId, setActiveProfileId] = useState('')
+  const activeProfile = profiles.find((p) => p.id === activeProfileId)
+  const [addScreenOpen, setAddScreenOpen] = useState(false)
+  const [newScreen, setNewScreen] = useState<WallProfileScreenInput>({
+    grid_size: 4, cells: [], analytics_modules: [],
+  })
+
+  const { mutate: addScreen, isPending: addingScreen } = useMutation({
+    mutationFn: () => addWallProfileScreen(activeProfileId, newScreen),
+    onSuccess: (updated: WallProfile) => {
+      qc.invalidateQueries({ queryKey: ['wall-profiles'] })
+      setAddScreenOpen(false)
+      setNewScreen({ grid_size: 4, cells: [], analytics_modules: [] })
+      // Pop the newly added screen straight onto its own monitor — that's the
+      // whole point of adding it, so don't make the operator go find it.
+      const added = [...updated.screens].sort((a, b) => a.screen_index - b.screen_index).pop()
+      if (added) openLiveWallWindow(added.id, { fullscreen: true })
+    },
+  })
+
+  const { mutate: removeProfile } = useMutation({
+    mutationFn: (id: string) => deleteWallProfile(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wall-profiles'] })
+      setActiveProfileId('')
+    },
+  })
+
+  const openWallProfile = (profile: WallProfile) => {
+    const ordered = [...profile.screens].sort((a, b) => a.screen_index - b.screen_index)
+    const [first, ...rest] = ordered
+    if (!first) return
+
+    const grid = (GRID_CONFIGS.some((g) => g.value === first.grid_size) ? first.grid_size : 4) as GridSize
+    setGridSize(grid)
+    updateCells(first.cells.slice(0, grid).map((c) => ({
+      camera_id: c.camera_id,
+      stream_id: c.stream_id,
+      camera_name: c.camera_name,
+      site_name: c.site_name ?? undefined,
+      analytics_modules: c.analytics_modules ?? undefined,
+    })))
+    setLayoutId(first.id)
+    setActiveProfileId(profile.id)
+    setActiveModules(first.analytics_modules)
+    localStorage.setItem(OVERLAY_MODULES_KEY, JSON.stringify(first.analytics_modules))
+
+    // Screens 2..N are destined for their own monitors, so open them already
+    // full screen rather than making the operator fullscreen each one by hand.
+    rest.forEach((screen, i) => {
+      setTimeout(() => openLiveWallWindow(screen.id, { fullscreen: true }), (i + 1) * 250)
+    })
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+    <Box
+      sx={{
+        p: kiosk ? 1 : 3,
+        ...(kiosk && { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap', flexShrink: 0 }}>
         <Typography variant="h5" fontWeight={800} sx={{ flex: 1 }}>
           Live Wall
         </Typography>
@@ -593,7 +582,13 @@ export function LiveWallPage() {
           displayEmpty
           value={layoutId}
           onChange={(e) => {
-            const layout = layouts.find((l) => l.id === e.target.value)
+            const value = e.target.value
+            if (value.startsWith('profile:')) {
+              const profile = profiles.find((p) => p.id === value.slice('profile:'.length))
+              if (profile) openWallProfile(profile)
+              return
+            }
+            const layout = layouts.find((l) => l.id === value)
             if (layout) applyLayout(layout)
             else setLayoutId('')
           }}
@@ -606,11 +601,21 @@ export function LiveWallPage() {
           <MenuItem value="">
             <em>Unsaved wall</em>
           </MenuItem>
+          <ListSubheader>Layouts</ListSubheader>
           {layouts.map((l) => (
             <MenuItem key={l.id} value={l.id}>
               <ListItemText
                 primary={l.name}
                 secondary={l.is_mine ? undefined : `Shared by ${l.owner_name}`}
+              />
+            </MenuItem>
+          ))}
+          <ListSubheader>Screen Profiles</ListSubheader>
+          {profiles.map((p) => (
+            <MenuItem key={p.id} value={`profile:${p.id}`}>
+              <ListItemText
+                primary={p.name}
+                secondary={`${p.screen_count} screen${p.screen_count === 1 ? '' : 's'}${p.is_mine ? '' : ` · Shared by ${p.owner_name}`}`}
               />
             </MenuItem>
           ))}
@@ -632,6 +637,45 @@ export function LiveWallPage() {
             <OpenInNewIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        <Tooltip title="Set up a multi-screen control room — configure N screens' cameras and analytics, save as a set, and reopen them all together">
+          <Button size="small" variant="outlined" startIcon={<DvrIcon />} onClick={() => setProfileSetupOpen(true)}>
+            Multi-Screen Setup
+          </Button>
+        </Tooltip>
+
+        {/* Active screen-profile controls — grow or remove a saved set without
+            rebuilding it from scratch. */}
+        {activeProfile && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Chip
+              size="small"
+              icon={<DvrIcon sx={{ fontSize: 14 }} />}
+              label={`${activeProfile.name} · ${activeProfile.screen_count} screen${activeProfile.screen_count === 1 ? '' : 's'}`}
+              color="primary"
+              variant="outlined"
+            />
+            {activeProfile.is_mine && (
+              <>
+                <Tooltip title="Add another screen to this profile — it opens in its own window and is saved with the set">
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => setAddScreenOpen(true)}
+                      disabled={activeProfile.screen_count >= MAX_PROFILE_SCREENS}
+                    >
+                      <AddToQueueIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title={`Delete profile "${activeProfile.name}"`}>
+                  <IconButton size="small" color="error" onClick={() => removeProfile(activeProfile.id)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </Box>
+        )}
         <Tooltip title="Automatically bring the camera on screen when a high or critical alert fires">
           <FormControlLabel
             control={<Switch size="small" checked={autoPop} onChange={toggleAutoPop} />}
@@ -703,47 +747,100 @@ export function LiveWallPage() {
         </Button>
       </Box>
 
-      <Grid container spacing={1}>
-        {Array.from({ length: gridSize }).map((_, idx) => (
-          <Grid key={idx} size={12 / cols}>
-            {cells[idx] ? (
-              <LiveCell
-                cell={cells[idx]}
-                onRemove={() => removeCell(idx)}
-                alert={alertFlash[cells[idx].camera_id] ?? null}
-                mode={streamMode}
-                activeModules={activeModules}
-                onDrawZone={() => setZoneCell(cells[idx])}
-                onOpenAlert={() => setRespondingAlert(alertFlash[cells[idx].camera_id] ?? null)}
-              />
-            ) : (
-              <Box
-                sx={{
-                  aspectRatio: '16/9',
-                  border: '2px dashed rgba(255,255,255,0.1)',
-                  borderRadius: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(108,99,255,0.05)' },
-                }}
-                onClick={() => setPickerOpen(true)}
-              >
-                <Typography color="text.disabled" variant="caption">
-                  Click to add camera
-                </Typography>
-              </Box>
-            )}
-          </Grid>
-        ))}
-      </Grid>
+      {kiosk ? (
+        // Full screen / kiosk: the wall is height-constrained to the
+        // viewport (see the outer Box below), so cells must fill their
+        // CSS-grid track top-down instead of sizing themselves bottom-up
+        // from a fixed aspect ratio — otherwise N rows either leave dead
+        // space or overflow the screen. Fixes the "doesn't fit screen" bug.
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gridTemplateRows: `repeat(${cols}, 1fr)`,
+            gap: 1,
+          }}
+        >
+          {Array.from({ length: gridSize }).map((_, idx) => (
+            <Box key={cells[idx]?.camera_id ?? `empty-${idx}`} sx={{ minHeight: 0, minWidth: 0 }}>
+              {cells[idx] ? (
+                <LiveCell
+                  cell={cells[idx]}
+                  onRemove={() => removeCell(idx)}
+                  alert={alertFlash[cells[idx].camera_id] ?? null}
+                  mode={streamMode}
+                  activeModules={activeModules}
+                  onDrawZone={() => setZoneCell(cells[idx])}
+                  onOpenAlert={() => setRespondingAlert(alertFlash[cells[idx].camera_id] ?? null)}
+                  fill
+                />
+              ) : (
+                <Box
+                  sx={{
+                    height: '100%',
+                    border: '2px dashed rgba(255,255,255,0.1)',
+                    borderRadius: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(108,99,255,0.05)' },
+                  }}
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <Typography color="text.disabled" variant="caption">
+                    Click to add camera
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          ))}
+        </Box>
+      ) : (
+        <Grid container spacing={1}>
+          {Array.from({ length: gridSize }).map((_, idx) => (
+            <Grid key={cells[idx]?.camera_id ?? `empty-${idx}`} size={12 / cols}>
+              {cells[idx] ? (
+                <LiveCell
+                  cell={cells[idx]}
+                  onRemove={() => removeCell(idx)}
+                  alert={alertFlash[cells[idx].camera_id] ?? null}
+                  mode={streamMode}
+                  activeModules={activeModules}
+                  onDrawZone={() => setZoneCell(cells[idx])}
+                  onOpenAlert={() => setRespondingAlert(alertFlash[cells[idx].camera_id] ?? null)}
+                />
+              ) : (
+                <Box
+                  sx={{
+                    aspectRatio: '16/9',
+                    border: '2px dashed rgba(255,255,255,0.1)',
+                    borderRadius: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(108,99,255,0.05)' },
+                  }}
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <Typography color="text.disabled" variant="caption">
+                    Click to add camera
+                  </Typography>
+                </Box>
+              )}
+            </Grid>
+          ))}
+        </Grid>
+      )}
 
       {/* Bottom alert strip — persistent "what just happened" feed, visible in and out of full screen */}
       {recentAlerts.length > 0 && (
         <Box
           sx={{
-            mt: 2, p: 1, borderRadius: 1.5,
+            mt: 2, p: 1, borderRadius: 1.5, flexShrink: 0,
             bgcolor: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.08)',
             display: 'flex', alignItems: 'center', gap: 1.5, overflowX: 'auto',
           }}
@@ -845,6 +942,42 @@ export function LiveWallPage() {
           <Button variant="contained" onClick={() => saveLayout()}
                   disabled={saving || !saveName.trim()}>
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <WallProfileSetupDialog
+        open={profileSetupOpen}
+        onClose={() => setProfileSetupOpen(false)}
+        onCreated={(profile) => {
+          setProfileSetupOpen(false)
+          openWallProfile(profile)
+        }}
+      />
+
+      {/* Add a screen to the already-saved profile */}
+      <Dialog open={addScreenOpen} onClose={() => setAddScreenOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Add Screen{activeProfile ? ` to “${activeProfile.name}”` : ''}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Configure this screen's cameras and analytics. It's saved with the profile and
+            opens in its own window straight away.
+          </Typography>
+          <WallScreenEditor
+            gridSize={newScreen.grid_size as GridSize}
+            cells={newScreen.cells as WallCell[]}
+            analyticsModules={newScreen.analytics_modules}
+            onChangeGridSize={(g) => setNewScreen((s) => ({ ...s, grid_size: g }))}
+            onChangeCells={(cells) => setNewScreen((s) => ({ ...s, cells }))}
+            onChangeAnalytics={(m) => setNewScreen((s) => ({ ...s, analytics_modules: m }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddScreenOpen(false)} disabled={addingScreen}>Cancel</Button>
+          <Button variant="contained" onClick={() => addScreen()} disabled={addingScreen}>
+            {addingScreen ? 'Adding…' : 'Add Screen'}
           </Button>
         </DialogActions>
       </Dialog>

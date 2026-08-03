@@ -5,7 +5,7 @@
  * offline cameras); a security guard sees their own pending duties. The
  * backend self-scopes by role, so this page just renders whatever it returns.
  */
-import { Box, Typography, Chip, Stack, Button, Skeleton } from '@mui/material'
+import { Box, Typography, Chip, Stack, Button, IconButton, Skeleton, Tooltip } from '@mui/material'
 import PhoneInTalkIcon from '@mui/icons-material/PhoneInTalk'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import RouteIcon from '@mui/icons-material/Route'
@@ -17,12 +17,17 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import DescriptionIcon from '@mui/icons-material/Description'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import LaunchIcon from '@mui/icons-material/Launch'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import FullscreenIcon from '@mui/icons-material/Fullscreen'
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { getActionCenter, type ActionItem } from '@/api/actionCenter'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
+import { openInNewWindow } from '@/lib/popoutWindow'
+import { useKioskToggle } from '@/hooks/useKioskToggle'
 
 const SEV_COLOR: Record<ActionItem['severity'], string> = {
   critical: '#FF4560',
@@ -114,6 +119,7 @@ function ActionRow({ item, onNavigate }: { item: ActionItem; onNavigate: (route:
 
 export default function ActionCenter() {
   const navigate = useNavigate()
+  const { kiosk, toggleKiosk } = useKioskToggle()
   const { data, isLoading } = useQuery({
     queryKey: ['action-center'],
     queryFn: getActionCenter,
@@ -124,7 +130,29 @@ export default function ActionCenter() {
 
   return (
     <Box>
-      <PageHeader title="Action Center" subtitle="What needs your attention right now" />
+      <PageHeader
+        title="Action Center"
+        subtitle="What needs your attention right now"
+        action={
+          <Stack direction="row" spacing={1}>
+            <Tooltip title="Send Action Center to another monitor — opens its own window already in full screen (Esc to leave full screen there)">
+              <IconButton size="small" onClick={() => openInNewWindow('/action-center', { fullscreen: true })}>
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Full screen for continuous monitoring'}>
+              <Button
+                size="small"
+                variant={kiosk ? 'contained' : 'outlined'}
+                startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
+                onClick={toggleKiosk}
+              >
+                {kiosk ? 'Exit Full Screen' : 'Full Screen'}
+              </Button>
+            </Tooltip>
+          </Stack>
+        }
+      />
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2.5, flexWrap: 'wrap' }}>
         {[

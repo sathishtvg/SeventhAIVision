@@ -54,7 +54,7 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
-      PaperProps={{ sx: { background: 'rgba(15,15,35,0.95)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.08)' } }}>
+      slotProps={{ paper: { sx: { background: 'rgba(15,15,35,0.95)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.08)' } } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
         <AccountCircleIcon sx={{ color: '#6C63FF' }} />
         My Account
@@ -87,8 +87,10 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
                     s.last_ip ? `IP: ${s.last_ip}` : null,
                     s.last_seen_at ? `Last seen: ${new Date(s.last_seen_at).toLocaleString()}` : null,
                   ].filter(Boolean).join('  ·  ')}
-                  primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
-                  secondaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                  slotProps={{
+                    primary: { variant: 'body2', fontWeight: 600 },
+                    secondary: { variant: 'caption', color: 'text.secondary' },
+                  }}
                 />
                 <ListItemSecondaryAction>
                   <Tooltip title="Revoke this session">

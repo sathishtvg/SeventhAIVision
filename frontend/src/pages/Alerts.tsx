@@ -1,11 +1,37 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Box, Chip, Stack, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Button, Skeleton, Paper, Divider, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, Checkbox, Drawer, IconButton,
-  List, ListItem, ListItemText, CircularProgress, FormControl, InputLabel, Select, MenuItem,
+  Box,
+  Chip,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Skeleton,
+  Paper,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Checkbox,
+  Drawer,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import CloseIcon from '@mui/icons-material/Close'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone'
@@ -60,7 +86,7 @@ function AlertDetailDrawer({ alertId, alert, onClose }: { alertId: string; alert
   })
 
   return (
-    <Drawer anchor="right" open={!!alertId} onClose={onClose} PaperProps={{ sx: { width: 400, bgcolor: 'rgba(8,8,24,0.95)', backdropFilter: 'blur(20px)', p: 2 } }}>
+    <Drawer anchor="right" open={!!alertId} onClose={onClose} slotProps={{ paper: { sx: { width: 400, bgcolor: 'rgba(8,8,24,0.95)', backdropFilter: 'blur(20px)', p: 2 } } }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography variant="h6" sx={{ fontWeight: 600 }}>Alert Detail</Typography>
         <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
@@ -130,8 +156,7 @@ function AlertDetailDrawer({ alertId, alert, onClose }: { alertId: string; alert
               <ListItemText
                 primary={n.note}
                 secondary={`${n.author_name ?? n.author_email ?? 'System'} · ${new Date(n.created_at).toLocaleString()}`}
-                primaryTypographyProps={{ variant: 'body2' }}
-                secondaryTypographyProps={{ variant: 'caption' }}
+                slotProps={{ primary: { variant: 'body2' }, secondary: { variant: 'caption' } }}
               />
             </ListItem>
           ))}

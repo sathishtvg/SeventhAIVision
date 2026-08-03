@@ -6,7 +6,14 @@
  * reports the polygon via onChange, doesn't own the "committed" value.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Box, Button, ButtonGroup, Stack, Typography, CircularProgress } from '@mui/material'
+import {
+  Box,
+  Button,
+  ButtonGroup,
+  Typography,
+  CircularProgress,
+} from '@mui/material'
+import Stack from '@/components/common/Stack'
 import { useQuery } from '@tanstack/react-query'
 import { getStreams } from '@/api/cameras'
 import { apiClient } from '@/api/client'

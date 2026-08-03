@@ -31,6 +31,14 @@ class SiteUpdate(BaseModel):
     is_active: bool | None = None
     client_id: str | None = None
     bill_rate: float | None = None
+    # Visitor Management: enabling VMS and binding this site's own ANPR
+    # cameras to its entry/exit lanes. Update-only (not on create) because
+    # the cameras have to exist and be assigned to the site first — the
+    # same reason employee pay fields are edit-only on users.
+    vms_enabled: bool | None = None
+    entry_lpr_camera_id: str | None = None
+    exit_lpr_camera_id: str | None = None
+    free_parking_minutes: int | None = None
 
 
 @router.get("", dependencies=[Depends(require_permission("camera:read"))])
@@ -54,6 +62,8 @@ async def list_sites(
             SELECT s.id, s.name, s.address, s.description,
                    s.latitude, s.longitude, s.geofence_radius_meters, s.is_active,
                    s.client_id, s.bill_rate, bc.name AS client_name,
+                   s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
+                   s.free_parking_minutes,
                    s.created_at, s.updated_at,
                    COUNT(c.id) AS camera_count
             FROM sites s
@@ -109,6 +119,8 @@ async def get_site(
             SELECT s.id, s.name, s.address, s.description,
                    s.latitude, s.longitude, s.geofence_radius_meters, s.is_active,
                    s.client_id, s.bill_rate, bc.name AS client_name,
+                   s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
+                   s.free_parking_minutes,
                    s.created_at, s.updated_at,
                    COUNT(c.id) AS camera_count
             FROM sites s
@@ -147,6 +159,23 @@ async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends
         sets.append("client_id = :client_id"); params["client_id"] = body.client_id
     if body.bill_rate is not None:
         sets.append("bill_rate = :bill_rate"); params["bill_rate"] = body.bill_rate
+    if body.vms_enabled is not None:
+        sets.append("vms_enabled = :vms_enabled"); params["vms_enabled"] = body.vms_enabled
+    # The LPR camera bindings and the parking allowance key off model_fields_set
+    # rather than `is not None`, because explicitly sending null is the only way
+    # to UNBIND a camera or clear the allowance. The `is not None` pattern used
+    # by the fields above silently ignores a null, which would make an entry
+    # lane impossible to detach once set.
+    for field, column in (
+        ("entry_lpr_camera_id", "entry_lpr_camera_id"),
+        ("exit_lpr_camera_id", "exit_lpr_camera_id"),
+    ):
+        if field in body.model_fields_set:
+            sets.append(f"{column} = CAST(:{field} AS uuid)")
+            params[field] = getattr(body, field)
+    if "free_parking_minutes" in body.model_fields_set:
+        sets.append("free_parking_minutes = :free_parking_minutes")
+        params["free_parking_minutes"] = body.free_parking_minutes
 
     if not sets:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")

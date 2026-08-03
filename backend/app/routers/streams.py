@@ -571,7 +571,15 @@ async def stop_recording(
             ),
             {"id": recording_id},
         )
+        # commit clears the transaction-scoped app.current_tenant GUC (SET LOCAL
+        # semantics) — capture it, commit, restore it so the RLS-scoped read-back
+        # below still sees this tenant. Without this the SELECT runs with an empty
+        # GUC and `recordings`' policy fails casting '' to uuid, turning a normal
+        # stop-recording into a 500. Same convention as leave.py/training.py.
+        tid = (await db.execute(text("SELECT current_setting('app.current_tenant', true)"))).scalar()
         await db.commit()
+        if tid:
+            await db.execute(text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tid})
 
     result = await db.execute(
         text("SELECT id, status, started_at, ended_at, file_size_bytes, duration_seconds FROM recordings WHERE id = :id"),

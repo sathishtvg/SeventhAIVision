@@ -501,6 +501,7 @@ function CameraStreams({ cameraId }: { cameraId: string }) {
                     />
                   </Box>
                 }
+                slotProps={{ secondary: { component: 'div' } }}
               />
               <ListItemSecondaryAction sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
                 <PermissionGuard permission="camera:update">

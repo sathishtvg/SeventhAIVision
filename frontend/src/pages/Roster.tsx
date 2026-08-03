@@ -4,10 +4,33 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, IconButton, InputLabel, MenuItem, Select, Stack, Switch, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, Paper,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+  Paper,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -161,9 +184,9 @@ function AutoScheduleDialog({ open, onClose, onGenerated }: {
         </Select>
         <Stack direction="row" spacing={1.5}>
           <TextField label="From" type="date" size="small" value={periodStart}
-                     onChange={(e) => setPeriodStart(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} />
+                     onChange={(e) => setPeriodStart(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }} />
           <TextField label="To" type="date" size="small" value={periodEnd}
-                     onChange={(e) => setPeriodEnd(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} />
+                     onChange={(e) => setPeriodEnd(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }} />
         </Stack>
         {isError && (
           <Typography variant="caption" color="error">Failed to generate — check the period and try again.</Typography>
@@ -336,9 +359,9 @@ function EditShiftDialog({ shift, extraNote, onClose }: {
           </Select>
         </FormControl>
         <TextField label="Start" type="datetime-local" size="small" value={startLocal}
-                   onChange={(e) => setStartLocal(e.target.value)} InputLabelProps={{ shrink: true }} />
+                   onChange={(e) => setStartLocal(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="End" type="datetime-local" size="small" value={endLocal}
-                   onChange={(e) => setEndLocal(e.target.value)} InputLabelProps={{ shrink: true }} />
+                   onChange={(e) => setEndLocal(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isPending}>Cancel</Button>
@@ -394,9 +417,9 @@ function LeavePreferencesCard({ onLeaveCreated }: {
           {guards.map((g) => <MenuItem key={g.id} value={g.id}>{g.full_name ?? g.email}</MenuItem>)}
         </Select>
         <TextField label="From" type="date" size="small" value={startDate}
-                   onChange={(e) => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+                   onChange={(e) => setStartDate(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="To" type="date" size="small" value={endDate}
-                   onChange={(e) => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+                   onChange={(e) => setEndDate(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="Reason (optional)" size="small" value={reason}
                    onChange={(e) => setReason(e.target.value)} sx={{ flex: 1, minWidth: 140 }} />
         <Button size="small" variant="contained" disabled={isPending || !guardId || !startDate || !endDate}

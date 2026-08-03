@@ -150,6 +150,33 @@ async def _handle_lpr_parking(redis_client: Redis, tenant_id_str: str, payload: 
         logger.error("_handle_lpr_parking failed tenant=%s: %s", tenant_id_str, exc)
 
 
+async def _handle_lpr_access(redis_client: Redis, tenant_id_str: str, payload: dict) -> None:
+    """Fire-and-forget: run the gate chain for one plate read — access
+    decision, barrier actuation, and the site's visitor entry/exit.
+
+    Deliberately a SEPARATE task from _handle_lpr_parking rather than an
+    extension of it: parking meters occupancy and fees, this decides whether a
+    vehicle may enter and who is driving it. A failure in either must not stop
+    the other from running, and a site can legitimately use one without the
+    other.
+    """
+    from sqlalchemy import text as sa_text
+
+    from app.services.vms import handle_lpr_access
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                sa_text("SELECT set_config('app.current_tenant', :tid, true)"),
+                {"tid": tenant_id_str},
+            )
+            await handle_lpr_access(
+                session, redis_client, tenant_id=tenant_id_str, payload=payload
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.error("_handle_lpr_access failed tenant=%s: %s", tenant_id_str, exc)
+
+
 async def redis_pubsub_listener(redis_client: Redis) -> None:
     """Reconnects automatically on any Redis connection error (e.g. Docker
     network resets between containers) so a transient disruption doesn't
@@ -208,8 +235,12 @@ async def redis_pubsub_listener(redis_client: Redis) -> None:
                     )
 
                 elif event_type == "lpr_plate_detected":
+                    lpr_payload = parsed.get("payload", {})
                     asyncio.create_task(
-                        _handle_lpr_parking(redis_client, tenant_id_str, parsed.get("payload", {}))
+                        _handle_lpr_parking(redis_client, tenant_id_str, lpr_payload)
+                    )
+                    asyncio.create_task(
+                        _handle_lpr_access(redis_client, tenant_id_str, lpr_payload)
                     )
 
                 # ── T4–T8: non-alert event notification dispatch ──────────

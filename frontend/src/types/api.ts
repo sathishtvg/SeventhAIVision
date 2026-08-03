@@ -339,10 +339,28 @@ export interface AuditLog {
   created_at: string
 }
 
+/** The ten vehicle categories from migration 0076. `category` is the field
+ * admins set; `list_type` below is derived from it by a database trigger and
+ * is read-only from the client's point of view. */
+export type VehicleCategory =
+  | 'whitelist' | 'blacklist' | 'watchlist' | 'vip' | 'staff'
+  | 'visitor' | 'contractor' | 'emergency' | 'government' | 'unknown'
+
 export interface WatchlistEntry {
   id: string
   plate_number: string
+  /** Derived from `category` by a DB trigger — never send this, it will be
+   * overwritten. Kept in the type because the API still returns it and the
+   * LPR worker still reads it. */
   list_type: 'allow' | 'block'
+  category: VehicleCategory
+  owner_name: string | null
+  company: string | null
+  vehicle_type: string | null
+  vehicle_color: string | null
+  valid_from: string | null
+  valid_to: string | null
+  remarks: string | null
   reason: string | null
   is_active: boolean
   expires_at: string | null
@@ -463,6 +481,14 @@ export interface Site {
   client_id: string | null
   bill_rate: number | null
   client_name: string | null
+  /** Visitor Management (migration 0077) — VMS is switched on per site and
+   * driven by that site's own ANPR cameras. All null/false means the site
+   * uses the manual visitor flow, which is the default. */
+  vms_enabled: boolean
+  entry_lpr_camera_id: string | null
+  exit_lpr_camera_id: string | null
+  /** null = this site does not meter parking, so nothing can ever overstay. */
+  free_parking_minutes: number | null
   created_at: string
   updated_at: string
 }

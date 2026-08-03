@@ -85,14 +85,14 @@ function PdfReportsTab() {
             <TextField
               label="From" type="date" value={siteForm.date_from} fullWidth size="small"
               onChange={(e) => setSiteForm({ ...siteForm, date_from: e.target.value })}
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField
               label="Until" type="date" value={siteForm.date_until} fullWidth size="small"
               onChange={(e) => setSiteForm({ ...siteForm, date_until: e.target.value })}
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
@@ -121,14 +121,14 @@ function PdfReportsTab() {
             <TextField
               label="From" type="date" value={dobForm.date_from} fullWidth size="small"
               onChange={(e) => setDobForm({ ...dobForm, date_from: e.target.value })}
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField
               label="Until" type="date" value={dobForm.date_until} fullWidth size="small"
               onChange={(e) => setDobForm({ ...dobForm, date_until: e.target.value })}
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 4 }}>

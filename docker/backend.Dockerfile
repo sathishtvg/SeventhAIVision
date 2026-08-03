@@ -27,8 +27,16 @@ RUN mkdir -p /app/shared/shared \
     && mkdir -p /app/backend/app \
     && touch /app/backend/app/__init__.py
 
-RUN pip install --no-cache-dir -e /app/shared && \
-    pip install --no-cache-dir -e "/app/backend[dev]"
+# This install pulls several hundred MB (torch, insightface, onnxruntime), which
+# makes it the one layer most likely to die on a slow/flaky link — it has failed
+# here with a PyPI ReadTimeoutError. Two mitigations:
+#   * --retries/--timeout so a single slow response doesn't abort the build;
+#   * a BuildKit cache mount instead of --no-cache-dir, so a retry reuses
+#     already-downloaded wheels rather than starting the download over. The
+#     cache lives outside the image, so image size is unchanged.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --retries 10 --timeout 120 -e /app/shared && \
+    pip install --retries 10 --timeout 120 -e "/app/backend[dev]"
 
 # ── 2. Overlay full source (invalidates only the COPY layer, not pip install) ──
 COPY shared/ /app/shared/

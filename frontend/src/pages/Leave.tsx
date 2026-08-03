@@ -6,11 +6,34 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  Box, Typography, Chip, Select, MenuItem, FormControl, InputLabel, Skeleton,
-  Stack, Button, Divider, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, IconButton, Tabs, Tab, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Switch, FormControlLabel,
+  Box,
+  Typography,
+  Chip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Skeleton,
+  Button,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Switch,
+  FormControlLabel,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import TodayIcon from '@mui/icons-material/Today'
@@ -180,11 +203,11 @@ function RequestLeaveDialog({ open, onClose }: { open: boolean; onClose: () => v
           )}
           <TextField
             size="small" label="Start Date" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={startDate} onChange={(e) => setStartDate(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={startDate} onChange={(e) => setStartDate(e.target.value)}
           />
           <TextField
             size="small" label="End Date" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={endDate} onChange={(e) => setEndDate(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={endDate} onChange={(e) => setEndDate(e.target.value)}
           />
           <TextField
             size="small" label="Reason (optional)" multiline minRows={2} fullWidth

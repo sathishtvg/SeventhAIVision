@@ -31,6 +31,8 @@ import { PlaybackPage } from '@/pages/Playback'
 import { RosterPage } from '@/pages/Roster'
 import { AttendancePage } from '@/pages/Attendance'
 import { ViolationsPage } from '@/pages/Violations'
+import { BarriersPage } from '@/pages/Barriers'
+import { MapViewPage } from '@/pages/MapView'
 import { LeavePage } from '@/pages/Leave'
 import { PayrollPage } from '@/pages/Payroll'
 import { InvoicingPage } from '@/pages/Invoicing'
@@ -128,6 +130,8 @@ export default function App() {
         <Route path="roster" element={<RosterPage />} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="violations" element={<ViolationsPage />} />
+        <Route path="barriers" element={<BarriersPage />} />
+        <Route path="map" element={<MapViewPage />} />
         <Route path="leave" element={<LeavePage />} />
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="invoicing" element={<InvoicingPage />} />

@@ -7,10 +7,29 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  Box, Typography, Chip, Skeleton, Stack, Button, Divider, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, IconButton, Tabs, Tab, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, MenuItem,
+  Box,
+  Typography,
+  Chip,
+  Skeleton,
+  Button,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  MenuItem,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import DomainIcon from '@mui/icons-material/Domain'
@@ -250,16 +269,16 @@ function NewInvoiceDialog({ open, onClose, onCreated }: { open: boolean; onClose
           </TextField>
           <TextField
             size="small" label="Period Start" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={periodStart} onChange={(e) => setPeriodStart(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={periodStart} onChange={(e) => setPeriodStart(e.target.value)}
           />
           <TextField
             size="small" label="Period End" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
           />
           <TextField size="small" label="Tax Rate (%)" type="number" fullWidth value={taxRate} onChange={(e) => setTaxRate(e.target.value)} inputProps={{ min: 0, step: 0.1 }} />
           <TextField
             size="small" label="Due Date (optional)" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={dueDate} onChange={(e) => setDueDate(e.target.value)}
           />
         </Stack>
       </DialogContent>

@@ -148,7 +148,14 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import redis,os; redis.from_url(os.environ['REDIS_URL']).ping()"]
       interval: 15s
-      timeout: 5s
+      # 5s was too tight: this check spawns a fresh Python interpreter inside a
+      # container whose CPU is saturated by model inference, so interpreter
+      # start + `import redis` alone can exceed it. The face worker sat at a
+      # 208-long failing streak on "exceeded timeout (5s)" while actually
+      # processing frames fine — a permanently-unhealthy container blocks
+      # depends_on: service_healthy and hides real failures, so it's worth the
+      # extra headroom.
+      timeout: 20s
       retries: 5
       start_period: 20s
 

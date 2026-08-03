@@ -39,6 +39,11 @@ async def get_cc_overview(
             s.id,
             s.name,
             s.address,
+            -- Coordinates so the map view can plot this card without a second
+            -- round trip. NULL for sites that haven't been surveyed yet; the
+            -- map lists those separately rather than dropping them silently.
+            s.latitude,
+            s.longitude,
             COALESCE(SUM(CASE WHEN ls.status = 'online'   THEN 1 ELSE 0 END), 0) AS cameras_online,
             COALESCE(SUM(CASE WHEN ls.status = 'offline'  THEN 1 ELSE 0 END), 0) AS cameras_offline,
             COALESCE(SUM(CASE WHEN ls.status = 'degraded' THEN 1 ELSE 0 END), 0) AS cameras_degraded,
@@ -120,6 +125,10 @@ async def get_cc_overview(
             "id":               sid,
             "name":             s["name"],
             "address":          s.get("address"),
+            # Floats, not Decimal — these are serialised straight to JSON for
+            # the map and Decimal would need a custom encoder.
+            "latitude":         float(s["latitude"]) if s["latitude"] is not None else None,
+            "longitude":        float(s["longitude"]) if s["longitude"] is not None else None,
             "cameras_online":   int(s["cameras_online"]),
             "cameras_offline":  int(s["cameras_offline"]),
             "cameras_degraded": int(s["cameras_degraded"]),

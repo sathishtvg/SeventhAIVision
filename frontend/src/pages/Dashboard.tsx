@@ -1,8 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Box, Button, Chip, CircularProgress, Divider, Grid, LinearProgress, MenuItem, Select, Skeleton,
-  Stack, Tooltip, Typography,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Divider,
+  Grid,
+  LinearProgress,
+  MenuItem,
+  Select,
+  Skeleton,
+  Tooltip,
+  Typography,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import { useAuthStore } from '@/store/auth'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { openLiveWallWindow } from '@/lib/liveWallWindow'

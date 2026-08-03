@@ -39,6 +39,7 @@ export function useCountUp(target: number | undefined, durationMs = 800): number
   const [display, setDisplay] = useState(0)
   const fromRef = useRef(0)
   const rafRef = useRef<number>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
     if (target === undefined) return
@@ -52,6 +53,11 @@ export function useCountUp(target: number | undefined, durationMs = 800): number
     if (delta === 0) return
     const start = performance.now()
 
+    const finish = () => {
+      setDisplay(target)
+      fromRef.current = target
+    }
+
     const tick = (now: number) => {
       const elapsed = now - start
       const t = Math.min(1, elapsed / durationMs)
@@ -59,11 +65,18 @@ export function useCountUp(target: number | undefined, durationMs = 800): number
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick)
       } else {
-        fromRef.current = target
+        finish()
       }
     }
     rafRef.current = requestAnimationFrame(tick)
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    // Safety net: requestAnimationFrame is throttled or never fires on a
+    // backgrounded/unfocused tab (e.g. an always-open second-monitor ops
+    // dashboard), which would otherwise leave the KPI stuck at 0 forever.
+    timeoutRef.current = setTimeout(finish, durationMs + 200)
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target, durationMs])
 

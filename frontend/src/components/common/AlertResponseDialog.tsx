@@ -1,9 +1,20 @@
 import { useState } from 'react'
 import {
-  Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Alert as MuiAlert, List, ListItemButton, ListItemText, Stack,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Alert as MuiAlert,
+  List,
+  ListItemButton,
+  ListItemText,
   Typography,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'

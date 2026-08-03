@@ -277,7 +277,14 @@ async def test_delivery(
     log_id = await _create_delivery_log(
         db, str(token.tenant_id), sub.id, "test_delivery", None, test_payload
     )
+    # commit clears the transaction-scoped app.current_tenant GUC (SET LOCAL
+    # semantics); restore it so the RLS-scoped read-back of webhook_delivery_log
+    # below still sees this tenant instead of failing on an empty GUC.
     await db.commit()
+    await db.execute(
+        text("SELECT set_config('app.current_tenant', :tid, true)"),
+        {"tid": str(token.tenant_id)},
+    )
     await _attempt_delivery(
         log_id=log_id,
         sub_id=sub.id,

@@ -28,6 +28,11 @@ class WallCellIn(BaseModel):
     stream_id: str
     camera_name: str = ""
     site_name: str | None = None
+    # Per-camera analytics override. None = inherit whatever the screen (or the
+    # wall-wide switcher) has selected; a list = show exactly these modules on
+    # this camera regardless. Lives in the existing `cells` JSONB, so this
+    # needed no migration — the column is already a free-form array of cells.
+    analytics_modules: list[str] | None = None
 
 
 class LayoutCreate(BaseModel):
@@ -61,7 +66,8 @@ async def list_layouts(
                    u.full_name AS owner_name
             FROM wall_layouts wl
             JOIN users u ON u.id = wl.user_id
-            WHERE wl.user_id = CAST(:uid AS uuid) OR wl.is_shared = TRUE
+            WHERE (wl.user_id = CAST(:uid AS uuid) OR wl.is_shared = TRUE)
+              AND wl.profile_id IS NULL
             ORDER BY (wl.user_id = CAST(:uid AS uuid)) DESC, wl.name
         """),
         {"uid": token.user_id},

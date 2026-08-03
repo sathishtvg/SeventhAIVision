@@ -16,12 +16,17 @@ import PersonIcon from '@mui/icons-material/Person'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import MonitorIcon from '@mui/icons-material/Monitor'
 import FlagIcon from '@mui/icons-material/Flag'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import FullscreenIcon from '@mui/icons-material/Fullscreen'
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { useNavigate } from 'react-router-dom'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getCCOverview } from '@/api/commandCentre'
 import { AlertResponseDialog } from '@/components/common/AlertResponseDialog'
 import { openLiveWallWindow } from '@/lib/liveWallWindow'
+import { openInNewWindow } from '@/lib/popoutWindow'
+import { useKioskToggle } from '@/hooks/useKioskToggle'
 import type { SiteStatus, RecentAlert, GuardStatus } from '@/api/commandCentre'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -349,6 +354,7 @@ export default function CommandCentre() {
   const qc = useQueryClient()
   const [now, setNow] = useState(new Date())
   const [selectedAlert, setSelectedAlert] = useState<RecentAlert | null>(null)
+  const { kiosk, toggleKiosk } = useKioskToggle()
   const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['cc-overview'],
     queryFn: getCCOverview,
@@ -394,6 +400,21 @@ export default function CommandCentre() {
           <Tooltip title="Open Live Wall in a new window — keep this Command Centre visible while monitoring cameras on another screen">
             <Button variant="outlined" size="small" startIcon={<LiveTvIcon />} onClick={() => openLiveWallWindow()}>
               Live Wall
+            </Button>
+          </Tooltip>
+          <Tooltip title="Send Command Centre to another monitor — opens its own window already in full screen (Esc to leave full screen there)">
+            <IconButton size="small" onClick={() => openInNewWindow('/command-centre', { fullscreen: true })}>
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Full screen for continuous monitoring'}>
+            <Button
+              size="small"
+              variant={kiosk ? 'contained' : 'outlined'}
+              startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
+              onClick={toggleKiosk}
+            >
+              {kiosk ? 'Exit Full Screen' : 'Full Screen'}
             </Button>
           </Tooltip>
         </Box>
