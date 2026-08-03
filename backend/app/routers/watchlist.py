@@ -44,7 +44,9 @@ class PlateWatchlistCreate(BaseModel):
     valid_to: date | None = None
     remarks: str | None = None
     # Accepted for backward compatibility with any existing caller that still
-    # sends the old binary field. Ignored — the trigger owns list_type now.
+    # sends the old binary field. Translated into a category by
+    # `_resolve_category` — never written directly, since the trigger owns
+    # list_type now.
     list_type: str | None = None
 
 
@@ -68,6 +70,32 @@ def _validate_category(category: str) -> None:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"unknown category '{category}'; expected one of: {', '.join(VEHICLE_CATEGORIES)}",
         )
+
+
+# Pre-0076 callers (the old web page, mobile, any integration) send the binary
+# `list_type` and no `category`. Translating it is what actually makes that
+# contract backward-compatible: without this, a caller registering a stolen
+# vehicle as list_type="block" gets a 201 back and a row the trigger silently
+# rewrites to 'allow' — a barred plate that auto-opens the barrier.
+_LEGACY_LIST_TYPE_CATEGORY = {"block": "blacklist", "allow": "whitelist"}
+
+
+def _resolve_category(body: PlateWatchlistCreate) -> str:
+    """An explicit `category` always wins — it is the newer, richer statement of
+    intent. `model_fields_set` (not a None check) is what distinguishes "caller
+    omitted category, so the default applied" from "caller explicitly chose
+    watchlist"; only the former may be overridden by a legacy list_type."""
+    if "category" in body.model_fields_set:
+        return body.category
+    if body.list_type:
+        mapped = _LEGACY_LIST_TYPE_CATEGORY.get(body.list_type.strip().lower())
+        if mapped is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"unknown list_type '{body.list_type}'; expected 'allow' or 'block'",
+            )
+        return mapped
+    return body.category
 
 
 class FaceWatchlistCreate(BaseModel):
@@ -112,7 +140,8 @@ async def create_plate_watchlist_entry(
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
-    _validate_category(body.category)
+    category = _resolve_category(body)
+    _validate_category(category)
     if body.valid_from and body.valid_to and body.valid_to < body.valid_from:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "valid_to cannot be earlier than valid_from"
@@ -136,7 +165,7 @@ async def create_plate_watchlist_entry(
         ),
         {
             "plate": body.plate_number.strip().upper(),
-            "category": body.category,
+            "category": category,
             "reason": body.reason,
             "owner_name": body.owner_name,
             "company": body.company,

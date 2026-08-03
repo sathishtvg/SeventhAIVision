@@ -152,6 +152,57 @@ async def test_trigger_overrules_a_contradictory_list_type():
     assert await _list_type_of(tid, "SNEAK01") == "block"
 
 
+async def test_legacy_block_without_a_category_still_blocks():
+    """The pre-0076 contract is `list_type` with no `category`. Translating it
+    is load-bearing, not politeness: the trigger's CASE sends anything that
+    isn't category='blacklist' to 'allow', so a caller registering a stolen
+    vehicle the old way would get a 201 and a plate that opens the barrier.
+    This is a real regression that shipped and was caught by test_watchlist."""
+    tid, _, token = await _seed_tenant()
+    async with _client(token) as c:
+        r = await c.post("/api/v1/watchlist/plates", json={
+            "plate_number": "LEGACY01", "list_type": "block", "reason": "Stolen vehicle",
+        })
+    assert r.status_code == 201
+    assert r.json()["category"] == "blacklist"
+    assert await _list_type_of(tid, "LEGACY01") == "block"
+
+
+async def test_explicit_category_beats_a_legacy_list_type():
+    """Both fields present: the richer, newer one wins. Guards against a fix
+    that translates list_type unconditionally and clobbers real admin intent."""
+    tid, _, token = await _seed_tenant()
+    async with _client(token) as c:
+        r = await c.post("/api/v1/watchlist/plates", json={
+            "plate_number": "BOTH01", "category": "vip", "list_type": "block",
+        })
+    assert r.status_code == 201
+    assert r.json()["category"] == "vip"
+    assert await _list_type_of(tid, "BOTH01") == "allow"
+
+
+async def test_legacy_allow_maps_to_whitelist():
+    tid, _, token = await _seed_tenant()
+    async with _client(token) as c:
+        r = await c.post("/api/v1/watchlist/plates", json={
+            "plate_number": "LEGACY02", "list_type": "allow",
+        })
+    assert r.status_code == 201
+    assert r.json()["category"] == "whitelist"
+    assert await _list_type_of(tid, "LEGACY02") == "allow"
+
+
+async def test_garbage_legacy_list_type_is_rejected_not_defaulted():
+    """Fail loudly. Defaulting an unrecognised value would put it on the
+    permissive side of a gate."""
+    _, _, token = await _seed_tenant()
+    async with _client(token) as c:
+        r = await c.post("/api/v1/watchlist/plates", json={
+            "plate_number": "JUNK01", "list_type": "blocked",
+        })
+    assert r.status_code == 422
+
+
 async def test_trigger_refires_when_category_is_edited():
     tid, _, token = await _seed_tenant()
     async with _client(token) as c:
