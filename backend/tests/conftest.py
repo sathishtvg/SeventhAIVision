@@ -73,15 +73,24 @@ async def db_session():
     the restricted runtime role, never the migration superuser: RLS tests are
     meaningless against a role that bypasses RLS."""
     engine = create_async_engine(TEST_DATABASE_URL)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-    session = session_factory()
-    await session.begin()
     try:
-        yield session
+        session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        session = session_factory()
+        await session.begin()
+        try:
+            yield session
+        finally:
+            await session.rollback()
+            await session.close()
     finally:
-        await session.rollback()
-        await session.close()
-    await engine.dispose()
+        # dispose() must be inside a finally, not trailing the try/finally above:
+        # every fixture instance builds its OWN engine with its own pool, so if a
+        # test raises (including pytest-timeout's SIGALRM-injected Failed) the
+        # engine is stranded holding live asyncpg connections. Those surface as
+        # MissingGreenlet when the GC later tries to await their close, and enough
+        # of them exhaust Postgres's connection slots — turning one failing test
+        # into a cascade of 300s timeouts across the rest of the suite.
+        await engine.dispose()
 
 
 async def set_tenant(session: AsyncSession, tenant_id: uuid.UUID | None) -> None:
@@ -119,10 +128,13 @@ async def admin_session():
         f"postgresql+asyncpg://postgres:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
     )
     engine = create_async_engine(admin_url)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-    async with session_factory() as session:
-        yield session
-    await engine.dispose()
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with session_factory() as session:
+            yield session
+    finally:
+        # See db_session above for why this must be a finally, not a trailing await.
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -168,6 +180,8 @@ async def auth_client():
     )
     seed_engine = create_async_engine(admin_url)
     seed_factory = async_sessionmaker(seed_engine, expire_on_commit=False, class_=AsyncSession)
+    # Seeding runs before the yield, so a failure here (duplicate key, DB down)
+    # would strand seed_engine the same way — hence the try/finally below.
 
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
@@ -175,20 +189,22 @@ async def auth_client():
     user_email = f"admin-{tenant_id.hex[:8]}@test.local"
     user_password = "test-secret-999"
 
-    async with seed_factory() as session:
-        await session.execute(
-            text("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)"),
-            {"id": tenant_id, "name": f"Auth Tenant {slug}", "slug": slug},
-        )
-        await session.execute(
-            text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-                "VALUES (:id, :tid, 2, :email, :pw)"
-            ),
-            {"id": user_id, "tid": tenant_id, "email": user_email, "pw": hash_password(user_password)},
-        )
-        await session.commit()
-    await seed_engine.dispose()
+    try:
+        async with seed_factory() as session:
+            await session.execute(
+                text("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)"),
+                {"id": tenant_id, "name": f"Auth Tenant {slug}", "slug": slug},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
+                    "VALUES (:id, :tid, 2, :email, :pw)"
+                ),
+                {"id": user_id, "tid": tenant_id, "email": user_email, "pw": hash_password(user_password)},
+            )
+            await session.commit()
+    finally:
+        await seed_engine.dispose()
 
     token = create_access_token(str(user_id), str(tenant_id), 2)
 
