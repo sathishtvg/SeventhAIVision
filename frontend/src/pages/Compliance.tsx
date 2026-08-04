@@ -17,7 +17,6 @@ import {
   MenuItem,
   Paper,
   Select,
-  Stack,
   Tab,
   Table,
   TableBody,
@@ -29,6 +28,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
@@ -191,7 +191,7 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
           </FormControl>
           <TextField label="Scheduled Time (UTC)" value={form.scheduled_time} type="time"
             onChange={e => setForm(f => ({ ...f, scheduled_time: e.target.value }))}
-            InputLabelProps={{ shrink: true }} />
+            slotProps={{ inputLabel: { shrink: true } }} />
           <TextField label="Window (minutes)" value={form.window_minutes} type="number"
             inputProps={{ min: 5, max: 120 }}
             onChange={e => setForm(f => ({ ...f, window_minutes: Number(e.target.value) }))}
@@ -451,9 +451,9 @@ function OccurrencesTab() {
       {/* Filters */}
       <Stack direction="row" spacing={2} flexWrap="wrap">
         <TextField label="From" type="date" size="small" value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
+          onChange={e => setDateFrom(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="To" type="date" size="small" value={dateTo}
-          onChange={e => setDateTo(e.target.value)} InputLabelProps={{ shrink: true }} />
+          onChange={e => setDateTo(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <FormControl size="small" sx={{ minWidth: 130 }}>
           <InputLabel>Status</InputLabel>
           <Select value={statusFilter} label="Status"
@@ -580,9 +580,9 @@ function ReportTab() {
     <Stack spacing={3}>
       <Stack direction="row" spacing={2} alignItems="flex-end" flexWrap="wrap">
         <TextField label="From" type="date" size="small" value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
+          onChange={e => setDateFrom(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="To" type="date" size="small" value={dateTo}
-          onChange={e => setDateTo(e.target.value)} InputLabelProps={{ shrink: true }} />
+          onChange={e => setDateTo(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <Button variant="contained" onClick={() => setTriggerFetch(true)}>
           Generate Report
         </Button>

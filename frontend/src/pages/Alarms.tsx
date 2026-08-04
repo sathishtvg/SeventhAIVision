@@ -16,7 +16,6 @@ import {
   MenuItem,
   Paper,
   Select,
-  Stack,
   Tab,
   Table,
   TableBody,
@@ -28,6 +27,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'

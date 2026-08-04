@@ -69,12 +69,12 @@ async def _get_scim_context(request: Request, db: AsyncSession = Depends(get_raw
                             headers={"WWW-Authenticate": "Bearer"})
     raw_token = auth[7:]
     token_hash = _hash_token(raw_token)
+    # scim_tokens is RLS-protected (0074) and no tenant is known yet at this
+    # point in the request, so this lookup goes through a SECURITY DEFINER
+    # function that bypasses RLS for exactly this one query — same pattern
+    # as get_tenant_ip_allowlist/lookup_alarm_panel_by_key elsewhere.
     row = (await db.execute(
-        text("""
-            SELECT id, tenant_id, is_active, expires_at
-            FROM scim_tokens
-            WHERE token_hash = :h AND is_active = TRUE
-        """),
+        text("SELECT * FROM lookup_scim_token(:h)"),
         {"h": token_hash},
     )).mappings().first()
     if row is None:
@@ -82,6 +82,13 @@ async def _get_scim_context(request: Request, db: AsyncSession = Depends(get_raw
                             headers={"WWW-Authenticate": "Bearer"})
     if row["expires_at"] and row["expires_at"].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "SCIM token has expired")
+    # Set the GUC now (before the UPDATE below) so the write satisfies RLS —
+    # scim_tokens itself is tenant-scoped and this UPDATE touches this
+    # token's own row.
+    await db.execute(
+        text("SELECT set_config('app.current_tenant', :tid, true)"),
+        {"tid": str(row["tenant_id"])},
+    )
     # Update last_used_at (best-effort)
     await db.execute(
         text("UPDATE scim_tokens SET last_used_at = now() WHERE id = :tid"),

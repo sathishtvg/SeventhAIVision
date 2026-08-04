@@ -7,7 +7,6 @@ import {
   Select,
   MenuItem,
   Chip,
-  Stack,
   Paper,
   Tooltip,
   Divider,
@@ -18,6 +17,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import {
   ThermostatAuto as HeatmapIcon,
   FiberManualRecord as DotIcon,
@@ -405,11 +405,8 @@ export default function Heatmap() {
                           {cam.camera_name}
                         </Typography>
                       }
-                      secondary={
-                        <Typography fontSize={10} color="text.secondary">
-                          {cam.site_name ?? cam.location ?? '—'}
-                        </Typography>
-                      }
+                      secondary={cam.site_name ?? cam.location ?? '—'}
+                      slotProps={{ secondary: { fontSize: 10, color: 'text.secondary' } }}
                     />
                     <ListItemSecondaryAction>
                       <Stack direction="row" spacing={0.5} alignItems="center">

@@ -37,7 +37,15 @@ class RoleUpdate(BaseModel):
     permission_codes: list[str] | None = None
 
 
-async def _validate_permission_codes(db: AsyncSession, codes: list[str]) -> None:
+async def _validate_permission_codes(db: AsyncSession, codes: list[str], caller_role_id: int) -> None:
+    """Also enforces "cannot delegate a permission you don't hold yourself":
+    without this, an Admin (who holds role:manage) could create a custom
+    role carrying super-admin-exclusive permissions like tenant:manage or
+    license:manage, then assign themselves to it — a privilege escalation
+    to full platform super-admin. Checking against the caller's own
+    role_permissions (rather than hardcoding a deny-list) means this stays
+    correct as new permissions are added later, and doesn't restrict an
+    actual super_admin, who legitimately holds everything."""
     codes = list(set(codes))
     if not codes:
         return
@@ -48,6 +56,18 @@ async def _validate_permission_codes(db: AsyncSession, codes: list[str]) -> None
     if (found or 0) != len(codes):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
                             "One or more permission codes are unknown")
+
+    held = (await db.execute(
+        text(
+            "SELECT COUNT(*) FROM role_permissions rp "
+            "JOIN permissions p ON p.id = rp.permission_id "
+            "WHERE rp.role_id = :rid AND p.code = ANY(:codes)"
+        ),
+        {"rid": caller_role_id, "codes": codes},
+    )).scalar()
+    if (held or 0) != len(codes):
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Cannot grant a permission you do not hold yourself")
 
 
 async def _load_editable_custom_role(db: AsyncSession, role_id: int, token: TokenPayload):
@@ -99,7 +119,7 @@ async def create_role(
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
-    await _validate_permission_codes(db, body.permission_codes)
+    await _validate_permission_codes(db, body.permission_codes, token.role_id)
     new_id = (await db.execute(
         text("SELECT nextval('roles_custom_id_seq')::smallint AS id")
     )).scalar()
@@ -142,7 +162,7 @@ async def update_role(
         await db.execute(text(f"UPDATE roles SET {', '.join(sets)} WHERE id = :id"), params)
 
     if body.permission_codes is not None:
-        await _validate_permission_codes(db, body.permission_codes)
+        await _validate_permission_codes(db, body.permission_codes, token.role_id)
         await db.execute(text("DELETE FROM role_permissions WHERE role_id = :id"), {"id": role_id})
         codes = list(set(body.permission_codes))
         if codes:

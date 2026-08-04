@@ -7,10 +7,24 @@
  */
 import { useState } from 'react'
 import {
-  AppBar, Box, Button, Chip, Container, Dialog, DialogContent, DialogTitle,
-  Grid, IconButton, List, ListItem, ListItemText, Stack, Toolbar, Tooltip,
+  AppBar,
+  Box,
+  Button,
+  Chip,
+  Container,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import CloseIcon from '@mui/icons-material/Close'
 import LogoutIcon from '@mui/icons-material/Logout'
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
@@ -165,8 +179,7 @@ export default function ClientPortal() {
                         <ListItemText
                           primary={a.title}
                           secondary={new Date(a.created_at).toLocaleString()}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
+                          slotProps={{ primary: { variant: 'body2' }, secondary: { variant: 'caption' } }}
                         />
                         <SeverityChip severity={a.severity as AlertSeverity} />
                       </ListItem>
@@ -195,8 +208,7 @@ export default function ClientPortal() {
                         <ListItemText
                           primary={i.title}
                           secondary={new Date(i.created_at).toLocaleString()}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
+                          slotProps={{ primary: { variant: 'body2' }, secondary: { variant: 'caption' } }}
                         />
                         <SeverityChip severity={i.severity as AlertSeverity} />
                       </ListItem>
@@ -226,8 +238,7 @@ export default function ClientPortal() {
                         <ListItemText
                           primary={s.camera_name}
                           secondary={s.location ?? undefined}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
+                          slotProps={{ primary: { variant: 'body2' }, secondary: { variant: 'caption' } }}
                         />
                         <Chip
                           label={s.status}
@@ -276,11 +287,13 @@ export default function ClientPortal() {
                         <ListItemText
                           primary={e.body}
                           secondary={`${e.entry_type.replace(/_/g, ' ')} · ${new Date(e.occurred_at).toLocaleString()}`}
-                          primaryTypographyProps={{
-                            variant: 'body2',
-                            sx: { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+                          slotProps={{
+                            primary: {
+                              variant: 'body2',
+                              sx: { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+                            },
+                            secondary: { variant: 'caption' },
                           }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
                         />
                       </ListItem>
                     ))}
@@ -308,8 +321,7 @@ export default function ClientPortal() {
                         <ListItemText
                           primary={inv.invoice_number ?? 'Draft'}
                           secondary={`${inv.period_start} – ${inv.period_end} · $${inv.total_amount.toFixed(2)}`}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
+                          slotProps={{ primary: { variant: 'body2' }, secondary: { variant: 'caption' } }}
                         />
                         <Chip
                           label={inv.status}

@@ -62,3 +62,22 @@ export const createDsar = (data: {
 
 export const updateDsar = (dsarId: string, data: { status: string; fulfillment_notes?: string; records_erased?: number }) =>
   apiClient.put(`/api/v1/pdpa/dsar/${dsarId}`, data).then((r) => r.data)
+
+export interface ErasureExecuteResult {
+  dsar_id: string
+  erased_counts: {
+    face_watchlist_entries: number
+    plate_watchlist_entries: number
+    visitors: number
+    evidence: number
+  }
+  total_erased_this_call: number
+  records_erased: number
+}
+
+export const executeDsarErasure = (dsarId: string, data: {
+  face_watchlist_entry_ids?: string[]
+  plate_watchlist_entry_ids?: string[]
+  visitor_ids?: string[]
+  evidence_ids?: string[]
+}) => apiClient.post<ErasureExecuteResult>(`/api/v1/pdpa/dsar/${dsarId}/execute-erasure`, data).then((r) => r.data)

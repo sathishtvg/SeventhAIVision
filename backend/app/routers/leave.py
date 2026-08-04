@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.uploads import MAX_DOCUMENT_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
@@ -259,7 +260,7 @@ async def upload_leave_document(
     relative_path = f"{token.tenant_id}/{row.guard_user_id}/leave/{request_id}{ext}"
     dest = Path(settings.EMPLOYEE_DOCS_ROOT) / relative_path
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(await file.read())
+    dest.write_bytes(await read_upload_limited(file, MAX_DOCUMENT_UPLOAD_BYTES))
 
     await db.execute(
         text("UPDATE leave_requests SET document_path = :path WHERE id = CAST(:id AS uuid)"),

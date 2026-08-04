@@ -1,9 +1,27 @@
 import { useState } from 'react'
 import {
-  Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip, IconButton, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Skeleton, Tooltip, Stack, Alert, InputAdornment,
+  Box,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Skeleton,
+  Tooltip,
+  Alert,
+  InputAdornment,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'

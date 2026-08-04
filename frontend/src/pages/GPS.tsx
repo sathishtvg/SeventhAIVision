@@ -1,10 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Box, Typography, Grid, Paper, Chip, Stack, Divider, CircularProgress,
-  Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, Tab, Tabs, Table, TableBody, TableCell,
-  TableHead, TableRow, Tooltip, IconButton, Alert,
+  Box,
+  Typography,
+  Grid,
+  Paper,
+  Chip,
+  Divider,
+  CircularProgress,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  Tab,
+  Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tooltip,
+  IconButton,
+  Alert,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import AddIcon from '@mui/icons-material/Add'
@@ -204,7 +225,7 @@ function JourneyDialog({ vehicle, onClose }: { vehicle: Vehicle; onClose: () => 
 
   return (
     <Dialog open onClose={onClose} maxWidth="md" fullWidth
-      PaperProps={{ sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } }}>
+      slotProps={{ paper: { sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } } }}>
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1}>
           <RouteIcon />
@@ -275,7 +296,7 @@ function AddVehicleDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth
-      PaperProps={{ sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } }}>
+      slotProps={{ paper: { sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } } }}>
       <DialogTitle>Add Vehicle</DialogTitle>
       <DialogContent>
         <Stack spacing={2} mt={1}>

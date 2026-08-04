@@ -45,6 +45,7 @@ import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import RouteIcon from '@mui/icons-material/Route'
 import NotificationImportantIcon from '@mui/icons-material/NotificationImportant'
 import DoorFrontIcon from '@mui/icons-material/DoorFront'
+import LockOpenIcon from '@mui/icons-material/LockOpen'
 import SchoolIcon from '@mui/icons-material/School'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import PersonPinIcon from '@mui/icons-material/PersonPin'
@@ -101,6 +102,8 @@ const NAV_ITEMS = [
   { label: 'Tour Compliance', path: '/compliance', icon: <RouteIcon fontSize="small" />,          permission: 'compliance:read' },
   { label: 'Alarm Panels',   path: '/alarms',     icon: <NotificationImportantIcon fontSize="small" />, permission: 'alarm:read' },
   { label: 'Access Control', path: '/access',     icon: <DoorFrontIcon fontSize="small" />,             permission: 'access:read' },
+  { label: 'Barriers',       path: '/barriers',   icon: <LockOpenIcon fontSize="small" />,              permission: 'barrier:read' },
+  { label: 'Site Map',       path: '/map',        icon: <MapIcon fontSize="small" />,                   permission: 'camera:read' },
   { label: 'Guard Training',    path: '/training',       icon: <SchoolIcon fontSize="small" />,   permission: 'training:read' },
   { label: 'Emergency Alert',   path: '/emergency',      icon: <CampaignIcon fontSize="small" />, permission: 'broadcast:read' },
   { label: 'Visitor Pre-Reg',   path: '/visitor-prereg', icon: <PersonPinIcon fontSize="small" />, permission: 'visitor:read' },

@@ -5,10 +5,27 @@
  */
 import { useState } from 'react'
 import {
-  Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControlLabel, IconButton, List, ListItem,
-  ListItemText, MenuItem, Select, Stack, TextField, Tooltip, Typography,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControlLabel,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Select,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'

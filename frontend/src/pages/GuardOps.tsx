@@ -1,9 +1,28 @@
 import React, { useState } from 'react'
 import {
-  Box, Tab, Tabs, Typography, Button, Table, TableBody, TableCell,
-  TableHead, TableRow, Paper, Chip, Dialog, DialogTitle, DialogContent,
-  DialogActions, TextField, MenuItem, CircularProgress, Alert, Stack, Divider,
+  Box,
+  Tab,
+  Tabs,
+  Typography,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  CircularProgress,
+  Alert,
+  Divider,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -166,12 +185,12 @@ function ShiftsTab() {
           <TextField
             label="Scheduled Start" type="datetime-local" value={form.scheduled_start}
             onChange={(e) => setForm({ ...form, scheduled_start: e.target.value })} fullWidth
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <TextField
             label="Scheduled End" type="datetime-local" value={form.scheduled_end}
             onChange={(e) => setForm({ ...form, scheduled_end: e.target.value })} fullWidth
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <TextField
             label="Notes" value={form.notes}

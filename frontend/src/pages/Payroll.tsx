@@ -6,11 +6,32 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  Box, Typography, Chip, Select, MenuItem, FormControl, InputLabel, Skeleton,
-  Stack, Button, Divider, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, IconButton, Tabs, Tab, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow,
+  Box,
+  Typography,
+  Chip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Skeleton,
+  Button,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import PaymentsIcon from '@mui/icons-material/Payments'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import GroupIcon from '@mui/icons-material/Group'
@@ -119,11 +140,11 @@ function NewRunDialog({ open, onClose, onCreated }: { open: boolean; onClose: ()
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
             size="small" label="Period Start" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={periodStart} onChange={(e) => setPeriodStart(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={periodStart} onChange={(e) => setPeriodStart(e.target.value)}
           />
           <TextField
             size="small" label="Period End" type="date" fullWidth
-            InputLabelProps={{ shrink: true }} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
           />
         </Stack>
       </DialogContent>

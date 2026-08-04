@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import {
-  Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  Grid, IconButton, MenuItem, Stack, TextField, Tooltip, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
+  FormControlLabel, Grid, IconButton, MenuItem, Stack, Switch, TextField,
+  Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
@@ -11,6 +12,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getSites, createSite, updateSite, deactivateSite } from '@/api/sites'
 import { listClients } from '@/api/invoicing'
+import { getCameras } from '@/api/cameras'
 import type { Site } from '@/types/api'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -34,8 +36,20 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
   )
   const [clientId, setClientId] = useState(site?.client_id ?? '')
   const [billRate, setBillRate] = useState(site?.bill_rate != null ? String(site.bill_rate) : '')
+  const [vmsEnabled, setVmsEnabled] = useState(site?.vms_enabled ?? false)
+  const [entryCam, setEntryCam] = useState(site?.entry_lpr_camera_id ?? '')
+  const [exitCam, setExitCam] = useState(site?.exit_lpr_camera_id ?? '')
+  const [freeParking, setFreeParking] = useState(
+    site?.free_parking_minutes != null ? String(site.free_parking_minutes) : ''
+  )
 
   const { data: clients = [] } = useQuery({ queryKey: ['billing-clients'], queryFn: () => listClients() })
+  // Only this site's own cameras can be bound to its lanes — offering the whole
+  // tenant's cameras would let an admin wire another site's gate by accident.
+  const { data: allCameras = [] } = useQuery({
+    queryKey: ['cameras'], queryFn: () => getCameras(), enabled: open && isEdit,
+  })
+  const siteCameras = allCameras.filter((c: any) => c.site_id === site?.id)
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -48,6 +62,16 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         geofence_radius_meters: geofenceRadius !== '' ? Number(geofenceRadius) : undefined,
         client_id: clientId || undefined,
         bill_rate: billRate !== '' ? Number(billRate) : undefined,
+        // Edit-only, and sent as explicit null rather than undefined when
+        // cleared — that is what unbinds a camera or removes the allowance.
+        ...(isEdit
+          ? {
+              vms_enabled: vmsEnabled,
+              entry_lpr_camera_id: entryCam || null,
+              exit_lpr_camera_id: exitCam || null,
+              free_parking_minutes: freeParking !== '' ? Number(freeParking) : null,
+            }
+          : {}),
       }
       return isEdit ? updateSite(site!.id, data) : createSite(data)
     },
@@ -125,6 +149,60 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
             inputProps={{ min: 0, step: 0.01 }}
           />
         </Stack>
+
+        {/* VMS is edit-only: the cameras must already exist and be assigned to
+            this site before they can be bound to its entry/exit lanes. */}
+        {isEdit && (
+          <>
+            <Typography variant="caption" color="text.secondary">
+              Visitor Management — drive visitor entry/exit from this site&apos;s ANPR cameras
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch checked={vmsEnabled} onChange={(e) => setVmsEnabled(e.target.checked)} />
+              }
+              label="Enable Visitor Management at this site"
+            />
+            {vmsEnabled && siteCameras.length === 0 && (
+              <Alert severity="warning">
+                No cameras are assigned to this site yet. Assign a camera on the Cameras page
+                before binding an entry or exit lane — until then visitors must be added by hand.
+              </Alert>
+            )}
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                select label="Entry LPR camera" value={entryCam} disabled={!vmsEnabled}
+                onChange={(e) => setEntryCam(e.target.value)} sx={{ flex: 1 }}
+                helperText="Opens the visitor form on a plate read"
+              >
+                <MenuItem value="">Not configured</MenuItem>
+                {siteCameras.map((c: any) => (
+                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select label="Exit LPR camera" value={exitCam} disabled={!vmsEnabled}
+                onChange={(e) => setExitCam(e.target.value)} sx={{ flex: 1 }}
+                helperText="Closes the visit automatically"
+              >
+                <MenuItem value="">Not configured</MenuItem>
+                {siteCameras.map((c: any) => (
+                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <TextField
+              label="Free parking (minutes)" type="number" value={freeParking}
+              onChange={(e) => setFreeParking(e.target.value)}
+              disabled={!vmsEnabled}
+              inputProps={{ min: 0 }}
+              // Blank is meaningfully different from 0: blank means this site
+              // does not meter parking at all, so nothing can ever overstay.
+              helperText="Leave blank if this site does not meter parking. Exceeding it alerts the operator."
+              sx={{ maxWidth: 320 }}
+            />
+          </>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
@@ -238,6 +316,26 @@ export function SitesPage() {
                         variant="outlined"
                       />
                     </Tooltip>
+                  )}
+                  {/* Only shown once VMS is switched on. A site with VMS off is
+                      not misconfigured — the manual visitor flow is the default
+                      and perfectly valid, so flagging it would be noise. */}
+                  {site.vms_enabled && (
+                    site.entry_lpr_camera_id ? (
+                      <Tooltip title="A plate read at this site's entry camera opens the visitor form on the operator's screen">
+                        <Chip label="VMS · ANPR entry" size="small" color="success" variant="outlined" />
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Visitor Management is on but no entry camera is bound, so visitors must be added by hand">
+                        <Chip
+                          icon={<WarningAmberIcon />}
+                          label="VMS · manual entry"
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                    )
                   )}
                 </Box>
               </GlassCard>

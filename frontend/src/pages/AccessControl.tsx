@@ -496,10 +496,10 @@ function RulesTab() {
             onChange={e => setForm(f => ({ ...f, schedule_days: e.target.value }))} />
           <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField label="From" value={form.time_from} size="small" type="time"
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
               onChange={e => setForm(f => ({ ...f, time_from: e.target.value }))} />
             <TextField label="To" value={form.time_to} size="small" type="time"
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
               onChange={e => setForm(f => ({ ...f, time_to: e.target.value }))} />
           </Box>
         </DialogContent>

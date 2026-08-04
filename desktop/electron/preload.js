@@ -24,16 +24,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
 
   // Kiosk mode for the control-room video wall (Gap 83) — resolves to the
-  // new kiosk state so the renderer can sync its toggle button
+  // new kiosk state so the renderer can sync its toggle button. Kiosks
+  // whichever window made this call (main.js resolves it from the IPC
+  // event's own sender), not always the main window.
   setKiosk: (enabled) => ipcRenderer.invoke('set-kiosk', enabled),
 
-  // Multi-monitor control room: opens an independent window on Live Wall,
-  // optionally pre-loaded with a saved camera layout
-  openLiveWallWindow: (layoutId) => ipcRenderer.invoke('open-live-wall-window', layoutId),
-
-  // Multi-monitor control room: opens an independent window on the live
-  // attendance monitor (site-wise guard check-in/out + roster schedule)
-  openAttendanceWindow: () => ipcRenderer.invoke('open-attendance-window'),
+  // Multi-monitor control room: opens an independent window at the given
+  // app-relative route (e.g. "/live?layout=abc123", "/attendance",
+  // "/command-centre", "/action-center"). Secondary windows are
+  // auto-spread across physical displays when more than one is connected.
+  openSecondaryWindow: (routePath) => ipcRenderer.invoke('open-secondary-window', routePath),
 
   // Platform detection so frontend can show desktop-specific UI
   platform: process.platform,

@@ -1,10 +1,37 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip, IconButton, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Select, MenuItem, FormControl, InputLabel, Skeleton, Paper, Tooltip, Stack,
-  List, ListItem, ListItemText, ListItemSecondaryAction, Divider, Tabs, Tab,
+  Box,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Skeleton,
+  Paper,
+  Tooltip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Divider,
+  Tabs,
+  Tab,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import BlockIcon from '@mui/icons-material/Block'
 import EditIcon from '@mui/icons-material/Edit'
@@ -160,7 +187,7 @@ function EmployeeDocumentsPanel({ userId }: { userId: string }) {
           <TextField label="Issuing Body (optional)" value={issuingBody} onChange={(e) => setIssuingBody(e.target.value)} size="small" fullWidth />
           <TextField
             label="Expiry Date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)}
-            size="small" fullWidth InputLabelProps={{ shrink: true }}
+            size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
           />
           <Button component="label" variant="outlined" size="small">
             {file ? file.name : 'Choose File (optional)'}
@@ -349,7 +376,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
             <TextField label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} size="small" fullWidth />
             <TextField
               label="Date of Birth" type="date" value={dob} onChange={(e) => setDob(e.target.value)}
-              size="small" fullWidth InputLabelProps={{ shrink: true }}
+              size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
             />
             <TextField label="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} size="small" fullWidth />
             <TextField label="NRIC / FIN" value={nricFin} onChange={(e) => setNricFin(e.target.value)} size="small" fullWidth />
@@ -375,7 +402,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
             <TextField label="Department" value={department} onChange={(e) => setDepartment(e.target.value)} size="small" fullWidth />
             <TextField
               label="Date Joined" type="date" value={dateJoined} onChange={(e) => setDateJoined(e.target.value)}
-              size="small" fullWidth InputLabelProps={{ shrink: true }}
+              size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
             />
           </>
         )}
@@ -395,7 +422,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
             </FormControl>
             <TextField
               label="Work Pass Expiry" type="date" value={workPassExpiry} onChange={(e) => setWorkPassExpiry(e.target.value)}
-              size="small" fullWidth InputLabelProps={{ shrink: true }}
+              size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
             />
             <Divider />
             <EmployeeDocumentsPanel userId={editUser!.id} />

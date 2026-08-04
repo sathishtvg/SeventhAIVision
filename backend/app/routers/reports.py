@@ -76,7 +76,7 @@ def _severity_color(severity: str) -> str:
 
 # ── Site Summary Report ───────────────────────────────────────────────────────
 
-@router.get("/site-summary")
+@router.get("/site-summary", dependencies=[Depends(require_permission("compliance:read"))])
 async def generate_site_summary(
     site_id: str,
     date_from: str,
@@ -217,7 +217,7 @@ async def generate_site_summary(
 
 # ── DOB Report ────────────────────────────────────────────────────────────────
 
-@router.get("/dob")
+@router.get("/dob", dependencies=[Depends(require_permission("dob:read"))])
 async def generate_dob_report(
     date_from: str,
     date_until: str,
@@ -303,7 +303,7 @@ async def generate_dob_report(
 
 # ── Incident Detail Report ────────────────────────────────────────────────────
 
-@router.get("/incident/{incident_id}")
+@router.get("/incident/{incident_id}", dependencies=[Depends(require_permission("incident:read"))])
 async def generate_incident_report(
     incident_id: str,
     db: AsyncSession = Depends(get_db_with_tenant),

@@ -5,6 +5,10 @@ export interface WallLayoutCell {
   stream_id: string
   camera_name: string
   site_name?: string | null
+  /** Per-camera analytics override. Undefined/null = inherit the screen's
+   * (or the wall-wide) selection; an array = show exactly these on this
+   * camera. Stored inside the cells JSONB, so no schema change. */
+  analytics_modules?: string[] | null
 }
 
 export interface WallLayout {

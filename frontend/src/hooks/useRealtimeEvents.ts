@@ -5,6 +5,13 @@ import { playAlertSound } from '@/store/alertSound'
 import type { RealtimeEvent } from '@/types/realtime'
 import type { AlertSeverity } from '@/types/api'
 import { useWebSocket } from './useWebSocket'
+import { useVisitorEntryStore } from '@/store/visitorEntry'
+import type { VisitorEntryPrompt } from '@/api/vms'
+
+/** Read off the store rather than via a hook: this is called from inside the
+ * message handler, not during render. */
+const enqueueVisitorEntry = (p: VisitorEntryPrompt) =>
+  useVisitorEntryStore.getState().enqueue(p)
 
 declare global {
   interface Window {
@@ -16,15 +23,14 @@ declare global {
       getAutoLaunch: () => Promise<boolean>
       setAutoLaunch: (enabled: boolean) => Promise<void>
       setKiosk: (enabled: boolean) => Promise<boolean>
-      /** Opens a new, independent OS window showing Live Wall (optionally a
-       * saved layout) — the renderer's own window.open() gets redirected to
-       * the system browser by main.js's setWindowOpenHandler, so multi-window
-       * / multi-monitor control-room use needs this explicit IPC instead. */
-      openLiveWallWindow: (layoutId?: string) => Promise<void>
-      /** Opens a new, independent OS window showing the live Attendance
-       * monitor — same multi-monitor control-room rationale as
-       * openLiveWallWindow above. */
-      openAttendanceWindow: () => Promise<void>
+      /** Opens a new, independent OS window at the given app-relative route
+       * (e.g. "/live?layout=abc123", "/attendance", "/command-centre",
+       * "/action-center") — the renderer's own window.open() gets
+       * redirected to the system browser by main.js's setWindowOpenHandler,
+       * so multi-window / multi-monitor control-room use needs this
+       * explicit IPC instead. Secondary windows are auto-spread across
+       * physical displays when more than one is connected. */
+      openSecondaryWindow: (routePath: string) => Promise<void>
       platform: string
       isElectron: boolean
     }
@@ -52,6 +58,26 @@ export function useRealtimeEvents() {
     }
 
     switch (event.event_type) {
+      // Entry LPR read a plate that needs a human. Queued rather than shown
+      // directly so the dialog (mounted once in AppShell) surfaces on whatever
+      // screen the operator is already watching.
+      case 'visitor_entry_prompt': {
+        enqueueVisitorEntry(event.payload as unknown as VisitorEntryPrompt)
+        queryClient.invalidateQueries({ queryKey: ['vms-onsite'] })
+        break
+      }
+      // Exit LPR closed a visit — the vehicle has left, so the on-site list
+      // and its parking clock are stale.
+      case 'visitor_exit_recorded': {
+        queryClient.invalidateQueries({ queryKey: ['vms-onsite'] })
+        queryClient.invalidateQueries({ queryKey: ['visitors'] })
+        break
+      }
+      case 'barrier_command': {
+        queryClient.invalidateQueries({ queryKey: ['barriers'] })
+        queryClient.invalidateQueries({ queryKey: ['barrier-commands'] })
+        break
+      }
       case 'alert_created': {
         queryClient.invalidateQueries({ queryKey: ['alerts'] })
         queryClient.invalidateQueries({ queryKey: ['analytics-summary'] })

@@ -6,10 +6,25 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  Box, Typography, Chip, Select, MenuItem, FormControl, InputLabel, Skeleton,
-  Stack, Button, Divider, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, IconButton, Tooltip,
+  Box,
+  Typography,
+  Chip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Skeleton,
+  Button,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Tooltip,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import PaidIcon from '@mui/icons-material/Paid'
 import GroupIcon from '@mui/icons-material/Group'

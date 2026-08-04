@@ -6,6 +6,8 @@ import { useColorMode } from '@/context/ColorMode'
 import { getBranding } from '@/api/branding'
 import { AppShell } from '@/components/layout/AppShell'
 import Login from '@/pages/Login'
+import ForgotPassword from '@/pages/ForgotPassword'
+import ResetPassword from '@/pages/ResetPassword'
 import Dashboard from '@/pages/Dashboard'
 import Alerts from '@/pages/Alerts'
 import Incidents from '@/pages/Incidents'
@@ -29,6 +31,8 @@ import { PlaybackPage } from '@/pages/Playback'
 import { RosterPage } from '@/pages/Roster'
 import { AttendancePage } from '@/pages/Attendance'
 import { ViolationsPage } from '@/pages/Violations'
+import { BarriersPage } from '@/pages/Barriers'
+import { MapViewPage } from '@/pages/MapView'
 import { LeavePage } from '@/pages/Leave'
 import { PayrollPage } from '@/pages/Payroll'
 import { InvoicingPage } from '@/pages/Invoicing'
@@ -91,6 +95,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/"
         element={
@@ -124,6 +130,8 @@ export default function App() {
         <Route path="roster" element={<RosterPage />} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="violations" element={<ViolationsPage />} />
+        <Route path="barriers" element={<BarriersPage />} />
+        <Route path="map" element={<MapViewPage />} />
         <Route path="leave" element={<LeavePage />} />
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="invoicing" element={<InvoicingPage />} />

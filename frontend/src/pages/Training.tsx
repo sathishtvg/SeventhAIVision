@@ -1,12 +1,39 @@
 import { useState } from 'react'
 import {
-  Box, Typography, Tab, Tabs, Grid, Chip, Button, Dialog,
-  DialogTitle, DialogContent, DialogActions, TextField,
-  MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
-  CircularProgress, Skeleton, IconButton, Tooltip, Alert,
-  LinearProgress, Radio, RadioGroup, FormControl, FormControlLabel,
-  FormLabel, Stack, Divider, Card, CardContent,
+  Box,
+  Typography,
+  Tab,
+  Tabs,
+  Grid,
+  Chip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  CircularProgress,
+  Skeleton,
+  IconButton,
+  Tooltip,
+  Alert,
+  LinearProgress,
+  Radio,
+  RadioGroup,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  Divider,
+  Card,
+  CardContent,
 } from '@mui/material'
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
@@ -634,7 +661,7 @@ function RecordsTab() {
             {courses.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
           </TextField>
           <TextField label="Completed Date" value={form.completed_at} size="small" type="date"
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             onChange={e => setForm(f => ({ ...f, completed_at: e.target.value }))} />
           <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField label="Score (%)" value={form.score} size="small" type="number"
@@ -817,10 +844,10 @@ function CertificationsTab() {
             onChange={e => setForm(f => ({ ...f, certificate_number: e.target.value }))} />
           <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField label="Issued Date" value={form.issued_at} size="small" type="date"
-              InputLabelProps={{ shrink: true }} sx={{ flex: 1 }}
+              slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }}
               onChange={e => setForm(f => ({ ...f, issued_at: e.target.value }))} />
             <TextField label="Expiry Date" value={form.expires_at} size="small" type="date"
-              InputLabelProps={{ shrink: true }} sx={{ flex: 1 }}
+              slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }}
               onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))} />
           </Box>
         </DialogContent>

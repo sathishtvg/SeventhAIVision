@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     EVIDENCE_RETENTION_DAYS: int = 90
     AUDIT_RETENTION_YEARS: int = 7
 
+    # Base URL of the web frontend — used to build links inside outbound emails
+    # (e.g. the password reset link). No default guess is safe across deployments,
+    # so this falls back to a same-origin-relative link if unset.
+    FRONTEND_URL: str = ""
+
     # SMTP (email notifications)
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 587
@@ -63,6 +68,37 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     GIT_SHA: str = "dev"
     BUILD_DATE: str = "dev"
+
+    # "development" (default) | "production" — gates the dev-default-secrets
+    # startup check below. Never defaults to "production" so existing dev/CI
+    # setups that don't set this explicitly are unaffected.
+    ENVIRONMENT: str = "development"
+
+    def assert_production_secrets_configured(self) -> None:
+        """Refuses to start in production with any secret still at its
+        literal dev-default value. Without this, a deployer who forgets to
+        override .env gets a fully-working server whose JWT signing key,
+        audit-HMAC key, DB password, and credential-encryption key are all
+        publicly-known strings from the open-source repo — silent, total
+        compromise rather than a loud failure at boot. No-op outside
+        ENVIRONMENT=production so it never affects dev/test/CI."""
+        if self.ENVIRONMENT != "production":
+            return
+        offenders = []
+        if self.JWT_SECRET_KEY_CURRENT == "change_me_dev_only":
+            offenders.append("JWT_SECRET_KEY_CURRENT")
+        if self.AUDIT_HMAC_KEY == "audit_change_me_dev_only":
+            offenders.append("AUDIT_HMAC_KEY")
+        if not self.CREDENTIALS_ENCRYPTION_KEY:
+            offenders.append("CREDENTIALS_ENCRYPTION_KEY (empty — falls back to an insecure dev key)")
+        if "change_me_dev_only" in self.DATABASE_URL:
+            offenders.append("DATABASE_URL (still contains the dev-default password)")
+        if offenders:
+            raise RuntimeError(
+                "Refusing to start with ENVIRONMENT=production while these secrets "
+                "still hold their dev-default values: " + ", ".join(offenders) +
+                ". Set real values in the environment/.env before deploying."
+            )
 
     @property
     def jwt_signing_keys(self) -> dict[str, str]:

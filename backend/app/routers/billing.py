@@ -292,11 +292,24 @@ async def _get_or_create_stripe_customer(db: AsyncSession, tenant_id: str) -> st
     return customer.id
 
 
+async def _set_tenant(db: AsyncSession, tenant_id: str) -> None:
+    """Scopes the shared get_raw_db session to a resolved tenant so writes to
+    billing_customers/billing_subscriptions/billing_invoices satisfy RLS
+    (0074). Every webhook handler below must call this before touching any
+    of those three tables, once it has figured out which tenant the Stripe
+    event belongs to."""
+    await db.execute(
+        text("SELECT set_config('app.current_tenant', :tid, true)"),
+        {"tid": tenant_id},
+    )
+
+
 async def _handle_checkout_completed(db: AsyncSession, session_obj: dict) -> None:
     tenant_id = (session_obj.get("client_reference_id")
                  or (session_obj.get("metadata") or {}).get("tenant_id"))
     if not tenant_id:
         return
+    await _set_tenant(db, tenant_id)
 
     stripe_customer_id = session_obj.get("customer")
     subscription_id = session_obj.get("subscription")
@@ -316,16 +329,28 @@ async def _handle_checkout_completed(db: AsyncSession, session_obj: dict) -> Non
 
 
 async def _handle_subscription_upsert(db: AsyncSession, sub_obj: dict) -> None:
-    cust_row = (await db.execute(
-        text("SELECT tenant_id FROM billing_customers WHERE stripe_customer_id = :cid"),
+    # billing_customers is RLS-protected (0074) and no tenant is known yet —
+    # this goes through the SECURITY DEFINER lookup function instead of a
+    # direct SELECT, mirroring lookup_alarm_panel_by_key's established pattern.
+    tenant_id = (await db.execute(
+        text("SELECT lookup_billing_tenant_by_customer(:cid)"),
         {"cid": sub_obj.get("customer")},
-    )).first()
-    if cust_row is None:
+    )).scalar()
+    if tenant_id is None:
         return
-    await _upsert_subscription_row(db, str(cust_row[0]), sub_obj)
+    tenant_id = str(tenant_id)
+    await _set_tenant(db, tenant_id)
+    await _upsert_subscription_row(db, tenant_id, sub_obj)
 
 
 async def _handle_subscription_deleted(db: AsyncSession, sub_obj: dict) -> None:
+    tenant_id = (await db.execute(
+        text("SELECT lookup_billing_tenant_by_subscription(:sid)"),
+        {"sid": sub_obj.get("id")},
+    )).scalar()
+    if tenant_id is None:
+        return
+    await _set_tenant(db, str(tenant_id))
     await db.execute(
         text("""
             UPDATE billing_subscriptions
@@ -401,26 +426,29 @@ async def _handle_invoice_upsert(
 ) -> None:
     stripe_sub_id = inv_obj.get("subscription")
 
-    # Find tenant via subscription first, fall back to customer lookup
+    # Find tenant via subscription first, fall back to customer lookup — both
+    # RLS-protected tables (0074), so both go through their SECURITY DEFINER
+    # lookup functions since no tenant is known yet at this point.
     tenant_id = None
     if stripe_sub_id:
-        row = (await db.execute(
-            text("SELECT tenant_id FROM billing_subscriptions WHERE stripe_subscription_id = :sid"),
+        result = (await db.execute(
+            text("SELECT lookup_billing_tenant_by_subscription(:sid)"),
             {"sid": stripe_sub_id},
-        )).first()
-        if row:
-            tenant_id = str(row[0])
+        )).scalar()
+        if result is not None:
+            tenant_id = str(result)
 
     if tenant_id is None:
-        row = (await db.execute(
-            text("SELECT tenant_id FROM billing_customers WHERE stripe_customer_id = :cid"),
+        result = (await db.execute(
+            text("SELECT lookup_billing_tenant_by_customer(:cid)"),
             {"cid": inv_obj.get("customer")},
-        )).first()
-        if row:
-            tenant_id = str(row[0])
+        )).scalar()
+        if result is not None:
+            tenant_id = str(result)
 
     if tenant_id is None:
         return
+    await _set_tenant(db, tenant_id)
 
     def _ts(val) -> datetime | None:
         if val is None:
@@ -470,12 +498,18 @@ async def _handle_invoice_upsert(
 async def _handle_invoice_failed(db: AsyncSession, inv_obj: dict) -> None:
     stripe_sub_id = inv_obj.get("subscription")
     if stripe_sub_id:
-        await db.execute(
-            text("""
-                UPDATE billing_subscriptions
-                SET status = 'past_due', updated_at = now()
-                WHERE stripe_subscription_id = :sid
-            """),
+        tenant_id = (await db.execute(
+            text("SELECT lookup_billing_tenant_by_subscription(:sid)"),
             {"sid": stripe_sub_id},
-        )
+        )).scalar()
+        if tenant_id is not None:
+            await _set_tenant(db, str(tenant_id))
+            await db.execute(
+                text("""
+                    UPDATE billing_subscriptions
+                    SET status = 'past_due', updated_at = now()
+                    WHERE stripe_subscription_id = :sid
+                """),
+                {"sid": stripe_sub_id},
+            )
     await _handle_invoice_upsert(db, inv_obj, paid=False)

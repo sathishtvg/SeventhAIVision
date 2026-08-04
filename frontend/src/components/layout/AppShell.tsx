@@ -2,6 +2,7 @@ import { Box, IconButton, Toolbar, Tooltip } from '@mui/material'
 import { Outlet, useLocation } from 'react-router-dom'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { Sidebar } from './Sidebar'
+import { VisitorEntryDialog } from '@/components/common/VisitorEntryDialog'
 import { TopBar } from './TopBar'
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents'
 import { ToastContainer } from './ToastContainer'
@@ -45,6 +46,10 @@ export function AppShell() {
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Mounted outside the focus-mode branches on purpose: a vehicle arriving
+          at the gate must interrupt the operator even when they are watching
+          the wall full-screen, which is exactly when they'd otherwise miss it. */}
+      <VisitorEntryDialog />
       {!isFocusMode && <Sidebar />}
       <Box
         component="main"

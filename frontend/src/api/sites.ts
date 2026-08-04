@@ -32,6 +32,17 @@ export const updateSite = (
     is_active?: boolean
     client_id?: string
     bill_rate?: number
+    // VMS config is update-only: the cameras have to exist and be assigned to
+    // the site before they can be bound to its entry/exit lanes.
+    //
+    // These three are `| null` rather than optional-undefined on purpose —
+    // the backend keys off which fields are PRESENT in the request, so sending
+    // an explicit null is the only way to UNBIND a camera or clear the parking
+    // allowance. Omitting them leaves the stored value untouched.
+    vms_enabled?: boolean
+    entry_lpr_camera_id?: string | null
+    exit_lpr_camera_id?: string | null
+    free_parking_minutes?: number | null
   }
 ) => apiClient.put(`/api/v1/sites/${siteId}`, data).then((r) => r.data)
 

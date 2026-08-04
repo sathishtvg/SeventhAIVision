@@ -180,8 +180,8 @@ function AddPermitDialog({ open, onClose, contractors }: {
         <Grid container spacing={1}>
           <Grid size={6}><TextField label="Workers Count" type="number" value={form.workers_count} onChange={set('workers_count')} size="small" fullWidth /></Grid>
           <Grid size={6}><TextField label="Vehicles Count" type="number" value={form.vehicles_count} onChange={set('vehicles_count')} size="small" fullWidth /></Grid>
-          <Grid size={6}><TextField label="Start Date/Time *" type="datetime-local" value={form.start_at} onChange={set('start_at')} size="small" fullWidth InputLabelProps={{ shrink: true }} /></Grid>
-          <Grid size={6}><TextField label="End Date/Time *" type="datetime-local" value={form.end_at} onChange={set('end_at')} size="small" fullWidth InputLabelProps={{ shrink: true }} /></Grid>
+          <Grid size={6}><TextField label="Start Date/Time *" type="datetime-local" value={form.start_at} onChange={set('start_at')} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} /></Grid>
+          <Grid size={6}><TextField label="End Date/Time *" type="datetime-local" value={form.end_at} onChange={set('end_at')} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} /></Grid>
         </Grid>
       </DialogContent>
       <DialogActions>

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import InvalidTokenError, decode_access_token
+from app.core.uploads import MAX_IMAGE_UPLOAD_BYTES, read_upload_limited
 from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
@@ -82,7 +83,7 @@ async def _process_checkin_photo(
 
     if photo.content_type not in ("image/jpeg", "image/jpg", "image/png"):
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Only JPEG/PNG images are accepted")
-    image_bytes = await photo.read()
+    image_bytes = await read_upload_limited(photo, MAX_IMAGE_UPLOAD_BYTES)
 
     try:
         score = await asyncio.to_thread(check_liveness_sync, image_bytes)

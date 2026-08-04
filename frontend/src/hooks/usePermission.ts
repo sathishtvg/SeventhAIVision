@@ -62,6 +62,12 @@ const ALL_PERMISSIONS = [
   'push:register',
   // Client portal
   'portal:view',
+  // Barrier / gate actuation (migration 0076). read is broad — a guard should
+  // be able to see whether the gate is open; operate is the command-centre
+  // action; manage covers device credentials and auto-open policy.
+  'barrier:read',
+  'barrier:operate',
+  'barrier:manage',
 ]
 
 const ROLE_PERMISSIONS: Record<number, string[]> = {
@@ -94,6 +100,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'invoicing:read',
     'training:read', 'training:write',
     'sla:manage',
+    'barrier:read', 'barrier:operate',
     'visitor:read', 'visitor:manage', 'visitor:checkin',
     'privacy:manage', 'pdpa:admin', 'pdpa:read',
     'tampering:read', 'abandoned:read', 'fall:read',
@@ -117,6 +124,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'visitor:read', 'visitor:manage', 'visitor:checkin',
     'pdpa:read',
     'tampering:read', 'abandoned:read', 'fall:read',
+    'barrier:read', 'barrier:operate',
   ],
   5: [ // security_guard
     'camera:read',
@@ -135,6 +143,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'payroll:read',
     'training:read',
     'visitor:checkin',
+    'barrier:read',
   ],
   6: [ // viewer
     'camera:read',
@@ -155,6 +164,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'training:read',
     'visitor:read',
     'pdpa:read',
+    'barrier:read',
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

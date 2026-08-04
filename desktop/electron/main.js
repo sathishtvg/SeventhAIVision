@@ -1,5 +1,10 @@
 'use strict'
 
+// NOTE: `screen` is deliberately NOT destructured here. Electron documents it
+// as unusable until the app 'ready' event, and destructuring at module load
+// invokes its lazy getter — which would fail before the app is ready and take
+// the whole main process down at startup. It's required on demand inside
+// placeOnDisplay() instead, which only ever runs post-ready via IPC.
 const { app, BrowserWindow, ipcMain, Notification, shell, dialog, session, protocol, net } = require('electron')
 const path = require('path')
 const fs = require('fs')
@@ -35,13 +40,13 @@ const store = new Store({
 
 let mainWindow = null
 let setupWindow = null
-// Secondary Live Wall windows for multi-monitor control-room setups — kept
-// in an array purely so they aren't garbage-collected while open; closing
-// one just drops it from the list, it does not affect mainWindow.
-const liveWallWindows = []
-// Secondary Attendance windows — same purpose, for the live attendance
-// monitor (guard check-in/out, roster schedule) on a second screen.
-const attendanceWindows = []
+// Secondary windows for multi-monitor control-room setups (Live Wall,
+// Attendance, Command Centre, Action Center) — kept in one array purely so
+// they aren't garbage-collected while open; closing one just drops it from
+// the list, it does not affect mainWindow. A single generic tracking array
+// (rather than one per page) is what lets createSecondaryWindow stay one
+// function instead of forking per caller.
+const secondaryWindows = []
 
 // ── First-run server URL wizard ───────────────────────────────
 function createSetupWindow() {
@@ -245,17 +250,21 @@ function createMainWindow(serverUrl) {
   return mainWindow
 }
 
-// ── Secondary Live Wall windows (multi-monitor control-room) ───
-// Independent, ordinary windows (no kiosk/tray coupling to mainWindow) so an
-// operator can drag each one to a different physical monitor and have each
-// show a different saved camera layout simultaneously.
-function createLiveWallWindow(layoutId) {
+// ── Secondary windows (multi-monitor control-room) ─────────────
+// Generic pop-out used by every "open in a new window" caller — Live Wall
+// (optionally with ?layout=<id>), Attendance, Command Centre, Action
+// Center. Independent, ordinary windows (no kiosk/tray coupling to
+// mainWindow) so an operator can drag each one to a different physical
+// monitor. routePath is an opaque app-relative path + query string built
+// by the renderer (e.g. "/live?layout=abc123") — this function doesn't
+// need to know what any of the query params mean.
+function createSecondaryWindow(routePath, title) {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 640,
     minHeight: 480,
-    title: layoutId ? '7th AI Vision — Live Wall' : '7th AI Vision — Live Wall (New)',
+    title: title || '7th AI Vision',
     backgroundColor: '#020617',
     autoHideMenuBar: true,
     webPreferences: {
@@ -277,8 +286,7 @@ function createLiveWallWindow(layoutId) {
   // location.pathname), and the SPA-fallback protocol handler above
   // serves index.html for it while preserving this path/query in the
   // renderer's actual location for React Router to read.
-  const target = 'app://./live' + (layoutId ? `?layout=${encodeURIComponent(layoutId)}` : '')
-  win.loadURL(target)
+  win.loadURL('app://.' + routePath)
 
   win.once('ready-to-show', () => win.show())
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -286,58 +294,42 @@ function createLiveWallWindow(layoutId) {
     return { action: 'deny' }
   })
 
-  liveWallWindows.push(win)
+  secondaryWindows.push(win)
   win.on('closed', () => {
-    const idx = liveWallWindows.indexOf(win)
-    if (idx !== -1) liveWallWindows.splice(idx, 1)
+    const idx = secondaryWindows.indexOf(win)
+    if (idx !== -1) secondaryWindows.splice(idx, 1)
   })
+
+  placeOnDisplay(win)
 
   return win
 }
 
-// ── Secondary Attendance windows (multi-monitor control-room) ──
-// Same independent-window pattern as createLiveWallWindow — lets an
-// operator keep the live attendance monitor open on its own screen.
-function createAttendanceWindow() {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 640,
-    minHeight: 480,
-    title: '7th AI Vision — Attendance',
-    backgroundColor: '#020617',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      autoplayPolicy: 'no-user-gesture-required',
-    },
-    show: false,
+// Multi-monitor control-room placement: spread secondary windows across
+// distinct physical displays when more than one is connected — this is
+// what makes a multi-screen Live Wall profile (or several pages opened
+// side-by-side) auto-arrange itself onto separate monitors instead of
+// stacking every new window on top of the primary display. No-ops on a
+// single-display machine (the default OS placement is fine there).
+function placeOnDisplay(win) {
+  // Required lazily — see the note on the electron require at the top of this file.
+  const { screen } = require('electron')
+  const displays = screen.getAllDisplays()
+  if (displays.length <= 1) return
+  // secondaryWindows already includes `win` (pushed just before this is
+  // called), so its own position in the array picks the next display,
+  // cycling back around once there are more windows than displays.
+  const slot = secondaryWindows.length - 1
+  const display = displays[slot % displays.length]
+  const { x, y, width, height } = display.workArea
+  const w = Math.min(1280, width - 40)
+  const h = Math.min(800, height - 40)
+  win.setBounds({
+    x: x + Math.floor((width - w) / 2),
+    y: y + Math.floor((height - h) / 2),
+    width: w,
+    height: h,
   })
-
-  win.webContents.on('before-input-event', (_event, input) => {
-    if (input.type === 'keyDown' && input.key === 'Escape' && win.isKiosk()) {
-      win.setKiosk(false)
-    }
-  })
-
-  const target = 'app://./attendance'
-  win.loadURL(target)
-
-  win.once('ready-to-show', () => win.show())
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  attendanceWindows.push(win)
-  win.on('closed', () => {
-    const idx = attendanceWindows.indexOf(win)
-    if (idx !== -1) attendanceWindows.splice(idx, 1)
-  })
-
-  return win
 }
 
 // ── Auto-updater ──────────────────────────────────────────────
@@ -474,18 +466,21 @@ ipcMain.handle('set-badge-count', (_event, count) => {
   // app.setBadgeCount is macOS/Linux only; on Windows we use the tray tooltip
 })
 
-ipcMain.handle('set-kiosk', (_event, enabled) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return false
-  mainWindow.setKiosk(Boolean(enabled))
-  return mainWindow.isKiosk()
+// Resolves the window from the IPC event's own sender rather than the
+// module-level `mainWindow` reference — previously this always kiosked
+// mainWindow regardless of which window's Full Screen button was actually
+// clicked, so a secondary window's own toggle silently did nothing useful.
+// BrowserWindow.fromWebContents(event.sender) is always the window that
+// made the call, whether that's mainWindow or any secondary window.
+ipcMain.handle('set-kiosk', (event, enabled) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) return false
+  win.setKiosk(Boolean(enabled))
+  return win.isKiosk()
 })
 
-ipcMain.handle('open-live-wall-window', (_event, layoutId) => {
-  createLiveWallWindow(layoutId || undefined)
-})
-
-ipcMain.handle('open-attendance-window', () => {
-  createAttendanceWindow()
+ipcMain.handle('open-secondary-window', (_event, routePath) => {
+  createSecondaryWindow(String(routePath || '/'))
 })
 
 ipcMain.handle('get-auto-launch', () => store.get('autoLaunch'))

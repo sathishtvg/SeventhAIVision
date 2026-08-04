@@ -1,16 +1,24 @@
 """Privacy masking zones, PDPA consent management, and data subject requests (DSAR)."""
 
+import asyncio
+import json
+import logging
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant, get_raw_db
 
 router = APIRouter(prefix="/api/v1/privacy", tags=["privacy"])
 pdpa_router = APIRouter(prefix="/api/v1/pdpa", tags=["pdpa"])
+
+logger = logging.getLogger(__name__)
 
 
 # ── Privacy Masking Zones ─────────────────────────────────────────────────────
@@ -317,3 +325,137 @@ async def update_dsar(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "DSAR not found")
     return dict(row._mapping)
+
+
+class ErasureExecuteRequest(BaseModel):
+    face_watchlist_entry_ids: list[str] = []
+    plate_watchlist_entry_ids: list[str] = []
+    visitor_ids: list[str] = []
+    evidence_ids: list[str] = []
+
+
+@pdpa_router.post("/dsar/{dsar_id}/execute-erasure", dependencies=[Depends(require_permission("pdpa:admin"))])
+async def execute_dsar_erasure(
+    dsar_id: str,
+    body: ErasureExecuteRequest,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Actually deletes/redacts the personal data an erasure DSAR names,
+    replacing the previous workflow of an admin typing a records_erased
+    count by hand with no code path that erased anything. Historical
+    detection rows are redacted in place (biometric embedding cleared,
+    plate number/watchlist link removed) rather than deleted outright —
+    mirrors this codebase's audit_logs immutability convention: the fact
+    a detection happened stays, the data identifying who it was doesn't."""
+    dsar_row = (await db.execute(
+        text("SELECT id, request_type FROM data_subject_requests WHERE id = CAST(:id AS uuid)"),
+        {"id": dsar_id},
+    )).first()
+    if dsar_row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "DSAR not found")
+    if dsar_row.request_type != "erasure":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "This DSAR is not an erasure request")
+
+    counts = {"face_watchlist_entries": 0, "plate_watchlist_entries": 0, "visitors": 0, "evidence": 0}
+
+    for entry_id in body.face_watchlist_entry_ids:
+        await db.execute(
+            text(
+                "UPDATE face_events SET matched_watchlist_id = NULL, "
+                "embedding_v = NULL, watchlist_match = NULL "
+                "WHERE matched_watchlist_id = CAST(:id AS uuid)"
+            ),
+            {"id": entry_id},
+        )
+        result = await db.execute(
+            text("DELETE FROM face_watchlist_entries WHERE id = CAST(:id AS uuid) RETURNING id"),
+            {"id": entry_id},
+        )
+        if result.first() is not None:
+            counts["face_watchlist_entries"] += 1
+
+    for entry_id in body.plate_watchlist_entry_ids:
+        plate_row = (await db.execute(
+            text("SELECT plate_number FROM watchlist_entries WHERE id = CAST(:id AS uuid)"),
+            {"id": entry_id},
+        )).first()
+        if plate_row is None:
+            continue
+        await db.execute(
+            text("UPDATE lpr_events SET plate_number = '[ERASED]' WHERE plate_number = :plate"),
+            {"plate": plate_row.plate_number},
+        )
+        result = await db.execute(
+            text("DELETE FROM watchlist_entries WHERE id = CAST(:id AS uuid) RETURNING id"),
+            {"id": entry_id},
+        )
+        if result.first() is not None:
+            counts["plate_watchlist_entries"] += 1
+
+    for visitor_id in body.visitor_ids:
+        # visitor_logs.visitor_id is ON DELETE SET NULL and never stores the
+        # visitor's name/id_number directly, so deleting the visitor row alone
+        # is sufficient — the log entries survive as anonymous attendance records.
+        result = await db.execute(
+            text("DELETE FROM visitors WHERE id = CAST(:id AS uuid) RETURNING id"),
+            {"id": visitor_id},
+        )
+        if result.first() is not None:
+            counts["visitors"] += 1
+
+    for evidence_id in body.evidence_ids:
+        ev_row = (await db.execute(
+            text("SELECT storage_path FROM evidence WHERE id = CAST(:id AS uuid)"),
+            {"id": evidence_id},
+        )).first()
+        if ev_row is None:
+            continue
+        # File deleted before the row — an orphaned row (404s if ever served) is
+        # safer than an orphaned file nothing references, same ordering the
+        # scheduler's retention purge already uses.
+        if settings.STORAGE_BACKEND == "s3":
+            try:
+                from app.core.object_store import delete_object as _s3_delete
+                await asyncio.to_thread(_s3_delete, ev_row.storage_path)
+            except Exception:
+                logger.warning("S3 delete failed for evidence %s during DSAR erasure", evidence_id)
+        else:
+            file_path = Path(settings.EVIDENCE_ROOT) / ev_row.storage_path
+            if file_path.exists():
+                file_path.unlink()
+        result = await db.execute(
+            text("DELETE FROM evidence WHERE id = CAST(:id AS uuid) RETURNING id"),
+            {"id": evidence_id},
+        )
+        if result.first() is not None:
+            counts["evidence"] += 1
+
+    total = sum(counts.values())
+
+    # Proof-of-erasure audit trail — records that an erasure happened and its
+    # shape, never the erased PII itself (that would defeat the point).
+    await db.execute(
+        text(
+            "INSERT INTO audit_logs (tenant_id, user_id, action, resource_type, resource_id, detail) "
+            "VALUES (current_setting('app.current_tenant')::uuid, CAST(:uid AS uuid), "
+            "'dsar_erasure_executed', 'data_subject_requests', CAST(:dsar_id AS uuid), CAST(:detail AS jsonb))"
+        ),
+        {"uid": token.user_id, "dsar_id": dsar_id, "detail": json.dumps(counts)},
+    )
+
+    updated = (await db.execute(
+        text(
+            "UPDATE data_subject_requests SET records_erased = COALESCE(records_erased, 0) + :total, "
+            "updated_at = now() WHERE id = CAST(:id AS uuid) RETURNING id, records_erased"
+        ),
+        {"id": dsar_id, "total": total},
+    )).first()
+
+    await db.commit()
+    return {
+        "dsar_id": dsar_id,
+        "erased_counts": counts,
+        "total_erased_this_call": total,
+        "records_erased": updated.records_erased,
+    }

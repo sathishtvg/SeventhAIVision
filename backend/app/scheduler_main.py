@@ -290,6 +290,104 @@ async def check_visitor_overstays(db: AsyncSession, redis: Redis) -> int:
     return total
 
 
+async def check_parking_overstays(db: AsyncSession, redis: Redis) -> int:
+    """Alert when a visitor's vehicle has exceeded the site's free-parking
+    allowance — the trigger for wheel-clamping or further action.
+
+    Distinct from check_visitor_overstays above: that one is about the PERSON
+    staying past their expected departure, this is about the VEHICLE occupying
+    a bay past its free allowance. A visitor can legitimately still be on site
+    while their car has overstayed, and vice versa.
+
+    Allowance resolves per-visit override first, then the site default. NULL at
+    both levels means this site does not meter parking and is skipped entirely
+    — an unset allowance must never be read as "zero minutes free".
+    """
+    tenants = (await db.execute(text("SELECT id FROM tenants WHERE is_active = TRUE"))).fetchall()
+    total = 0
+    for (tenant_id,) in tenants:
+        await db.execute(
+            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": str(tenant_id)}
+        )
+        overstays = (await db.execute(
+            text("""
+                SELECT v.id, v.full_name, v.vehicle_plate, v.site_id, s.name AS site_name,
+                       FLOOR(EXTRACT(EPOCH FROM (now() - v.vehicle_entry_at))/60)::int AS mins,
+                       COALESCE(v.free_parking_minutes, s.free_parking_minutes) AS allowance
+                FROM visitors v
+                JOIN sites s ON s.id = v.site_id
+                WHERE v.is_active = TRUE
+                  AND v.vehicle_entry_at IS NOT NULL
+                  AND v.vehicle_exit_at IS NULL
+                  AND COALESCE(v.free_parking_minutes, s.free_parking_minutes) IS NOT NULL
+                  AND EXTRACT(EPOCH FROM (now() - v.vehicle_entry_at))/60
+                      > COALESCE(v.free_parking_minutes, s.free_parking_minutes)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM alerts a
+                    WHERE a.alert_code = 'parking.overstay'
+                      AND (a.message_params->>'visitor_id')::text = v.id::text
+                      AND a.created_at > now() - INTERVAL '4 hours'
+                  )
+            """)
+        )).fetchall()
+
+        for visitor_id, name, plate, site_id, site_name, mins, allowance in overstays:
+            cam_id = (await db.execute(
+                text("""
+                    SELECT COALESCE(
+                        (SELECT id FROM cameras WHERE tenant_id = :tid AND site_id = :sid LIMIT 1),
+                        (SELECT id FROM cameras WHERE tenant_id = :tid LIMIT 1)
+                    )
+                """),
+                {"tid": tenant_id, "sid": site_id},
+            )).scalar()
+            if cam_id is None:
+                continue
+
+            over_by = mins - allowance
+            alert_id = (await db.execute(
+                text(
+                    "INSERT INTO alerts (tenant_id, camera_id, module_type, severity, alert_code, "
+                    "                   message_params, title, message, status) "
+                    "VALUES (:tid, :cid, 'parking_overstay', 'medium', 'parking.overstay', "
+                    "       CAST(:params AS jsonb), :title, :msg, 'open') "
+                    "RETURNING id"
+                ),
+                {
+                    "tid": tenant_id,
+                    "cid": cam_id,
+                    "params": json.dumps({
+                        "visitor_id": str(visitor_id), "visitor_name": name,
+                        "plate_number": plate, "minutes_on_site": mins,
+                        "allowance_minutes": allowance, "over_by_minutes": over_by,
+                    }),
+                    "title": f"Parking overstay: {plate or name}",
+                    "msg": (
+                        f"{plate or name} has been parked {mins} min, exceeding the "
+                        f"{allowance} min free allowance by {over_by} min"
+                        + (f" at {site_name}" if site_name else "")
+                        + " — review for wheel clamping or further action"
+                    ),
+                },
+            )).scalar()
+            await redis.publish(f"tenant_events:{tenant_id}", json.dumps({
+                "event_type": "alert_created",
+                "tenant_id": str(tenant_id),
+                "payload": {
+                    "alert_id": str(alert_id),
+                    "alert_code": "parking.overstay",
+                    "plate_number": plate,
+                    "module_type": "parking_overstay",
+                    "severity": "medium",
+                },
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+            }))
+            total += 1
+
+        await db.commit()
+    return total
+
+
 async def check_no_show_shifts(db: AsyncSession, redis: Redis) -> int:
     """Auto-flags a no_show violation (ShiftSecure Phase 3) for any shift
     still 'scheduled' well past its start time. Mirrors
@@ -349,11 +447,32 @@ async def check_no_show_shifts(db: AsyncSession, redis: Redis) -> int:
 async def check_camera_offline_alerts(db: AsyncSession, redis: Redis) -> int:
     """Finds cameras whose last_frame_at is stale, marks them offline, and fires
     a tenant_events pub/sub notification once per cooldown window using the
-    last_offline_alert_at column added in migration 0007."""
-    rows = (
+    last_offline_alert_at column added in migration 0007.
+
+    BUG FIX: this previously ran one cross-tenant SELECT with no
+    set_config('app.current_tenant') at all. cameras and streams are both
+    RLS-protected, and their policy casts current_setting('app.current_tenant',
+    true) to uuid. On a connection that had never set the GUC that yields NULL
+    and the query silently returns zero rows; on a POOLED connection recycled
+    from a job that set the GUC and then committed, it yields the empty string
+    and '' ::uuid raises InvalidTextRepresentationError. Observed live: the job
+    was failing outright, so camera-offline alerts were not firing.
+
+    Now iterates tenants and scopes per tenant, the same shape as every other
+    job in this module. Third instance of this bug class in the codebase after
+    streams.py and webhooks.py.
+    """
+    tenants = (await db.execute(text("SELECT id FROM tenants WHERE is_active = TRUE"))).fetchall()
+    rows: list = []
+    for (tenant_id,) in tenants:
         await db.execute(
-            text(
-                """
+            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": str(tenant_id)}
+        )
+        rows.extend(
+            (
+                await db.execute(
+                    text(
+                        """
                 SELECT c.id, c.tenant_id, c.name, c.last_offline_alert_at
                 FROM cameras c
                 JOIN streams s ON s.camera_id = c.id
@@ -368,17 +487,24 @@ async def check_camera_offline_alerts(db: AsyncSession, redis: Redis) -> int:
                     OR c.last_offline_alert_at < now() - (:cooldown * INTERVAL '1 second')
                   )
                 """
-            ),
-            {
-                "threshold": CAMERA_OFFLINE_THRESHOLD_SECONDS,
-                "cooldown": CAMERA_OFFLINE_ALERT_COOLDOWN_SECONDS,
-            },
+                    ),
+                    {
+                        "threshold": CAMERA_OFFLINE_THRESHOLD_SECONDS,
+                        "cooldown": CAMERA_OFFLINE_ALERT_COOLDOWN_SECONDS,
+                    },
+                )
+            ).fetchall()
         )
-    ).fetchall()
 
     fired = 0
     for row in rows:
         camera_id, tenant_id, camera_name, _ = row
+        # Re-scope before the UPDATE: rows were gathered across several tenants,
+        # so the GUC still holds whichever tenant was scanned last and the RLS
+        # WITH CHECK would reject an update to any other tenant's camera.
+        await db.execute(
+            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": str(tenant_id)}
+        )
         await db.execute(
             text("UPDATE cameras SET last_offline_alert_at = now() WHERE id = :id"),
             {"id": camera_id},
@@ -947,6 +1073,15 @@ async def main() -> None:
                             logger.info("check_visitor_overstays: created %d alerts", n)
                 except Exception:
                     logger.exception("check_visitor_overstays failed")
+                # Parking overstay shares the same 15-minute cadence and its own
+                # session, so a failure in one sweep never suppresses the other.
+                try:
+                    async with AsyncSessionLocal() as db:
+                        n = await check_parking_overstays(db, redis)
+                        if n:
+                            logger.info("check_parking_overstays: created %d alerts", n)
+                except Exception:
+                    logger.exception("check_parking_overstays failed")
                 last_overstay = now
 
             # Tour compliance: auto-expire missed + auto-link completed sessions (every 15 min)

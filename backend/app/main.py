@@ -35,7 +35,9 @@ from app.routers import (
     emergency,
     alarms,
     access_control,
+    barriers,
     bwc,
+    vms,
     compliance,
     data_compliance,
     contractors,
@@ -80,6 +82,7 @@ from app.routers import (
     users,
     visitors,
     wall_layouts,
+    wall_profiles,
     watchlist,
     webhooks,
     zones,
@@ -88,6 +91,10 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast, before touching Postgres/Redis, if this is a production
+    # deployment still running on dev-default secrets (see config.py).
+    settings.assert_production_secrets_configured()
+
     # Mark any recordings that were left stuck as 'recording' from a prior crash
     from app.db.session import AsyncSessionLocal
     from sqlalchemy import text as _text
@@ -257,6 +264,7 @@ app.include_router(alert_dedup.router)
 app.include_router(incidents.router)
 app.include_router(detections.router)
 app.include_router(wall_layouts.router)
+app.include_router(wall_profiles.router)
 app.include_router(watchlist.router)
 app.include_router(streams.router)
 app.include_router(streams.global_router)
@@ -305,6 +313,8 @@ app.include_router(contractors.router)
 app.include_router(parking.router)
 app.include_router(alarms.router)
 app.include_router(access_control.router)
+app.include_router(barriers.router)
+app.include_router(vms.router)
 app.include_router(training.router)
 app.include_router(emergency.router)
 app.include_router(bwc.router)

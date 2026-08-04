@@ -1,13 +1,14 @@
 import asyncio
 import csv
 import io
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.uploads import MAX_CSV_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
@@ -16,10 +17,85 @@ from app.services.face import extract_embedding_sync as _extract_embedding_sync
 router = APIRouter(tags=["watchlist"])
 
 
+# Vehicle registry categories (migration 0076). `list_type` is no longer set
+# by callers: a database trigger derives it from `category` so the LPR
+# worker's coarse allow/block lookup can never contradict the category an
+# admin actually chose. See the migration docstring for why the split exists.
+VEHICLE_CATEGORIES = (
+    "whitelist", "blacklist", "watchlist", "vip", "staff",
+    "visitor", "contractor", "emergency", "government", "unknown",
+)
+
+_REGISTRY_COLUMNS = (
+    "id, plate_number, list_type, category, owner_name, company, vehicle_type, "
+    "vehicle_color, valid_from, valid_to, remarks, reason, is_active, expires_at, created_at"
+)
+
+
 class PlateWatchlistCreate(BaseModel):
     plate_number: str
-    list_type: str  # 'allow' | 'block'
+    category: str = "watchlist"
     reason: str | None = None
+    owner_name: str | None = None
+    company: str | None = None
+    vehicle_type: str | None = None
+    vehicle_color: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+    remarks: str | None = None
+    # Accepted for backward compatibility with any existing caller that still
+    # sends the old binary field. Translated into a category by
+    # `_resolve_category` — never written directly, since the trigger owns
+    # list_type now.
+    list_type: str | None = None
+
+
+class PlateWatchlistUpdate(BaseModel):
+    plate_number: str | None = None
+    category: str | None = None
+    reason: str | None = None
+    owner_name: str | None = None
+    company: str | None = None
+    vehicle_type: str | None = None
+    vehicle_color: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+    remarks: str | None = None
+    is_active: bool | None = None
+
+
+def _validate_category(category: str) -> None:
+    if category not in VEHICLE_CATEGORIES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"unknown category '{category}'; expected one of: {', '.join(VEHICLE_CATEGORIES)}",
+        )
+
+
+# Pre-0076 callers (the old web page, mobile, any integration) send the binary
+# `list_type` and no `category`. Translating it is what actually makes that
+# contract backward-compatible: without this, a caller registering a stolen
+# vehicle as list_type="block" gets a 201 back and a row the trigger silently
+# rewrites to 'allow' — a barred plate that auto-opens the barrier.
+_LEGACY_LIST_TYPE_CATEGORY = {"block": "blacklist", "allow": "whitelist"}
+
+
+def _resolve_category(body: PlateWatchlistCreate) -> str:
+    """An explicit `category` always wins — it is the newer, richer statement of
+    intent. `model_fields_set` (not a None check) is what distinguishes "caller
+    omitted category, so the default applied" from "caller explicitly chose
+    watchlist"; only the former may be overridden by a legacy list_type."""
+    if "category" in body.model_fields_set:
+        return body.category
+    if body.list_type:
+        mapped = _LEGACY_LIST_TYPE_CATEGORY.get(body.list_type.strip().lower())
+        if mapped is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"unknown list_type '{body.list_type}'; expected 'allow' or 'block'",
+            )
+        return mapped
+    return body.category
 
 
 class FaceWatchlistCreate(BaseModel):
@@ -29,9 +105,31 @@ class FaceWatchlistCreate(BaseModel):
 
 
 @router.get("/api/v1/watchlist/plates", dependencies=[Depends(require_permission("watchlist:manage"))])
-async def list_plate_watchlist(db: AsyncSession = Depends(get_db_with_tenant)):
+async def list_plate_watchlist(
+    category: str | None = None,
+    search: str | None = None,
+    is_active: bool | None = None,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    clauses, params = [], {}
+    if category:
+        _validate_category(category)
+        clauses.append("category = :category")
+        params["category"] = category
+    if is_active is not None:
+        clauses.append("is_active = :is_active")
+        params["is_active"] = is_active
+    if search:
+        # Matches the fields an operator actually searches by at a gate: the
+        # plate itself, who owns it, or which company it belongs to.
+        clauses.append(
+            "(plate_number ILIKE :q OR owner_name ILIKE :q OR company ILIKE :q)"
+        )
+        params["q"] = f"%{search}%"
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     result = await db.execute(
-        text("SELECT id, plate_number, list_type, reason, is_active, created_at FROM watchlist_entries ORDER BY created_at DESC")
+        text(f"SELECT {_REGISTRY_COLUMNS} FROM watchlist_entries {where} ORDER BY created_at DESC"),
+        params,
     )
     return [dict(row._mapping) for row in result]
 
@@ -42,22 +140,89 @@ async def create_plate_watchlist_entry(
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
+    category = _resolve_category(body)
+    _validate_category(category)
+    if body.valid_from and body.valid_to and body.valid_to < body.valid_from:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "valid_to cannot be earlier than valid_from"
+        )
+    # list_type is intentionally absent from this INSERT — the trigger added in
+    # migration 0076 derives it from category. Setting it here would just be
+    # overwritten, and pretending otherwise would mislead the next reader.
     result = await db.execute(
         text(
-            "INSERT INTO watchlist_entries (tenant_id, plate_number, list_type, reason, added_by_user_id) "
-            "VALUES (current_setting('app.current_tenant')::uuid, :plate, :list_type, :reason, :uid) "
-            "RETURNING id"
+            f"""
+            INSERT INTO watchlist_entries (
+                tenant_id, plate_number, list_type, category, reason, owner_name, company,
+                vehicle_type, vehicle_color, valid_from, valid_to, remarks, added_by_user_id
+            ) VALUES (
+                current_setting('app.current_tenant')::uuid,
+                :plate, 'allow', :category, :reason, :owner_name, :company,
+                :vehicle_type, :vehicle_color, :valid_from, :valid_to, :remarks, :uid
+            )
+            RETURNING {_REGISTRY_COLUMNS}
+            """
         ),
-        {"plate": body.plate_number, "list_type": body.list_type, "reason": body.reason, "uid": token.user_id},
+        {
+            "plate": body.plate_number.strip().upper(),
+            "category": category,
+            "reason": body.reason,
+            "owner_name": body.owner_name,
+            "company": body.company,
+            "vehicle_type": body.vehicle_type,
+            "vehicle_color": body.vehicle_color,
+            "valid_from": body.valid_from,
+            "valid_to": body.valid_to,
+            "remarks": body.remarks,
+            "uid": token.user_id,
+        },
     )
-    new_id = result.scalar_one()
+    row = result.mappings().first()
     await db.commit()
-    return {"id": new_id}
+    return dict(row)
+
+
+@router.put("/api/v1/watchlist/plates/{entry_id}", dependencies=[Depends(require_permission("watchlist:manage"))])
+async def update_plate_watchlist_entry(
+    entry_id: str,
+    body: PlateWatchlistUpdate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Editing a registry entry — previously impossible, so correcting an
+    owner's name or extending a pass meant deleting and re-adding the vehicle
+    and losing its history."""
+    fields = body.model_dump(exclude_unset=True)
+    if "category" in fields and fields["category"] is not None:
+        _validate_category(fields["category"])
+    if "plate_number" in fields and fields["plate_number"]:
+        fields["plate_number"] = fields["plate_number"].strip().upper()
+    if not fields:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "no fields to update")
+
+    sets = ", ".join(f"{k} = :{k}" for k in fields)
+    result = await db.execute(
+        text(
+            f"""
+            UPDATE watchlist_entries SET {sets}, updated_at = now()
+            WHERE id = CAST(:entry_id AS uuid)
+            RETURNING {_REGISTRY_COLUMNS}
+            """
+        ),
+        {**fields, "entry_id": entry_id},
+    )
+    row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Registry entry not found")
+    await db.commit()
+    return dict(row)
 
 
 @router.delete("/api/v1/watchlist/plates/{entry_id}", dependencies=[Depends(require_permission("watchlist:manage"))])
 async def deactivate_plate_watchlist_entry(entry_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
-    await db.execute(text("UPDATE watchlist_entries SET is_active = FALSE WHERE id = :id"), {"id": entry_id})
+    await db.execute(
+        text("UPDATE watchlist_entries SET is_active = FALSE WHERE id = CAST(:id AS uuid)"),
+        {"id": entry_id},
+    )
     await db.commit()
     return {"id": entry_id, "is_active": False}
 
@@ -109,7 +274,7 @@ async def bulk_import_plates(
     """Upload a CSV with columns: plate_number, list_type, reason (opt), expires_at (opt ISO date).
     Returns { total, imported, duplicates, errors }.
     """
-    content = await file.read()
+    content = await read_upload_limited(file, MAX_CSV_UPLOAD_BYTES)
     try:
         text_content = content.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -203,7 +368,7 @@ async def enroll_face(
 ):
     if file.content_type not in ("image/jpeg", "image/jpg", "image/png"):
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Only JPEG/PNG images are accepted")
-    image_bytes = await file.read()
+    image_bytes = await read_upload_limited(file, MAX_IMAGE_UPLOAD_BYTES)
     try:
         embedding = await asyncio.to_thread(_extract_embedding_sync, image_bytes)
     except RuntimeError as exc:
