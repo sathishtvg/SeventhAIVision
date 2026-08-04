@@ -44,6 +44,8 @@ import { MyRecordScreen }              from '@/screens/MyRecordScreen'
 import { TrainingScreen }              from '@/screens/TrainingScreen'
 import { PostOrdersScreen }            from '@/screens/PostOrdersScreen'
 import { MyScheduleScreen }            from '@/screens/MyScheduleScreen'
+import { ActionCenterScreen }          from '@/screens/ActionCenterScreen'
+import { AttendanceScreen }            from '@/screens/AttendanceScreen'
 import { useAuthStore }                from '@/store/auth'
 import { colors }                      from '@/theme'
 
@@ -99,6 +101,8 @@ export type MoreStackParamList = {
   Training:      undefined
   PostOrders:    undefined
   MySchedule:    undefined
+  ActionCenter:  undefined
+  Attendance:    undefined
 }
 
 export type MainTabParamList = {
@@ -176,6 +180,8 @@ function MoreNavigator() {
   return (
     <MoreStack.Navigator screenOptions={screenOptions}>
       <MoreStack.Screen name="MoreMenu"      component={MoreMenuScreen}             options={{ title: 'More' }} />
+      <MoreStack.Screen name="ActionCenter"  component={ActionCenterScreen}         options={{ title: 'Action Center' }} />
+      <MoreStack.Screen name="Attendance"    component={AttendanceScreen}           options={{ title: 'Live Attendance' }} />
       <MoreStack.Screen name="MySchedule"    component={MyScheduleScreen}           options={{ title: 'My Schedule' }} />
       <MoreStack.Screen name="Training"      component={TrainingScreen}             options={{ title: 'My Training' }} />
       <MoreStack.Screen name="PostOrders"    component={PostOrdersScreen}           options={{ title: 'Post Orders' }} />

@@ -22,6 +22,8 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   { screen: 'MyRecord',      label: 'My Record',          description: 'Your violations and leave requests', icon: 'document-text-outline',    color: colors.warning },
+  { screen: 'ActionCenter',  label: 'Action Center',      description: 'What needs your attention now',      icon: 'checkmark-done-outline',   color: colors.error },
+  { screen: 'Attendance',    label: 'Live Attendance',    description: 'Who is on duty and who is missing',  icon: 'people-circle-outline',    color: colors.success },
   { screen: 'MySchedule',    label: 'My Schedule',        description: 'Your upcoming and recent shifts',    icon: 'calendar-outline',         color: colors.secondary },
   { screen: 'PostOrders',    label: 'Post Orders',        description: 'Standing instructions for your sites', icon: 'reader-outline',       color: colors.error },
   { screen: 'Training',      label: 'My Training',        description: 'SOP courses and quizzes',            icon: 'school-outline',           color: colors.primary },
