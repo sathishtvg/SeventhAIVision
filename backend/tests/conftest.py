@@ -66,6 +66,54 @@ def _dispose_engine():
     yield
 
 
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _purge_tenants_created_by_this_run():
+    """Delete the tenants this run created, once the session ends.
+
+    Almost every test seeds its own tenant and nothing ever removed them, so
+    the test database accumulated one row per test per run, forever. That is
+    not merely untidy: the scheduler jobs under test (purge_expired_evidence,
+    escalate_unacknowledged_alerts, check_visitor_overstays) iterate EVERY
+    active tenant and issue ~3 queries each. Measured at ~10ms per tenant, the
+    loop crossed pytest-timeout's 300s ceiling once the table passed roughly
+    30k rows — and the table had reached 88,877, projecting ~900s per call.
+    The resulting failures looked like hangs and were repeatedly misdiagnosed
+    as pool exhaustion, lock contention, and event-loop bugs. They were none
+    of those; the suite was simply outrunning its own timeout.
+
+    Scoped by created_at rather than "delete everything" so a developer's
+    seeded fixtures or a shared database are never touched — this removes
+    exactly what the run added. FK cascades handle the tenant-owned children.
+    """
+    admin_url = os.environ.get(
+        "ADMIN_TEST_DATABASE_URL",
+        f"postgresql+asyncpg://postgres:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
+    )
+    engine = create_async_engine(admin_url)
+    started_at = None
+    try:
+        async with engine.connect() as conn:
+            started_at = (await conn.execute(text("SELECT now()"))).scalar()
+    except Exception:
+        pass  # no marker → skip cleanup rather than guess at a cutoff
+
+    yield  # exactly one yield: a fixture that yields twice raises at teardown
+
+    try:
+        if started_at is not None:
+            async with engine.connect() as conn:
+                await conn.execute(
+                    text("DELETE FROM tenants WHERE created_at >= :t"), {"t": started_at}
+                )
+                await conn.commit()
+    except Exception:
+        # Cleanup is housekeeping — never fail an otherwise-green suite
+        # because teardown could not reach the database.
+        pass
+    finally:
+        await engine.dispose()
+
+
 @pytest_asyncio.fixture
 async def db_session():
     """One transaction per test, always rolled back at teardown — gives perfect
