@@ -70,8 +70,41 @@ export const scanCheckpoint = (
 
 // ── Shifts + Handover ─────────────────────────────────────────────────────────
 
-export const getShifts = (params?: { shift_status?: string }) =>
-  apiClient.get('/api/v1/shifts', { params }).then((r) => r.data)
+export interface Shift {
+  id: string
+  guard_user_id: string
+  site_id: string | null
+  scheduled_start: string
+  scheduled_end: string
+  actual_start: string | null
+  actual_end: string | null
+  status: string
+  is_late: boolean | null
+  late_minutes: number | null
+  overtime_minutes: number | null
+  is_within_geofence: boolean | null
+  on_break: boolean
+  guard_name: string | null
+  site_name: string | null
+}
+
+/**
+ * NOTE ON SCOPING: GET /api/v1/shifts is not self-scoped server-side — passing
+ * no guard_user_id returns every shift in the tenant. Callers showing a guard
+ * "their" schedule must pass their own id explicitly (see getMyShifts). That
+ * is client-side scoping, which is a presentation choice and not a security
+ * boundary; the endpoint's authorization is a separate open question raised
+ * with the team rather than silently narrowed here, because control-room roles
+ * legitimately need the full board.
+ */
+export const getShifts = (params?: { shift_status?: string; guard_user_id?: string }) =>
+  apiClient.get<Shift[]>('/api/v1/shifts', { params }).then((r) => r.data)
+
+/** A guard's own schedule. guard_user_id is required, never optional. */
+export const getMyShifts = (guardUserId: string, params?: { shift_status?: string }) =>
+  apiClient
+    .get<Shift[]>('/api/v1/shifts', { params: { ...params, guard_user_id: guardUserId } })
+    .then((r) => r.data)
 
 function buildCheckinFormData(photoUri: string): FormData {
   const form = new FormData()

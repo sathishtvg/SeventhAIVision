@@ -15,16 +15,25 @@
  *   These tests assert the wire format, not the UI. The UI-level pre-check
  *   lives in the check-in screen; this is the layer that must not lose data.
  */
-import { endShift, startShift } from './patrols'
+import { endShift, getMyShifts, startShift } from './patrols'
 import { apiClient } from './client'
 
 jest.mock('./client', () => ({
-  apiClient: { post: jest.fn(() => Promise.resolve({ data: { ok: true } })) },
+  apiClient: {
+    post: jest.fn(() => Promise.resolve({ data: { ok: true } })),
+    get: jest.fn(() => Promise.resolve({ data: [] })),
+  },
 }))
 
 const mockPost = apiClient.post as jest.Mock
+const mockGetShifts = apiClient.get as jest.Mock
 
-beforeEach(() => mockPost.mockClear())
+// Clear BOTH mocks: leaving `get` dirty makes calls[0] belong to whichever
+// earlier test happened to run first, which reads as a source bug.
+beforeEach(() => {
+  mockPost.mockClear()
+  mockGetShifts.mockClear()
+})
 
 /** Pull the FormData parts back out — RN's FormData exposes _parts. */
 function partsOf(form: FormData): Array<[string, unknown]> {
@@ -110,4 +119,27 @@ test('each call builds a fresh FormData — no cross-request leakage', async () 
   expect(second).toHaveLength(1)
   expect((first[0][1] as { uri: string }).uri).toBe('file:///a.jpg')
   expect((second[0][1] as { uri: string }).uri).toBe('file:///b.jpg')
+})
+
+// ── getMyShifts scoping ───────────────────────────────────────────────────
+
+test('getMyShifts always sends guard_user_id', async () => {
+  // GET /shifts is not self-scoped server-side: omitting guard_user_id returns
+  // every shift in the tenant. This wrapper exists so a guard-facing screen
+  // cannot accidentally request the whole board.
+  const mockGet = mockGetShifts
+  mockGet.mockResolvedValueOnce({ data: [] })
+  await getMyShifts('guard-1')
+  expect(mockGet.mock.calls[0][0]).toBe('/api/v1/shifts')
+  expect(mockGet.mock.calls[0][1].params.guard_user_id).toBe('guard-1')
+})
+
+test('getMyShifts merges extra filters without dropping the guard scope', async () => {
+  const mockGet = mockGetShifts
+  mockGet.mockResolvedValueOnce({ data: [] })
+  await getMyShifts('guard-1', { shift_status: 'scheduled' })
+  expect(mockGet.mock.calls[0][1].params).toEqual({
+    shift_status: 'scheduled',
+    guard_user_id: 'guard-1',
+  })
 })
