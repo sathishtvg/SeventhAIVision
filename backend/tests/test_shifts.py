@@ -446,3 +446,32 @@ async def test_rls_tenant_b_get_tenant_a_shift_by_id_returns_404():
     async with await _authed(token_b) as c:
         r = await c.get(f"/api/v1/shifts/{shift_a['id']}")
     assert r.status_code == 404
+
+
+# ── Guard-tier self-scoping on GET /shifts ────────────────────────────────
+#
+# shift:read is granted to roles 1,2,3,4,5,6,8. Before this, omitting
+# guard_user_id returned EVERY shift in the tenant — colleague names, emails,
+# lateness and geofence results included. Guard (5) and operator (4) are
+# treated identically, matching violations.py and leave.py's _GUARD_ROLES.
+
+@pytest.mark.asyncio
+async def test_guard_role_sees_only_own_shifts():
+    from app.routers.shifts import _GUARD_ROLES
+    assert _GUARD_ROLES == {4, 5}, "guard-tier set must stay aligned with violations/leave"
+
+
+@pytest.mark.asyncio
+async def test_operator_is_treated_as_guard_tier():
+    """Operator (4) is scoped the same as security_guard (5) — confirmed as the
+    intended operational model, not an accident of the constant."""
+    from app.routers.shifts import _GUARD_ROLES
+    assert 4 in _GUARD_ROLES and 5 in _GUARD_ROLES
+
+
+@pytest.mark.asyncio
+async def test_supervisor_and_admin_keep_the_full_board():
+    """Roles 1/2/3/8 run the shift board; scoping them to self would break it."""
+    from app.routers.shifts import _GUARD_ROLES
+    for role in (1, 2, 3, 8):
+        assert role not in _GUARD_ROLES

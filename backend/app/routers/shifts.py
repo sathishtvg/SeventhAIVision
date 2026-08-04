@@ -156,9 +156,17 @@ class ShiftUpdate(BaseModel):
     handover_notes: str | None = None
 
 
+# Guard-tier roles: security_guard (5) and operator (4). Both are scoped to
+# their own shifts. Kept identical to violations.py and leave.py's _GUARD_ROLES
+# so "which roles see only their own records" has one answer across the app
+# rather than three subtly different ones.
+_GUARD_ROLES = {4, 5}
+
+
 @router.get("", dependencies=[Depends(require_permission("shift:read"))])
 async def list_shifts(
     db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
     site_id: str | None = None,
     guard_user_id: str | None = None,
     shift_status: str | None = None,
@@ -170,7 +178,15 @@ async def list_shifts(
     if site_id:
         where_clauses.append("sh.site_id = :site_id")
         params["site_id"] = site_id
-    if guard_user_id:
+    if token.role_id in _GUARD_ROLES:
+        # Forced, not defaulted: a guard-tier caller passing someone else's
+        # guard_user_id — or none at all — still gets only their own shifts.
+        # Previously this endpoint returned every shift in the tenant to any
+        # shift:read holder, exposing colleagues' names, emails, lateness and
+        # geofence results. shift:read is granted to roles 1,2,3,4,5,6,8.
+        where_clauses.append("sh.guard_user_id = :guard_user_id")
+        params["guard_user_id"] = token.user_id
+    elif guard_user_id:
         where_clauses.append("sh.guard_user_id = :guard_user_id")
         params["guard_user_id"] = guard_user_id
     if shift_status:
