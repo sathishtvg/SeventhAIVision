@@ -17,6 +17,14 @@ import pytest
 from app.core.security import create_access_token
 from tests.test_rbac import _seed_user_with_role
 
+from tests._repo import REPO_ROOT, requires_repo_tree
+
+# Skips the whole module when the repository tree is absent (e.g. inside the
+# api image, which ships only backend/). See tests/_repo.py for why failing
+# would be the wrong signal here.
+pytestmark = requires_repo_tree
+
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 _HERE = Path(__file__).parent            # /app/backend/tests/

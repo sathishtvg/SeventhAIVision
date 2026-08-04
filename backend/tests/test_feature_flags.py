@@ -22,6 +22,14 @@ from typing import Any
 
 import pytest
 
+from tests._repo import REPO_ROOT, requires_repo_tree
+
+# Skips the whole module when the repository tree is absent (e.g. inside the
+# api image, which ships only backend/). See tests/_repo.py for why failing
+# would be the wrong signal here.
+pytestmark = requires_repo_tree
+
+
 _HERE = Path(__file__).parent
 _PROJECT_ROOT = _HERE.parents[1]  # /app/backend/tests/ -> /app/backend -> /app
 _MODULE_PATH = _PROJECT_ROOT / "backend" / "app" / "core" / "feature_flags.py"

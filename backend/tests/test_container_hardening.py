@@ -16,6 +16,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests._repo import REPO_ROOT, requires_repo_tree
+
+# Skips the whole module when the repository tree is absent (e.g. inside the
+# api image, which ships only backend/). See tests/_repo.py for why failing
+# would be the wrong signal here.
+pytestmark = requires_repo_tree
+
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 ROOT = Path("/app")
