@@ -119,6 +119,29 @@ async def test_archive_old_audit_partitions_detaches_and_exports(admin_session, 
     }
     partition_existed = partition_name in existing
     if not partition_existed:
+        # Distinguish "no such table" from "table exists but is detached".
+        # This test DETACHes the partition and re-ATTACHes it at the end; if a
+        # run dies in between (a pytest-timeout kill, say), the table survives
+        # — that non-destructive detach is the compliance behaviour under test
+        # — but drops out of show_partitions() while still owning the name.
+        # Checking partition membership alone therefore reports "safe to
+        # create", CREATE TABLE fails with DuplicateTable, and the test is
+        # wedged permanently on every future run. Re-attach the orphan.
+        orphan = (
+            await admin_session.execute(
+                text("SELECT to_regclass(:n)"), {"n": f"public.{partition_name}"}
+            )
+        ).scalar()
+        if orphan is not None:
+            # Drop rather than re-attach. An orphan can predate a migration
+            # that added columns to audit_logs, and ATTACH then fails with
+            # "child table is missing column" — which is how this was actually
+            # found. Dropping sidesteps schema drift entirely, and is safe
+            # here in a way it would never be in production: a detached
+            # partition in the TEST database exists only because an earlier
+            # test run died mid-way, so it holds nothing but that run's
+            # fixture rows.
+            await admin_session.execute(text(f"DROP TABLE {partition_name}"))
         await admin_session.execute(text(
             f"CREATE TABLE {partition_name} PARTITION OF public.audit_logs "
             f"FOR VALUES FROM ('{part_start.isoformat()}') TO ('{part_end.isoformat()}')"
