@@ -60,12 +60,20 @@ def _make_job(tenant_id, camera_id) -> FrameJob:
     )
 
 
+# Migration 0076 made `category` authoritative and added a trigger that derives
+# `list_type` from it. Seeding `list_type` alone silently produced 'allow' for
+# every entry — including blocklisted ones — because the trigger overwrote it
+# from the default category. Seed `category` and let the trigger derive
+# list_type, which is what the production insert path does.
+_CATEGORY_FOR_LIST_TYPE = {"block": "blacklist", "allow": "whitelist"}
+
+
 def _seed_watchlist(tenant_id, plate, list_type):
     with psycopg.connect(ADMIN_URL) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO watchlist_entries (tenant_id, plate_number, list_type) VALUES (%s, %s, %s)",
-                (tenant_id, plate, list_type),
+                "INSERT INTO watchlist_entries (tenant_id, plate_number, category) VALUES (%s, %s, %s)",
+                (tenant_id, plate, _CATEGORY_FOR_LIST_TYPE[list_type]),
             )
         conn.commit()
 

@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 from shapely.geometry import Point, Polygon
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -26,6 +27,9 @@ from worker.models.intrusion_model import INTRUSION_MODEL_VERSION, PERSON_CLASS_
 from worker.storage import save_evidence_snapshot
 
 MODULE_TYPE = "intrusion"
+# Superseded by shared/shared/alert_rules.py (Module 14) — the zone_high /
+# zone_critical defaults encode exactly this set. Kept only so existing tests
+# that assert the historical policy still have something to reference.
 AUTO_INCIDENT_SEVERITIES = {"high", "critical"}
 
 _breach_tracker: BreachTracker | None = None
@@ -151,38 +155,54 @@ def process_frame_job(job: FrameJob) -> None:
                         (evidence_id, str(job.tenant_id), str(detection_id), rel_path, checksum, job.captured_at),
                     )
 
-                severity = zone["severity"]
-                alert_id = uuid4()
-                message_params = {"zone_id": str(zone["id"]), "severity": severity}
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        INSERT INTO alerts (id, tenant_id, detection_id, camera_id, module_type, severity,
-                                             alert_code, message_params, title, message, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open')
-                        """,
-                        (alert_id, str(job.tenant_id), str(detection_id), str(job.camera_id), MODULE_TYPE, severity,
-                         "intrusion.zone_breach", Jsonb(message_params),
-                         "Restricted zone breach", f"Person detected in zone (severity={severity})"),
-                    )
+                # The breached zone's own severity selects which rule applies;
+                # the rule then decides the alert severity and whether an
+                # incident opens. The shipped defaults map zone_high -> high
+                # + incident, reproducing the previous `severity =
+                # zone["severity"]` + AUTO_INCIDENT_SEVERITIES behaviour exactly.
+                zone_severity = zone["severity"]
+                rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, f"zone_{zone_severity}")
 
+                alert_id = None
                 incident_id = None
-                if severity in AUTO_INCIDENT_SEVERITIES:
-                    incident_id = uuid4()
+                severity = zone_severity
+                if rule is not None:
+                    severity = rule.severity
+                    alert_id = uuid4()
+                    message_params = {
+                        "zone_id": str(zone["id"]),
+                        "severity": severity,
+                        "zone_severity": zone_severity,
+                    }
                     with conn.cursor() as cur:
                         cur.execute(
                             """
-                            INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
-                                                    message_params, severity, status, is_auto_created)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
+                            INSERT INTO alerts (id, tenant_id, detection_id, camera_id, module_type, severity,
+                                                 alert_code, message_params, title, message, status)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open')
                             """,
-                            (incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
-                             "Restricted zone intrusion", "intrusion.zone_breach", Jsonb(message_params), severity),
+                            (alert_id, str(job.tenant_id), str(detection_id), str(job.camera_id), MODULE_TYPE, severity,
+                             "intrusion.zone_breach", Jsonb(message_params),
+                             "Restricted zone breach", f"Person detected in zone (severity={severity})"),
                         )
-                        cur.execute("UPDATE evidence SET incident_id = %s WHERE id = %s", (str(incident_id), evidence_id))
 
-                pending_events.append((alert_id, severity, incident_id, "Restricted zone breach"))
-                alerts_created_total.labels(module_type=MODULE_TYPE, tenant_id=str(job.tenant_id)).inc()
+                    if rule.create_incident:
+                        incident_id = uuid4()
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
+                                                        message_params, severity, status, is_auto_created)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
+                                """,
+                                (incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
+                                 "Restricted zone intrusion", "intrusion.zone_breach", Jsonb(message_params),
+                                 rule.incident_severity),
+                            )
+                            cur.execute("UPDATE evidence SET incident_id = %s WHERE id = %s", (str(incident_id), evidence_id))
+
+                    pending_events.append((alert_id, severity, incident_id, "Restricted zone breach"))
+                    alerts_created_total.labels(module_type=MODULE_TYPE, tenant_id=str(job.tenant_id)).inc()
 
                 with conn.cursor() as cur:
                     cur.execute(
@@ -190,9 +210,13 @@ def process_frame_job(job: FrameJob) -> None:
                         INSERT INTO audit_logs (tenant_id, user_id, action, resource_type, resource_id, detail)
                         VALUES (%s, NULL, 'intrusion_detected', 'detection', %s, %s)
                         """,
+                        # Audited even when the tenant suppressed the alert —
+                        # the intrusion still happened, and the record of it is
+                        # not theirs to switch off.
                         (str(job.tenant_id), str(detection_id),
                          Jsonb({"zone_id": str(zone["id"]), "severity": severity,
-                                "alert_id": str(alert_id), "incident_id": str(incident_id) if incident_id else None})),
+                                "alert_id": str(alert_id) if alert_id else None,
+                                "incident_id": str(incident_id) if incident_id else None})),
                     )
 
         conn.commit()

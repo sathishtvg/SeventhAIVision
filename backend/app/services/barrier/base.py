@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 BarrierStatus = Literal["open", "closed", "held_open", "unknown", "error"]
@@ -58,6 +58,10 @@ class BarrierConfig:
     # simulator's position, log correlation) keys off this rather than host —
     # a simulated barrier has no host at all.
     device_key: str | None = None
+    # Protocol-specific parameters declared by shared/shared/device_protocols.py
+    # and stored in barriers.config. Drivers read whatever their own protocol
+    # declared; a driver that needs nothing extra simply ignores this.
+    config: dict = field(default_factory=dict)
 
     @property
     def base_url(self) -> str:

@@ -8,6 +8,7 @@ import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import BlockIcon from '@mui/icons-material/Block'
 import VideocamIcon from '@mui/icons-material/Videocam'
+import VideoSettingsIcon from '@mui/icons-material/VideoSettings'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getSites, createSite, updateSite, deactivateSite } from '@/api/sites'
@@ -16,6 +17,8 @@ import { getCameras } from '@/api/cameras'
 import type { Site } from '@/types/api'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { RecordingPolicyDialog } from '@/components/common/RecordingPolicyDialog'
+import { usePermission } from '@/hooks/usePermission'
 
 interface SiteDialogProps {
   open: boolean
@@ -223,6 +226,8 @@ export function SitesPage() {
   const { data: sites = [], isLoading } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editSite, setEditSite] = useState<Site | undefined>()
+  const [policySite, setPolicySite] = useState<Site | undefined>()
+  const canSeePolicy = usePermission('recording_policy:read')
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => deactivateSite(id),
@@ -272,6 +277,13 @@ export function SitesPage() {
                     )}
                   </Box>
                   <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
+                    {canSeePolicy && (
+                      <Tooltip title="Recording policy — retention, sync and clip settings for this site">
+                        <IconButton size="small" onClick={() => setPolicySite(site)}>
+                          <VideoSettingsIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => openEdit(site)}>
                         <EditIcon fontSize="small" />
@@ -350,6 +362,15 @@ export function SitesPage() {
         site={editSite}
         onClose={() => setDialogOpen(false)}
       />
+      {policySite && (
+        <RecordingPolicyDialog
+          key={policySite.id}
+          open
+          siteId={policySite.id}
+          siteName={policySite.name}
+          onClose={() => setPolicySite(undefined)}
+        />
+      )}
     </Box>
   )
 }

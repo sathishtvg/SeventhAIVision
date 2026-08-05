@@ -46,13 +46,24 @@ def needs_rotation(started_at: datetime, now: datetime,
 
 async def find_streams_needing_recording(session: AsyncSession) -> list[dict]:
     """Streams flagged for continuous recording with NO active recording row.
-    Tenant GUC must already be set."""
+    Tenant GUC must already be set.
+
+    A site whose policy sets record_mode to 'off' or 'ai_event' is excluded —
+    those modes mean "no continuous capture here". 'motion' and 'scheduled'
+    stay included: neither gate is implemented yet (X-A is policy, not the
+    capture engine), and over-capturing is recoverable where under-capturing
+    loses footage permanently. Filtered in SQL rather than per stream in
+    Python to avoid a policy lookup per stream on every supervisor tick.
+    """
     result = await session.execute(text("""
         SELECT s.id AS stream_id, s.camera_id, s.url, s.auth_config, c.site_id
         FROM streams s
         JOIN cameras c ON c.id = s.camera_id
+        LEFT JOIN recording_policies p
+               ON p.site_id = c.site_id AND p.is_active = TRUE
         WHERE s.continuous_recording = TRUE
           AND c.is_active = TRUE
+          AND COALESCE(p.record_mode, 'continuous') NOT IN ('off', 'ai_event')
           AND NOT EXISTS (
               SELECT 1 FROM recordings r
               WHERE r.stream_id = s.id AND r.status = 'recording'
@@ -79,25 +90,41 @@ async def find_recordings_to_rotate(session: AsyncSession,
 
 
 async def get_retention_days(session: AsyncSession) -> int:
-    """Tenant recording.retention_days setting, env default when unset."""
-    row = (await session.execute(text(
-        "SELECT setting_value FROM tenant_settings WHERE setting_key = 'recording.retention_days'"
-    ))).first()
-    if row is not None and isinstance(row[0], int) and row[0] >= 1:
-        return row[0]
-    return DEFAULT_RETENTION_DAYS
+    """Tenant recording.retention_days setting, env default when unset.
+
+    Delegates to services/recording_policy so the tenant-level fallback has
+    one implementation now that per-site policy (Phase X-A) also needs it.
+    """
+    from app.services.recording_policy import get_tenant_retention_days
+
+    return await get_tenant_retention_days(session, DEFAULT_RETENTION_DAYS)
 
 
 async def purge_expired_recordings(
     session: AsyncSession, recordings_root: str, retention_days: int
 ) -> int:
-    """Delete finished recordings older than the cutoff — file first, then row.
-    Returns number of rows purged. Tenant GUC must already be set."""
+    """Delete finished recordings older than their cutoff — file first, then row.
+
+    `retention_days` is the FALLBACK, not a flat rule: a recording belonging to
+    a site with an explicit central_retention_days is judged against that
+    instead. Resolved inside the query rather than by looping sites in Python
+    because the alternative is one query per site per purge pass, and this way
+    a recording with no site (site_id IS NULL) or a site with no policy falls
+    through to the tenant value via the same COALESCE.
+
+    COALESCE, not `p.central_retention_days IS NOT NULL` — 0 is a meaningful
+    value ("keep nothing centrally", what a local-only site wants) and must not
+    be confused with NULL ("inherit").
+    """
     result = await session.execute(
         text("""
-            SELECT id, file_path FROM recordings
-            WHERE status IN ('completed', 'failed')
-              AND started_at < now() - make_interval(days => :days)
+            SELECT r.id, r.file_path
+            FROM recordings r
+            LEFT JOIN recording_policies p
+                   ON p.site_id = r.site_id AND p.is_active = TRUE
+            WHERE r.status IN ('completed', 'failed')
+              AND r.started_at < now() - make_interval(
+                      days => COALESCE(p.central_retention_days, :days))
             LIMIT 500
         """),
         {"days": retention_days},

@@ -17,6 +17,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -86,7 +87,12 @@ def process_frame_job(job: FrameJob) -> None:
             x1, y1, x2, y2 = (int(v) for v in det["bbox"])
             bbox_json = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
             detection_type = det["detection_type"]
-            severity = DETECTION_SEVERITIES[detection_type]
+            # 'fire' / 'smoke' is the trigger key; defaults reproduce
+            # DETECTION_SEVERITIES and the unconditional auto-incident.
+            rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, detection_type)
+            if rule is None:
+                continue  # tenant disabled alerts for this detection type
+            severity = rule.severity
             detection_id = uuid4()
 
             with conn.cursor() as cur:
@@ -153,24 +159,26 @@ def process_frame_job(job: FrameJob) -> None:
                     ),
                 )
 
-            incident_id = uuid4()
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
-                                            message_params, severity, status, is_auto_created)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
-                    """,
-                    (
-                        incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
-                        f"{detection_type.capitalize()} emergency", alert_code,
-                        Jsonb(message_params), severity,
-                    ),
-                )
-                cur.execute(
-                    "UPDATE evidence SET incident_id = %s WHERE id = %s",
-                    (str(incident_id), evidence_id),
-                )
+            incident_id = None
+            if rule.create_incident:
+                incident_id = uuid4()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
+                                                message_params, severity, status, is_auto_created)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
+                        """,
+                        (
+                            incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
+                            f"{detection_type.capitalize()} emergency", alert_code,
+                            Jsonb(message_params), rule.incident_severity,
+                        ),
+                    )
+                    cur.execute(
+                        "UPDATE evidence SET incident_id = %s WHERE id = %s",
+                        (str(incident_id), evidence_id),
+                    )
 
             with conn.cursor() as cur:
                 cur.execute(

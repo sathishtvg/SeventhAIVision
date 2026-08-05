@@ -15,6 +15,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -79,7 +80,13 @@ def process_frame_job(job: FrameJob) -> None:
             x1, y1, x2, y2 = (int(v) for v in det["bbox"])
             bbox_json = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
             weapon_type = det["weapon_type"]
-            severity = WEAPON_SEVERITIES[weapon_type]
+            # The weapon class is the trigger key; the rule supplies severity
+            # and whether an incident opens. Defaults reproduce
+            # WEAPON_SEVERITIES + AUTO_INCIDENT_WEAPON_TYPES exactly.
+            rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, weapon_type)
+            if rule is None:
+                continue  # tenant disabled alerts for this weapon class
+            severity = rule.severity
             detection_id = uuid4()
 
             with conn.cursor() as cur:
@@ -147,7 +154,7 @@ def process_frame_job(job: FrameJob) -> None:
                 )
 
             incident_id = None
-            if weapon_type in AUTO_INCIDENT_WEAPON_TYPES:
+            if rule.create_incident:
                 incident_id = uuid4()
                 with conn.cursor() as cur:
                     cur.execute(
@@ -159,7 +166,7 @@ def process_frame_job(job: FrameJob) -> None:
                         (
                             incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
                             f"Weapon incident ({weapon_type})", alert_code,
-                            Jsonb(message_params), severity,
+                            Jsonb(message_params), rule.incident_severity,
                         ),
                     )
                     cur.execute(
