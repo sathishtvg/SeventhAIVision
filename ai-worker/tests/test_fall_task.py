@@ -82,7 +82,11 @@ def test_fall_detected_fires_high_alert_and_incident(
 
     mock_alert.assert_called_once()
     mock_incident.assert_called_once()
-    _, _, module_type, severity = mock_alert.call_args[0]
+    # publish_alert_created is (tenant_id, alert_id, module_type, severity,
+    # camera_id, title) — index rather than unpack so a trailing argument
+    # can be added without breaking this assertion.
+    _args = mock_alert.call_args[0]
+    module_type, severity = _args[2], _args[3]
     assert module_type == "fall"
     assert severity == "high"
 

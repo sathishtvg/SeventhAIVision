@@ -17,6 +17,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -105,6 +106,13 @@ def process_frame_job(job: FrameJob) -> None:
         if not violations:
             return
 
+        # Single-outcome module: one trigger key, 'violation'. The default
+        # reproduces ALERT_SEVERITY='high' plus the unconditional incident.
+        rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, "violation")
+        if rule is None:
+            return  # tenant disabled PPE alerting entirely
+        severity = rule.severity
+
         for person in violations:
             x1, y1, x2, y2 = (int(v) for v in person["bbox"])
             bbox_json = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
@@ -142,7 +150,7 @@ def process_frame_job(job: FrameJob) -> None:
                         Jsonb(bbox_json),
                         Jsonb(person["items_detected"]),
                         Jsonb(person["items_missing"]),
-                        ALERT_SEVERITY,
+                        severity,
                     ),
                 )
 
@@ -169,31 +177,33 @@ def process_frame_job(job: FrameJob) -> None:
                     """,
                     (
                         alert_id, str(job.tenant_id), str(detection_id), str(job.camera_id),
-                        MODULE_TYPE, ALERT_SEVERITY, "ppe.violation",
+                        MODULE_TYPE, severity, "ppe.violation",
                         Jsonb(message_params),
                         "PPE violation detected",
                         f"Person missing required PPE: {', '.join(person['items_missing'])}",
                     ),
                 )
 
-            incident_id = uuid4()
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
-                                            message_params, severity, status, is_auto_created)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
-                    """,
-                    (
-                        incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
-                        "PPE violation", "ppe.violation",
-                        Jsonb(message_params), ALERT_SEVERITY,
-                    ),
-                )
-                cur.execute(
-                    "UPDATE evidence SET incident_id = %s WHERE id = %s",
-                    (str(incident_id), evidence_id),
-                )
+            incident_id = None
+            if rule.create_incident:
+                incident_id = uuid4()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
+                                                message_params, severity, status, is_auto_created)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
+                        """,
+                        (
+                            incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
+                            "PPE violation", "ppe.violation",
+                            Jsonb(message_params), rule.incident_severity,
+                        ),
+                    )
+                    cur.execute(
+                        "UPDATE evidence SET incident_id = %s WHERE id = %s",
+                        (str(incident_id), evidence_id),
+                    )
 
             with conn.cursor() as cur:
                 cur.execute(
@@ -206,7 +216,7 @@ def process_frame_job(job: FrameJob) -> None:
                         Jsonb({
                             "items_missing": person["items_missing"],
                             "alert_id": str(alert_id),
-                            "incident_id": str(incident_id),
+                            "incident_id": str(incident_id) if incident_id else None,
                         }),
                     ),
                 )
@@ -217,5 +227,8 @@ def process_frame_job(job: FrameJob) -> None:
         conn.commit()
 
     for alert_id, incident_id in pending_events:
-        publish_alert_created(job.tenant_id, alert_id, MODULE_TYPE, ALERT_SEVERITY, job.camera_id, "PPE violation detected")
-        publish_incident_created(job.tenant_id, incident_id, alert_id, ALERT_SEVERITY)
+        publish_alert_created(job.tenant_id, alert_id, MODULE_TYPE, severity, job.camera_id, "PPE violation detected")
+        # incident_id is None when the rule alerts without escalating; publishing
+        # a null incident would push a malformed event to every connected client.
+        if incident_id is not None:
+            publish_incident_created(job.tenant_id, incident_id, alert_id, severity)

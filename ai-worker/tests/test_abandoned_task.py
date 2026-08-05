@@ -82,9 +82,13 @@ def test_single_object_fires_medium_alert_no_incident(
     process_frame_job(_make_job())
 
     mock_alert.assert_called_once()
-    _, _, module_type, severity = mock_alert.call_args[0]
-    assert module_type == "abandoned"
-    assert severity == "medium"
+    # publish_alert_created takes (tenant_id, alert_id, module_type, severity,
+    # camera_id, title). Index rather than unpack so adding a trailing argument
+    # doesn't break this assertion again — it was already failing on a stale
+    # 4-tuple unpack before this was noticed.
+    args = mock_alert.call_args[0]
+    assert args[2] == "abandoned"
+    assert args[3] == "medium"
 
 
 @patch("worker.tasks.abandoned_task.publish_alert_created")

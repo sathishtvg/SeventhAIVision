@@ -19,6 +19,7 @@ from psycopg.types.json import Jsonb
 from shapely.geometry import Point, Polygon
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -181,7 +182,14 @@ def process_frame_job(job: FrameJob) -> None:
                     (evidence_id, str(job.tenant_id), str(detection_id), rel_path, checksum, job.captured_at),
                 )
 
-            severity = zone["severity"]
+            # Zone severity selects the rule; the rule supplies the alert
+            # severity and incident decision. Defaults reproduce the previous
+            # `severity = zone["severity"]` + AUTO_INCIDENT_SEVERITIES policy.
+            zone_severity = zone["severity"]
+            rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, f"zone_{zone_severity}")
+            if rule is None:
+                continue  # tenant disabled alerts for this zone tier
+            severity = rule.severity
             message_params = {
                 "zone_id": str(zone["id"]),
                 "person_count": person_count,
@@ -205,7 +213,7 @@ def process_frame_job(job: FrameJob) -> None:
                 )
 
             incident_id = None
-            if severity in AUTO_INCIDENT_SEVERITIES:
+            if rule.create_incident:
                 incident_id = uuid4()
                 with conn.cursor() as cur:
                     cur.execute(
@@ -217,7 +225,7 @@ def process_frame_job(job: FrameJob) -> None:
                         (
                             incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
                             "Crowd capacity incident", "crowd.threshold_exceeded",
-                            Jsonb(message_params), severity,
+                            Jsonb(message_params), rule.incident_severity,
                         ),
                     )
                     cur.execute(

@@ -12,6 +12,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -51,9 +52,16 @@ def process_frame_job(job: FrameJob) -> None:
             if det["fall_confidence"] < float(conf_threshold):
                 continue
 
+            # Single-outcome module: trigger key 'detected'. Defaults reproduce
+            # SEVERITY='high' plus the unconditional auto-incident.
+            rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, "detected")
+            if rule is None:
+                continue  # tenant disabled fall alerting
+            severity = rule.severity
+
             detection_id = uuid4()
             alert_id = uuid4()
-            incident_id = uuid4()
+            incident_id = uuid4() if rule.create_incident else None
 
             with conn.cursor() as cur:
                 cur.execute(
@@ -110,29 +118,30 @@ def process_frame_job(job: FrameJob) -> None:
                     """,
                     (
                         alert_id, str(job.tenant_id), str(detection_id), str(job.camera_id),
-                        MODULE_TYPE, SEVERITY, ALERT_CODE, Jsonb(message_params),
+                        MODULE_TYPE, severity, ALERT_CODE, Jsonb(message_params),
                         "Person fallen detected",
                         f"Slip/fall event detected (confidence={det['fall_confidence']:.2f})",
                     ),
                 )
 
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
-                                            message_params, severity, status, is_auto_created)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
-                    """,
-                    (
-                        incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
-                        "Person fallen — possible medical emergency", ALERT_CODE,
-                        Jsonb(message_params), SEVERITY,
-                    ),
-                )
-                cur.execute(
-                    "UPDATE evidence SET incident_id = %s WHERE id = %s",
-                    (str(incident_id), str(evidence_id)),
-                )
+            if incident_id is not None:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO incidents (id, tenant_id, alert_id, camera_id, title, alert_code,
+                                                message_params, severity, status, is_auto_created)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', TRUE)
+                        """,
+                        (
+                            incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
+                            "Person fallen — possible medical emergency", ALERT_CODE,
+                            Jsonb(message_params), rule.incident_severity,
+                        ),
+                    )
+                    cur.execute(
+                        "UPDATE evidence SET incident_id = %s WHERE id = %s",
+                        (str(incident_id), str(evidence_id)),
+                    )
 
             with conn.cursor() as cur:
                 cur.execute(
@@ -142,7 +151,8 @@ def process_frame_job(job: FrameJob) -> None:
                     """,
                     (
                         str(job.tenant_id), str(detection_id),
-                        Jsonb({"alert_id": str(alert_id), "incident_id": str(incident_id)}),
+                        Jsonb({"alert_id": str(alert_id),
+                               "incident_id": str(incident_id) if incident_id else None}),
                     ),
                 )
 
@@ -152,5 +162,6 @@ def process_frame_job(job: FrameJob) -> None:
         conn.commit()
 
     for alert_id, incident_id in pending:
-        publish_alert_created(job.tenant_id, alert_id, MODULE_TYPE, SEVERITY, job.camera_id, "Person fallen detected")
-        publish_incident_created(job.tenant_id, incident_id, alert_id, SEVERITY)
+        publish_alert_created(job.tenant_id, alert_id, MODULE_TYPE, severity, job.camera_id, "Person fallen detected")
+        if incident_id is not None:
+            publish_incident_created(job.tenant_id, incident_id, alert_id, severity)

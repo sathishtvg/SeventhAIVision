@@ -18,6 +18,7 @@ from app.realtime.redis_listener import redis_pubsub_listener
 from app.realtime.router import router as realtime_router
 from app.routers import (
     action_center,
+    alert_rules,
     advanced_detections,
     alert_dedup,
     alerts,
@@ -44,6 +45,7 @@ from app.routers import (
     crowd_zones,
     parking,
     detections,
+    device_protocols,
     dispatch,
     dob,
     evidence,
@@ -64,6 +66,7 @@ from app.routers import (
     platform_licenses,
     post_orders,
     ptz,
+    recording_policies,
     reports,
     roles,
     search,
@@ -298,6 +301,9 @@ app.include_router(dispatch.custody_router)
 app.include_router(visitors.router)
 app.include_router(pdpa.router)
 app.include_router(pdpa.pdpa_router)
+app.include_router(alert_rules.router)
+app.include_router(device_protocols.router)
+app.include_router(recording_policies.router)
 app.include_router(reports.router)
 app.include_router(roles.router)
 app.include_router(ptz.router)

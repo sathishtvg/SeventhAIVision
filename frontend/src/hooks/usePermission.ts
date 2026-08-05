@@ -12,6 +12,7 @@ const ALL_PERMISSIONS = [
   'zone:manage',
   'site:read', 'site:manage',
   'recording:create', 'recording:read',
+  'recording_policy:read', 'recording_policy:manage',
   'license:manage',
   'alert:read', 'alert:acknowledge',
   'incident:read', 'incident:create', 'incident:update', 'incident:resolve', 'incident:assign',
@@ -85,6 +86,9 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'watchlist:manage', 'zone:manage',
     'site:read', 'site:manage',
     'recording:create', 'recording:read',
+    // Read but not manage — a supervisor should know what retention their site
+    // is under without being able to shorten it. Mirrors migration 0079's grant.
+    'recording_policy:read',
     'alert:read', 'alert:acknowledge', 'alert:create',
     'incident:read', 'incident:create', 'incident:update', 'incident:resolve', 'incident:assign', 'incident:dispatch',
     'evidence:read', 'evidence:custody:read', 'audit:read', 'detection:read',

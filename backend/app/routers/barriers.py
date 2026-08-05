@@ -19,6 +19,7 @@ Two things this router is deliberately strict about:
 from __future__ import annotations
 
 import json
+from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,6 +31,8 @@ from app.core.crypto import decrypt_secret, encrypt_secret
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.device_protocols import ConfigError, validate_extra_config
+from shared.device_protocols import FAMILY_BARRIER
 from app.services.barrier import (
     SUPPORTED_VENDORS,
     VENDOR_CAPABILITIES,
@@ -52,7 +55,7 @@ _OPERATOR_COMMANDS = ("open", "close", "hold_open", "release_hold", "emergency_o
 _SELECT_COLUMNS = """
     b.id, b.tenant_id, b.site_id, b.camera_id, b.door_id, b.name,
     b.lane_direction, b.vendor, b.host, b.port, b.username,
-    b.relay_channel, b.pulse_ms, b.auto_open_enabled, b.is_active,
+    b.relay_channel, b.pulse_ms, b.config, b.auto_open_enabled, b.is_active,
     b.last_status, b.last_status_at, b.last_error, b.created_at, b.updated_at,
     (b.password_encrypted IS NOT NULL) AS has_credentials
 """
@@ -72,6 +75,9 @@ class BarrierCreate(BaseModel):
     relay_channel: int | None = Field(default=None, ge=1)
     pulse_ms: int = Field(default=1000, ge=100, le=10_000)
     auto_open_enabled: bool = True
+    # Protocol-specific parameters, validated against the vendor's declared
+    # field list in shared/shared/device_protocols.py.
+    config: dict[str, Any] | None = None
 
 
 class BarrierUpdate(BaseModel):
@@ -89,6 +95,7 @@ class BarrierUpdate(BaseModel):
     pulse_ms: int | None = Field(default=None, ge=100, le=10_000)
     auto_open_enabled: bool | None = None
     is_active: bool | None = None
+    config: dict[str, Any] | None = None
 
 
 class CommandRequest(BaseModel):
@@ -102,6 +109,18 @@ def _validate_vendor(vendor: str) -> None:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"unsupported vendor '{vendor}'; supported: {', '.join(SUPPORTED_VENDORS)}",
         )
+
+
+def _extra_config(vendor: str, config: dict[str, Any] | None) -> str:
+    """Protocol-specific config, validated and serialised for the jsonb column.
+
+    ConfigError carries a message written for an admin ("Relay board: Port must
+    be at most 65535"), so it is surfaced as a 422 rather than swallowed.
+    """
+    try:
+        return json.dumps(validate_extra_config(FAMILY_BARRIER, vendor, config))
+    except ConfigError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
 def _config_from_row(row) -> BarrierConfig:
@@ -125,6 +144,7 @@ def _config_from_row(row) -> BarrierConfig:
         password=password,
         relay_channel=row["relay_channel"],
         pulse_ms=row["pulse_ms"] or 1000,
+        config=dict(row["config"] or {}),
         device_key=str(row["id"]),
     )
 
@@ -216,12 +236,12 @@ async def create_barrier(body: BarrierCreate, db: AsyncSession = Depends(get_db_
                 INSERT INTO barriers (
                     tenant_id, site_id, camera_id, door_id, name, lane_direction,
                     vendor, host, port, username, password_encrypted,
-                    relay_channel, pulse_ms, auto_open_enabled
+                    relay_channel, pulse_ms, auto_open_enabled, config
                 ) VALUES (
                     current_setting('app.current_tenant')::uuid,
                     CAST(:site_id AS uuid), CAST(:camera_id AS uuid), CAST(:door_id AS uuid),
                     :name, :lane_direction, :vendor, :host, :port, :username, :password_encrypted,
-                    :relay_channel, :pulse_ms, :auto_open_enabled
+                    :relay_channel, :pulse_ms, :auto_open_enabled, CAST(:config AS jsonb)
                 )
                 RETURNING {_SELECT_COLUMNS.replace('b.', '')}
                 """
@@ -240,6 +260,7 @@ async def create_barrier(body: BarrierCreate, db: AsyncSession = Depends(get_db_
                 "relay_channel": body.relay_channel,
                 "pulse_ms": body.pulse_ms,
                 "auto_open_enabled": body.auto_open_enabled,
+                "config": _extra_config(body.vendor, body.config),
             },
         )
     ).mappings().first()
@@ -256,7 +277,7 @@ async def get_barrier(barrier_id: str, db: AsyncSession = Depends(get_db_with_te
 async def update_barrier(
     barrier_id: str, body: BarrierUpdate, db: AsyncSession = Depends(get_db_with_tenant)
 ):
-    await _fetch_barrier(db, barrier_id)
+    existing = await _fetch_barrier(db, barrier_id)
     if body.vendor is not None:
         _validate_vendor(body.vendor)
 
@@ -267,10 +288,24 @@ async def update_barrier(
     if "password" in fields:
         pw = fields.pop("password")
         fields["password_encrypted"] = encrypt_secret(pw) if pw else None
-    if not fields:
-        return dict(await _fetch_barrier(db, barrier_id))
 
-    casts = {"site_id": "uuid", "camera_id": "uuid", "door_id": "uuid"}
+    # Protocol-specific config must be validated against whichever vendor the
+    # row will HAVE after this update, not the one it had before.
+    #
+    # A vendor change also invalidates the stored config: a relay board's
+    # open_path is meaningless on a Hikvision controller, and leaving it in
+    # place would make the row describe hardware it isn't. So a vendor change
+    # rewrites config even when the caller didn't send one — to the new
+    # protocol's declared defaults.
+    vendor_changed = body.vendor is not None and body.vendor != existing["vendor"]
+    effective_vendor = body.vendor if body.vendor is not None else existing["vendor"]
+    if "config" in fields or vendor_changed:
+        fields["config"] = _extra_config(effective_vendor, fields.pop("config", None))
+
+    if not fields:
+        return dict(existing)
+
+    casts = {"site_id": "uuid", "camera_id": "uuid", "door_id": "uuid", "config": "jsonb"}
     sets = ", ".join(
         f"{k} = CAST(:{k} AS {casts[k]})" if k in casts else f"{k} = :{k}" for k in fields
     )

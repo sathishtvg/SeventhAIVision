@@ -12,6 +12,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -54,6 +55,14 @@ def process_frame_job(job: FrameJob) -> None:
 
     with get_tenant_session(job.tenant_id) as conn:
         pending_alert_ids = []
+
+        # Single-outcome module: trigger key 'detected'. The default reproduces
+        # SEVERITY='medium' and, unlike the other single-outcome modules, no
+        # auto-incident — an unattended bag is worth a look, not a case file.
+        _rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, "detected")
+        if _rule is None:
+            return  # tenant disabled abandoned-object alerting
+        _severity = _rule.severity
 
         for det in detections:
             detection_id = uuid4()
@@ -117,7 +126,7 @@ def process_frame_job(job: FrameJob) -> None:
                     """,
                     (
                         alert_id, str(job.tenant_id), str(detection_id), str(job.camera_id),
-                        MODULE_TYPE, SEVERITY, ALERT_CODE, Jsonb(message_params),
+                        MODULE_TYPE, _severity, ALERT_CODE, Jsonb(message_params),
                         "Abandoned object detected",
                         f"Unattended object stationary for {det['dwell_seconds']:.0f}s",
                     ),
@@ -138,4 +147,4 @@ def process_frame_job(job: FrameJob) -> None:
         conn.commit()
 
     for (alert_id,) in pending_alert_ids:
-        publish_alert_created(job.tenant_id, alert_id, MODULE_TYPE, SEVERITY, job.camera_id, "Abandoned object detected")
+        publish_alert_created(job.tenant_id, alert_id, MODULE_TYPE, _severity, job.camera_id, "Abandoned object detected")

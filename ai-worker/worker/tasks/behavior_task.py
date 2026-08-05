@@ -27,6 +27,7 @@ from psycopg.types.json import Jsonb
 from shapely.geometry import Point, Polygon
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -144,7 +145,12 @@ def _write_behavior_event(
 ) -> tuple:
     x1, y1, x2, y2 = (int(v) for v in person["bbox"])
     bbox_json = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-    severity = BEHAVIOR_SEVERITIES[behavior_type]
+    # The behaviour class is the trigger key. A disabled rule still records the
+    # detection (it happened), it just won't raise an alert — so fall back to
+    # the shipped severity for the detection row and let the emit step below
+    # decide whether anyone is told about it.
+    _rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, behavior_type)
+    severity = _rule.severity if _rule is not None else BEHAVIOR_SEVERITIES[behavior_type]
     detection_id = uuid4()
 
     with conn.cursor() as cur:
@@ -274,8 +280,9 @@ def _emit_behavior_alert_incident(conn, job, detection_id, severity, behavior_ty
             (evidence_id, str(job.tenant_id), str(detection_id), rel_path, checksum, job.captured_at),
         )
 
+    rule = resolve_rule(conn, job.tenant_id, MODULE_TYPE, behavior_type)
     incident_id = None
-    if behavior_type in AUTO_INCIDENT_BEHAVIORS:
+    if rule is not None and rule.create_incident:
         incident_id = uuid4()
         with conn.cursor() as cur:
             cur.execute(
@@ -287,7 +294,7 @@ def _emit_behavior_alert_incident(conn, job, detection_id, severity, behavior_ty
                 (
                     incident_id, str(job.tenant_id), str(alert_id), str(job.camera_id),
                     f"Behavior incident ({behavior_type})", alert_code,
-                    Jsonb(message_params), severity,
+                    Jsonb(message_params), rule.incident_severity,
                 ),
             )
             cur.execute(

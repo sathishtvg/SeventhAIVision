@@ -23,6 +23,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -33,9 +34,11 @@ from worker.storage import save_evidence_snapshot
 MODULE_TYPE = "face"
 
 # watchlist_match -> (alert severity, alert_code, create incident, incident severity)
-ALERT_RULES = {
-    "block": ("high", "face.blocklist_hit", True, "high"),
-    "allow": ("low", "face.allowlist_hit", False, None),
+# Stable machine keys for i18n — not tenant-configurable. Severity and
+# auto-incident come from alert_rules_cache (Module 14).
+ALERT_CODES = {
+    "block": "face.blocklist_hit",
+    "allow": "face.allowlist_hit",
 }
 UNRECOGNIZED_ALERT_CODE = "face.unrecognized"
 
@@ -175,7 +178,11 @@ def process_frame_job(job: FrameJob) -> None:
             if incident_id is not None:
                 with conn.cursor() as cur:
                     cur.execute("UPDATE evidence SET incident_id = %s WHERE id = %s", (str(incident_id), evidence_id))
-            pending_events.append((alert_id, severity, incident_id, alert_title))
+            # alert_id is None when the tenant disabled this trigger. The
+            # detection and its evidence are still written — suppressing an
+            # alert is not the same as not having seen the face.
+            if alert_id is not None:
+                pending_events.append((alert_id, severity, incident_id, alert_title))
             alerts_created_total.labels(module_type=MODULE_TYPE, tenant_id=str(job.tenant_id)).inc()
 
             with conn.cursor() as cur:
@@ -198,17 +205,29 @@ def process_frame_job(job: FrameJob) -> None:
             publish_incident_created(job.tenant_id, incident_id, alert_id, severity)
 
 
-def _apply_alert_incident_rules(conn, tenant_id, camera_id, detection_id, matched_row, watchlist_match) -> tuple[object, object, str, str]:
-    if watchlist_match in ALERT_RULES:
-        severity, alert_code, create_incident, incident_severity = ALERT_RULES[watchlist_match]
+def _apply_alert_incident_rules(conn, tenant_id, camera_id, detection_id, matched_row, watchlist_match) -> tuple[object, object, str | None, str | None]:
+    """Returns (alert_id, incident_id, severity, title); alert_id is None when
+    this tenant has disabled the trigger, and the caller skips it entirely."""
+    if watchlist_match in ALERT_CODES:
+        trigger_key = watchlist_match
+        alert_code = ALERT_CODES[watchlist_match]
         person_name = matched_row["person_name"]
         title = "Blacklisted person detected" if watchlist_match == "block" else "VIP / known person detected"
         message_params = {"person_name": person_name}
     else:
-        # Unrecognized face: deliberate asymmetry vs LPR — still gets an alert (info, no incident).
-        severity, alert_code, create_incident, incident_severity = ("info", UNRECOGNIZED_ALERT_CODE, False, None)
+        # Unrecognized face: deliberate asymmetry vs LPR — still alerts by
+        # default, because an unknown person on a monitored site is the signal.
+        trigger_key = "unrecognized"
+        alert_code = UNRECOGNIZED_ALERT_CODE
         title = "Unrecognized face detected"
         message_params = {}
+
+    rule = resolve_rule(conn, tenant_id, MODULE_TYPE, trigger_key)
+    if rule is None:
+        return None, None, None, None
+    severity, create_incident, incident_severity = (
+        rule.severity, rule.create_incident, rule.incident_severity,
+    )
 
     alert_id = uuid4()
     with conn.cursor() as cur:

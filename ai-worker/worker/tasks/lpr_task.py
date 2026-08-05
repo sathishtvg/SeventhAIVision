@@ -23,6 +23,7 @@ import numpy as np
 from psycopg.types.json import Jsonb
 
 from shared.events import FrameJob
+from worker.common.alert_rules_cache import resolve_rule
 from worker.common.metrics import alerts_created_total
 from worker.common.realtime_publisher import publish_alert_created, publish_incident_created, publish_lpr_plate_detected
 from worker.common.tenant_settings_cache import get_tenant_setting
@@ -104,18 +105,34 @@ def _lookup_watchlist(conn, tenant_id: UUID, plate_number: str) -> str | None:
     return row[0] if row else None
 
 
-# watchlist_match -> (alert severity, alert_code, create incident, incident severity)
-ALERT_RULES = {
-    "block": ("critical", "lpr.blocklist_hit", True, "critical"),
-    "allow": ("low", "lpr.allowlist_hit", False, None),
+# alert_code is NOT tenant-configurable — it is the stable machine key that
+# message_params is rendered against for i18n, so it identifies *what happened*
+# and stays in code. Severity and auto-incident are policy and now come from
+# alert_rules_cache (Module 14), defaulting to shared/shared/alert_rules.py.
+ALERT_CODES = {
+    "block": "lpr.blocklist_hit",
+    "allow": "lpr.allowlist_hit",
 }
 
 
-def _apply_alert_incident_rules(conn, tenant_id: UUID, camera_id: UUID, detection_id: UUID, plate_number: str, watchlist_match: str | None) -> tuple[UUID | None, UUID | None, str | None]:
-    if watchlist_match not in ALERT_RULES:
-        return None, None, None  # unmatched: no alert, no incident (plan §7)
+def _apply_alert_incident_rules(conn, tenant_id: UUID, camera_id: UUID, detection_id: UUID, plate_number: str, watchlist_match: str | None) -> tuple[UUID | None, UUID | None, str | None, str | None]:
+    """Returns (alert_id, incident_id, title, severity).
 
-    severity, alert_code, create_incident, incident_severity = ALERT_RULES[watchlist_match]
+    Severity is returned rather than left for the caller to look up again: a
+    second resolve_rule() call could land after the 30s cache expired and
+    disagree with the severity actually written to the row.
+    """
+    if watchlist_match not in ALERT_CODES:
+        return None, None, None, None  # unmatched: no alert, no incident (plan §7)
+
+    rule = resolve_rule(conn, tenant_id, MODULE_TYPE, watchlist_match)
+    if rule is None:
+        return None, None, None, None  # tenant disabled this trigger
+
+    severity, create_incident, incident_severity = (
+        rule.severity, rule.create_incident, rule.incident_severity,
+    )
+    alert_code = ALERT_CODES[watchlist_match]
     message_params = {"plate": plate_number}
     title = "Blocklisted plate detected" if watchlist_match == "block" else "Allowlisted plate detected"
 
@@ -145,7 +162,7 @@ def _apply_alert_incident_rules(conn, tenant_id: UUID, camera_id: UUID, detectio
                  f"Blocklist vehicle entry: {plate_number}", alert_code, Jsonb(message_params), incident_severity),
             )
 
-    return alert_id, incident_id, title
+    return alert_id, incident_id, title, severity
 
 
 def process_frame_job(job: FrameJob) -> None:
@@ -226,7 +243,7 @@ def process_frame_job(job: FrameJob) -> None:
                     (evidence_id, str(job.tenant_id), str(detection_id), None, rel_path, checksum, job.captured_at),
                 )
 
-            alert_id, incident_id, alert_title = _apply_alert_incident_rules(
+            alert_id, incident_id, alert_title, severity = _apply_alert_incident_rules(
                 conn, job.tenant_id, job.camera_id, detection_id, plate_text, watchlist_match
             )
             if incident_id is not None:
@@ -235,7 +252,6 @@ def process_frame_job(job: FrameJob) -> None:
                         "UPDATE evidence SET incident_id = %s WHERE id = %s", (str(incident_id), evidence_id)
                     )
             if alert_id is not None:
-                severity, _code, _inc, _inc_sev = ALERT_RULES[watchlist_match]
                 pending_events.append((alert_id, severity, incident_id, alert_title))
                 alerts_created_total.labels(module_type=MODULE_TYPE, tenant_id=str(job.tenant_id)).inc()
 
