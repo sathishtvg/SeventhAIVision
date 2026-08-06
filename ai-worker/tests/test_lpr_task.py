@@ -85,6 +85,13 @@ def _fetch_one(query, params):
             return cur.fetchone()
 
 
+def _fetch_all(query, params):
+    with psycopg.connect(ADMIN_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return cur.fetchall()
+
+
 def test_blocklist_plate_critical_alert_and_incident(tenant_and_camera, monkeypatch):
     tenant_id, camera_id = tenant_and_camera
     _seed_watchlist(tenant_id, "SGB1234X", "block")
@@ -189,3 +196,37 @@ def test_tenant_setting_overrides_env_default(tenant_and_camera, monkeypatch):
 
     row = _fetch_one("SELECT count(*) FROM detections WHERE tenant_id = %s", (tenant_id,))
     assert row == (0,)  # tenant's stricter 0.99 threshold won, not the env's lenient 0.20
+
+
+def test_plate_crop_evidence_saved_alongside_frame(tenant_and_camera, monkeypatch):
+    """Every LPR read stores TWO images: the full frame and a crop of the plate.
+
+    The frame answers "which vehicle, which lane, when". Only the crop answers
+    "is this what the camera actually read" — at frame resolution the plate is
+    unreadable, and that is the question asked at the visitor desk where an
+    operator confirms a vehicle against this read.
+
+    Also pins the filenames apart. save_evidence_snapshot keys its path on
+    detection_id alone, so without the suffix the crop silently overwrites the
+    frame and the two evidence rows point at the same file.
+    """
+    tenant_id, camera_id = tenant_and_camera
+    _seed_watchlist(tenant_id, "SGC7777Z", "block")
+    monkeypatch.setattr(lpr_task, "detect_plates", lambda frame, conf=0.4: [SAMPLE_BBOX])
+    monkeypatch.setattr(lpr_task, "run_ocr", lambda crop: ("SGC7777Z", 0.9))
+
+    lpr_task.process_frame_job(_make_job(tenant_id, camera_id))
+
+    rows = _fetch_all(
+        "SELECT e.capture_kind, e.storage_path FROM evidence e "
+        "JOIN lpr_events le ON le.detection_id = e.detection_id "
+        "WHERE le.tenant_id = %s AND le.plate_number = 'SGC7777Z' "
+        "ORDER BY e.capture_kind",
+        (tenant_id,),
+    )
+    kinds = [r[0] for r in rows]
+    assert kinds == ["frame", "plate_crop"], f"expected both captures, got {kinds}"
+
+    paths = {r[0]: r[1] for r in rows}
+    assert paths["frame"] != paths["plate_crop"], "crop overwrote the frame"
+    assert paths["plate_crop"].endswith("_plate.jpg")

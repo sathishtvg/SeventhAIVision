@@ -13,6 +13,7 @@ tested for real without needing a real plate-detection weight file loaded.
 
 import base64
 import hashlib
+import logging
 import json
 import re
 from datetime import datetime, timezone
@@ -35,6 +36,8 @@ from worker.models.lpr_model import (
     get_plate_detector,
 )
 from worker.storage import save_evidence_snapshot
+
+logger = logging.getLogger(__name__)
 
 MODULE_TYPE = "lpr"
 
@@ -237,10 +240,46 @@ def process_frame_job(job: FrameJob) -> None:
                 cur.execute(
                     """
                     INSERT INTO evidence (id, tenant_id, detection_id, incident_id, media_type,
-                                           storage_path, checksum_sha256, captured_at)
-                    VALUES (%s, %s, %s, %s, 'image', %s, %s, %s)
+                                           storage_path, checksum_sha256, captured_at, capture_kind)
+                    VALUES (%s, %s, %s, %s, 'image', %s, %s, %s, 'frame')
                     """,
                     (evidence_id, str(job.tenant_id), str(detection_id), None, rel_path, checksum, job.captured_at),
+                )
+
+            # The plate crop, as proof of what was actually read.
+            #
+            # The full frame above answers "which vehicle, which lane, when".
+            # It does NOT answer "is SGB1234X what the camera saw" — at frame
+            # resolution the plate is a smudge. That question is the one asked
+            # at the visitor desk, where an operator confirms a vehicle's
+            # identity against this read, and where a misread character means
+            # the wrong vehicle billed or a blocklisted plate waved through.
+            #
+            # This crop is the exact pixels run_ocr() read, so it is proof of
+            # the actual input rather than a second look at the scene.
+            #
+            # Best-effort: a failure here must not lose the detection, the
+            # frame evidence or the alert. The plate read is the product; the
+            # proof image is corroboration.
+            try:
+                crop_path, crop_checksum = save_evidence_snapshot(
+                    crop, job.tenant_id, detection_id, suffix="_plate"
+                )
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO evidence (id, tenant_id, detection_id, incident_id, media_type,
+                                               storage_path, checksum_sha256, captured_at, capture_kind)
+                        VALUES (%s, %s, %s, %s, 'image', %s, %s, %s, 'plate_crop')
+                        """,
+                        (str(uuid4()), str(job.tenant_id), str(detection_id), None,
+                         crop_path, crop_checksum, job.captured_at),
+                    )
+            except Exception:
+                logger.warning(
+                    "lpr: plate-crop evidence failed for detection %s; "
+                    "frame evidence and plate read are unaffected",
+                    detection_id, exc_info=True,
                 )
 
             alert_id, incident_id, alert_title, severity = _apply_alert_incident_rules(

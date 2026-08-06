@@ -43,15 +43,22 @@ def _get_s3():
     return _s3_client
 
 
-def save_evidence_snapshot(frame: np.ndarray, tenant_id: UUID, detection_id: UUID) -> tuple[str, str]:
+def save_evidence_snapshot(
+    frame: np.ndarray, tenant_id: UUID, detection_id: UUID, suffix: str = ""
+) -> tuple[str, str]:
     """Returns (relative_storage_path, sha256_checksum).
 
-    Path convention: {tenant_id}/{yyyy}/{mm}/{dd}/{detection_id}.jpg.
+    Path convention: {tenant_id}/{yyyy}/{mm}/{dd}/{detection_id}{suffix}.jpg.
     Always uses forward slashes (the path doubles as an S3 object key).
+
+    `suffix` exists so one detection can store more than one image without
+    the second overwriting the first — LPR saves both the full frame and a
+    crop of the plate, and the filename is keyed on detection_id alone.
+    Defaults to "" so every existing caller keeps its current path exactly.
     """
     now = datetime.now(timezone.utc)
     rel_path = (
-        f"{tenant_id}/{now:%Y}/{now:%m}/{now:%d}/{detection_id}.jpg"
+        f"{tenant_id}/{now:%Y}/{now:%m}/{now:%d}/{detection_id}{suffix}.jpg"
     )
 
     ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
@@ -70,6 +77,6 @@ def save_evidence_snapshot(frame: np.ndarray, tenant_id: UUID, detection_id: UUI
     else:
         abs_dir = Path(EVIDENCE_ROOT) / str(tenant_id) / f"{now:%Y}" / f"{now:%m}" / f"{now:%d}"
         abs_dir.mkdir(parents=True, exist_ok=True)
-        (abs_dir / f"{detection_id}.jpg").write_bytes(raw_bytes)
+        (abs_dir / f"{detection_id}{suffix}.jpg").write_bytes(raw_bytes)
 
     return rel_path, checksum
