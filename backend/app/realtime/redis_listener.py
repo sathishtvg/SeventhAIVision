@@ -102,6 +102,61 @@ async def _handle_push_notification(redis_client: Redis, tenant_id_str: str, pay
     })
 
 
+"""camera_id → (site_name, camera_name), so a spoken alert announcement can
+name the site without the client making a follow-up request. Cached because
+this sits in the WebSocket fan-out hot path and a camera's site almost never
+changes; the short TTL exists only so a reassigned camera stops being
+announced under its old site within minutes rather than until a restart."""
+_SITE_CACHE: dict[str, tuple[float, str | None, str | None]] = {}
+_SITE_CACHE_TTL_SECONDS = 300.0
+_SITE_CACHE_MAX = 500
+
+
+async def _enrich_alert_site(tenant_id_str: str, payload: dict) -> None:
+    """Add site_name/camera_name to an alert_created payload, in place.
+
+    Workers publish only camera_id — they have no cheap way to resolve the
+    site, and threading it through all eleven task modules would mean an
+    extra query per detection. Resolving it once here covers every module.
+    Best-effort: on any failure the payload simply keeps its original fields
+    and the client falls back to announcing severity + module alone.
+    """
+    camera_id = payload.get("camera_id")
+    if not camera_id or payload.get("site_name"):
+        return
+
+    now = asyncio.get_running_loop().time()
+    hit = _SITE_CACHE.get(camera_id)
+    if hit and now - hit[0] < _SITE_CACHE_TTL_SECONDS:
+        payload["site_name"], payload["camera_name"] = hit[1], hit[2]
+        return
+
+    from sqlalchemy import text as sa_text
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            sa_text("SELECT set_config('app.current_tenant', :tid, true)"),
+            {"tid": tenant_id_str},
+        )
+        row = (
+            await session.execute(
+                sa_text(
+                    "SELECT c.name AS camera_name, s.name AS site_name "
+                    "FROM cameras c LEFT JOIN sites s ON s.id = c.site_id "
+                    "WHERE c.id = CAST(:cid AS uuid)"
+                ),
+                {"cid": camera_id},
+            )
+        ).mappings().first()
+
+    site_name = row["site_name"] if row else None
+    camera_name = row["camera_name"] if row else None
+    if len(_SITE_CACHE) >= _SITE_CACHE_MAX:
+        _SITE_CACHE.clear()  # bounded; cameras are few, a full reset is fine
+    _SITE_CACHE[camera_id] = (now, site_name, camera_name)
+    payload["site_name"], payload["camera_name"] = site_name, camera_name
+
+
 async def _handle_alert_notification(tenant_id_str: str, payload: dict) -> None:
     """Fire-and-forget: open a DB session and dispatch notification channels.
     Called via asyncio.create_task() so it never blocks WebSocket fan-out."""
@@ -199,7 +254,6 @@ async def redis_pubsub_listener(redis_client: Redis) -> None:
                     continue
                 data = message["data"]
                 data_str = data.decode() if isinstance(data, bytes) else data
-                await manager.broadcast_to_tenant(tenant_id, data_str)
 
                 event_type = "unknown"
                 parsed: dict = {}
@@ -208,6 +262,20 @@ async def redis_pubsub_listener(redis_client: Redis) -> None:
                     event_type = parsed.get("event_type", "unknown")
                 except (json.JSONDecodeError, AttributeError):
                     pass
+
+                # Only alerts are enriched before fan-out — they're the ones an
+                # operator hears announced, and after the first alert per camera
+                # this is an in-memory dict hit. Every other event type keeps the
+                # original string and is broadcast with nothing added to its path.
+                if event_type == "alert_created":
+                    try:
+                        await _enrich_alert_site(tenant_id_str, parsed.setdefault("payload", {}))
+                        data_str = json.dumps(parsed)
+                    except Exception as exc:
+                        # Never let enrichment failure delay or drop an alert.
+                        logger.warning("alert site enrichment failed: %s", exc)
+
+                await manager.broadcast_to_tenant(tenant_id, data_str)
                 ws_events_forwarded_total.labels(tenant_id=str(tenant_id), event_type=event_type).inc()
 
                 # Webhook fan-out for all supported event types

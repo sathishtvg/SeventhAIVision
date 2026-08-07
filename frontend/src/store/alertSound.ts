@@ -28,9 +28,65 @@ export const useAlertSoundStore = create<AlertSoundState>((set) => ({
     }),
 }))
 
-/** Pure — which severities are audible. Exported for tests. */
+/** Pure — which severities are audible. Exported for tests.
+ * Medium is included so an operator watching the wall hears that *something*
+ * happened; its tone is deliberately a single low blip, clearly distinct from
+ * high's triple beep and critical's siren, so severity is identifiable by ear
+ * alone without reading the screen. */
 export function shouldPlaySound(severity: string, enabled: boolean): boolean {
-  return enabled && (severity === 'high' || severity === 'critical')
+  return enabled && (severity === 'medium' || severity === 'high' || severity === 'critical')
+}
+
+const MODULE_SPOKEN: Record<string, string> = {
+  lpr: 'licence plate', face: 'face recognition', intrusion: 'intrusion',
+  ppe: 'P P E', crowd: 'crowd density', fire_smoke: 'fire or smoke',
+  weapon: 'weapon', behavior: 'suspicious behaviour', tampering: 'camera tampering',
+  abandoned: 'abandoned object', fall: 'person fallen',
+}
+
+/** Pure — the sentence the operator hears. Exported so the wording is
+ * testable without a speech engine. Severity first: it's the word that
+ * decides whether they stop what they're doing. */
+export function announcementText(
+  severity: string, moduleType?: string | null, siteName?: string | null,
+): string {
+  const parts = [`${severity} alert`]
+  const mod = moduleType ? MODULE_SPOKEN[moduleType] ?? moduleType.replace(/_/g, ' ') : null
+  if (mod) parts.push(mod)
+  if (siteName) parts.push(`at ${siteName}`)
+  return parts.join('. ') + '.'
+}
+
+/**
+ * Speak the alert so an operator facing the camera wall — not the screen —
+ * knows what happened and where without looking. Runs after the tone rather
+ * than over it, so the siren still does its job of grabbing attention first.
+ *
+ * Uses the browser's built-in speech synthesis: no audio files to ship, no
+ * network round-trip, and it already exists in Electron. Silently does
+ * nothing where the API is absent.
+ */
+export function announceAlert(
+  severity: string, moduleType?: string | null, siteName?: string | null,
+) {
+  const { soundEnabled } = useAlertSoundStore.getState()
+  if (!shouldPlaySound(severity, soundEnabled)) return
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined
+  if (!synth) return
+  try {
+    // Critical repeats its siren for ~4s; start speaking once that has had
+    // time to register rather than talking over it.
+    const delayMs = severity === 'critical' ? 4200 : 900
+    window.setTimeout(() => {
+      const u = new SpeechSynthesisUtterance(announcementText(severity, moduleType, siteName))
+      u.rate = 1.0
+      u.volume = 0.9
+      // A queued backlog of stale announcements is worse than missing one —
+      // during an alert storm the operator wants the latest, not a recital.
+      synth.cancel()
+      synth.speak(u)
+    }, delayMs)
+  } catch { /* speech unavailable — the tone already fired */ }
 }
 
 let _ctx: AudioContext | null = null
@@ -96,10 +152,14 @@ export function playAlertSound(severity: string) {
       _tone(ctx, t0 + i * 1.0, 0.5, 620, 1150, 0.2)
       _tone(ctx, t0 + i * 1.0 + 0.5, 0.5, 1150, 620, 0.2)
     }
-  } else {
+  } else if (severity === 'high') {
     // High: three short attention beeps
     for (let i = 0; i < 3; i++) {
       _tone(ctx, t0 + i * 0.28, 0.16, 880, 880, 0.16)
     }
+  } else {
+    // Medium: one low blip — noticeable, but clearly not a "drop everything"
+    // sound, so it can't be confused with high or critical by ear.
+    _tone(ctx, t0, 0.22, 440, 440, 0.12)
   }
 }

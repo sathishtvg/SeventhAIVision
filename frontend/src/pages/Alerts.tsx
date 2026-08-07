@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Box,
   Chip,
+  Tooltip,
   Typography,
   Table,
   TableBody,
@@ -430,18 +431,28 @@ export default function Alerts() {
                       <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                         <PermissionGuard permission="alert:acknowledge">
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                            {/* Spelled out rather than "Ack" / "FP". These are the two
+                                most-pressed controls in the product and were previously
+                                abbreviations a new operator had no way to decode —
+                                "FP" in particular reads as nothing at all. The tooltips
+                                state the consequence, since both actions change what the
+                                rest of the team sees. */}
                             {alert.status === 'open' && (
-                              <Button size="small" variant="outlined" onClick={() => acknowledge(alert.id)}>
-                                Ack
-                              </Button>
+                              <Tooltip title="Mark as seen — it stays in the list, assigned to you">
+                                <Button size="small" variant="outlined" onClick={() => acknowledge(alert.id)}>
+                                  Acknowledge
+                                </Button>
+                              </Tooltip>
                             )}
                             {(alert.status === 'open' || alert.status === 'acknowledged') && (
-                              <Button
-                                size="small" variant="outlined" color="warning"
-                                onClick={() => { setFpDialog({ alertId: alert.id }); setFpReason('') }}
-                              >
-                                FP
-                              </Button>
+                              <Tooltip title="Not a real event — records why, and stops it counting toward open alerts">
+                                <Button
+                                  size="small" variant="outlined" color="warning"
+                                  onClick={() => { setFpDialog({ alertId: alert.id }); setFpReason('') }}
+                                >
+                                  False positive
+                                </Button>
+                              </Tooltip>
                             )}
                           </Stack>
                         </PermissionGuard>

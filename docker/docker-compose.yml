@@ -99,7 +99,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      # 15s was not enough for a cold start: the API imports insightface +
+      # onnxruntime (face matching, check-in liveness) before it serves, and on
+      # a first `docker compose up` that overran 15s + 5x10s. Compose then
+      # marked api unhealthy and REFUSED TO START every service that
+      # depends_on it — observed here, frontend never came up. Generous, since
+      # the only cost of a high start_period is a slower failure report on a
+      # genuinely broken container.
+      start_period: 180s
 
   # Separate container so an RTSP decode crash never takes the API down. Async -> asyncpg, like `api`.
   ingestion:

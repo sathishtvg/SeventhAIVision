@@ -5,6 +5,7 @@ import {
 } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { EvidenceThumb } from '@/components/common/EvidenceThumb'
 import {
   getLprEvents, getFaceEvents, getIntrusionEvents,
   getPpeEvents, getCrowdEvents, getFireSmokeEvents, getWeaponEvents, getBehaviorEvents,
@@ -49,12 +50,13 @@ function LprTable() {
             <TableCell>Watchlist</TableCell>
             <TableCell>Direction</TableCell>
             <TableCell>Vehicle</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={6} />
+            ? <SkeletonRows cols={7} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="body2" sx={{ fontWeight: 700 }}>{e.plate_number}</Typography></TableCell>
@@ -66,6 +68,7 @@ function LprTable() {
                   </TableCell>
                   <TableCell>{e.direction ?? '—'}</TableCell>
                   <TableCell>{[e.vehicle_type, e.vehicle_color].filter(Boolean).join(', ') || '—'}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -85,12 +88,13 @@ function FaceTable() {
             <TableCell>Detection ID</TableCell>
             <TableCell>Watchlist</TableCell>
             <TableCell>Match Confidence</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={4} />
+            ? <SkeletonRows cols={5} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
@@ -100,6 +104,7 @@ function FaceTable() {
                       : <Chip label="unrecognized" size="small" variant="outlined" />}
                   </TableCell>
                   <TableCell>{e.match_confidence ? `${(e.match_confidence * 100).toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -119,17 +124,19 @@ function IntrusionTable() {
             <TableCell>Detection ID</TableCell>
             <TableCell>Zone ID</TableCell>
             <TableCell>Dwell Time</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={4} />
+            ? <SkeletonRows cols={5} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.zone_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell>{e.dwell_time_seconds != null ? `${e.dwell_time_seconds.toFixed(1)}s` : '—'}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -154,12 +161,13 @@ function PpeTable() {
             <TableCell>Missing Items</TableCell>
             <TableCell>Detected Items</TableCell>
             <TableCell>Severity</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={5} />
+            ? <SkeletonRows cols={6} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
@@ -178,6 +186,7 @@ function PpeTable() {
                     </Box>
                   </TableCell>
                   <TableCell><Chip label={e.severity} size="small" color="warning" /></TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -198,12 +207,13 @@ function CrowdTable() {
             <TableCell>Zone</TableCell>
             <TableCell>Count / Capacity</TableCell>
             <TableCell>Density</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={5} />
+            ? <SkeletonRows cols={6} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
@@ -220,6 +230,7 @@ function CrowdTable() {
                       <Typography variant="caption">{(e.density_ratio * 100).toFixed(0)}%</Typography>
                     </Box>
                   </TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -239,12 +250,13 @@ function FireSmokeTable() {
             <TableCell>Detection ID</TableCell>
             <TableCell>Type</TableCell>
             <TableCell>Confidence</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={4} />
+            ? <SkeletonRows cols={5} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
@@ -256,6 +268,7 @@ function FireSmokeTable() {
                     />
                   </TableCell>
                   <TableCell>{`${(e.confidence * 100).toFixed(1)}%`}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -275,12 +288,13 @@ function WeaponTable() {
             <TableCell>Detection ID</TableCell>
             <TableCell>Weapon Type</TableCell>
             <TableCell>Confidence</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={4} />
+            ? <SkeletonRows cols={5} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
@@ -292,6 +306,7 @@ function WeaponTable() {
                     />
                   </TableCell>
                   <TableCell>{`${(e.confidence * 100).toFixed(1)}%`}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -318,12 +333,13 @@ function BehaviorTable() {
             <TableCell>Behavior</TableCell>
             <TableCell>Duration</TableCell>
             <TableCell>Confidence</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={5} />
+            ? <SkeletonRows cols={6} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
@@ -336,6 +352,7 @@ function BehaviorTable() {
                   </TableCell>
                   <TableCell>{e.duration_seconds != null ? `${e.duration_seconds.toFixed(1)}s` : '—'}</TableCell>
                   <TableCell>{e.confidence != null ? `${(e.confidence * 100).toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.created_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -356,18 +373,20 @@ function TamperingTable() {
             <TableCell>Type</TableCell>
             <TableCell>Score</TableCell>
             <TableCell>Reason</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={5} />
+            ? <SkeletonRows cols={6} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell>{e.camera_name ?? e.camera_id.slice(0, 8)}</TableCell>
                   <TableCell><Chip label={e.tampering_type.replace('_', ' ')} size="small" color="warning" /></TableCell>
                   <TableCell>{e.score != null ? `${(e.score * 100).toFixed(1)}%` : '—'}</TableCell>
                   <TableCell><Typography variant="caption">{e.reason ?? '—'}</Typography></TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.detected_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -387,17 +406,19 @@ function AbandonedTable() {
             <TableCell>Camera</TableCell>
             <TableCell>Object Class</TableCell>
             <TableCell>Dwell Time</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={4} />
+            ? <SkeletonRows cols={5} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell>{e.camera_name ?? e.camera_id.slice(0, 8)}</TableCell>
                   <TableCell><Chip label={e.object_class.replace('_', ' ')} size="small" /></TableCell>
                   <TableCell>{e.dwell_seconds != null ? `${e.dwell_seconds.toFixed(1)}s` : '—'}</TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.detected_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}
@@ -416,12 +437,13 @@ function FallTable() {
           <TableRow>
             <TableCell>Camera</TableCell>
             <TableCell>Confidence</TableCell>
+            <TableCell>Proof</TableCell>
             <TableCell>Time</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {isLoading
-            ? <SkeletonRows cols={3} />
+            ? <SkeletonRows cols={4} />
             : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell>{e.camera_name ?? e.camera_id.slice(0, 8)}</TableCell>
@@ -432,6 +454,7 @@ function FallTable() {
                       color={e.fall_confidence != null && e.fall_confidence >= 0.8 ? 'error' : 'warning'}
                     />
                   </TableCell>
+                  <TableCell><EvidenceThumb frameEvidenceId={e.frame_evidence_id} plateEvidenceId={e.plate_evidence_id} /></TableCell>
                   <TableCell><Typography variant="caption" color="text.secondary">{new Date(e.detected_at).toLocaleString()}</Typography></TableCell>
                 </TableRow>
               ))}

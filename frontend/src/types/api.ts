@@ -173,7 +173,20 @@ export interface Detection {
   detected_at: string
 }
 
-export interface LprEvent {
+/**
+ * Screenshot pointers every detection-event row now carries.
+ *
+ * All eleven AI modules already wrote an evidence snapshot at detection time;
+ * the list endpoints simply never returned a pointer to it. Both are nullable:
+ * a plate crop only exists for LPR, and a frame can be absent if the worker's
+ * best-effort snapshot write failed without failing the detection itself.
+ */
+export interface EvidencePointers {
+  frame_evidence_id: string | null
+  plate_evidence_id: string | null
+}
+
+export interface LprEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   plate_number: string
@@ -185,7 +198,7 @@ export interface LprEvent {
   created_at: string
 }
 
-export interface FaceEvent {
+export interface FaceEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   matched_watchlist_id: string | null
@@ -194,7 +207,7 @@ export interface FaceEvent {
   created_at: string
 }
 
-export interface IntrusionEvent {
+export interface IntrusionEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   zone_id: string
@@ -203,7 +216,7 @@ export interface IntrusionEvent {
   created_at: string
 }
 
-export interface PpeEvent {
+export interface PpeEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   person_bbox: Record<string, number>
@@ -213,7 +226,7 @@ export interface PpeEvent {
   created_at: string
 }
 
-export interface CrowdEvent {
+export interface CrowdEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   zone_id: string
@@ -223,7 +236,7 @@ export interface CrowdEvent {
   created_at: string
 }
 
-export interface FireSmokeEvent {
+export interface FireSmokeEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   detection_type: 'fire' | 'smoke'
@@ -232,7 +245,7 @@ export interface FireSmokeEvent {
   created_at: string
 }
 
-export interface WeaponEvent {
+export interface WeaponEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   weapon_type: string
@@ -241,7 +254,7 @@ export interface WeaponEvent {
   created_at: string
 }
 
-export interface BehaviorEvent {
+export interface BehaviorEvent extends EvidencePointers {
   detection_id: string
   camera_id: string
   zone_id: string | null
@@ -251,7 +264,7 @@ export interface BehaviorEvent {
   created_at: string
 }
 
-export interface TamperingEvent {
+export interface TamperingEvent extends EvidencePointers {
   detection_id: string
   detected_at: string
   camera_id: string
@@ -261,7 +274,7 @@ export interface TamperingEvent {
   camera_name: string | null
 }
 
-export interface AbandonedObjectEvent {
+export interface AbandonedObjectEvent extends EvidencePointers {
   detection_id: string
   detected_at: string
   camera_id: string
@@ -271,7 +284,7 @@ export interface AbandonedObjectEvent {
   camera_name: string | null
 }
 
-export interface FallEvent {
+export interface FallEvent extends EvidencePointers {
   detection_id: string
   detected_at: string
   camera_id: string

@@ -24,6 +24,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/visitors", tags=["visitors"])
 
 
+def _plate_evidence_lateral(direction: str) -> str:
+    """Plate-read proof for a visitor's vehicle entry (or exit).
+
+    WHY
+        An LPR read auto-creates the visitor row and starts the parking clock,
+        then an operator is asked to confirm the vehicle's identity against a
+        bare text string. A misread character means the wrong vehicle is billed
+        or a blocklisted plate is waved through as a typo. The crop is the only
+        image that settles it — at frame resolution the plate is a smudge.
+
+    The time bound is what keeps this cheap: `evidence` is RANGE-partitioned on
+    captured_at, so without it Postgres probes every monthly partition. Anchored
+    on the vehicle's own timestamp with an hour of slack either side, and
+    falling back to created_at so a row whose entry time was never stamped
+    degrades to "still finds it" rather than "silently returns nothing".
+    """
+    anchor = f"COALESCE(v.vehicle_{direction}_at, v.created_at)"
+    return f"""
+        LEFT JOIN LATERAL (
+            SELECT
+              (array_agg(e.id) FILTER (WHERE e.capture_kind = 'plate_crop'))[1]
+                  AS {direction}_plate_evidence_id,
+              (array_agg(e.id) FILTER (WHERE e.capture_kind = 'frame'))[1]
+                  AS {direction}_frame_evidence_id
+            FROM evidence e
+            WHERE e.detection_id = v.{direction}_lpr_detection_id
+              AND e.captured_at BETWEEN {anchor} - INTERVAL '1 hour'
+                                    AND {anchor} + INTERVAL '1 hour'
+        ) ev_{direction} ON TRUE
+    """
+
+
+_PLATE_EVIDENCE_JOINS = _plate_evidence_lateral("entry") + _plate_evidence_lateral("exit")
+_PLATE_EVIDENCE_COLS = (
+    "v.entry_lpr_detection_id, v.exit_lpr_detection_id, "
+    "v.vehicle_entry_at, v.vehicle_exit_at, "
+    "ev_entry.entry_plate_evidence_id, ev_entry.entry_frame_evidence_id, "
+    "ev_exit.exit_plate_evidence_id, ev_exit.exit_frame_evidence_id"
+)
+
+
 def _to_dt(s: str | None):
     if s is None:
         return None
@@ -89,10 +130,12 @@ async def list_visitors(
         SELECT v.id, v.full_name, v.company, v.host_name, v.purpose,
                v.vehicle_plate, v.expected_from, v.expected_until, v.is_active,
                v.status, v.visitor_email, v.qr_token,
-               u.full_name AS host_user_name, s.name AS site_name
+               u.full_name AS host_user_name, s.name AS site_name,
+               {_PLATE_EVIDENCE_COLS}
         FROM visitors v
         LEFT JOIN users u ON u.id = v.host_user_id
         LEFT JOIN sites s ON s.id = v.site_id
+        {_PLATE_EVIDENCE_JOINS}
         {where}
         ORDER BY v.expected_from DESC NULLS LAST LIMIT :limit OFFSET :offset
     """
@@ -263,13 +306,15 @@ async def get_visitor_qr(visitor_id: str, db: AsyncSession = Depends(get_db_with
 
 @router.get("/by-qr/{qr_token}", dependencies=[Depends(require_permission("visitor:read"))])
 async def lookup_by_qr(qr_token: str, db: AsyncSession = Depends(get_db_with_tenant)):
-    row = (await db.execute(text("""
+    row = (await db.execute(text(f"""
         SELECT v.id, v.full_name, v.company, v.host_name, v.purpose,
                v.vehicle_plate, v.expected_from, v.expected_until,
                v.visitor_email, v.status, v.qr_token,
-               s.name AS site_name
+               s.name AS site_name,
+               {_PLATE_EVIDENCE_COLS}
         FROM visitors v
         LEFT JOIN sites s ON s.id = v.site_id
+        {_PLATE_EVIDENCE_JOINS}
         WHERE v.qr_token = :token AND v.is_active = TRUE
     """), {"token": qr_token})).first()
     if row is None:
@@ -359,10 +404,12 @@ async def upcoming_visitors(
         SELECT v.id, v.full_name, v.company, v.host_name, v.purpose,
                v.vehicle_plate, v.expected_from, v.expected_until,
                v.visitor_email, v.status, v.qr_token,
-               s.name AS site_name, u.full_name AS host_user_name
+               s.name AS site_name, u.full_name AS host_user_name,
+               {_PLATE_EVIDENCE_COLS}
         FROM visitors v
         LEFT JOIN sites s ON s.id = v.site_id
         LEFT JOIN users u ON u.id = v.host_user_id
+        {_PLATE_EVIDENCE_JOINS}
         WHERE {' AND '.join(where)}
         ORDER BY v.expected_from ASC
     """), params)

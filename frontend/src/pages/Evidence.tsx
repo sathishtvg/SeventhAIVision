@@ -6,7 +6,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import BrokenImageIcon from '@mui/icons-material/BrokenImage'
 import { useQuery } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
-import { getEvidence, evidenceFileUrl } from '@/api/evidence'
+import { getEvidence, evidenceImageUrl } from '@/api/evidence'
+import { useAuthStore } from '@/store/auth'
 import type { Evidence as EvidenceItem } from '@/types/api'
 
 interface EvidenceCardProps {
@@ -16,6 +17,8 @@ interface EvidenceCardProps {
 
 function EvidenceCard({ item, onClick }: EvidenceCardProps) {
   const [imgError, setImgError] = useState(false)
+  const token = useAuthStore((s) => s.accessToken)
+  const src = evidenceImageUrl(item.id, token, 640)  // card-sized, not full frame
 
   return (
     <GlassCard
@@ -23,13 +26,13 @@ function EvidenceCard({ item, onClick }: EvidenceCardProps) {
       onClick={onClick}
     >
       <Box sx={{ position: 'relative', aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
-        {imgError ? (
+        {imgError || !src ? (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <BrokenImageIcon sx={{ fontSize: 48, color: 'text.disabled' }} />
           </Box>
         ) : (
           <img
-            src={evidenceFileUrl(item.id)}
+            src={src}
             alt={`Evidence ${item.id}`}
             onError={() => setImgError(true)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -53,6 +56,7 @@ function EvidenceCard({ item, onClick }: EvidenceCardProps) {
 
 export default function Evidence() {
   const [selected, setSelected] = useState<EvidenceItem | null>(null)
+  const token = useAuthStore((s) => s.accessToken)
   const { data: items, isLoading } = useQuery({
     queryKey: ['evidence'],
     queryFn: () => getEvidence(100),
@@ -95,7 +99,7 @@ export default function Evidence() {
           </IconButton>
           {selected && (
             <img
-              src={evidenceFileUrl(selected.id)}
+              src={evidenceImageUrl(selected.id, token) ?? undefined}
               alt={`Evidence ${selected.id}`}
               style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain' }}
             />

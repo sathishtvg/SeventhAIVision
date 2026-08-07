@@ -17,12 +17,15 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import DescriptionIcon from '@mui/icons-material/Description'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import LaunchIcon from '@mui/icons-material/Launch'
+import ShieldIcon from '@mui/icons-material/Shield'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { getActionCenter, type ActionItem } from '@/api/actionCenter'
+import { AlertResponseDialog, type AlertSummary } from '@/components/common/AlertResponseDialog'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
@@ -73,7 +76,11 @@ function KpiCard({ label, value, color }: { label: string; value: number | undef
   )
 }
 
-function ActionRow({ item, onNavigate }: { item: ActionItem; onNavigate: (route: string) => void }) {
+function ActionRow({ item, onNavigate, onRespond }: {
+  item: ActionItem
+  onNavigate: (route: string) => void
+  onRespond: (alert: AlertSummary) => void
+}) {
   const color = SEV_COLOR[item.severity]
   const rgb = hexToRgb(color)
   const webRoute = item.action_route && item.action_route.startsWith('/') ? item.action_route : null
@@ -107,6 +114,17 @@ function ActionRow({ item, onNavigate }: { item: ActionItem; onNavigate: (route:
             Call
           </Button>
         )}
+        {/* Respond here rather than navigating: this is the page an operator
+            works a queue from, and bouncing to /alerts loses their place. The
+            "Open" button stays as the escape hatch to the full list. */}
+        {item.alert && (
+          <Button
+            size="small" variant="contained" startIcon={<ShieldIcon />}
+            sx={{ whiteSpace: 'nowrap' }} onClick={() => onRespond(item.alert as AlertSummary)}
+          >
+            Respond
+          </Button>
+        )}
         {webRoute && (
           <Button size="small" variant="outlined" endIcon={<LaunchIcon />} onClick={() => onNavigate(webRoute)}>
             Open
@@ -119,6 +137,8 @@ function ActionRow({ item, onNavigate }: { item: ActionItem; onNavigate: (route:
 
 export default function ActionCenter() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
+  const [responding, setResponding] = useState<AlertSummary | null>(null)
   const { kiosk, toggleKiosk } = useKioskToggle()
   const { data, isLoading } = useQuery({
     queryKey: ['action-center'],
@@ -181,11 +201,24 @@ export default function ActionCenter() {
           <Stack spacing={1}>
             {items.map((item, i) => (
               <Box key={item.id} sx={fadeUpSx(i, { stepMs: 35 })}>
-                <ActionRow item={item} onNavigate={navigate} />
+                <ActionRow item={item} onNavigate={navigate} onRespond={setResponding} />
               </Box>
             ))}
           </Stack>
         </GlassCard>
+      )}
+
+      {responding && (
+        <AlertResponseDialog
+          alert={responding}
+          onClose={() => setResponding(null)}
+          // Acting on the alert removes it from this feed, so refetch rather
+          // than leaving a row the operator has already dealt with.
+          onResolved={() => {
+            setResponding(null)
+            qc.invalidateQueries({ queryKey: ['action-center'] })
+          }}
+        />
       )}
     </Box>
   )

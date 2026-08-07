@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Box,
   Tab,
@@ -21,9 +21,12 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  Tooltip,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
+import { openInNewWindow } from '@/lib/popoutWindow'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getShifts, createShift, startShift, endShift, generateHandover,
@@ -40,11 +43,34 @@ const SEVERITY_COLOR: Record<string, 'error' | 'warning' | 'success' | 'default'
 
 export default function GuardOps() {
   const [tab, setTab] = useState(0)
+
+  // The VMS shortcut is gated on the guard's own posting: getSites() is
+  // already narrowed server-side to the sites this user is assigned to
+  // (dependencies/sites.py), so filtering that to vms_enabled gives exactly
+  // "a site I'm assigned to that runs visitor management". A guard at a site
+  // without VMS never sees the button rather than seeing one that opens an
+  // empty grid.
+  const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
+  const hasVms = useMemo(() => (sites ?? []).some((s) => s.vms_enabled), [sites])
+
   return (
     <Box>
-      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700, color: 'primary.main' }}>
-        Guard Operations
-      </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
+          Guard Operations
+        </Typography>
+        {hasVms && (
+          <Tooltip title="Open the gatehouse vehicle board in its own full-screen window — every visitor vehicle on site with its entry time and parking expiry">
+            <Button
+              variant="contained"
+              startIcon={<DirectionsCarIcon />}
+              onClick={() => openInNewWindow('/vms-onsite', { fullscreen: true })}
+            >
+              Vehicles On Site
+            </Button>
+          </Tooltip>
+        )}
+      </Stack>
       <Paper sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="primary">
           <Tab label="Shifts" />

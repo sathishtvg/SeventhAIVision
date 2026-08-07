@@ -33,6 +33,12 @@ from app.services.vms import get_form_fields, validate_custom_fields
 
 router = APIRouter(prefix="/api/v1/vms", tags=["vms"])
 
+# The plate-proof lateral is defined next to the visitor queries it was
+# written for; the VMS entry form needs the identical join, so it is
+# imported rather than duplicated.
+from app.routers.visitors import _PLATE_EVIDENCE_COLS, _PLATE_EVIDENCE_JOINS
+
+
 _READ = Depends(require_permission("visitor:read"))
 _CHECKIN = Depends(require_permission("visitor:checkin"))
 _MANAGE = Depends(require_permission("visitor:manage"))
@@ -399,9 +405,11 @@ async def vehicles_onsite(
                        (COALESCE(v.free_parking_minutes, s.free_parking_minutes) IS NOT NULL
                         AND EXTRACT(EPOCH FROM (now() - v.vehicle_entry_at))/60
                             > COALESCE(v.free_parking_minutes, s.free_parking_minutes))
-                           AS is_overstayed
+                           AS is_overstayed,
+                       {_PLATE_EVIDENCE_COLS}
                 FROM visitors v
                 LEFT JOIN sites s ON s.id = v.site_id
+                {_PLATE_EVIDENCE_JOINS}
                 WHERE {' AND '.join(clauses)}
                 ORDER BY v.vehicle_entry_at
                 """

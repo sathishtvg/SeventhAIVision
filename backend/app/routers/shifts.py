@@ -75,11 +75,17 @@ async def _process_checkin_photo(
     behalf, never attaches a photo — a supervisor's own selfie couldn't
     attest to the guard's identity or location anyway, so there's nothing
     meaningful to enforce there)."""
-    if photo is None:
-        return None, None
-
+    # Checked BEFORE the missing-photo early return on purpose. This flag is
+    # the server's independent re-check of a client-reported value, and its
+    # whole point is that a modified client might lie — so it must not be
+    # skippable by simply omitting the photo. The admin override path is
+    # unaffected: it never reports a location at all, so the flag is False
+    # there and this is a no-op.
     if is_mock_location:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Mock/fake GPS location detected — check-in blocked")
+
+    if photo is None:
+        return None, None
 
     if photo.content_type not in ("image/jpeg", "image/jpg", "image/png"):
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Only JPEG/PNG images are accepted")

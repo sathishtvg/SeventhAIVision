@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import type { AlertSummary } from '@/components/common/AlertResponseDialog'
 
 export interface ActionItem {
   id: string
@@ -12,6 +13,9 @@ export interface ActionItem {
   action_route?: string | null
   phone?: string | null
   entity_id: string
+  /** Present on `ack_alert` items only — everything the response dialog needs
+   * to act on the alert in place, so the row doesn't have to navigate away. */
+  alert?: AlertSummary | null
 }
 
 export interface ActionCenterResponse {

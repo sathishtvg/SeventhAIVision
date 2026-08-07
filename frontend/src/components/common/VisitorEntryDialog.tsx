@@ -22,9 +22,11 @@ import {
 import Stack from '@/components/common/Stack'
 import CloseIcon from '@mui/icons-material/Close'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVisitorEntryStore } from '@/store/visitorEntry'
 import { completeVisitorEntry, type VisitorFormField } from '@/api/vms'
+import { getEvidenceForDetection, evidenceImageUrl } from '@/api/evidence'
+import { useAuthStore } from '@/store/auth'
 import { usePermission } from '@/hooks/usePermission'
 
 /** Decisions that mean the vehicle was let in vs. held. Purely presentational
@@ -197,6 +199,19 @@ export function VisitorEntryDialog() {
     [prompt],
   )
 
+  const authToken = useAuthStore((st) => st.accessToken)
+  const { data: proof } = useQuery({
+    queryKey: ['detection-evidence', prompt?.detection_id],
+    queryFn: () => getEvidenceForDetection(prompt!.detection_id!),
+    enabled: !!prompt?.detection_id,
+    // The crop is written by the worker on a separate path from the prompt, so
+    // on a fast gate it can arrive just after this opens. Retry briefly rather
+    // than showing "no image" for a read that does have one.
+    retry: 3,
+    retryDelay: 800,
+    staleTime: 60_000,
+  })
+
   if (!prompt) return null
 
   return (
@@ -230,6 +245,33 @@ export function VisitorEntryDialog() {
               label={prompt.plate_number}
               sx={{ fontWeight: 700, letterSpacing: 1, fontSize: '1rem', px: 0.5 }}
             />
+            {/* The read, as a picture. The operator is being asked to confirm a
+                vehicle's identity — without this they are confirming a text
+                string against nothing. Crop preferred; the full frame is the
+                fallback when no crop was captured (pre-0082 reads). */}
+            {(proof?.plate_evidence_id || proof?.frame_evidence_id) && (
+              <Tooltip title={proof.plate_evidence_id ? 'Plate as read by the camera' : 'Full frame — no plate crop captured'}>
+                <Box
+                  component="img"
+                  src={
+                    evidenceImageUrl(
+                      (proof.plate_evidence_id ?? proof.frame_evidence_id)!,
+                      authToken,
+                      240,
+                    ) ?? undefined
+                  }
+                  alt="Plate read"
+                  sx={{
+                    height: 44,
+                    maxWidth: 160,
+                    objectFit: 'contain',
+                    borderRadius: 1,
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    bgcolor: 'rgba(0,0,0,0.3)',
+                  }}
+                />
+              </Tooltip>
+            )}
             {decision && (
               <Chip
                 size="small"
