@@ -1,0 +1,82 @@
+"""Attendance policy shared by every surface that reports guard presence.
+
+WHY THIS EXISTS
+    Three callers now need the same two answers — "what state is this shift
+    in?" and "how long after the scheduled start does a no-show count as
+    late?":
+
+        routers/shifts.py        writes is_late at check-in time
+        routers/attendance.py    the live attendance monitor
+        routers/command_centre.py  the Command Centre and the Site Map
+
+    Those three had begun to diverge: the status ladder lived in
+    attendance.py as a private helper, the grace default lived in shifts.py
+    as a private dict, and the Site Map was about to need both. A second
+    copy of "what counts as late" is the kind of drift that later shows up
+    as two screens disagreeing about whether a guard turned up — so this
+    consolidates rather than duplicates, matching the same "share once
+    there is a real second caller" call already made for services/face.py.
+"""
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Effective defaults when a tenant has set no override. Kept here rather
+# than in shifts.py so the writer of is_late and the readers that render it
+# can never drift apart.
+ATTENDANCE_DEFAULTS = {
+    "attendance.geofence_radius_meters": 200,
+    "attendance.late_grace_minutes": 10,
+    "attendance.overtime_threshold_minutes": 15,
+}
+
+
+async def get_attendance_setting(db: AsyncSession, key: str) -> int:
+    """Tenant override if set, else the shipped default. The isinstance
+    check rejects a bool because Python's bool is an int subclass and a
+    JSONB `true` would otherwise silently become 1 minute."""
+    row = (await db.execute(
+        text("SELECT setting_value FROM tenant_settings WHERE setting_key = :k"),
+        {"k": key},
+    )).first()
+    if row is not None and isinstance(row[0], int) and not isinstance(row[0], bool):
+        return row[0]
+    return ATTENDANCE_DEFAULTS[key]
+
+
+def live_status(row: dict) -> str:
+    """The state ladder rendered by the attendance monitor and the map.
+
+    Order matters: a guard on break is 'active' in the shifts table, so
+    on_break must be tested before status, or a guard on a meal break shows
+    as simply present.
+
+    Note what this deliberately does NOT decide: whether a `not_started`
+    shift is *overdue*. is_late is only ever written at check-in, so a
+    guard who never turns up keeps is_late = FALSE forever and stays
+    'not_started' — the absence that matters most would otherwise read as
+    the calmest state on the board. Overdue is therefore derived from
+    scheduled_start against the grace period at query time; see
+    is_overdue_sql().
+    """
+    if row["status"] == "completed":
+        return "checked_out"
+    if row["on_break"]:
+        return "on_break"
+    if row["status"] == "active":
+        return "checked_in"
+    if row["is_late"]:
+        return "late"
+    return "not_started"
+
+
+def is_overdue_sql(shift_alias: str = "sh", grace_param: str = "grace_minutes") -> str:
+    """SQL fragment: this shift should have started by now and nobody has
+    checked in. Expressed in SQL rather than Python so it is evaluated
+    against the database clock — the API server and Postgres can disagree,
+    and 'is this guard missing right now' should not depend on which.
+    """
+    return (
+        f"({shift_alias}.status = 'scheduled'"
+        f" AND now() > {shift_alias}.scheduled_start"
+        f"       + make_interval(mins => :{grace_param}))"
+    )

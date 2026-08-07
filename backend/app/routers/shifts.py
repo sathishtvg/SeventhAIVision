@@ -28,11 +28,15 @@ router = APIRouter(prefix="/api/v1/shifts", tags=["guard-ops"])
 
 # ── Attendance settings (ShiftSecure Phase 2A) ────────────────────────────────
 
-_ATTENDANCE_DEFAULTS = {
-    "attendance.geofence_radius_meters": 200,
-    "attendance.late_grace_minutes": 10,
-    "attendance.overtime_threshold_minutes": 15,
-}
+"""Defaults and the tenant-override lookup now live in
+services/attendance_status.py — shifts.py writes is_late using this grace
+period and the attendance monitor and Site Map read it back, so a second
+copy here would let the writer and the readers drift apart."""
+from app.services.attendance_status import (  # noqa: E402
+    ATTENDANCE_DEFAULTS as _ATTENDANCE_DEFAULTS,
+    get_attendance_setting as _get_attendance_setting,
+)
+
 _LIVENESS_MIN_SCORE_DEFAULT = 0.7
 
 
@@ -45,14 +49,6 @@ async def _get_liveness_min_score(db: AsyncSession) -> float:
     return _LIVENESS_MIN_SCORE_DEFAULT
 
 
-async def _get_attendance_setting(db: AsyncSession, key: str) -> int:
-    row = (await db.execute(
-        text("SELECT setting_value FROM tenant_settings WHERE setting_key = :k"),
-        {"k": key},
-    )).first()
-    if row is not None and isinstance(row[0], int):
-        return row[0]
-    return _ATTENDANCE_DEFAULTS[key]
 
 
 async def _process_checkin_photo(

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.attendance_status import live_status as _live_status
 
 router = APIRouter(prefix="/api/v1/attendance", tags=["guard-ops"])
 
@@ -36,18 +37,6 @@ async def _publish_attendance_event(request: Request, tenant_id: str, shift_id: 
         await redis.publish(f"tenant_events:{tenant_id}", event)
     except Exception:
         pass
-
-
-def _live_status(row: dict) -> str:
-    if row["status"] == "completed":
-        return "checked_out"
-    if row["on_break"]:
-        return "on_break"
-    if row["status"] == "active":
-        return "checked_in"
-    if row["is_late"]:
-        return "late"
-    return "not_started"
 
 
 @router.get("/live", dependencies=[Depends(require_permission("attendance:read"))])
