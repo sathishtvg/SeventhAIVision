@@ -286,6 +286,11 @@ async def handle_lpr_entry(
         "decision": outcome.decision.value,
         "reason": outcome.reason,
         "needs_details": needs_details,
+        # The detection id, not a resolved evidence id. The worker writes the
+        # plate crop on its own path, so at publish time that row may not have
+        # committed yet — resolving here would race and usually lose. The
+        # dialog looks it up when it opens, which is strictly later.
+        "detection_id": detection_id,
         "free_parking_minutes": free_minutes,
         "form_fields": await get_form_fields(db, str(site["id"])),
     }

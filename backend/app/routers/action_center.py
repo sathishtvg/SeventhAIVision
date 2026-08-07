@@ -114,7 +114,8 @@ async def _ops_feed(db: AsyncSession, role_id: int, allowed_sites: list[str] | N
 
     # 2. Unacknowledged critical/high alerts.
     alerts = await db.execute(text(f"""
-        SELECT a.id, a.title, a.severity, s.name AS site_name, c.name AS camera_name, a.created_at
+        SELECT a.id, a.title, a.severity, a.module_type,
+               s.name AS site_name, c.name AS camera_name, a.created_at
         FROM alerts a
         JOIN cameras c ON c.id = a.camera_id
         LEFT JOIN sites s ON s.id = c.site_id
@@ -132,6 +133,19 @@ async def _ops_feed(db: AsyncSession, role_id: int, allowed_sites: list[str] | N
             "subtitle": f"{r['site_name'] or '—'} · {r['camera_name']}",
             "action_route": "/alerts",
             "entity_id": str(r["id"]),
+            # Enough to open the full response dialog in place — acknowledge,
+            # false-positive, resolve or escalate without leaving this page or
+            # making a second request. An operator working a queue of alerts
+            # shouldn't have to navigate away and find their place again.
+            "alert": {
+                "id": str(r["id"]),
+                "title": r["title"],
+                "severity": r["severity"],
+                "module_type": r["module_type"],
+                "site_name": r["site_name"],
+                "camera_name": r["camera_name"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            },
         })
 
     # 3. Overdue checkpoints — active guards whose last scan is stale (or none yet).

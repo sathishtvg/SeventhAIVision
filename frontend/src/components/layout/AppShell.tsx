@@ -71,7 +71,22 @@ export function AppShell() {
         {isFocusMode && (
           <Tooltip title="Exit full screen">
             <IconButton
-              onClick={() => setFocusMode(false)}
+              /* Entering full screen does TWO things — hides the app chrome and
+                 puts the window itself into fullscreen/kiosk. This button used
+                 to undo only the first, so the sidebar came back while the
+                 window stayed fullscreen. In Electron kiosk that also means no
+                 window frame and no taskbar, which is what "can't get back"
+                 actually looked like. Exit now mirrors enter exactly. */
+              onClick={async () => {
+                setFocusMode(false)
+                if (window.electronAPI?.setKiosk) {
+                  try { await window.electronAPI.setKiosk(false) } catch { /* window already normal */ }
+                  return
+                }
+                if (document.fullscreenElement) {
+                  try { await document.exitFullscreen() } catch { /* already exiting */ }
+                }
+              }}
               sx={{
                 position: 'fixed', top: 12, right: 12, zIndex: 1300,
                 bgcolor: 'rgba(0,0,0,0.55)', color: '#fff',

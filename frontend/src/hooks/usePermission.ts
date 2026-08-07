@@ -13,6 +13,9 @@ const ALL_PERMISSIONS = [
   'site:read', 'site:manage',
   'recording:create', 'recording:read',
   'recording_policy:read', 'recording_policy:manage',
+  // Configurable alert rules (migration 0080) and hardware protocol config (0081)
+  'alert_rule:read', 'alert_rule:manage',
+  'device_config:read', 'device_config:manage',
   'license:manage',
   'alert:read', 'alert:acknowledge',
   'incident:read', 'incident:create', 'incident:update', 'incident:resolve', 'incident:assign',
@@ -80,6 +83,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
   // that clones role 2's role_permissions rows for role 8.
   8: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage'].includes(p)),
   3: [ // supervisor
+    'alert_rule:read',
     'camera:read', 'camera:update',
     'user:read',
     'settings:read',

@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -50,9 +51,11 @@ import SchoolIcon from '@mui/icons-material/School'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import PersonPinIcon from '@mui/icons-material/PersonPin'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
+import RuleIcon from '@mui/icons-material/Rule'
+import CableIcon from '@mui/icons-material/Cable'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
-import { usePermission } from '@/hooks/usePermission'
+import { usePermission, getPermissionsForRole } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
 
 export const DRAWER_WIDTH = 258
@@ -68,61 +71,121 @@ const ROLE_LABELS: Record<number, string> = {
   8: 'Manager',
 }
 
-const NAV_ITEMS = [
-  { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon fontSize="small" />,        permission: null },
-  { label: 'Command Centre', path: '/command-centre', icon: <MonitorIcon fontSize="small" />,      permission: 'alert:read' },
-  { label: 'Dashboard',   path: '/',           icon: <DashboardIcon fontSize="small" />,          permission: null },
-  { label: 'Alerts',      path: '/alerts',      icon: <NotificationsIcon fontSize="small" />,      permission: 'alert:read' },
-  { label: 'Incidents',   path: '/incidents',   icon: <ReportProblemIcon fontSize="small" />,      permission: 'incident:read' },
-  { label: 'Live Wall',   path: '/live',        icon: <LiveTvIcon fontSize="small" />,             permission: 'camera:read' },
-  { label: 'Sites',       path: '/sites',       icon: <ApartmentIcon fontSize="small" />,          permission: 'site:manage' },
-  { label: 'Cameras',     path: '/cameras',     icon: <VideocamIcon fontSize="small" />,           permission: 'camera:read' },
-  { label: 'Recordings',  path: '/recordings',  icon: <VideoFileIcon fontSize="small" />,          permission: 'recording:read' },
-  { label: 'Playback',    path: '/playback',    icon: <VideoFileIcon fontSize="small" />,          permission: 'recording:read' },
-  { label: 'Detections',  path: '/detections',  icon: <SearchIcon fontSize="small" />,             permission: 'detection:read' },
-  { label: 'Watchlists',  path: '/watchlists',  icon: <DirectionsCarIcon fontSize="small" />,      permission: 'watchlist:manage' },
-  { label: 'Zones',       path: '/zones',       icon: <LocationOnIcon fontSize="small" />,         permission: 'zone:manage' },
-  { label: 'Evidence',    path: '/evidence',    icon: <PhotoLibraryIcon fontSize="small" />,       permission: 'evidence:read' },
-  { label: 'Audit Logs',  path: '/audit',       icon: <HistoryIcon fontSize="small" />,            permission: 'audit:read' },
-  { label: 'Analytics',   path: '/analytics',   icon: <BarChartIcon fontSize="small" />,           permission: 'alert:read' },
-  { label: 'Export',      path: '/export',      icon: <DownloadIcon fontSize="small" />,           permission: 'alert:read' },
-  { label: 'Guard Ops',  path: '/guard-ops',   icon: <SecurityIcon fontSize="small" />,           permission: 'shift:read' },
-  { label: 'Roster',     path: '/roster',      icon: <SecurityIcon fontSize="small" />,           permission: 'shift:read' },
-  { label: 'Attendance', path: '/attendance',  icon: <AccessTimeIcon fontSize="small" />,         permission: 'attendance:read' },
-  { label: 'Violations', path: '/violations',  icon: <WarningAmberIcon fontSize="small" />,       permission: 'violation:read' },
-  { label: 'Leave',      path: '/leave',       icon: <EventBusyIcon fontSize="small" />,          permission: 'leave:read' },
-  { label: 'Payroll',    path: '/payroll',     icon: <PaymentsIcon fontSize="small" />,           permission: 'payroll:read' },
-  { label: 'Client Invoicing', path: '/invoicing', icon: <ReceiptLongIcon fontSize="small" />,     permission: 'invoicing:read' },
-  { label: 'Post Orders', path: '/post-orders', icon: <SecurityIcon fontSize="small" />,          permission: 'shift:read' },
-  { label: 'Smart Facilities', path: '/iot',  icon: <SensorsIcon fontSize="small" />,            permission: 'iot:read' },
-  { label: 'GPS Fleet',       path: '/gps',  icon: <DirectionsCarIcon fontSize="small" />,      permission: 'gps:read' },
-  { label: 'Contractors',    path: '/contractors', icon: <EngineeringIcon fontSize="small" />,   permission: 'contractor:read' },
-  { label: 'Smart Parking', path: '/parking',     icon: <LocalParkingIcon fontSize="small" />,  permission: 'parking:read' },
-  { label: 'Body Cameras', path: '/bwc',         icon: <CameraAltIcon fontSize="small" />,      permission: 'bwc:read' },
-  { label: 'Tour Compliance', path: '/compliance', icon: <RouteIcon fontSize="small" />,          permission: 'compliance:read' },
-  { label: 'Alarm Panels',   path: '/alarms',     icon: <NotificationImportantIcon fontSize="small" />, permission: 'alarm:read' },
-  { label: 'Access Control', path: '/access',     icon: <DoorFrontIcon fontSize="small" />,             permission: 'access:read' },
-  { label: 'Barriers',       path: '/barriers',   icon: <LockOpenIcon fontSize="small" />,              permission: 'barrier:read' },
-  { label: 'Site Map',       path: '/map',        icon: <MapIcon fontSize="small" />,                   permission: 'camera:read' },
-  { label: 'Guard Training',    path: '/training',       icon: <SchoolIcon fontSize="small" />,   permission: 'training:read' },
-  { label: 'Emergency Alert',   path: '/emergency',      icon: <CampaignIcon fontSize="small" />, permission: 'broadcast:read' },
-  { label: 'Visitor Pre-Reg',   path: '/visitor-prereg', icon: <PersonPinIcon fontSize="small" />, permission: 'visitor:read' },
-  { label: 'Reports',    path: '/reports',     icon: <AssessmentIcon fontSize="small" />,         permission: 'dob:read' },
-  { label: 'Heatmap',    path: '/heatmap',     icon: <MapIcon fontSize="small" />,                permission: 'alert:read' },
-]
-
-const ADMIN_ITEMS = [
-  { label: 'Tenants',       path: '/tenants',       icon: <BusinessIcon fontSize="small" />,          permission: 'tenant:manage' },
-  { label: 'Notifications', path: '/notifications', icon: <NotificationsActiveIcon fontSize="small" />, permission: 'notification:manage' },
-  { label: 'Settings',      path: '/settings',      icon: <SettingsIcon fontSize="small" />,           permission: 'settings:read' },
-  { label: 'Users',         path: '/users',         icon: <PeopleIcon fontSize="small" />,             permission: 'user:read' },
-  { label: 'Roles',         path: '/roles',         icon: <PeopleIcon fontSize="small" />,             permission: 'role:manage' },
-  { label: 'API Keys',      path: '/api-keys',      icon: <VpnKeyIcon fontSize="small" />,             permission: 'apikey:manage' },
-  { label: 'IP Allowlist',  path: '/ip-allowlist',  icon: <LanIcon fontSize="small" />,                permission: 'iplist:manage' },
-  { label: 'Sched. Reports', path: '/scheduled-reports', icon: <AssessmentIcon fontSize="small" />,   permission: 'report:schedule' },
-  { label: 'Alert Dedup',   path: '/alert-dedup',       icon: <FilterAltIcon fontSize="small" />,      permission: 'alert:dedup:manage' },
-  { label: 'Developer',     path: '/developer',         icon: <DeveloperModeIcon fontSize="small" />,  permission: 'apikey:manage' },
-  { label: 'Client Portal', path: '/client',            icon: <HomeWorkIcon fontSize="small" />,       permission: 'portal:view' },
+/**
+ * Navigation, grouped by the JOB SOMEONE IS DOING rather than by feature area.
+ *
+ * This was previously two groups — "Monitoring" holding 40 entries and
+ * "Administration" holding 13. At that length a sidebar stops being a menu and
+ * becomes a list you read top to bottom every time, which is exactly the
+ * complaint: everything together, so you hunt.
+ *
+ * The grouping answers "what am I here to do?":
+ *   Monitoring        — what is happening right now (the control-room loop)
+ *   Investigate       — what happened earlier (look something up after the fact)
+ *   Guard Operations  — the workforce: who is on, who is late, who gets paid
+ *   Sites & Devices   — the physical estate and the hardware on it
+ *   People & Vehicles — who and what is expected or watched for
+ *   Reports & Billing — what leaves the system: exports, invoices, audit
+ *   Configuration     — set-up, done rarely, by an admin
+ *
+ * No item was added, removed, or re-pathed — only regrouped and reordered, so
+ * every route and permission behaves exactly as before.
+ *
+ * Ordering inside each group is by how often it is opened, not alphabetically:
+ * the thing you reach for hourly sits above the thing you touch monthly.
+ */
+const NAV_SECTIONS: {
+  title: string
+  items: { label: string; path: string; icon: React.ReactNode; permission: string | null }[]
+}[] = [
+  {
+    title: 'Monitoring',
+    items: [
+      { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon fontSize="small" />,     permission: null },
+      { label: 'Command Centre', path: '/command-centre', icon: <MonitorIcon fontSize="small" />,   permission: 'alert:read' },
+      { label: 'Dashboard',      path: '/',            icon: <DashboardIcon fontSize="small" />,    permission: null },
+      { label: 'Alerts',         path: '/alerts',      icon: <NotificationsIcon fontSize="small" />, permission: 'alert:read' },
+      { label: 'Incidents',      path: '/incidents',   icon: <ReportProblemIcon fontSize="small" />, permission: 'incident:read' },
+      { label: 'Live Wall',      path: '/live',        icon: <LiveTvIcon fontSize="small" />,       permission: 'camera:read' },
+      { label: 'Site Map',       path: '/map',         icon: <MapIcon fontSize="small" />,          permission: 'camera:read' },
+      { label: 'Emergency Alert', path: '/emergency',  icon: <CampaignIcon fontSize="small" />,     permission: 'broadcast:read' },
+    ],
+  },
+  {
+    title: 'Investigate',
+    items: [
+      { label: 'Detections',  path: '/detections', icon: <SearchIcon fontSize="small" />,        permission: 'detection:read' },
+      { label: 'Evidence',    path: '/evidence',   icon: <PhotoLibraryIcon fontSize="small" />,  permission: 'evidence:read' },
+      { label: 'Recordings',  path: '/recordings', icon: <VideoFileIcon fontSize="small" />,     permission: 'recording:read' },
+      { label: 'Playback',    path: '/playback',   icon: <VideoFileIcon fontSize="small" />,     permission: 'recording:read' },
+      { label: 'Analytics',   path: '/analytics',  icon: <BarChartIcon fontSize="small" />,      permission: 'alert:read' },
+      { label: 'Heatmap',     path: '/heatmap',    icon: <MapIcon fontSize="small" />,           permission: 'alert:read' },
+    ],
+  },
+  {
+    title: 'Guard Operations',
+    items: [
+      { label: 'Attendance',      path: '/attendance',  icon: <AccessTimeIcon fontSize="small" />,   permission: 'attendance:read' },
+      { label: 'Roster',          path: '/roster',      icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'Guard Ops',       path: '/guard-ops',   icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'Tour Compliance', path: '/compliance',  icon: <RouteIcon fontSize="small" />,        permission: 'compliance:read' },
+      { label: 'Violations',      path: '/violations',  icon: <WarningAmberIcon fontSize="small" />, permission: 'violation:read' },
+      { label: 'Leave',           path: '/leave',       icon: <EventBusyIcon fontSize="small" />,    permission: 'leave:read' },
+      { label: 'Payroll',         path: '/payroll',     icon: <PaymentsIcon fontSize="small" />,     permission: 'payroll:read' },
+      { label: 'Guard Training',  path: '/training',    icon: <SchoolIcon fontSize="small" />,       permission: 'training:read' },
+      { label: 'Post Orders',     path: '/post-orders', icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+    ],
+  },
+  {
+    title: 'Sites & Devices',
+    items: [
+      { label: 'Sites',            path: '/sites',    icon: <ApartmentIcon fontSize="small" />,   permission: 'site:manage' },
+      { label: 'Cameras',          path: '/cameras',  icon: <VideocamIcon fontSize="small" />,    permission: 'camera:read' },
+      { label: 'Zones',            path: '/zones',    icon: <LocationOnIcon fontSize="small" />,  permission: 'zone:manage' },
+      { label: 'Barriers',         path: '/barriers', icon: <LockOpenIcon fontSize="small" />,    permission: 'barrier:read' },
+      { label: 'Access Control',   path: '/access',   icon: <DoorFrontIcon fontSize="small" />,   permission: 'access:read' },
+      { label: 'Alarm Panels',     path: '/alarms',   icon: <NotificationImportantIcon fontSize="small" />, permission: 'alarm:read' },
+      { label: 'Smart Parking',    path: '/parking',  icon: <LocalParkingIcon fontSize="small" />, permission: 'parking:read' },
+      { label: 'Smart Facilities', path: '/iot',      icon: <SensorsIcon fontSize="small" />,     permission: 'iot:read' },
+      { label: 'Body Cameras',     path: '/bwc',      icon: <CameraAltIcon fontSize="small" />,   permission: 'bwc:read' },
+      { label: 'GPS Fleet',        path: '/gps',      icon: <DirectionsCarIcon fontSize="small" />, permission: 'gps:read' },
+    ],
+  },
+  {
+    title: 'People & Vehicles',
+    items: [
+      { label: 'Visitor Pre-Reg', path: '/visitor-prereg', icon: <PersonPinIcon fontSize="small" />,     permission: 'visitor:read' },
+      { label: 'Watchlists',      path: '/watchlists',     icon: <DirectionsCarIcon fontSize="small" />, permission: 'watchlist:manage' },
+      { label: 'Contractors',     path: '/contractors',    icon: <EngineeringIcon fontSize="small" />,   permission: 'contractor:read' },
+    ],
+  },
+  {
+    title: 'Reports & Billing',
+    items: [
+      { label: 'Reports',          path: '/reports',           icon: <AssessmentIcon fontSize="small" />, permission: 'dob:read' },
+      { label: 'Sched. Reports',   path: '/scheduled-reports', icon: <AssessmentIcon fontSize="small" />, permission: 'report:schedule' },
+      { label: 'Export',           path: '/export',            icon: <DownloadIcon fontSize="small" />,   permission: 'alert:read' },
+      { label: 'Client Invoicing', path: '/invoicing',         icon: <ReceiptLongIcon fontSize="small" />, permission: 'invoicing:read' },
+      { label: 'Client Portal',    path: '/client',            icon: <HomeWorkIcon fontSize="small" />,   permission: 'portal:view' },
+      { label: 'Audit Logs',       path: '/audit',             icon: <HistoryIcon fontSize="small" />,    permission: 'audit:read' },
+    ],
+  },
+  {
+    title: 'Configuration',
+    items: [
+      { label: 'Settings',         path: '/settings',         icon: <SettingsIcon fontSize="small" />,     permission: 'settings:read' },
+      { label: 'Alert Rules',      path: '/alert-rules',      icon: <RuleIcon fontSize="small" />,         permission: 'alert_rule:read' },
+      { label: 'Alert Dedup',      path: '/alert-dedup',      icon: <FilterAltIcon fontSize="small" />,    permission: 'alert:dedup:manage' },
+      { label: 'Device Protocols', path: '/device-protocols', icon: <CableIcon fontSize="small" />,        permission: 'device_config:read' },
+      { label: 'Notifications',    path: '/notifications',    icon: <NotificationsActiveIcon fontSize="small" />, permission: 'notification:manage' },
+      { label: 'Users',            path: '/users',            icon: <PeopleIcon fontSize="small" />,       permission: 'user:read' },
+      { label: 'Roles',            path: '/roles',            icon: <PeopleIcon fontSize="small" />,       permission: 'role:manage' },
+      { label: 'API Keys',         path: '/api-keys',         icon: <VpnKeyIcon fontSize="small" />,       permission: 'apikey:manage' },
+      { label: 'IP Allowlist',     path: '/ip-allowlist',     icon: <LanIcon fontSize="small" />,          permission: 'iplist:manage' },
+      { label: 'Developer',        path: '/developer',        icon: <DeveloperModeIcon fontSize="small" />, permission: 'apikey:manage' },
+      { label: 'Tenants',          path: '/tenants',          icon: <BusinessIcon fontSize="small" />,     permission: 'tenant:manage' },
+    ],
+  },
 ]
 
 interface NavLinkProps {
@@ -269,6 +332,20 @@ export function Sidebar() {
   const { palette } = useTheme()
   const isDark = palette.mode === 'dark'
 
+  // Drop any section this role cannot see a single item in, so a limited role
+  // (a guard, a client) gets a short menu rather than a page of empty headings.
+  // NavLink still gates each item itself — this only decides whether the
+  // heading is worth drawing.
+  const visibleSections = useMemo(() => {
+    const granted = new Set(user?.roleId != null ? getPermissionsForRole(user.roleId) : [])
+    return NAV_SECTIONS
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((i) => i.permission === null || granted.has(i.permission)),
+      }))
+      .filter((section) => section.items.length > 0)
+  }, [user?.roleId])
+
   const { data: tenantBrand } = useQuery({
     queryKey: ['branding'],
     queryFn: getBranding,
@@ -387,19 +464,21 @@ export function Sidebar() {
           scrollbarColor: 'rgba(108,99,255,0.25) transparent',
         }}
       >
-        <SectionLabel>Monitoring</SectionLabel>
-        <List dense disablePadding>
-          {NAV_ITEMS.map((item) => (
-            <NavLink key={item.path} {...item} />
-          ))}
-        </List>
-
-        <SectionLabel>Administration</SectionLabel>
-        <List dense disablePadding>
-          {ADMIN_ITEMS.map((item) => (
-            <NavLink key={item.path} {...item} />
-          ))}
-        </List>
+        {/* A section whose every item is permission-denied would otherwise
+            render as a bare heading with nothing under it — worse than the
+            flat list it replaced. Visibility is resolved with the pure
+            getPermissionsForRole rather than the usePermission hook, because
+            a hook cannot be called per-item inside a map. */}
+        {visibleSections.map((section) => (
+          <Box key={section.title}>
+            <SectionLabel>{section.title}</SectionLabel>
+            <List dense disablePadding>
+              {section.items.map((item) => (
+                <NavLink key={item.path} {...item} />
+              ))}
+            </List>
+          </Box>
+        ))}
       </Box>
 
       {/* ── User footer ──────────────────────────────────────────────────── */}

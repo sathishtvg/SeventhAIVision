@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNotificationStore } from '@/store/notifications'
-import { playAlertSound } from '@/store/alertSound'
+import { playAlertSound, announceAlert } from '@/store/alertSound'
 import type { RealtimeEvent } from '@/types/realtime'
 import type { AlertSeverity } from '@/types/api'
 import { useWebSocket } from './useWebSocket'
@@ -84,8 +84,12 @@ export function useRealtimeEvents() {
         queryClient.invalidateQueries({ queryKey: ['action-center'] })
         const title = (event.payload.title as string) ?? 'New alert'
         const severity = (event.payload.severity as AlertSeverity) ?? 'medium'
+        const moduleType = (event.payload.module_type as string) ?? null
+        // site_name is added by the API's Redis→WS bridge; workers don't send it.
+        const siteName = (event.payload.site_name as string) ?? null
         push(severity, title)
         playAlertSound(severity)
+        announceAlert(severity, moduleType, siteName)
         if (window.electronAPI && (severity === 'high' || severity === 'critical')) {
           window.electronAPI.showNotification('7th AI Vision — Alert', title)
         }

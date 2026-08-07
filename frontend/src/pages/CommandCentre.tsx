@@ -19,6 +19,9 @@ import FlagIcon from '@mui/icons-material/Flag'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
+import TaskAltIcon from '@mui/icons-material/TaskAlt'
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
+import { getSites } from '@/api/sites'
 import { useNavigate } from 'react-router-dom'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -360,6 +363,11 @@ export default function CommandCentre() {
     queryFn: getCCOverview,
     refetchInterval: 30_000,
   })
+  // Same gate as Guard Ops: only offer the gatehouse board when a site this
+  // user can see actually runs visitor management. Shares the ['sites'] cache
+  // key with every other page, so this costs no extra request in practice.
+  const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
+  const hasVms = (sites ?? []).some((s) => s.vms_enabled)
 
   // Update clock every second
   useEffect(() => {
@@ -397,11 +405,37 @@ export default function CommandCentre() {
               <RefreshIcon sx={{ fontSize: 16, animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
             </IconButton>
           </Tooltip>
+          {/* Every screen an operator runs full-screen on another monitor,
+              reachable from the one page they sit on all shift. Live Wall keeps
+              its dedicated helper (it restores a saved layout); the rest go
+              through the generic route opener. Data-driven so a new
+              full-screen page is one line, not another copy-pasted button. */}
           <Tooltip title="Open Live Wall in a new window — keep this Command Centre visible while monitoring cameras on another screen">
             <Button variant="outlined" size="small" startIcon={<LiveTvIcon />} onClick={() => openLiveWallWindow()}>
               Live Wall
             </Button>
           </Tooltip>
+          {([
+            { label: 'Attendance', path: '/attendance', icon: <AccessTimeIcon />,
+              hint: 'Open the live attendance board on another screen — who is on, late, or still to arrive' },
+            { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon />,
+              hint: 'Open the duty board on another screen — what needs attention right now' },
+            ...(hasVms
+              ? [{ label: 'Vehicles On Site', path: '/vms-onsite', icon: <DirectionsCarIcon />,
+                   hint: 'Open the gatehouse vehicle board on another screen — visitor vehicles with entry time and parking expiry' }]
+              : []),
+          ]).map((s) => (
+            <Tooltip key={s.path} title={s.hint}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={s.icon}
+                onClick={() => openInNewWindow(s.path, { fullscreen: true })}
+              >
+                {s.label}
+              </Button>
+            </Tooltip>
+          ))}
           <Tooltip title="Send Command Centre to another monitor — opens its own window already in full screen (Esc to leave full screen there)">
             <IconButton size="small" onClick={() => openInNewWindow('/command-centre', { fullscreen: true })}>
               <OpenInNewIcon fontSize="small" />

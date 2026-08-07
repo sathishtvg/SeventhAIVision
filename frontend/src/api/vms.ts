@@ -99,6 +99,9 @@ export interface VisitorEntryPrompt {
   decision: string
   reason: string
   needs_details: boolean
+  /** The plate read behind this prompt. Resolved to an image by the
+   *  dialog via getEvidenceForDetection — see the note in vms.py. */
+  detection_id: string | null
   free_parking_minutes: number | null
   form_fields: VisitorFormField[]
 }

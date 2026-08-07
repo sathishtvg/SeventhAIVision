@@ -38,6 +38,7 @@ import { PayrollPage } from '@/pages/Payroll'
 import { InvoicingPage } from '@/pages/Invoicing'
 import { PostOrdersPage } from '@/pages/PostOrders'
 import GuardOps from '@/pages/GuardOps'
+import VmsOnsite from '@/pages/VmsOnsite'
 import Reports from '@/pages/Reports'
 import Heatmap from '@/pages/Heatmap'
 import ClientPortal from '@/pages/ClientPortal'
@@ -48,6 +49,8 @@ import AlertDedup from '@/pages/AlertDedup'
 import Developer from '@/pages/Developer'
 import CommandCentre from '@/pages/CommandCentre'
 import ActionCenter from '@/pages/ActionCenter'
+import AlertRules from '@/pages/AlertRules'
+import DeviceProtocols from '@/pages/DeviceProtocols'
 import IoTPage from '@/pages/IoT'
 import GPSPage from '@/pages/GPS'
 import ContractorsPage from '@/pages/Contractors'
@@ -109,6 +112,8 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="command-centre" element={<CommandCentre />} />
         <Route path="action-center" element={<ActionCenter />} />
+        <Route path="alert-rules" element={<AlertRules />} />
+        <Route path="device-protocols" element={<DeviceProtocols />} />
         <Route path="iot" element={<IoTPage />} />
         <Route path="gps" element={<GPSPage />} />
         <Route path="contractors" element={<ContractorsPage />} />
@@ -149,6 +154,10 @@ export default function App() {
         <Route path="users" element={<Users />} />
         <Route path="roles" element={<Roles />} />
         <Route path="guard-ops" element={<GuardOps />} />
+        {/* Its own route rather than a Guard Ops tab: a gatehouse runs this
+            on a dedicated screen all shift, so it has to be openable in its
+            own window (and full screen) independently of Guard Ops. */}
+        <Route path="vms-onsite" element={<VmsOnsite />} />
         <Route path="reports" element={<Reports />} />
         <Route path="heatmap" element={<Heatmap />} />
         <Route path="api-keys" element={<ApiKeys />} />
