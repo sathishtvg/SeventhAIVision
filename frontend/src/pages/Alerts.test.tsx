@@ -63,23 +63,23 @@ describe('Alerts', () => {
     expect(await screen.findByText('No alerts found')).toBeInTheDocument()
   })
 
-  it('shows Ack button for a user with alert:acknowledge on open alerts', async () => {
+  it('shows Acknowledge button for a user with alert:acknowledge on open alerts', async () => {
     mockUser(2) // admin has alert:acknowledge
     render(<Alerts />)
-    expect(await screen.findByRole('button', { name: /^ack$/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^acknowledge$/i })).toBeInTheDocument()
   })
 
-  it('hides Ack button for viewer who lacks alert:acknowledge', async () => {
+  it('hides Acknowledge button for viewer who lacks alert:acknowledge', async () => {
     mockUser(6) // viewer has no alert:acknowledge
     render(<Alerts />)
     await screen.findByText('Blocklist Hit') // wait for data
-    expect(screen.queryByRole('button', { name: /^ack$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^acknowledge$/i })).not.toBeInTheDocument()
   })
 
-  it('calls acknowledgeAlert with the alert id when Ack is clicked', async () => {
+  it('calls acknowledgeAlert with the alert id when Acknowledge is clicked', async () => {
     mockUser(2)
     render(<Alerts />)
-    const ackBtn = await screen.findByRole('button', { name: /^ack$/i })
+    const ackBtn = await screen.findByRole('button', { name: /^acknowledge$/i })
     fireEvent.click(ackBtn)
     await waitFor(() => {
       // TanStack Query v5 passes a mutationFnContext as second arg; only the first matters.
@@ -101,6 +101,6 @@ describe('Alerts', () => {
     mockUser(2) // has the permission, but status is wrong
     render(<Alerts />)
     await screen.findByText('Blocklist Hit')
-    expect(screen.queryByRole('button', { name: /^ack$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^acknowledge$/i })).not.toBeInTheDocument()
   })
 })

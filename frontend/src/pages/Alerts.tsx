@@ -439,7 +439,12 @@ export default function Alerts() {
                                 rest of the team sees. */}
                             {alert.status === 'open' && (
                               <Tooltip title="Mark as seen — it stays in the list, assigned to you">
-                                <Button size="small" variant="outlined" onClick={() => acknowledge(alert.id)}>
+                                {/* aria-label pins the accessible name to the action.
+                                    Without it MUI's Tooltip becomes the button's name,
+                                    so a screen reader announces the whole explanatory
+                                    sentence instead of "Acknowledge". */}
+                                <Button size="small" variant="outlined" aria-label="Acknowledge"
+                                        onClick={() => acknowledge(alert.id)}>
                                   Acknowledge
                                 </Button>
                               </Tooltip>
@@ -448,6 +453,7 @@ export default function Alerts() {
                               <Tooltip title="Not a real event — records why, and stops it counting toward open alerts">
                                 <Button
                                   size="small" variant="outlined" color="warning"
+                                  aria-label="False positive"
                                   onClick={() => { setFpDialog({ alertId: alert.id }); setFpReason('') }}
                                 >
                                   False positive
