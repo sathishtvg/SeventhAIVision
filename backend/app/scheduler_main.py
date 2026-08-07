@@ -54,6 +54,21 @@ async def run_partition_maintenance(db: AsyncSession | None = None) -> None:
             # Log and continue — partman maintenance is best-effort in non-prod.
             logger.warning("run_maintenance_proc skipped: %s", exc)
 
+        # Partitions do NOT inherit their parent's row-level security, and
+        # pg_partman's template table does not carry it either (verified —
+        # a template with RLS produced partitions with none). So every
+        # partition partman just created above is currently unprotected:
+        # readable across tenants if queried by name. Re-apply immediately
+        # after creating them. Idempotent; returns how many it fixed, which
+        # should be 0 on a healthy day. See migration 0083.
+        try:
+            fixed = await conn.scalar(text("SELECT public.apply_partition_rls()"))
+            if fixed:
+                logger.info("apply_partition_rls secured %s new partition(s)", fixed)
+        except Exception as exc:
+            logger.error("apply_partition_rls FAILED — new partitions may be "
+                         "readable across tenants: %s", exc)
+
 
 async def purge_expired_evidence(db: AsyncSession) -> int:
     """Each tenant's evidence.retention_days setting (or the env default)

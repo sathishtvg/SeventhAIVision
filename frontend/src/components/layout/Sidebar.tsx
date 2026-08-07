@@ -336,15 +336,24 @@ export function Sidebar() {
   // (a guard, a client) gets a short menu rather than a page of empty headings.
   // NavLink still gates each item itself — this only decides whether the
   // heading is worth drawing.
+  // Must resolve permissions the SAME way usePermission does: the
+  // backend-fetched set first, the hardcoded matrix only as a fallback.
+  // Reading the matrix alone silently hides any nav item whose permission
+  // code isn't mirrored there, and hides everything for a custom role
+  // (Gap 91 — custom role ids aren't in the built-in matrix at all).
+  const fetchedPermissions = useAuthStore((s) => s.permissions)
   const visibleSections = useMemo(() => {
-    const granted = new Set(user?.roleId != null ? getPermissionsForRole(user.roleId) : [])
+    const granted = new Set(
+      fetchedPermissions ??
+      (user?.roleId != null ? getPermissionsForRole(user.roleId) : []),
+    )
     return NAV_SECTIONS
       .map((section) => ({
         ...section,
         items: section.items.filter((i) => i.permission === null || granted.has(i.permission)),
       }))
       .filter((section) => section.items.length > 0)
-  }, [user?.roleId])
+  }, [fetchedPermissions, user?.roleId])
 
   const { data: tenantBrand } = useQuery({
     queryKey: ['branding'],
