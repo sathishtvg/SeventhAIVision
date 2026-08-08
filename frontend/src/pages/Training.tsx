@@ -57,6 +57,7 @@ import {
 import { getUsers } from '@/api/users'
 import { useAuthStore } from '@/store/auth'
 import GlassCard from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -551,21 +552,28 @@ function RecordsTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['training-records'] }),
   })
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'passed',
+    label: 'Result',
+    allValue: 'all',
+    value: filterPassed,
+    onChange: setFilterPassed,
+    options: [
+      { value: 'all', label: 'All' },
+      { value: 'true', label: 'Passed' },
+      { value: 'false', label: 'Failed' },
+    ],
+  }]
+
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         {canWrite && (
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setOpen(true)}>
             Record Training
           </Button>
         )}
-        {['all', 'true', 'false'].map(v => (
-          <Chip key={v} label={v === 'all' ? 'All' : v === 'true' ? 'Passed' : 'Failed'}
-            size="small" variant={filterPassed === v ? 'filled' : 'outlined'}
-            onClick={() => setFilterPassed(v)}
-            sx={{ cursor: 'pointer', fontSize: '0.75rem',
-                  ...(filterPassed === v ? { bgcolor: 'rgba(108,99,255,0.2)', color: '#6C63FF' } : {}) }} />
-        ))}
       </Box>
 
       <GlassCard sx={{ p: 0 }}>
@@ -691,6 +699,9 @@ function RecordsTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="training-records" />
     </Box>
   )
 }
@@ -702,6 +713,19 @@ function CertificationsTab() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<string>('all')
+
+  const filterGroups: FilterGroup[] = [{
+    key: 'expiry',
+    label: 'Expiry',
+    allValue: 'all',
+    value: filter,
+    onChange: setFilter,
+    options: [
+      { value: 'all', label: 'All' },
+      { value: 'expiring', label: 'Expiring ≤ 30d' },
+      { value: 'expired', label: 'Expired' },
+    ],
+  }]
   const [form, setForm] = useState({
     user_id: '', certification_type: '', issuing_body: '',
     certificate_number: '', issued_at: '', expires_at: '',
@@ -735,24 +759,14 @@ function CertificationsTab() {
     : certs
 
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         {canWrite && (
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setOpen(true)}>
             Add Certification
           </Button>
         )}
-        {[
-          { key: 'all',      label: 'All' },
-          { key: 'expiring', label: 'Expiring ≤ 30d' },
-          { key: 'expired',  label: 'Expired' },
-        ].map(({ key, label }) => (
-          <Chip key={key} label={label} size="small"
-            variant={filter === key ? 'filled' : 'outlined'}
-            onClick={() => setFilter(key)}
-            sx={{ cursor: 'pointer', fontSize: '0.75rem',
-                  ...(filter === key ? { bgcolor: 'rgba(108,99,255,0.2)', color: '#6C63FF' } : {}) }} />
-        ))}
       </Box>
 
       <GlassCard sx={{ p: 0 }}>
@@ -867,6 +881,9 @@ function CertificationsTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="training-certifications" />
     </Box>
   )
 }

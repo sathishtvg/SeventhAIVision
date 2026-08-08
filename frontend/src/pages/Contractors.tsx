@@ -23,6 +23,7 @@ import {
   listDeliveries, createDelivery, receiveDelivery, collectDelivery,
 } from '@/api/contractors'
 import type { Contractor, WorkPermit, Delivery } from '@/api/contractors'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 
 // ── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -380,18 +381,23 @@ function WorkPermitsTab() {
 
   const fmtDate = (d?: string) => d ? new Date(d).toLocaleString() : '—'
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['pending', 'approved', 'active', 'completed', 'rejected', 'cancelled'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
+
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel>Status filter</InputLabel>
-          <Select value={statusFilter} label="Status filter" onChange={e => setStatusFilter(e.target.value as string)}>
-            <MenuItem value="">All</MenuItem>
-            {['pending', 'approved', 'active', 'completed', 'rejected', 'cancelled'].map(s => (
-              <MenuItem key={s} value={s}>{s}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <Box sx={{ flex: 1 }} />
         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
           New Permit
@@ -482,6 +488,9 @@ function WorkPermitsTab() {
       )}
 
       <AddPermitDialog open={addOpen} onClose={() => setAddOpen(false)} contractors={contractors} />
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="contractor-permits" />
     </Box>
   )
 }
@@ -507,18 +516,23 @@ function DeliveriesTab() {
 
   const fmtDate = (d?: string) => d ? new Date(d).toLocaleString() : '—'
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['pending', 'received', 'collected', 'rejected', 'returned'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
+
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel>Status filter</InputLabel>
-          <Select value={statusFilter} label="Status filter" onChange={e => setStatusFilter(e.target.value as string)}>
-            <MenuItem value="">All</MenuItem>
-            {['pending', 'received', 'collected', 'rejected', 'returned'].map(s => (
-              <MenuItem key={s} value={s}>{s}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <Box sx={{ flex: 1 }} />
         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
           Log Delivery
@@ -595,6 +609,9 @@ function DeliveriesTab() {
 
       <AddDeliveryDialog open={addOpen} onClose={() => setAddOpen(false)} />
       {collectTarget && <CollectDialog delivery={collectTarget} onClose={() => setCollectTarget(null)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="contractor-deliveries" />
     </Box>
   )
 }
