@@ -29,6 +29,7 @@ import {
   Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
@@ -446,26 +447,30 @@ function OccurrencesTab() {
     },
   })
 
+  // Status is a closed set and moves to the rail. The date range stays: two
+  // date pickers are not a chip list, and a report you scope by date is one
+  // you change the dates on constantly.
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['pending', 'completed', 'missed', 'late', 'incomplete'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
+
   return (
-    <Stack spacing={2}>
-      {/* Filters */}
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Stack spacing={2} sx={{ flex: 1, minWidth: 0 }}>
       <Stack direction="row" spacing={2} flexWrap="wrap">
         <TextField label="From" type="date" size="small" value={dateFrom}
           onChange={e => setDateFrom(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="To" type="date" size="small" value={dateTo}
           onChange={e => setDateTo(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-        <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel>Status</InputLabel>
-          <Select value={statusFilter} label="Status"
-            onChange={e => setStatusFilter(e.target.value)}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="completed">Completed</MenuItem>
-            <MenuItem value="missed">Missed</MenuItem>
-            <MenuItem value="late">Late</MenuItem>
-            <MenuItem value="incomplete">Incomplete</MenuItem>
-          </Select>
-        </FormControl>
       </Stack>
 
       {isLoading
@@ -555,7 +560,10 @@ function OccurrencesTab() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+      </Stack>
+
+      <FilterRail groups={filterGroups} storageKey="compliance-occurrences" />
+    </Box>
   )
 }
 

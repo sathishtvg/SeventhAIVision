@@ -22,6 +22,7 @@ import {
   startRecording, stopRecording, listRecordings, listBWCEvents, linkRecordingToIncident,
 } from '@/api/bwc'
 import type { BodyCamera, BWCRecording } from '@/api/bwc'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 

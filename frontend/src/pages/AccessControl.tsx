@@ -22,6 +22,7 @@ import {
   listAccessEvents,
 } from '@/api/access'
 import GlassCard from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
 
 const EVENT_COLOR: Record<string, string> = {
@@ -533,17 +534,20 @@ function EventsTab() {
 
   const EVENT_TYPES = ['', 'granted', 'denied', 'forced', 'held_open', 'tamper', 'door_opened', 'door_closed']
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'eventType',
+    label: 'Event Type',
+    value: eventType,
+    onChange: setEventType,
+    options: EVENT_TYPES.map((t) => ({
+      value: t,
+      label: t ? t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ') : 'All',
+    })),
+  }]
+
   return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        {EVENT_TYPES.map(t => (
-          <Chip key={t || 'all'} label={t || 'All'} size="small"
-            variant={eventType === t ? 'filled' : 'outlined'}
-            onClick={() => setEventType(t)}
-            sx={{ cursor: 'pointer', fontSize: '0.75rem',
-                  ...(eventType === t ? { bgcolor: 'rgba(108,99,255,0.2)', color: '#6C63FF' } : {}) }} />
-        ))}
-      </Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <GlassCard sx={{ p: 0 }}>
         <Table size="small">
           <TableHead>
@@ -593,6 +597,9 @@ function EventsTab() {
           </TableBody>
         </Table>
       </GlassCard>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="access-events" />
     </Box>
   )
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  Box, Chip, IconButton, MenuItem, Select, Table, TableBody,
+  Box, Chip, IconButton, Table, TableBody,
   TableCell, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
