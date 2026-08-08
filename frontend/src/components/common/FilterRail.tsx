@@ -36,7 +36,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Badge, Box, Button, Chip, Divider, IconButton, Tooltip, Typography,
+  Badge, Box, Button, Chip, Divider, IconButton, Tooltip, Typography, useTheme,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import FilterListIcon from '@mui/icons-material/FilterList'
@@ -73,6 +73,18 @@ const PANEL_WIDTH = 268
 const PIN_PREFIX = 'filterRail.pinned.'
 
 export function FilterRail({ groups, storageKey }: FilterRailProps) {
+  // The panel's surface is opaque and theme-dependent, so its text colours
+  // have to be picked to contrast with THAT surface, not with the page. An
+  // earlier version hardcoded a dark panel while taking text from the theme
+  // tokens — correct in dark mode, dark-on-dark and unreadable in light.
+  // Values below clear 4.5:1 against their own background in both modes.
+  const isDark = useTheme().palette.mode === 'dark'
+  const C = isDark
+    ? { surface: 'rgba(13,17,28,0.98)', border: 'rgba(255,255,255,0.14)',
+        heading: '#E6E9EF', label: '#B8BFD0', spine: '#9AA3B8' }
+    : { surface: 'rgba(255,255,255,0.99)', border: 'rgba(0,0,0,0.16)',
+        heading: '#0F172A', label: '#475569', spine: '#475569' }
+
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(() => {
     try { return localStorage.getItem(PIN_PREFIX + storageKey) === '1' } catch { return false }
@@ -173,7 +185,7 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
               aria-expanded={expanded}
               onClick={() => setOpen((v) => !v)}
               sx={{
-                color: activeCount > 0 ? '#6C63FF' : 'text.secondary',
+                color: activeCount > 0 ? '#6C63FF' : C.label,
                 background: activeCount > 0 ? 'rgba(108,99,255,0.14)' : 'transparent',
                 '&:hover': { background: 'rgba(108,99,255,0.2)' },
               }}
@@ -192,8 +204,9 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
             sx={{
               writingMode: 'vertical-rl',
               textOrientation: 'mixed',
-              color: 'text.disabled',
-              fontSize: '0.6rem',
+              color: C.spine,
+              fontSize: '0.62rem',
+              fontWeight: 600,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
               userSelect: 'none',
@@ -224,15 +237,15 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
             overflowY: 'auto',
             p: 1.5,
             borderRadius: '12px',
-            border: '1px solid rgba(255,255,255,0.1)',
-            background: 'rgba(13,17,28,0.97)',
+            border: `1px solid ${C.border}`,
+            background: C.surface,
             backdropFilter: 'blur(14px)',
             boxShadow: '0 12px 34px rgba(0,0,0,0.6)',
           }}
         >
           <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}>
             <Typography variant="caption"
-              sx={{ fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text.secondary', flex: 1 }}>
+              sx={{ fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.heading, flex: 1 }}>
               Filters
             </Typography>
             <Tooltip title={pinned ? 'Unpin (auto-hide)' : 'Keep open'}>
@@ -260,7 +273,7 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
             <Box key={g.key} sx={{ mb: 1.25 }}>
               {i > 0 && <Divider sx={{ mb: 1.25, borderColor: 'rgba(255,255,255,0.06)' }} />}
               <Typography variant="caption"
-                sx={{ display: 'block', mb: 0.6, color: 'text.disabled', fontSize: '0.66rem' }}>
+                sx={{ display: 'block', mb: 0.6, color: C.label, fontSize: '0.7rem', fontWeight: 600 }}>
                 {g.label}
               </Typography>
               <Stack direction="row" spacing={0.6} sx={{ flexWrap: 'wrap', gap: 0.6 }}>
@@ -276,7 +289,18 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
                         : o.value)}
                       variant={selected ? 'filled' : 'outlined'}
                       color={selected ? 'primary' : 'default'}
-                      sx={{ fontSize: '0.68rem', height: 24 }}
+                      // MUI's default outlined chip sits at ~0.7 alpha with a
+                      // very faint border; against this surface that reads as
+                      // greyed-out/disabled rather than "available to pick".
+                      sx={{
+                        fontSize: '0.7rem',
+                        height: 25,
+                        ...(selected ? {} : {
+                          color: C.heading,
+                          borderColor: C.border,
+                          '&:hover': { borderColor: '#6C63FF', color: '#6C63FF' },
+                        }),
+                      }}
                     />
                   )
                 })}
