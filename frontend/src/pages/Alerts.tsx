@@ -295,9 +295,9 @@ export default function Alerts() {
   ]
 
   return (
+    // Rail sits after the content so it lands on the right edge; its panel
+    // opens leftward over the grid without moving anything.
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-      <FilterRail groups={filterGroups} storageKey="alerts" />
-
       <Box sx={{ flex: 1, minWidth: 0 }}>
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
@@ -478,6 +478,8 @@ export default function Alerts() {
         </DialogActions>
       </Dialog>
       </Box>
+
+      <FilterRail groups={filterGroups} storageKey="alerts" />
     </Box>
   )
 }

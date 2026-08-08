@@ -10,20 +10,25 @@
  * The filters are set once and then ignored, but they were charging rent on
  * the most valuable space on the screen, permanently.
  *
- * So the rail: collapsed it is a ~44px strip carrying a funnel icon and a
- * badge with the number of active filters. The page content keeps its full
- * height. Expanding it does NOT reflow the page — the panel is absolutely
- * positioned and floats over the content — because a filter panel that
- * shoves the table sideways every time you open it is just the original
- * problem rotated ninety degrees.
+ * So the rail: collapsed it is a ~44px strip on the RIGHT edge of the content
+ * carrying a funnel icon and a badge with the number of active filters.
+ *
+ * IT NEVER REFLOWS THE PAGE. The strip holds a fixed 44px of layout at all
+ * times and the expanded panel is absolutely positioned, floating leftward
+ * over the grid. Opening, closing and pinning all leave the table exactly
+ * where it was — a filter panel that shoves the content sideways every time
+ * you open it is just the original problem rotated ninety degrees. The strip
+ * stays in the layout rather than floating too, specifically so it cannot sit
+ * on top of the row-action buttons that live at the right end of these
+ * tables.
  *
  * AUTO-HIDE, AND THE PIN THAT DEFEATS IT
  * Unpinned (the default) the panel closes as soon as you pick something, and
  * on click-away or Escape: open, choose, gone. Someone doing a long triage
- * session who wants the panel to stay put can pin it, which both keeps it
- * open and switches it to push mode so it never overlaps what they are
- * reading. The pin is persisted per page key, since whether you want it is a
- * property of how you work, not of this particular visit.
+ * session can pin it, which only stops the auto-hide — a pinned panel still
+ * overlays rather than pushing, because "never disturb the main content"
+ * holds in both states. The pin is persisted per page key, since whether you
+ * want it is a property of how you work, not of this particular visit.
  *
  * The badge matters more than it looks: with filters hidden, "why is this
  * list empty?" is otherwise unanswerable without opening the panel. The count
@@ -83,10 +88,29 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
 
   const expanded = open || pinned
 
-  const setPinnedPersisted = (v: boolean) => {
+  /** Persist only. Kept free of visibility side-effects so the two callers
+   * below can each decide what `open` should become — an earlier version had
+   * unpin force open=true, which fought the close handler and left the panel
+   * stuck open. */
+  const persistPin = (v: boolean) => {
     setPinned(v)
     try { localStorage.setItem(PIN_PREFIX + storageKey, v ? '1' : '0') } catch { /* private mode */ }
-    if (v) setOpen(false) // pinned drives visibility from here on
+  }
+
+  const togglePin = () => {
+    const next = !pinned
+    persistPin(next)
+    // Unpinning must not yank the panel away mid-use — keep it visible and
+    // let the user close it (or let auto-hide take it on the next pick).
+    if (!next) setOpen(true)
+  }
+
+  // The X closes regardless of pin. Clearing the pin at the same time is
+  // required, not incidental — `expanded` is `open || pinned`, so closing a
+  // pinned panel without unpinning would reopen it on the next render.
+  const closePanel = () => {
+    setOpen(false)
+    if (pinned) persistPin(false)
   }
 
   // Escape closes, but only when floating — a pinned panel is part of the
@@ -124,15 +148,14 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
       sx={{
         position: 'relative',
         flexShrink: 0,
-        // Pinned reserves real width (push mode). Unpinned always occupies
-        // just the rail, so opening the panel cannot move the content.
-        width: pinned ? PANEL_WIDTH : RAIL_WIDTH,
-        transition: 'width 0.2s ease',
+        // Always exactly the strip. Never widens, in any state — the panel
+        // floats instead, so nothing the user does here moves the grid.
+        width: RAIL_WIDTH,
         alignSelf: 'stretch',
       }}
     >
       {/* ── Collapsed rail ─────────────────────────────────────────────── */}
-      {!pinned && (
+      {!expanded && (
         <Stack
           sx={{
             width: RAIL_WIDTH,
@@ -140,7 +163,7 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
             gap: 1,
             pt: 1,
             height: '100%',
-            borderRight: '1px solid rgba(255,255,255,0.07)',
+            borderLeft: '1px solid rgba(255,255,255,0.07)',
           }}
         >
           <Tooltip title={activeCount > 0 ? `Filters (${activeCount} active)` : 'Filters'} placement="right">
@@ -188,22 +211,23 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
           role="region"
           aria-label="Filters"
           sx={{
-            position: pinned ? 'static' : 'absolute',
+            // Anchored to the rail's right edge so it opens leftward across
+            // the grid. Absolute in both pinned and unpinned states: pinning
+            // changes only whether it auto-hides, never whether it displaces
+            // the content behind it.
+            position: 'absolute',
             top: 0,
-            left: 0,
+            right: 0,
             zIndex: 30,
             width: PANEL_WIDTH,
-            maxHeight: pinned ? 'none' : '78vh',
+            maxHeight: '78vh',
             overflowY: 'auto',
             p: 1.5,
-            borderRadius: pinned ? 0 : '12px',
+            borderRadius: '12px',
             border: '1px solid rgba(255,255,255,0.1)',
-            borderTop: pinned ? 'none' : undefined,
-            borderLeft: pinned ? 'none' : undefined,
-            borderBottom: pinned ? 'none' : undefined,
-            background: pinned ? 'transparent' : 'rgba(13,17,28,0.97)',
-            backdropFilter: pinned ? 'none' : 'blur(14px)',
-            boxShadow: pinned ? 'none' : '0 12px 34px rgba(0,0,0,0.6)',
+            background: 'rgba(13,17,28,0.97)',
+            backdropFilter: 'blur(14px)',
+            boxShadow: '0 12px 34px rgba(0,0,0,0.6)',
           }}
         >
           <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}>
@@ -213,17 +237,17 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
             </Typography>
             <Tooltip title={pinned ? 'Unpin (auto-hide)' : 'Keep open'}>
               <IconButton size="small" aria-label={pinned ? 'Unpin filters' : 'Pin filters open'}
-                onClick={() => setPinnedPersisted(!pinned)}>
+                onClick={togglePin}>
                 {pinned
                   ? <PushPinIcon sx={{ fontSize: 15, color: '#6C63FF' }} />
                   : <PushPinOutlinedIcon sx={{ fontSize: 15 }} />}
               </IconButton>
             </Tooltip>
-            {!pinned && (
-              <IconButton size="small" aria-label="Close filters" onClick={() => setOpen(false)}>
-                <CloseIcon sx={{ fontSize: 15 }} />
-              </IconButton>
-            )}
+            {/* Always available: a pinned panel overlays the grid, so there
+                must be a way to dismiss it without unpinning first. */}
+            <IconButton size="small" aria-label="Close filters" onClick={closePanel}>
+              <CloseIcon sx={{ fontSize: 15 }} />
+            </IconButton>
           </Stack>
 
           {activeCount > 0 && (
