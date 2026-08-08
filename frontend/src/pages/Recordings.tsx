@@ -11,6 +11,7 @@ import { downloadRecordingUrl } from '@/api/recordings'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import type { Recording } from '@/types/api'
 
 function formatBytes(bytes: number | null) {
@@ -61,24 +62,23 @@ export function RecordingsPage() {
     ? allRecordings.filter((r: any) => r.site_id === siteFilter)
     : allRecordings
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'site',
+    label: 'Site',
+    value: siteFilter,
+    onChange: setSiteFilter,
+    options: [
+      { value: '', label: 'All Sites' },
+      ...(sites as any[]).map((s) => ({ value: s.id, label: s.name })),
+    ],
+  }]
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <PageHeader title="Recordings" subtitle="Video recordings from all camera streams" />
 
       <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
-        <Typography variant="body2" color="text.secondary">Site:</Typography>
-        <Select
-          size="small"
-          value={siteFilter}
-          onChange={(e) => setSiteFilter(e.target.value)}
-          displayEmpty
-          sx={{ minWidth: 150 }}
-        >
-          <MenuItem value="">All Sites</MenuItem>
-          {(sites as any[]).map((s) => (
-            <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-          ))}
-        </Select>
         {allRecordings.filter((r: any) => r.status === 'recording').length > 0 && (
           <Chip
             icon={<FiberManualRecordIcon sx={{ color: 'red !important', fontSize: '0.75rem !important' }} />}
@@ -147,6 +147,9 @@ export function RecordingsPage() {
           </TableBody>
         </Table>
       </GlassCard>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="recordings" />
     </Box>
   )
 }

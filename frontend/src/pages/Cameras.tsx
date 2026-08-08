@@ -20,6 +20,7 @@ import ErrorIcon from '@mui/icons-material/Error'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import {
   getCameras, createCamera, updateCamera, deleteCamera,
@@ -650,26 +651,22 @@ export default function Cameras() {
     ? (cameras ?? []).filter((c: any) => c.site_id === siteFilter)
     : cameras
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'site',
+    label: 'Site',
+    value: siteFilter,
+    onChange: setSiteFilter,
+    options: [
+      { value: '', label: 'All Sites' },
+      ...(sites as any[]).map((s) => ({ value: s.id, label: s.name })),
+    ],
+  }]
+
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, gap: 2 }}>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip
-            label="All Sites"
-            onClick={() => setSiteFilter('')}
-            color={siteFilter === '' ? 'primary' : 'default'}
-            variant={siteFilter === '' ? 'filled' : 'outlined'}
-          />
-          {(sites as any[]).map((s) => (
-            <Chip
-              key={s.id}
-              label={s.name}
-              onClick={() => setSiteFilter(s.id)}
-              color={siteFilter === s.id ? 'primary' : 'default'}
-              variant={siteFilter === s.id ? 'filled' : 'outlined'}
-            />
-          ))}
-        </Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+      {/* Add Camera keeps its place on the page; only the filter moved out. */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3, gap: 2 }}>
         <PermissionGuard permission="camera:create">
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAddOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
             Add Camera
@@ -700,6 +697,9 @@ export default function Cameras() {
       </Grid>
 
       {addOpen && <CameraDialog open={addOpen} onClose={() => setAddOpen(false)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="cameras" />
     </Box>
   )
 }

@@ -37,6 +37,7 @@ import { getSites } from '@/api/sites'
 import { getCameras } from '@/api/cameras'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 
@@ -146,8 +147,20 @@ export function BarriersPage() {
     commandMut.mutate({ id: b.id, command })
   }
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'site',
+    label: 'Site',
+    value: siteFilter,
+    onChange: setSiteFilter,
+    options: [
+      { value: '', label: 'All Sites' },
+      ...sites.map((s: any) => ({ value: s.id, label: s.name })),
+    ],
+  }]
+
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <PageHeader
         title="Barriers"
         subtitle="Gate and boom control, with a full record of every opening"
@@ -184,14 +197,6 @@ export function BarriersPage() {
           </GlassCard>
         ))}
       </Stack>
-
-      <FormControl size="small" sx={{ minWidth: 220, mb: 2 }}>
-        <InputLabel>Site</InputLabel>
-        <Select label="Site" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-          <MenuItem value="">All Sites</MenuItem>
-          {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
-        </Select>
-      </FormControl>
 
       {isLoading && <Skeleton variant="rounded" height={180} />}
 
@@ -323,6 +328,9 @@ export function BarriersPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="barriers" />
     </Box>
   )
 }
