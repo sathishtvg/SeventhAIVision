@@ -420,21 +420,22 @@ function RecordingsTab() {
     return `${m}m ${sec}s`
   }
 
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
-        <TextField
-          select size="small" label="Status" value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)} sx={{ minWidth: 160 }}
-          SelectProps={{ native: true }}
-        >
-          <option value="">All</option>
-          {['recording', 'completed', 'failed', 'deleted'].map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </TextField>
-      </Box>
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['recording', 'completed', 'failed', 'deleted'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
 
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
       ) : (
@@ -512,6 +513,9 @@ function RecordingsTab() {
         </Paper>
       )}
       {linkTarget && <LinkIncidentDialog recording={linkTarget} onClose={() => setLinkTarget(null)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="bwc-recordings" />
     </Box>
   )
 }

@@ -28,6 +28,7 @@ import {
   Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
@@ -593,21 +594,26 @@ function EventsTab() {
     refetchInterval: 30_000,
   })
 
+  // Severity is a fixed ladder so it moves to the rail. Event Type is a
+  // free-text lookup ("e.g. zone_alarm"), not a closed set — it stays on the
+  // page rather than being forced into chips.
+  const filterGroups: FilterGroup[] = [{
+    key: 'severity',
+    label: 'Severity',
+    value: severityFilter,
+    onChange: setSeverityFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['critical', 'high', 'medium', 'low', 'info'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
+
   return (
-    <Stack spacing={2}>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Stack spacing={2} sx={{ flex: 1, minWidth: 0 }}>
       <Stack direction="row" spacing={2}>
-        <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel>Severity</InputLabel>
-          <Select value={severityFilter} label="Severity"
-            onChange={e => setSeverityFilter(e.target.value)}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="critical">Critical</MenuItem>
-            <MenuItem value="high">High</MenuItem>
-            <MenuItem value="medium">Medium</MenuItem>
-            <MenuItem value="low">Low</MenuItem>
-            <MenuItem value="info">Info</MenuItem>
-          </Select>
-        </FormControl>
         <TextField size="small" label="Event Type" value={typeFilter}
           onChange={e => setTypeFilter(e.target.value)}
           placeholder="e.g. zone_alarm" />
@@ -665,7 +671,10 @@ function EventsTab() {
           </Paper>
         )
       }
-    </Stack>
+      </Stack>
+
+      <FilterRail groups={filterGroups} storageKey="alarm-events" />
+    </Box>
   )
 }
 

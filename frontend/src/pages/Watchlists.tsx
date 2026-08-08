@@ -12,6 +12,7 @@ import UploadIcon from '@mui/icons-material/Upload'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import {
   getPlateWatchlist, addPlateEntry, updatePlateEntry, deletePlateEntry,
@@ -174,25 +175,28 @@ function PlateTable() {
   const set = <K extends keyof PlateRegistryInput>(k: K, v: PlateRegistryInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
 
+  // Category is enumerable so it moves to the rail; the free-text plate/owner
+  // search stays on the page — it is one line, not a wrapping chip row, and a
+  // search box you cannot see is a search box nobody uses.
+  const filterGroups: FilterGroup[] = [{
+    key: 'category',
+    label: 'Category',
+    value: categoryFilter,
+    onChange: (v) => setCategoryFilter(v as VehicleCategory | ''),
+    options: [
+      { value: '', label: 'All categories' },
+      ...VEHICLE_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_META[c].label })),
+    ],
+  }]
+
   return (
-    <>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, p: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           size="small" label="Search plate, owner or company" value={search}
           onChange={(e) => setSearch(e.target.value)} sx={{ minWidth: 260 }}
         />
-        <FormControl size="small" sx={{ minWidth: 170 }}>
-          <InputLabel>Category</InputLabel>
-          <Select
-            label="Category" value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as VehicleCategory | '')}
-          >
-            <MenuItem value="">All categories</MenuItem>
-            {VEHICLE_CATEGORIES.map((c) => (
-              <MenuItem key={c} value={c}>{CATEGORY_META[c].label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <Box sx={{ flex: 1 }} />
         <PermissionGuard permission="watchlist:manage">
           <Button startIcon={<UploadIcon />} variant="outlined" size="small" onClick={() => setImportOpen(true)}>
@@ -352,7 +356,10 @@ function PlateTable() {
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="watchlist-plates" />
+    </Box>
   )
 }
 

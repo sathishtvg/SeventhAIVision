@@ -28,6 +28,7 @@ import {
   LinearProgress,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import LocalParkingIcon from '@mui/icons-material/LocalParking'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
@@ -563,18 +564,26 @@ function SessionsTab() {
 
   const fmtDate = (d?: string) => d ? new Date(d).toLocaleString() : '—'
 
+  // Status moves to the rail; the plate search stays on the page. It is a
+  // free-text lookup, and hiding the box you type a plate into behind a
+  // collapsed panel would make the common case slower, not faster.
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['active', 'completed', 'overstay', 'disputed'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
+
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-        <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel>Status</InputLabel>
-          <Select value={statusFilter} label="Status" onChange={e => setStatusFilter(e.target.value as string)}>
-            <MenuItem value="">All</MenuItem>
-            {['active', 'completed', 'overstay', 'disputed'].map(s => (
-              <MenuItem key={s} value={s}>{s}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <TextField
           size="small" placeholder="Search plate..." value={plateSearch}
           onChange={e => setPlateSearch(e.target.value)}
@@ -665,6 +674,9 @@ function SessionsTab() {
 
       <EntryDialog open={entryOpen} onClose={() => setEntryOpen(false)} carparks={carparks} />
       {exitTarget && <ExitDialog session={exitTarget} onClose={() => setExitTarget(null)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="parking-sessions" />
     </Box>
   )
 }
