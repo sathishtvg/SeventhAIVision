@@ -6,6 +6,7 @@ import {
 } from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { SeverityChip } from '@/components/common/SeverityChip'
 import { StatusChip } from '@/components/common/StatusChip'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -320,44 +321,45 @@ export default function Incidents() {
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(allIncidentIds))
   const toggleOne = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
+  // Same three groups as Alerts, same reasoning for the 'all' sentinel on
+  // status: it defaults to 'open', so 'open' is not the neutral value.
+  const filterGroups: FilterGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      allValue: 'all',
+      value: statusFilter,
+      onChange: (v) => setStatusFilter(v as StatusFilter),
+      options: STATUS_FILTERS.map((s) => ({
+        value: s,
+        label: s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' '),
+      })),
+    },
+    ...((sites as any[]).length > 0 ? [{
+      key: 'site',
+      label: 'Site',
+      value: siteFilter,
+      onChange: setSiteFilter,
+      options: [
+        { value: '', label: 'All' },
+        ...(sites as any[]).map((s) => ({ value: s.id, label: s.name })),
+      ],
+    }] : []),
+    {
+      key: 'module',
+      label: 'Module',
+      value: moduleFilter,
+      onChange: setModuleFilter,
+      options: [
+        { value: '', label: 'All' },
+        ...Object.entries(MODULE_LABELS).map(([value, label]) => ({ value, label })),
+      ],
+    },
+  ]
+
   return (
-    <Box>
-      {/* Status filters */}
-      <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-        {STATUS_FILTERS.map((s) => (
-          <Chip
-            key={s}
-            label={s.charAt(0).toUpperCase() + s.slice(1)}
-            onClick={() => setStatusFilter(s)}
-            variant={statusFilter === s ? 'filled' : 'outlined'}
-            color={statusFilter === s ? 'primary' : 'default'}
-            size="small"
-          />
-        ))}
-      </Stack>
-
-      {/* Site filters */}
-      {(sites as any[]).length > 0 && (
-        <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Site:</Typography>
-          <Chip label="All" onClick={() => setSiteFilter('')} variant={siteFilter === '' ? 'filled' : 'outlined'} color={siteFilter === '' ? 'secondary' : 'default'} size="small" />
-          {(sites as any[]).map((s) => (
-            <Chip key={s.id} label={s.name} onClick={() => setSiteFilter(siteFilter === s.id ? '' : s.id)} variant={siteFilter === s.id ? 'filled' : 'outlined'} color={siteFilter === s.id ? 'secondary' : 'default'} size="small" />
-          ))}
-        </Stack>
-      )}
-
-      {/* Module filters */}
-      <Stack direction="row" spacing={1} sx={{ mb: 2.5, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Module:</Typography>
-        <Chip label="All" onClick={() => setModuleFilter('')} variant={moduleFilter === '' ? 'filled' : 'outlined'} color={moduleFilter === '' ? 'secondary' : 'default'} size="small" />
-        {Object.entries(MODULE_LABELS).map(([key, label]) => (
-          <Chip key={key} label={label} onClick={() => setModuleFilter(moduleFilter === key ? '' : key)} variant={moduleFilter === key ? 'filled' : 'outlined'} color={moduleFilter === key ? 'secondary' : 'default'} size="small" />
-        ))}
-      </Stack>
-
-      <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
-
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
         <PermissionGuard permission="incident:resolve">
@@ -445,6 +447,9 @@ export default function Incidents() {
       </GlassCard>
 
       <IncidentDrawer incident={selected} onClose={() => setSelected(null)} />
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="incidents" />
     </Box>
   )
 }
