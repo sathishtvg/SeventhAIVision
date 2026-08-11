@@ -29,7 +29,6 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import PersonIcon from '@mui/icons-material/Person'
 import PhoneIcon from '@mui/icons-material/Phone'
@@ -47,7 +46,7 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { openAttendanceWindow } from '@/lib/attendanceWindow'
 import { useAuthStore } from '@/store/auth'
-import { useFocusModeStore } from '@/store/focusMode'
+import { useKioskToggle } from '@/hooks/useKioskToggle'
 
 // Small buffer past scheduled_start before a not-yet-checked-in guard escalates
 // from calm "Scheduled" to alarming "Not Checked In".
@@ -202,46 +201,15 @@ function PhotoThumb({ url, label, onClick }: { url: string | null; label: string
 export function AttendancePage() {
   const qc = useQueryClient()
   const [siteId, setSiteId] = useState('')
-  const [kiosk, setKiosk] = useState(false)
-  const setFocusMode = useFocusModeStore((s) => s.setFocusMode)
   const accessToken = useAuthStore((s) => s.accessToken)
   const [enlargedPhoto, setEnlargedPhoto] = useState<{ url: string; label: string } | null>(null)
 
-  // Full-screen: same pattern as Live Wall — Electron gets true kiosk mode,
-  // browsers get the Fullscreen API; both flip focus-mode so AppShell hides
-  // its own sidebar/topbar (fullscreening the window alone doesn't hide it).
-  // Branches on our own `kiosk` state, not document.fullscreenElement — if
-  // requestFullscreen() is ever rejected (missing user gesture, browser
-  // policy), fullscreenElement stays null while kiosk is already true, and
-  // keying off fullscreenElement would re-enter instead of exit, leaving
-  // the user stuck with no way to bring the chrome back via this button.
-  const toggleKiosk = async () => {
-    if (window.electronAPI?.setKiosk) {
-      const now = await window.electronAPI.setKiosk(!kiosk)
-      setKiosk(now)
-      setFocusMode(now)
-      return
-    }
-    if (kiosk) {
-      setKiosk(false)
-      setFocusMode(false)
-      if (document.fullscreenElement) {
-        try { await document.exitFullscreen() } catch { /* already exiting */ }
-      }
-      return
-    }
-    setKiosk(true)
-    setFocusMode(true)
-    try { await document.documentElement.requestFullscreen() } catch { /* focus mode still applies */ }
-  }
-
-  useEffect(() => {
-    const sync = () => {
-      if (!document.fullscreenElement) { setKiosk(false); setFocusMode(false) }
-    }
-    document.addEventListener('fullscreenchange', sync)
-    return () => document.removeEventListener('fullscreenchange', sync)
-  }, [setFocusMode])
+  // Was a hand-rolled copy of the same toggle Live Wall / Command Centre /
+  // Action Center use. Sharing the hook keeps all four identical and, more
+  // importantly, gives this page the ?fullscreen=1 auto-apply — Command
+  // Centre pops Attendance out with that flag, and without the hook the
+  // popped-out window opened with the full sidebar instead of as a wall board.
+  const { kiosk, toggleKiosk } = useKioskToggle()
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const { data: live, isLoading } = useQuery({
@@ -342,16 +310,20 @@ export function AttendancePage() {
             <OpenInNewIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Enter full screen for continuous monitoring'}>
-          <Button
-            size="small"
-            variant={kiosk ? 'contained' : 'outlined'}
-            startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-            onClick={toggleKiosk}
-          >
-            {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-          </Button>
-        </Tooltip>
+        {/* Enter-only — AppShell's focus-mode strip owns Back and Exit once
+            full screen, so the two don't stack in the same corner. */}
+        {!kiosk && (
+          <Tooltip title="Enter full screen for continuous monitoring">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<FullscreenIcon />}
+              onClick={toggleKiosk}
+            >
+              Full Screen
+            </Button>
+          </Tooltip>
+        )}
       </Stack>
 
       {/* Action Required — guards a command-centre officer should contact now.

@@ -20,7 +20,6 @@ import LaunchIcon from '@mui/icons-material/Launch'
 import ShieldIcon from '@mui/icons-material/Shield'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -160,16 +159,20 @@ export default function ActionCenter() {
                 <OpenInNewIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Full screen for continuous monitoring'}>
-              <Button
-                size="small"
-                variant={kiosk ? 'contained' : 'outlined'}
-                startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-                onClick={toggleKiosk}
-              >
-                {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-              </Button>
-            </Tooltip>
+            {/* Enter-only — AppShell's focus-mode strip owns Back and Exit once
+                full screen, so the two don't stack in the same corner. */}
+            {!kiosk && (
+              <Tooltip title="Full screen for continuous monitoring">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<FullscreenIcon />}
+                  onClick={toggleKiosk}
+                >
+                  Full Screen
+                </Button>
+              </Tooltip>
+            )}
           </Stack>
         }
       />

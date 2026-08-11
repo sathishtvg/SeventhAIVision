@@ -18,7 +18,6 @@ import MonitorIcon from '@mui/icons-material/Monitor'
 import FlagIcon from '@mui/icons-material/Flag'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import { getSites } from '@/api/sites'
@@ -441,16 +440,21 @@ export default function CommandCentre() {
               <OpenInNewIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Full screen for continuous monitoring'}>
-            <Button
-              size="small"
-              variant={kiosk ? 'contained' : 'outlined'}
-              startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-              onClick={toggleKiosk}
-            >
-              {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-            </Button>
-          </Tooltip>
+          {/* Enter-only. Once full screen, AppShell's focus-mode strip owns Back
+              and Exit — a second exit button here landed under the strip and
+              read as two overlapping controls in the top-right corner. */}
+          {!kiosk && (
+            <Tooltip title="Full screen for continuous monitoring">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FullscreenIcon />}
+                onClick={toggleKiosk}
+              >
+                Full Screen
+              </Button>
+            </Tooltip>
+          )}
         </Box>
       </Box>
 

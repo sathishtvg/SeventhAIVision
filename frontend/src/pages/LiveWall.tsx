@@ -17,7 +17,6 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import SaveIcon from '@mui/icons-material/Save'
 import StopIcon from '@mui/icons-material/Stop'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
@@ -570,7 +569,12 @@ export function LiveWallPage() {
     <Box
       sx={{
         p: kiosk ? 1 : 3,
-        ...(kiosk && { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
+        /* 100% of AppShell's content area, not 100vh — in focus mode the shell
+           now renders a Back/Exit strip above this, so a viewport-height wall
+           would overflow by exactly the strip's height and push the bottom row
+           of cameras off screen. The content area is a flex child of a 100vh
+           column, so its height is definite and the percentage resolves. */
+        ...(kiosk && { height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap', flexShrink: 0 }}>
@@ -726,16 +730,20 @@ export function LiveWallPage() {
             ))}
           </Box>
         )}
-        <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Enter full screen for continuous monitoring'}>
-          <Button
-            size="small"
-            variant={kiosk ? 'contained' : 'outlined'}
-            startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-            onClick={toggleKiosk}
-          >
-            {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-          </Button>
-        </Tooltip>
+        {/* Enter-only — AppShell's focus-mode strip owns Back and Exit once
+            full screen, so the two don't stack in the same corner. */}
+        {!kiosk && (
+          <Tooltip title="Enter full screen for continuous monitoring">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<FullscreenIcon />}
+              onClick={toggleKiosk}
+            >
+              Full Screen
+            </Button>
+          </Tooltip>
+        )}
         <Button
           variant="contained"
           size="small"
