@@ -34,8 +34,16 @@ export function useKioskToggle() {
 
   const toggleKiosk = async () => {
     if (window.electronAPI?.setKiosk) {
-      const now = await window.electronAPI.setKiosk(!kiosk)
-      setFocusMode(now)
+      // Apply focus mode from OUR intent, never from what Electron reports
+      // back. Windows kiosk is unreliable — setKiosk() can leave isKiosk()
+      // false, and trusting that return value meant the button did nothing
+      // at all: no OS fullscreen AND no chrome hidden. Hiding our own chrome
+      // is the part we fully control and the part the operator actually
+      // asked for, so it applies regardless; the window-level call is
+      // best-effort on top, exactly as it already is in the browser branch.
+      const next = !kiosk
+      setFocusMode(next)
+      try { await window.electronAPI.setKiosk(next) } catch { /* window stays as-is */ }
       return
     }
     if (kiosk) {

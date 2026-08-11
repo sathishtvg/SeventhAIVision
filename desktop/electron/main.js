@@ -475,8 +475,15 @@ ipcMain.handle('set-badge-count', (_event, count) => {
 ipcMain.handle('set-kiosk', (event, enabled) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (!win || win.isDestroyed()) return false
-  win.setKiosk(Boolean(enabled))
-  return win.isKiosk()
+  const on = Boolean(enabled)
+  // setKiosk alone is unreliable on Windows — it can leave the window
+  // untouched and isKiosk() reporting false, which is why the Full Screen
+  // button appeared to do nothing at all here. Drive setFullScreen too and
+  // report either flag, so a Windows window that only honoured fullscreen
+  // still reads back as "in full screen" instead of a silent no-op.
+  win.setKiosk(on)
+  if (win.isFullScreen() !== on) win.setFullScreen(on)
+  return win.isKiosk() || win.isFullScreen()
 })
 
 ipcMain.handle('open-secondary-window', (_event, routePath) => {
