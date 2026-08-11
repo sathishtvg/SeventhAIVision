@@ -339,6 +339,18 @@ export interface Evidence {
   storage_path: string
   checksum_sha256: string | null
   captured_at: string
+  /* Context resolved server-side (site/camera/analytic). All optional: a
+     capture whose detection has aged out of retention, or one attached to an
+     incident rather than a detection, legitimately has no camera or module. */
+  capture_kind?: string | null
+  module_type?: string | null
+  confidence?: number | null
+  camera_id?: string | null
+  camera_name?: string | null
+  camera_location?: string | null
+  site_id?: string | null
+  site_name?: string | null
+  incident_title?: string | null
 }
 
 export interface AuditLog {

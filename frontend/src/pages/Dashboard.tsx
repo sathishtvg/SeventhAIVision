@@ -6,6 +6,7 @@ import {
   CircularProgress,
   Divider,
   Grid,
+  IconButton,
   LinearProgress,
   MenuItem,
   Select,
@@ -17,6 +18,10 @@ import Stack from '@/components/common/Stack'
 import { useAuthStore } from '@/store/auth'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { openLiveWallWindow } from '@/lib/liveWallWindow'
+import { openInNewWindow } from '@/lib/popoutWindow'
+import { useKioskToggle } from '@/hooks/useKioskToggle'
+import FullscreenIcon from '@mui/icons-material/Fullscreen'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import LiveTvIcon from '@mui/icons-material/LiveTv'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
@@ -677,6 +682,9 @@ export default function Dashboard() {
   }
 
   const [siteFilter, setSiteFilter] = useState('')
+  // Declared alongside the page's other hooks, i.e. after the role-7 early
+  // return above — consistent with every existing hook in this component.
+  const { kiosk, toggleKiosk } = useKioskToggle()
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
   const { data: summary } = useQuery({
@@ -755,6 +763,25 @@ export default function Dashboard() {
             Live Wall
           </Button>
         </Tooltip>
+        <Tooltip title="Send the Dashboard to another monitor — opens its own window already in full screen (Esc to leave full screen there)">
+          <IconButton size="small" onClick={() => openInNewWindow('/', { fullscreen: true })}>
+            <OpenInNewIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        {/* Enter-only, like the other control-room pages — AppShell's
+            focus-mode strip owns Back and Exit once full screen. */}
+        {!kiosk && (
+          <Tooltip title="Full screen for continuous monitoring">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<FullscreenIcon />}
+              onClick={toggleKiosk}
+            >
+              Full Screen
+            </Button>
+          </Tooltip>
+        )}
       </Box>
 
       {/* KPI Row */}
