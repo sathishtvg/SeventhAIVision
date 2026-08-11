@@ -18,6 +18,7 @@ import type { Site } from '@/types/api'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { RecordingPolicyDialog } from '@/components/common/RecordingPolicyDialog'
+import { LocationPickerMap } from '@/components/common/LocationPickerMap'
 import { usePermission } from '@/hooks/usePermission'
 
 interface SiteDialogProps {
@@ -118,21 +119,27 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         <Typography variant="caption" color="text.secondary">
           Geofence — required for attendance check-in/out distance validation
         </Typography>
-        <Stack direction="row" spacing={1.5}>
-          <TextField
-            label="Latitude" type="number" value={latitude}
-            onChange={(e) => setLatitude(e.target.value)} sx={{ flex: 1 }}
-          />
-          <TextField
-            label="Longitude" type="number" value={longitude}
-            onChange={(e) => setLongitude(e.target.value)} sx={{ flex: 1 }}
-          />
-          <TextField
-            label="Radius (m)" type="number" value={geofenceRadius}
-            onChange={(e) => setGeofenceRadius(e.target.value)} sx={{ flex: 1 }}
-            inputProps={{ min: 1 }}
-          />
-        </Stack>
+        {/* Placed on a map rather than typed. The stored values are unchanged;
+            only the way an admin produces them differs. The radius circle is
+            drawn around the pin so "200" is legible on the ground instead of
+            being a number you find out was wrong when check-ins start
+            failing. */}
+        <LocationPickerMap
+          latitude={latitude !== '' ? Number(latitude) : null}
+          longitude={longitude !== '' ? Number(longitude) : null}
+          onChange={(lat, lng) => {
+            setLatitude(lat.toFixed(6))
+            setLongitude(lng.toFixed(6))
+          }}
+          radiusMeters={geofenceRadius !== '' ? Number(geofenceRadius) : null}
+        />
+        <TextField
+          label="Geofence radius (m)" type="number" value={geofenceRadius}
+          onChange={(e) => setGeofenceRadius(e.target.value)}
+          slotProps={{ htmlInput: { min: 1 } }}
+          helperText="Shown as a circle on the map above"
+          sx={{ maxWidth: 220 }}
+        />
         <Typography variant="caption" color="text.secondary">
           Billing — link this site to a client and rate for invoicing
         </Typography>
