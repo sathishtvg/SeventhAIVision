@@ -62,11 +62,15 @@ export function AppShell() {
     }
   }
 
-  /* Back leaves full screen AND navigates away. A popped-out monitor window
-     was opened straight at its route, so it has no in-app history to go back
-     through — send it to the Dashboard rather than a dead history.back(). */
-  const goBack = async () => {
-    await leaveFullScreen()
+  /* Back navigates only — it deliberately does NOT leave full screen.
+     Full screen is a mode an operator chooses for a monitor and stays in; a
+     wall-mounted screen that dropped out of full screen every time someone
+     stepped back a page would have to be re-fullscreened constantly. Leaving
+     is what the Exit control next to it is for.
+     A popped-out monitor window was opened straight at its route, so it has
+     no in-app history to go back through — send it to the Dashboard rather
+     than a dead history.back(). */
+  const goBack = () => {
     if (window.history.length > 1) navigate(-1)
     else navigate('/')
   }

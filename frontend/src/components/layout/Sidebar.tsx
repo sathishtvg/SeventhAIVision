@@ -63,19 +63,30 @@ export const DRAWER_WIDTH = 258
  *  don't visibly shift sideways when toggling. */
 export const RAIL_WIDTH = 72
 
-/** Rail on/off, and which section headings are folded shut. Persisted so an
+/** Rail on/off, and which section headings are open. Persisted so an
  *  operator's chosen shape survives a reload — a control room leaves this app
- *  open for a whole shift and re-collapsing the same eight groups every
- *  morning is exactly the kind of small tax that makes software feel cheap. */
+ *  open for a whole shift and re-folding the same groups every morning is
+ *  exactly the kind of small tax that makes software feel cheap. */
 const RAIL_KEY = 'sidebar-rail'
-const COLLAPSED_KEY = 'sidebar-collapsed-sections'
+const OPEN_KEY = 'sidebar-open-sections'
+/** Superseded by OPEN_KEY. Stored the inverse (which sections were shut), so
+ *  reading it as an open-set would flip every saved preference. Cleared on
+ *  load rather than migrated: one group's fold state is not worth carrying a
+ *  translation shim for. */
+const LEGACY_COLLAPSED_KEY = 'sidebar-collapsed-sections'
 
-/** Stores the *collapsed* set rather than the open one on purpose: a section
- *  added in a later release then defaults to open and is discoverable, instead
- *  of being silently hidden for everyone who already has a saved preference. */
-function loadCollapsed(): Set<string> {
+/** Which sections are open. Empty by default — everything starts folded and
+ *  the group holding the current route opens itself (see the effect below),
+ *  so you land on a short menu showing where you actually are instead of all
+ *  53 items at once.
+ *
+ *  Storing the open set rather than the collapsed one is what makes that
+ *  default work: an unknown section is closed, so a group added in a later
+ *  release doesn't force itself open on everyone. */
+function loadOpenSections(): Set<string> {
   try {
-    const raw = localStorage.getItem(COLLAPSED_KEY)
+    localStorage.removeItem(LEGACY_COLLAPSED_KEY)
+    const raw = localStorage.getItem(OPEN_KEY)
     return new Set<string>(raw ? JSON.parse(raw) : [])
   } catch {
     return new Set()
@@ -403,7 +414,7 @@ export function Sidebar() {
   const location = useLocation()
 
   const [rail, setRail] = useState(() => localStorage.getItem(RAIL_KEY) === '1')
-  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
+  const [openSections, setOpenSections] = useState<Set<string>>(loadOpenSections)
 
   const toggleRail = () => {
     setRail((prev) => {
@@ -413,11 +424,11 @@ export function Sidebar() {
   }
 
   const toggleSection = (title: string) => {
-    setCollapsed((prev) => {
+    setOpenSections((prev) => {
       const next = new Set(prev)
       if (next.has(title)) next.delete(title)
       else next.add(title)
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
+      localStorage.setItem(OPEN_KEY, JSON.stringify([...next]))
       return next
     })
   }
@@ -445,9 +456,10 @@ export function Sidebar() {
       .filter((section) => section.items.length > 0)
   }, [fetchedPermissions, user?.roleId])
 
-  // Navigating into a folded group (from a KPI card, a deep link, a pop-out
-  // window) would otherwise land the user on a page whose nav entry is hidden,
-  // with no visible indication of where they are. Open that group.
+  // The group holding the current route opens itself. This is what makes an
+  // all-folded default usable: you always see the section you are working in,
+  // and navigating into a folded group (from a KPI card, a deep link, a
+  // pop-out window) never leaves you on a page whose nav entry is hidden.
   useEffect(() => {
     const owning = visibleSections.find((s) =>
       s.items.some((i) =>
@@ -456,11 +468,11 @@ export function Sidebar() {
       ),
     )
     if (!owning) return
-    setCollapsed((prev) => {
-      if (!prev.has(owning.title)) return prev   // already open — no re-render
+    setOpenSections((prev) => {
+      if (prev.has(owning.title)) return prev   // already open — no re-render
       const next = new Set(prev)
-      next.delete(owning.title)
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
+      next.add(owning.title)
+      localStorage.setItem(OPEN_KEY, JSON.stringify([...next]))
       return next
     })
   }, [location.pathname, visibleSections])
@@ -660,7 +672,7 @@ export function Sidebar() {
               </Box>
             )
           }
-          const open = !collapsed.has(section.title)
+          const open = openSections.has(section.title)
           return (
             <Box key={section.title}>
               <SectionHeader
