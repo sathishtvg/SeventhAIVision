@@ -20,8 +20,12 @@ win:
   # environment variables are present; without them the build is unsigned
   # (unchanged from before). publisherName must match the certificate's
   # subject CN — override via the WIN_PUBLISHER_NAME env var at build time.
-  publisherName: ${env.WIN_PUBLISHER_NAME}
   signtoolOptions:
+    # Was `win.publisherName`, which electron-builder deprecated in favour of
+    # this block — it warned on every single build. Left where it was, it
+    # stops being read at the next major, and the failure mode is bad: the
+    # build still succeeds, just unsigned or with a mismatched publisher.
+    publisherName: ${env.WIN_PUBLISHER_NAME}
     # rfc3161TimeStampServer keeps signatures valid after the cert expires.
     rfc3161TimeStampServer: http://timestamp.digicert.com
     signingHashAlgorithms:
