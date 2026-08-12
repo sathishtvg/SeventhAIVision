@@ -24,6 +24,7 @@ import {
 import { useAuthStore } from '@/store/auth'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { VideoPlayer } from '@/components/common/VideoPlayer'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -197,13 +198,12 @@ export function PlaybackPage() {
                   />
                 </Stack>
                 {token && (
-                  <Box
-                    component="video"
-                    key={playing.id}
-                    controls
-                    autoPlay
+                  <VideoPlayer
                     src={playRecordingUrl(playing.id, token)}
-                    sx={{ width: '100%', maxHeight: '60vh', borderRadius: 1, background: '#000' }}
+                    playerKey={playing.id}
+                    autoPlay
+                    maxHeight="60vh"
+                    label={`Recorded footage from ${timeline?.camera_name ?? 'camera'}`}
                   />
                 )}
               </Box>

@@ -5,6 +5,7 @@ import {
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import BrokenImageIcon from '@mui/icons-material/BrokenImage'
+import PlayCircleIcon from '@mui/icons-material/PlayCircle'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import PlaceIcon from '@mui/icons-material/Place'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
@@ -12,6 +13,7 @@ import DownloadIcon from '@mui/icons-material/Download'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { useQuery } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { VideoPlayer } from '@/components/common/VideoPlayer'
 import { getEvidence, evidenceImageUrl } from '@/api/evidence'
 import { useAuthStore } from '@/store/auth'
 import type { Evidence as EvidenceItem } from '@/types/api'
@@ -62,6 +64,10 @@ function EvidenceCard({ item, onClick }: EvidenceCardProps) {
   const [imgError, setImgError] = useState(false)
   const token = useAuthStore((s) => s.accessToken)
   const src = evidenceImageUrl(item.id, token, 640)  // card-sized, not full frame
+  // Video evidence has no still to downscale, so the thumbnail endpoint would
+  // hand a whole MP4 to an <img> — always a broken image. Show it as a clip
+  // instead, and don't pull the file down just to render a grid tile.
+  const isVideo = item.media_type === 'video'
 
   return (
     <GlassCard
@@ -69,7 +75,18 @@ function EvidenceCard({ item, onClick }: EvidenceCardProps) {
       onClick={onClick}
     >
       <Box sx={{ position: 'relative', aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
-        {imgError || !src ? (
+        {isVideo ? (
+          <Box
+            sx={{
+              display: 'flex', flexDirection: 'column', gap: 0.5,
+              alignItems: 'center', justifyContent: 'center', height: '100%',
+              color: 'text.secondary',
+            }}
+          >
+            <PlayCircleIcon sx={{ fontSize: 48, color: 'primary.main' }} />
+            <Typography variant="caption">Video clip — click to play</Typography>
+          </Box>
+        ) : imgError || !src ? (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <BrokenImageIcon sx={{ fontSize: 48, color: 'text.disabled' }} />
           </Box>
@@ -180,11 +197,25 @@ export default function Evidence() {
           {selected && (
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: 'stretch' }}>
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img
-                  src={fullSrc ?? undefined}
-                  alt={`${moduleLabel(selected.module_type) ?? 'Evidence'} capture from ${selected.camera_name ?? 'unknown camera'}`}
-                  style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', display: 'block' }}
-                />
+                {selected.media_type === 'video' ? (
+                  // Video evidence plays in place, with the same provenance
+                  // panel beside it — previously this rendered an <img>, so a
+                  // clip showed as a broken image with no way to view it.
+                  <VideoPlayer
+                    src={fullSrc ?? ''}
+                    playerKey={selected.id}
+                    autoPlay
+                    maxHeight="80vh"
+                    sx={{ width: '100%' }}
+                    label={`Evidence clip from ${selected.camera_name ?? 'unknown camera'}`}
+                  />
+                ) : (
+                  <img
+                    src={fullSrc ?? undefined}
+                    alt={`${moduleLabel(selected.module_type) ?? 'Evidence'} capture from ${selected.camera_name ?? 'unknown camera'}`}
+                    style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', display: 'block' }}
+                  />
+                )}
               </Box>
 
               <Box

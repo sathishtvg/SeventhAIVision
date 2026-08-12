@@ -12,6 +12,7 @@ from app.core.security import InvalidTokenError, decode_access_token
 from app.db.session import AsyncSessionLocal
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.video_compat import ensure_browser_playable
 
 router = APIRouter(prefix="/api/v1/evidence", tags=["evidence"])
 
@@ -94,8 +95,12 @@ async def download_evidence_file(
     if not file_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Evidence file not found on disk")
 
-    media_type = "image/jpeg" if row.media_type == "image" else "video/mp4"
-    return FileResponse(str(file_path), media_type=media_type)
+    if row.media_type == "image":
+        return FileResponse(str(file_path), media_type="image/jpeg")
+    # Video evidence captured before the H.264 fix is MPEG-4 Part 2, which no
+    # browser decodes — heal it once so it plays in the built-in player.
+    playable = await ensure_browser_playable(str(file_path))
+    return FileResponse(playable, media_type="video/mp4")
 
 
 @router.get("/{evidence_id}/image")
@@ -197,8 +202,15 @@ async def get_evidence_image(
             headers={"Cache-Control": "private, max-age=86400"},
         )
 
-    media_type = "image/jpeg" if row.media_type == "image" else "video/mp4"
-    return FileResponse(str(file_path), media_type=media_type)
+    if row.media_type == "image":
+        return FileResponse(str(file_path), media_type="image/jpeg")
+    # This is the endpoint a <video src> actually hits (a media element can't
+    # send an Authorization header, hence the query-param JWT), so the legacy
+    # heal has to happen here too. FileResponse serves Range requests, which is
+    # what lets the operator scrub the clip instead of only playing it start to
+    # end.
+    playable = await ensure_browser_playable(str(file_path))
+    return FileResponse(playable, media_type="video/mp4")
 
 
 @router.get("/by-detection/{detection_id}", dependencies=[Depends(require_permission("evidence:read"))])

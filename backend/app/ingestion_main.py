@@ -25,6 +25,7 @@ from app.core.config import settings
 from app.core.crypto import decrypt_secret
 from app.db.session import AsyncSessionLocal
 from app.services.camera_service import StreamHealthTracker
+from app.services.video_compat import H264Writer
 from shared.constants import FRAME_JOBS_STREAM
 from shared.events import FrameJob
 
@@ -125,13 +126,15 @@ def _write_clip_to_mp4(frames_jpeg: list[bytes], output_path: str, fps: float = 
     if first is None:
         return 0
     h, w = first.shape[:2]
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
+    # H.264, not cv2's mp4v fourcc — mp4v is MPEG-4 Part 2, which no browser
+    # decodes, so these event clips were unplayable in the `<video>` element on
+    # Playback/Evidence even though the file itself was valid.
+    writer = H264Writer(output_path, fps=fps, size=(w, h))
     for jpeg in frames_jpeg:
         frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
         if frame is not None:
             writer.write(frame)
-    writer.release()
+    writer.release()  # finalises the container; size is only valid after this
     return os.path.getsize(output_path) if os.path.exists(output_path) else 0
 
 
