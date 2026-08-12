@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Box, Typography, Grid, Slider, Button, Alert, Skeleton, TextField, Chip, Divider, List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, Tooltip, Switch, FormControlLabel, MenuItem, Select, InputLabel, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment } from '@mui/material'
 import LogoutIcon from '@mui/icons-material/Logout'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
@@ -456,7 +457,62 @@ export default function Settings() {
         <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Alert Deduplication Rules</Typography>
         <AlertDedupRulesSection />
       </PermissionGuard>
+
+      <AdvancedLinksSection />
     </Box>
+  )
+}
+
+/** Setup-once plumbing that used to occupy permanent slots in a 53-item
+ *  sidebar an operator reads every shift. The pages are unchanged and the
+ *  routes still work — they just live here now, where you go when you are
+ *  actually configuring the system rather than running it.
+ *
+ *  Each link is permission-gated exactly as its old nav entry was, so nobody
+ *  gains or loses access by the move. */
+function AdvancedLinksSection() {
+  const navigate = useNavigate()
+
+  const links: { label: string; description: string; path: string; permission: string }[] = [
+    { label: 'API Keys', description: 'Issue and revoke machine credentials', path: '/api-keys', permission: 'apikey:manage' },
+    { label: 'IP Allowlist', description: 'Restrict access to known networks', path: '/ip-allowlist', permission: 'iplist:manage' },
+    { label: 'Alert Dedup Rules', description: 'Full editor for the rules above', path: '/alert-dedup', permission: 'alert:dedup:manage' },
+    { label: 'Developer Tools', description: 'API reference and webhook testing', path: '/developer', permission: 'apikey:manage' },
+  ]
+
+  return (
+    <PermissionGuard permission="settings:read">
+      <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 700 }}>Advanced</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Configured once during setup — kept out of the main menu.
+      </Typography>
+      <Grid container spacing={2}>
+        {links.map((l) => (
+          <PermissionGuard permission={l.permission} key={l.path}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => navigate(l.path)}
+                sx={{
+                  justifyContent: 'flex-start',
+                  textAlign: 'left',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 0.25,
+                  py: 1.25,
+                  textTransform: 'none',
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{l.label}</Typography>
+                <Typography variant="caption" color="text.secondary">{l.description}</Typography>
+              </Button>
+            </Grid>
+          </PermissionGuard>
+        ))}
+      </Grid>
+    </PermissionGuard>
   )
 }
 

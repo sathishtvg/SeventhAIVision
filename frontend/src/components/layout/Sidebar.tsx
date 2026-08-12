@@ -1,10 +1,13 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
+  Box, Collapse, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
   Typography, Tooltip, IconButton, useTheme,
 } from '@mui/material'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import NotificationsIcon from '@mui/icons-material/Notifications'
@@ -33,10 +36,6 @@ import VideoFileIcon from '@mui/icons-material/VideoFile'
 import SecurityIcon from '@mui/icons-material/Security'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import MapIcon from '@mui/icons-material/Map'
-import VpnKeyIcon from '@mui/icons-material/VpnKey'
-import LanIcon from '@mui/icons-material/Lan'
-import FilterAltIcon from '@mui/icons-material/FilterAlt'
-import DeveloperModeIcon from '@mui/icons-material/DeveloperMode'
 import HomeWorkIcon from '@mui/icons-material/HomeWork'
 import MonitorIcon from '@mui/icons-material/Monitor'
 import SensorsIcon from '@mui/icons-material/Sensors'
@@ -59,6 +58,29 @@ import { usePermission, getPermissionsForRole } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
 
 export const DRAWER_WIDTH = 258
+/** Width when collapsed to an icon rail. Wide enough for a 38px icon plus the
+ *  same horizontal rhythm as the expanded state, so the logo and nav icons
+ *  don't visibly shift sideways when toggling. */
+export const RAIL_WIDTH = 72
+
+/** Rail on/off, and which section headings are folded shut. Persisted so an
+ *  operator's chosen shape survives a reload — a control room leaves this app
+ *  open for a whole shift and re-collapsing the same eight groups every
+ *  morning is exactly the kind of small tax that makes software feel cheap. */
+const RAIL_KEY = 'sidebar-rail'
+const COLLAPSED_KEY = 'sidebar-collapsed-sections'
+
+/** Stores the *collapsed* set rather than the open one on purpose: a section
+ *  added in a later release then defaults to open and is discoverable, instead
+ *  of being silently hidden for everyone who already has a saved preference. */
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_KEY)
+    return new Set<string>(raw ? JSON.parse(raw) : [])
+  } catch {
+    return new Set()
+  }
+}
 
 const ROLE_LABELS: Record<number, string> = {
   1: 'Super Admin',
@@ -175,14 +197,14 @@ const NAV_SECTIONS: {
     items: [
       { label: 'Settings',         path: '/settings',         icon: <SettingsIcon fontSize="small" />,     permission: 'settings:read' },
       { label: 'Alert Rules',      path: '/alert-rules',      icon: <RuleIcon fontSize="small" />,         permission: 'alert_rule:read' },
-      { label: 'Alert Dedup',      path: '/alert-dedup',      icon: <FilterAltIcon fontSize="small" />,    permission: 'alert:dedup:manage' },
       { label: 'Device Protocols', path: '/device-protocols', icon: <CableIcon fontSize="small" />,        permission: 'device_config:read' },
       { label: 'Notifications',    path: '/notifications',    icon: <NotificationsActiveIcon fontSize="small" />, permission: 'notification:manage' },
       { label: 'Users',            path: '/users',            icon: <PeopleIcon fontSize="small" />,       permission: 'user:read' },
       { label: 'Roles',            path: '/roles',            icon: <PeopleIcon fontSize="small" />,       permission: 'role:manage' },
-      { label: 'API Keys',         path: '/api-keys',         icon: <VpnKeyIcon fontSize="small" />,       permission: 'apikey:manage' },
-      { label: 'IP Allowlist',     path: '/ip-allowlist',     icon: <LanIcon fontSize="small" />,          permission: 'iplist:manage' },
-      { label: 'Developer',        path: '/developer',        icon: <DeveloperModeIcon fontSize="small" />, permission: 'apikey:manage' },
+      // Alert Dedup, API Keys, IP Allowlist and Developer were dropped from
+      // the sidebar: setup-once plumbing that earned a permanent slot in a
+      // menu an operator reads every day. Their routes are untouched and are
+      // now reached from Settings → Advanced, so nothing became unreachable.
       { label: 'Tenants',          path: '/tenants',          icon: <BusinessIcon fontSize="small" />,     permission: 'tenant:manage' },
     ],
   },
@@ -193,6 +215,8 @@ interface NavLinkProps {
   path: string
   icon: React.ReactNode
   permission: string | null
+  /** Icon-only rail mode: the label moves into a tooltip. */
+  rail?: boolean
 }
 
 /** English nav label → i18n key, e.g. "Audit Logs" → "nav.audit_logs". */
@@ -200,7 +224,7 @@ function navKey(label: string): string {
   return 'nav.' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_|_$)/g, '')
 }
 
-function NavLink({ label, path, icon, permission }: NavLinkProps) {
+function NavLink({ label, path, icon, permission, rail = false }: NavLinkProps) {
   const allowed = usePermission(permission ?? 'camera:read')
   const location = useLocation()
   const navigate = useNavigate()
@@ -219,18 +243,19 @@ function NavLink({ label, path, icon, permission }: NavLinkProps) {
 
   const hoverBg = isDark ? 'rgba(255,255,255,0.045)' : 'rgba(0,0,0,0.035)'
 
-  return (
+  const button = (
     <ListItemButton
       selected={selected}
       onClick={() => navigate(path)}
       className={selected ? 'nav-item-enter' : undefined}
       sx={{
-        mx: 1.5,
+        mx: rail ? 1 : 1.5,
         mb: 0.25,
         borderRadius: '10px',
         position: 'relative',
         overflow: 'hidden',
         py: 0.9,
+        ...(rail && { justifyContent: 'center', px: 0 }),
         transition: 'all 0.18s ease',
         ...(selected
           ? {
@@ -262,7 +287,7 @@ function NavLink({ label, path, icon, permission }: NavLinkProps) {
     >
       <ListItemIcon
         sx={{
-          minWidth: 34,
+          minWidth: rail ? 0 : 34,
           color: selected ? '#6C63FF' : 'text.secondary',
           transition: 'color 0.18s, filter 0.18s',
           filter: selected
@@ -273,22 +298,24 @@ function NavLink({ label, path, icon, permission }: NavLinkProps) {
         {icon}
       </ListItemIcon>
 
-      <ListItemText
-        primary={displayLabel}
-        slotProps={{
-          primary: {
-            sx: {
-              fontSize: '0.845rem',
-              fontWeight: selected ? 700 : 400,
-              color: selected ? 'text.primary' : 'text.secondary',
-              transition: 'color 0.18s, font-weight 0.18s',
-              letterSpacing: selected ? '0.01em' : 0,
+      {!rail && (
+        <ListItemText
+          primary={displayLabel}
+          slotProps={{
+            primary: {
+              sx: {
+                fontSize: '0.845rem',
+                fontWeight: selected ? 700 : 400,
+                color: selected ? 'text.primary' : 'text.secondary',
+                transition: 'color 0.18s, font-weight 0.18s',
+                letterSpacing: selected ? '0.01em' : 0,
+              },
             },
-          },
-        }}
-      />
+          }}
+        />
+      )}
 
-      {selected && (
+      {selected && !rail && (
         <Box
           sx={{
             width: 5,
@@ -302,27 +329,69 @@ function NavLink({ label, path, icon, permission }: NavLinkProps) {
       )}
     </ListItemButton>
   )
+
+  // In rail mode the label is the only thing identifying the item, so it has
+  // to survive somewhere — a tooltip is that somewhere.
+  return rail
+    ? <Tooltip title={displayLabel} placement="right" arrow>{button}</Tooltip>
+    : button
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/** Section heading, now a collapse toggle.
+ *
+ *  A real button rather than a styled div: it is keyboard-reachable, announces
+ *  its expanded state to a screen reader, and gets focus styling for free —
+ *  none of which a clickable Typography would have. */
+function SectionHeader({
+  title, open, count, onToggle,
+}: { title: string; open: boolean; count: number; onToggle: () => void }) {
   return (
-    <Typography
-      variant="caption"
+    <ListItemButton
+      onClick={onToggle}
+      aria-expanded={open}
       sx={{
         px: 2.5,
         pt: 1.75,
         pb: 0.5,
-        display: 'block',
-        fontSize: '0.635rem',
-        fontWeight: 700,
-        letterSpacing: '0.12em',
-        textTransform: 'uppercase',
-        color: 'text.disabled',
-        userSelect: 'none',
+        borderRadius: 0,
+        '&:hover': { background: 'transparent', '& .section-title': { color: 'text.secondary' } },
       }}
     >
-      {children}
-    </Typography>
+      <Typography
+        className="section-title"
+        variant="caption"
+        sx={{
+          flex: 1,
+          fontSize: '0.635rem',
+          fontWeight: 700,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'text.disabled',
+          userSelect: 'none',
+          transition: 'color 0.18s',
+        }}
+      >
+        {title}
+      </Typography>
+      {/* Item count while shut, so a collapsed group still says how much is
+          behind it instead of reading as an empty heading. */}
+      {!open && (
+        <Typography
+          variant="caption"
+          sx={{ fontSize: '0.6rem', color: 'text.disabled', mr: 0.75, opacity: 0.7 }}
+        >
+          {count}
+        </Typography>
+      )}
+      <ExpandMoreIcon
+        sx={{
+          fontSize: 16,
+          color: 'text.disabled',
+          transition: 'transform 0.2s ease',
+          transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+        }}
+      />
+    </ListItemButton>
   )
 }
 
@@ -331,6 +400,27 @@ export function Sidebar() {
   const logout = useAuthStore((s) => s.logout)
   const { palette } = useTheme()
   const isDark = palette.mode === 'dark'
+  const location = useLocation()
+
+  const [rail, setRail] = useState(() => localStorage.getItem(RAIL_KEY) === '1')
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
+
+  const toggleRail = () => {
+    setRail((prev) => {
+      localStorage.setItem(RAIL_KEY, prev ? '0' : '1')
+      return !prev
+    })
+  }
+
+  const toggleSection = (title: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(title)) next.delete(title)
+      else next.add(title)
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }
 
   // Drop any section this role cannot see a single item in, so a limited role
   // (a guard, a client) gets a short menu rather than a page of empty headings.
@@ -355,6 +445,26 @@ export function Sidebar() {
       .filter((section) => section.items.length > 0)
   }, [fetchedPermissions, user?.roleId])
 
+  // Navigating into a folded group (from a KPI card, a deep link, a pop-out
+  // window) would otherwise land the user on a page whose nav entry is hidden,
+  // with no visible indication of where they are. Open that group.
+  useEffect(() => {
+    const owning = visibleSections.find((s) =>
+      s.items.some((i) =>
+        location.pathname === i.path ||
+        (i.path !== '/' && location.pathname.startsWith(i.path)),
+      ),
+    )
+    if (!owning) return
+    setCollapsed((prev) => {
+      if (!prev.has(owning.title)) return prev   // already open — no re-render
+      const next = new Set(prev)
+      next.delete(owning.title)
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }, [location.pathname, visibleSections])
+
   const { data: tenantBrand } = useQuery({
     queryKey: ['branding'],
     queryFn: getBranding,
@@ -377,18 +487,34 @@ export function Sidebar() {
     <Drawer
       variant="permanent"
       sx={{
-        width: DRAWER_WIDTH,
+        width: rail ? RAIL_WIDTH : DRAWER_WIDTH,
         flexShrink: 0,
-        '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box', overflow: 'hidden' },
+        transition: 'width 0.2s ease',
+      }}
+      // Width goes on the paper's own slot rather than through a
+      // `& .MuiDrawer-paper` descendant selector in the root's sx. Both work;
+      // this form keeps the width on the paper's own class, so the rendered
+      // width is inspectable without reasoning about selector specificity
+      // against the theme's MuiDrawer.paper overrides.
+      slotProps={{
+        paper: {
+          sx: {
+            width: rail ? RAIL_WIDTH : DRAWER_WIDTH,
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            transition: 'width 0.2s ease',
+          },
+        },
       }}
     >
       {/* ── Logo ─────────────────────────────────────────────────────────── */}
       <Box
         sx={{
-          px: 2.5,
+          px: rail ? 1 : 2.5,
           py: 2.25,
           display: 'flex',
           alignItems: 'center',
+          justifyContent: rail ? 'center' : 'flex-start',
           gap: 1.5,
           background: `linear-gradient(180deg, ${accentColor}1a 0%, transparent 100%)`,
           borderBottom: `1px solid ${divider}`,
@@ -425,31 +551,65 @@ export function Sidebar() {
           )}
         </Box>
 
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="subtitle1"
-            noWrap
+        {!rail && (
+          <>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                variant="subtitle1"
+                noWrap
+                sx={{
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  lineHeight: 1.25,
+                  background: logoTitleGradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                {brandName}
+              </Typography>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{ color: 'text.secondary', fontSize: '0.63rem', lineHeight: 1 }}
+              >
+                Security Platform
+              </Typography>
+            </Box>
+            <Tooltip title="Collapse menu" placement="right">
+              <IconButton
+                size="small"
+                onClick={toggleRail}
+                aria-label="Collapse menu"
+                sx={{ color: 'text.disabled', '&:hover': { color: 'text.primary' } }}
+              >
+                <ChevronLeftIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
+      </Box>
+
+      {/* In rail mode the expand control gets its own row: putting it beside
+          the logo would leave neither enough width at 72px. */}
+      {rail && (
+        <Tooltip title="Expand menu" placement="right">
+          <IconButton
+            size="small"
+            onClick={toggleRail}
+            aria-label="Expand menu"
             sx={{
-              fontWeight: 800,
-              fontSize: '0.95rem',
-              lineHeight: 1.25,
-              background: logoTitleGradient,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
+              alignSelf: 'center',
+              mt: 1,
+              color: 'text.disabled',
+              '&:hover': { color: 'text.primary' },
             }}
           >
-            {brandName}
-          </Typography>
-          <Typography
-            variant="caption"
-            noWrap
-            sx={{ color: 'text.secondary', fontSize: '0.63rem', lineHeight: 1 }}
-          >
-            Security Platform
-          </Typography>
-        </Box>
-      </Box>
+            <ChevronRightIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
 
       {/* ── Navigation ───────────────────────────────────────────────────── */}
       <Box
@@ -478,22 +638,53 @@ export function Sidebar() {
             flat list it replaced. Visibility is resolved with the pure
             getPermissionsForRole rather than the usePermission hook, because
             a hook cannot be called per-item inside a map. */}
-        {visibleSections.map((section) => (
-          <Box key={section.title}>
-            <SectionLabel>{section.title}</SectionLabel>
-            <List dense disablePadding>
-              {section.items.map((item) => (
-                <NavLink key={item.path} {...item} />
-              ))}
-            </List>
-          </Box>
-        ))}
+        {visibleSections.map((section, idx) => {
+          // The rail has no room for headings, so it shows every item as a
+          // flat icon run with a hairline between groups — collapsing there
+          // would hide items behind a control that isn't visible.
+          if (rail) {
+            return (
+              <Box
+                key={section.title}
+                sx={{
+                  pt: idx === 0 ? 0.5 : 1,
+                  mt: idx === 0 ? 0 : 0.5,
+                  borderTop: idx === 0 ? 'none' : `1px solid ${divider}`,
+                }}
+              >
+                <List dense disablePadding>
+                  {section.items.map((item) => (
+                    <NavLink key={item.path} {...item} rail />
+                  ))}
+                </List>
+              </Box>
+            )
+          }
+          const open = !collapsed.has(section.title)
+          return (
+            <Box key={section.title}>
+              <SectionHeader
+                title={section.title}
+                open={open}
+                count={section.items.length}
+                onToggle={() => toggleSection(section.title)}
+              />
+              <Collapse in={open} timeout={180} unmountOnExit>
+                <List dense disablePadding>
+                  {section.items.map((item) => (
+                    <NavLink key={item.path} {...item} />
+                  ))}
+                </List>
+              </Collapse>
+            </Box>
+          )
+        })}
       </Box>
 
       {/* ── User footer ──────────────────────────────────────────────────── */}
       <Box
         sx={{
-          px: 1.5,
+          px: rail ? 0.75 : 1.5,
           py: 1.5,
           borderTop: `1px solid ${divider}`,
           background:
@@ -504,9 +695,10 @@ export function Sidebar() {
         <Box
           sx={{
             display: 'flex',
+            flexDirection: rail ? 'column' : 'row',
             alignItems: 'center',
-            gap: 1.25,
-            px: 1,
+            gap: rail ? 0.75 : 1.25,
+            px: rail ? 0.5 : 1,
             py: 0.75,
             borderRadius: '10px',
             background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
@@ -534,29 +726,33 @@ export function Sidebar() {
             {initials}
           </Box>
 
-          {/* Info */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              variant="caption"
-              noWrap
-              sx={{
-                display: 'block',
-                fontWeight: 600,
-                fontSize: '0.78rem',
-                color: 'text.primary',
-                lineHeight: 1.35,
-              }}
-            >
-              {roleLabel}
-            </Typography>
-            <Typography
-              variant="caption"
-              noWrap
-              sx={{ display: 'block', color: 'text.secondary', fontSize: '0.64rem' }}
-            >
-              {user?.id ? 'Authenticated' : 'Guest'}
-            </Typography>
-          </Box>
+          {/* Info — the role is what the avatar's initial can't convey, so in
+              rail mode it moves onto the avatar's own tooltip rather than
+              disappearing. */}
+          {!rail && (
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{
+                  display: 'block',
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  color: 'text.primary',
+                  lineHeight: 1.35,
+                }}
+              >
+                {roleLabel}
+              </Typography>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{ display: 'block', color: 'text.secondary', fontSize: '0.64rem' }}
+              >
+                {user?.id ? 'Authenticated' : 'Guest'}
+              </Typography>
+            </Box>
+          )}
 
           {/* Logout */}
           <Tooltip title="Sign out" placement="top">

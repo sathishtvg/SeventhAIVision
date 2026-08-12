@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import {
   Box, Grid, Typography, Skeleton, Dialog, DialogContent, IconButton, Chip,
-  Tooltip, Divider, Button,
+  Tooltip, Divider, Button, Collapse, ListItemButton,
 } from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import CloseIcon from '@mui/icons-material/Close'
 import BrokenImageIcon from '@mui/icons-material/BrokenImage'
 import PlayCircleIcon from '@mui/icons-material/PlayCircle'
@@ -71,7 +72,16 @@ function EvidenceCard({ item, onClick }: EvidenceCardProps) {
 
   return (
     <GlassCard
-      sx={{ cursor: 'pointer', overflow: 'hidden', '&:hover': { transform: 'scale(1.02)', transition: 'transform 0.2s' } }}
+      sx={{
+        cursor: 'pointer',
+        overflow: 'hidden',
+        '&:hover': {
+          transform: 'scale(1.02)',
+          transition: 'transform 0.2s',
+          '& .evidence-meta': { opacity: 1 },
+        },
+        '&:focus-within .evidence-meta': { opacity: 1 },
+      }}
       onClick={onClick}
     >
       <Box sx={{ position: 'relative', aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
@@ -105,17 +115,32 @@ function EvidenceCard({ item, onClick }: EvidenceCardProps) {
             <ModuleChip module={item.module_type} />
           </Box>
         )}
-      </Box>
-      <Box sx={{ p: 1.5 }}>
-        <Typography variant="body2" noWrap title={item.camera_name ?? undefined} sx={{ fontWeight: 600 }}>
-          {item.camera_name ?? 'Unknown camera'}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-          {item.site_name ?? 'Unassigned site'}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-          {new Date(item.captured_at).toLocaleString()}
-        </Typography>
+
+        {/* Camera, site and timestamp used to sit in a text block under every
+            thumbnail, which turned a gallery into a list with pictures. They
+            now ride over the image on hover: the grid reads as imagery, and
+            the context is still one gesture away rather than a click.
+            Touch devices get no hover — the caption is a convenience, and the
+            same three fields are on the viewer that a tap opens. */}
+        <Box
+          className="evidence-meta"
+          sx={{
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            px: 1, py: 0.75,
+            background: 'linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%)',
+            opacity: 0,
+            transition: 'opacity 0.18s ease',
+            pointerEvents: 'none',
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        >
+          <Typography variant="caption" noWrap sx={{ display: 'block', color: '#fff', fontWeight: 600 }}>
+            {item.camera_name ?? 'Unknown camera'}
+          </Typography>
+          <Typography variant="caption" noWrap sx={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: '0.62rem' }}>
+            {item.site_name ?? 'Unassigned site'} · {new Date(item.captured_at).toLocaleString()}
+          </Typography>
+        </Box>
       </Box>
     </GlassCard>
   )
@@ -146,6 +171,7 @@ function Detail({ label, value, mono }: { label: string; value: React.ReactNode;
 
 export default function Evidence() {
   const [selected, setSelected] = useState<EvidenceItem | null>(null)
+  const [custodyOpen, setCustodyOpen] = useState(false)
   const token = useAuthStore((s) => s.accessToken)
   const { data: items, isLoading } = useQuery({
     queryKey: ['evidence'],
@@ -286,14 +312,44 @@ export default function Evidence() {
                 <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
 
                 {/* Chain-of-custody fields — what makes this admissible as
-                    evidence rather than just a screenshot. */}
-                <Detail label="Evidence ID" value={selected.id} mono />
-                {selected.detection_id && <Detail label="Detection" value={selected.detection_id} mono />}
-                {selected.checksum_sha256 && (
-                  <Tooltip title="SHA-256 of the stored file — proves it has not been altered since capture">
-                    <Box><Detail label="SHA-256" value={selected.checksum_sha256} mono /></Box>
-                  </Tooltip>
-                )}
+                    evidence rather than just a screenshot. Kept, but folded
+                    away: three opaque hex strings were dominating a panel
+                    whose job is to tell an operator where and when this
+                    happened. Nobody reads a SHA-256 at a glance; they go
+                    looking for it when an incident becomes a dispute. */}
+                <ListItemButton
+                  onClick={() => setCustodyOpen((v) => !v)}
+                  aria-expanded={custodyOpen}
+                  sx={{ px: 0, py: 0.5, borderRadius: 1 }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      flex: 1, textTransform: 'uppercase', letterSpacing: '0.08em',
+                      fontSize: '0.62rem', fontWeight: 700, color: 'text.disabled',
+                    }}
+                  >
+                    Chain of custody
+                  </Typography>
+                  <ExpandMoreIcon
+                    sx={{
+                      fontSize: 16, color: 'text.disabled',
+                      transition: 'transform 0.2s ease',
+                      transform: custodyOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                    }}
+                  />
+                </ListItemButton>
+                <Collapse in={custodyOpen} timeout={180} unmountOnExit>
+                  <Box sx={{ pt: 0.5 }}>
+                    <Detail label="Evidence ID" value={selected.id} mono />
+                    {selected.detection_id && <Detail label="Detection" value={selected.detection_id} mono />}
+                    {selected.checksum_sha256 && (
+                      <Tooltip title="SHA-256 of the stored file — proves it has not been altered since capture">
+                        <Box><Detail label="SHA-256" value={selected.checksum_sha256} mono /></Box>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Collapse>
 
                 {fullSrc && (
                   <Button
