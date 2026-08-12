@@ -47,6 +47,8 @@ export interface User {
   emergency_contact_phone: string | null
   hourly_rate: number | null
   daily_rate: number | null
+  /** Permanent photo shown before a guard checks in. */
+  profile_photo_path?: string | null
   monthly_salary: number | null
   // List-only fields (GET /users grid round) — present only in the list
   // response, not GET /users/{id} or POST /users.
@@ -501,6 +503,8 @@ export interface Site {
   latitude: number | null
   longitude: number | null
   geofence_radius_meters: number | null
+  /** Minutes of lateness tolerated at this site; null = tenant default. */
+  late_grace_minutes: number | null
   is_active: boolean
   camera_count: number
   client_id: string | null

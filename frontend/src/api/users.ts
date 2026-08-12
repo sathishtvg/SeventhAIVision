@@ -89,3 +89,14 @@ export const deleteEmployeeDocument = (userId: string, docId: string) =>
 
 export const employeeDocumentFileUrl = (userId: string, docId: string) =>
   `/api/v1/users/${userId}/documents/${docId}/file`
+
+/** Replace a guard's permanent profile photo. Multipart; the server stores one
+ *  file per user under a fixed name, so re-uploading overwrites rather than
+ *  accumulating orphans. */
+export const uploadProfilePhoto = (userId: string, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient
+    .post<{ profile_photo_path: string }>(`/api/v1/users/${userId}/photo`, form)
+    .then((r) => r.data)
+}

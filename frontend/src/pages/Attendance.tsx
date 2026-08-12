@@ -57,7 +57,7 @@ import GpsOffIcon from '@mui/icons-material/GpsOff'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getLiveAttendance, getGuardRecentAttendance, listCorrections,
-  approveCorrection, rejectCorrection, checkinPhotoUrl,
+  approveCorrection, rejectCorrection, checkinPhotoUrl, profilePhotoUrl,
   type LiveAttendanceShift, type LiveAttendanceSite, type MonitorStatus,
 } from '@/api/attendance'
 import { GlassCard } from '@/components/common/GlassCard'
@@ -135,6 +135,35 @@ const initials = (name: string | null) =>
 function hexToRgb(hex: string) {
   const h = hex.replace('#', '')
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)].join(',')
+}
+
+/** Shared fallback face, inlined as a data URI so it needs no network request
+ *  and cannot 404 on a wall display that has lost its connection. Initials
+ *  were the old fallback; a consistent silhouette keeps every card the same
+ *  shape, which is what makes a grid scannable. */
+const DEFAULT_AVATAR =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+       <rect width="64" height="64" fill="#1b2033"/>
+       <circle cx="32" cy="24" r="11" fill="#48506b"/>
+       <path d="M8 62c0-13.3 10.7-24 24-24s24 10.7 24 24z" fill="#48506b"/>
+     </svg>`.replace(/\s+/g, ' '),
+  )
+
+/**
+ * Which face to show, in priority order:
+ *   1. this shift's check-in selfie — proof of who actually turned up
+ *   2. the guard's profile photo — who is *supposed* to turn up
+ *   3. the shared default silhouette
+ *
+ * Order matters and is the point: before check-in the command office needs a
+ * face to look for, and after check-in it needs the face that arrived.
+ */
+function guardPhotoUrl(g: LiveAttendanceShift, token: string | null): string {
+  if (g.check_in_photo_path) return checkinPhotoUrl(g.id, 'check_in', token) ?? DEFAULT_AVATAR
+  if (g.profile_photo_path) return profilePhotoUrl(g.guard_user_id, token) ?? DEFAULT_AVATAR
+  return DEFAULT_AVATAR
 }
 
 /** "just now" / "3 min ago" — a stale board must look stale. */
@@ -222,7 +251,7 @@ function GuardCard({ g, token, onOpen }: {
   g: LiveAttendanceShift; token: string | null; onOpen: () => void
 }) {
   const m = STATUS_META[g.monitor_status]
-  const photo = g.check_in_photo_path ? checkinPhotoUrl(g.id, 'check_in', token) : null
+  const photo = guardPhotoUrl(g, token)
   return (
     <Box
       onClick={onOpen}
@@ -247,7 +276,8 @@ function GuardCard({ g, token, onOpen }: {
     >
       <Stack direction="row" spacing={1.25} alignItems="flex-start">
         <Avatar
-          src={photo ?? undefined}
+          src={photo}
+          alt={g.guard_name ?? 'Guard'}
           sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: `rgba(${hexToRgb(m.color)},0.25)`,
                 color: m.color, fontSize: '0.85rem', fontWeight: 700 }}
         >
@@ -443,7 +473,10 @@ function GuardDetailDialog({ g, token, onClose }: {
   })
   if (!g) return null
   const m = STATUS_META[g.monitor_status]
-  const photo = g.check_in_photo_path ? checkinPhotoUrl(g.id, 'check_in', token) : null
+  const photo = guardPhotoUrl(g, token)
+  const photoKind = g.check_in_photo_path ? 'Check-in selfie'
+    : g.profile_photo_path ? 'Profile photo'
+    : 'No photo on file'
 
   return (
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
@@ -459,7 +492,8 @@ function GuardDetailDialog({ g, token, onClose }: {
         <Box sx={{ display: 'flex', gap: 2.5, flexDirection: { xs: 'column', sm: 'row' } }}>
           <Box sx={{ flexShrink: 0, textAlign: 'center' }}>
             <Avatar
-              src={photo ?? undefined}
+              src={photo}
+              alt={g.guard_name ?? 'Guard'}
               variant="rounded"
               sx={{ width: 168, height: 168, mx: 'auto', fontSize: '3rem', fontWeight: 700,
                     bgcolor: `rgba(${hexToRgb(m.color)},0.22)`, color: m.color,
@@ -468,7 +502,7 @@ function GuardDetailDialog({ g, token, onClose }: {
               {initials(g.guard_name)}
             </Avatar>
             <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.75 }}>
-              {photo ? 'Check-in selfie' : 'No check-in photo yet'}
+              {photoKind}
             </Typography>
             {g.guard_phone && (
               <Button
@@ -490,7 +524,12 @@ function GuardDetailDialog({ g, token, onClose }: {
             <Detail label="Rostered" value={`${fmtTime(g.scheduled_start)} – ${fmtTime(g.scheduled_end)}`} />
             <Detail label="Checked in" value={g.actual_start ? fmtTime(g.actual_start) : 'Not received'} />
             <Detail label="Checked out" value={g.actual_end ? fmtTime(g.actual_end) : '—'} />
-            {g.is_late && <Detail label="Late by" value={`${g.late_minutes ?? '?'} minutes`} />}
+            {g.is_late && (
+              <Detail
+                label="Late by"
+                value={`${g.late_minutes ?? '?'} minutes (site allows ${g.effective_grace_minutes})`}
+              />
+            )}
             {g.on_leave && <Detail label="Leave" value={g.leave_reason || 'Approved leave'} />}
             <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.08)' }} />
             {/* There is no separate "source" column — attendance arrives from

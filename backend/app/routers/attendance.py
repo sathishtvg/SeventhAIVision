@@ -73,7 +73,14 @@ async def get_live_attendance(db: AsyncSession = Depends(get_db_with_tenant), si
                           WHERE b.shift_id = sh.id AND b.break_end IS NULL) AS on_break,
                    u.full_name AS guard_name, u.phone AS guard_phone,
                    u.employment_type, u.designation,
+                   -- Permanent photo, shown until the shift's own check-in
+                   -- selfie exists. Path only; the board builds the URL.
+                   u.profile_photo_path,
                    s.name AS site_name,
+                   -- Per-site grace, NULL meaning "use the tenant default".
+                   -- Resolved per row below so a board spanning sites with
+                   -- different allowances judges each by its own.
+                   s.late_grace_minutes AS site_grace_minutes,
                    lv.reason AS leave_reason,
                    (lv.guard_user_id IS NOT NULL) AS on_leave
             FROM shifts sh
@@ -111,7 +118,13 @@ async def get_live_attendance(db: AsyncSession = Depends(get_db_with_tenant), si
 
     for r in result.mappings():
         row = dict(r)
-        state = monitor_status(row, now, grace_minutes)
+        # `is not None` rather than `or`: a site deliberately set to 0 means
+        # "no grace at all", which `or` would quietly turn back into the
+        # tenant default.
+        site_grace = row.pop("site_grace_minutes", None)
+        effective_grace = site_grace if site_grace is not None else grace_minutes
+        row["effective_grace_minutes"] = effective_grace
+        state = monitor_status(row, now, effective_grace)
         row["monitor_status"] = state
         # Kept so anything still reading the old field keeps working.
         row["live_status"] = _live_status(row)

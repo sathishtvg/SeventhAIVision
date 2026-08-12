@@ -11,6 +11,7 @@ import {
   Chip,
   IconButton,
   Button,
+  Avatar,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -49,7 +50,10 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import {
   getUsers, createUser, updateUser, deactivateUser, getUserSites, setUserSites,
   getEmployeeDocuments, uploadEmployeeDocument, deleteEmployeeDocument,
+  uploadProfilePhoto,
 } from '@/api/users'
+import { profilePhotoUrl } from '@/api/attendance'
+import { useAuthStore } from '@/store/auth'
 import { listRoles } from '@/api/roles'
 import { getUserSessions, revokeAllUserSessions, unlockUserAccount } from '@/api/sessions'
 import { getSites } from '@/api/sites'
@@ -371,6 +375,10 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
 
         {isEdit && tab === 0 && (
           <>
+            {/* The command office needs a face for a guard before they turn
+                up — the one you most need to identify is the one who has not
+                arrived. The check-in selfie can only answer that afterwards. */}
+            <ProfilePhotoField user={editUser!} />
             <TextField label="Email" value={editUser!.email} size="small" fullWidth disabled />
             <TextField label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} size="small" fullWidth />
             <TextField label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} size="small" fullWidth />
@@ -585,6 +593,52 @@ function SiteAccessDialog({ open, onClose, user }: { open: boolean; onClose: () 
         </Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+/** Upload / replace a guard's permanent profile photo. */
+function ProfilePhotoField({ user }: { user: User }) {
+  const token = useAuthStore((s) => s.accessToken)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  // Bumped after a successful upload: the URL is stable per user, so the
+  // browser would otherwise keep serving the old cached image.
+  const [version, setVersion] = useState(0)
+
+  const src = user.profile_photo_path ? `${profilePhotoUrl(user.id, token)}&v=${version}` : null
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(true); setErr(null)
+    try {
+      await uploadProfilePhoto(user.id, file)
+      user.profile_photo_path = 'set'   // reflect immediately without a refetch
+      setVersion((v) => v + 1)
+    } catch {
+      setErr('Upload failed — use a JPEG, PNG or WebP image.')
+    } finally {
+      setBusy(false)
+      e.target.value = ''               // allow re-picking the same file
+    }
+  }
+
+  return (
+    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+      <Avatar src={src ?? undefined} sx={{ width: 64, height: 64 }}>
+        {(user.full_name ?? '?').slice(0, 1).toUpperCase()}
+      </Avatar>
+      <Box>
+        <Button component="label" size="small" variant="outlined" disabled={busy}>
+          {busy ? 'Uploading…' : user.profile_photo_path ? 'Replace photo' : 'Upload photo'}
+          <input hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={onPick} />
+        </Button>
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}
+                    color={err ? 'error' : 'text.secondary'}>
+          {err ?? 'Shown on the attendance board until the guard checks in.'}
+        </Typography>
+      </Box>
+    </Box>
   )
 }
 

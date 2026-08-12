@@ -17,6 +17,9 @@ class SiteCreate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     geofence_radius_meters: int | None = None
+    # Minutes past the rostered start before a guard counts as late here.
+    # None = fall back to the tenant-wide attendance.late_grace_minutes.
+    late_grace_minutes: int | None = None
     client_id: str | None = None
     bill_rate: float | None = None
 
@@ -28,6 +31,7 @@ class SiteUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     geofence_radius_meters: int | None = None
+    late_grace_minutes: int | None = None
     is_active: bool | None = None
     client_id: str | None = None
     bill_rate: float | None = None
@@ -60,7 +64,7 @@ async def list_sites(
         text(
             f"""
             SELECT s.id, s.name, s.address, s.description,
-                   s.latitude, s.longitude, s.geofence_radius_meters, s.is_active,
+                   s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.is_active,
                    s.client_id, s.bill_rate, bc.name AS client_name,
                    s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
                    s.free_parking_minutes,
@@ -84,9 +88,9 @@ async def create_site(body: SiteCreate, db: AsyncSession = Depends(get_db_with_t
     result = await db.execute(
         text(
             "INSERT INTO sites (tenant_id, name, address, description, latitude, longitude, "
-            "geofence_radius_meters, client_id, bill_rate) "
+            "geofence_radius_meters, late_grace_minutes, client_id, bill_rate) "
             "VALUES (current_setting('app.current_tenant')::uuid, :name, :address, :description, :lat, :lng, "
-            ":radius, :client_id, :bill_rate) "
+            ":radius, :grace, :client_id, :bill_rate) "
             "RETURNING id"
         ),
         {
@@ -96,6 +100,7 @@ async def create_site(body: SiteCreate, db: AsyncSession = Depends(get_db_with_t
             "lat": body.latitude,
             "lng": body.longitude,
             "radius": body.geofence_radius_meters,
+            "grace": body.late_grace_minutes,
             "client_id": body.client_id,
             "bill_rate": body.bill_rate,
         },
@@ -117,7 +122,7 @@ async def get_site(
         text(
             """
             SELECT s.id, s.name, s.address, s.description,
-                   s.latitude, s.longitude, s.geofence_radius_meters, s.is_active,
+                   s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.is_active,
                    s.client_id, s.bill_rate, bc.name AS client_name,
                    s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
                    s.free_parking_minutes,
@@ -153,6 +158,8 @@ async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends
         sets.append("longitude = :lng"); params["lng"] = body.longitude
     if body.geofence_radius_meters is not None:
         sets.append("geofence_radius_meters = :radius"); params["radius"] = body.geofence_radius_meters
+    if body.late_grace_minutes is not None:
+        sets.append("late_grace_minutes = :grace"); params["grace"] = body.late_grace_minutes
     if body.is_active is not None:
         sets.append("is_active = :is_active"); params["is_active"] = body.is_active
     if body.client_id is not None:

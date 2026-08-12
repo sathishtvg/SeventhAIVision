@@ -3,17 +3,18 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import InvalidTokenError, decode_access_token, hash_password
 from app.core.uploads import MAX_DOCUMENT_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
+from app.db.session import AsyncSessionLocal
 from app.dependencies.tenant import get_db_with_tenant
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -30,6 +31,7 @@ _EMPLOYEE_FIELDS = (
     "department", "date_joined", "bank_name", "bank_account_number",
     "emergency_contact_name", "emergency_contact_phone",
     "hourly_rate", "daily_rate", "monthly_salary",
+    "profile_photo_path",
 )
 
 
@@ -463,3 +465,86 @@ async def unregister_push_token(
         await redis.srem(f"push_tokens:{token.tenant_id}", body.token)
         await redis.srem(f"push_tokens:{token.tenant_id}:{token.user_id}", body.token)
     return {"unregistered": True}
+
+
+# ── Profile photo ────────────────────────────────────────────────────────────
+#
+# The command office needs a face for a guard *before* they turn up — the one
+# you most need to identify is the one who has not arrived. The check-in selfie
+# can only ever answer that after the fact, so a permanent photo lives here and
+# the live selfie supersedes it once a shift starts.
+
+_PROFILE_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+@router.post("/{user_id}/photo", dependencies=[Depends(require_permission("user:update"))])
+async def upload_profile_photo(
+    user_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    if file.content_type not in _PROFILE_PHOTO_TYPES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Photo must be one of {sorted(_PROFILE_PHOTO_TYPES)}",
+        )
+    if (await db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})).first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    ext = Path(file.filename or "").suffix or ".jpg"
+    # Fixed filename per user: a profile photo is replaced, not versioned, and
+    # a stable path means no orphaned files accumulating on every re-upload.
+    relative_path = f"{token.tenant_id}/{user_id}/profile{ext}"
+    dest = Path(settings.EMPLOYEE_DOCS_ROOT) / relative_path
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(await read_upload_limited(file, MAX_DOCUMENT_UPLOAD_BYTES))
+
+    await db.execute(
+        text("UPDATE users SET profile_photo_path = :p, updated_at = now() WHERE id = :id"),
+        {"p": relative_path, "id": user_id},
+    )
+    await db.commit()
+    return {"profile_photo_path": relative_path}
+
+
+@router.get("/{user_id}/photo")
+async def get_profile_photo(
+    user_id: uuid.UUID,
+    token: str = Query(..., description="JWT access token"),
+):
+    """Served for `<img src>`, which cannot set an Authorization header — same
+    query-param-JWT pattern as the check-in photo and evidence endpoints.
+
+    Gated on user:read rather than being public: a guard's face plus the site
+    they work is exactly the pairing that should not leak from a URL alone.
+    """
+    try:
+        payload = decode_access_token(token)
+    except InvalidTokenError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_tenant', :tid, true)"),
+            {"tid": payload["tenant_id"]},
+        )
+        perm = await session.execute(
+            text(
+                "SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id "
+                "WHERE rp.role_id = :role_id AND p.code = 'user:read'"
+            ),
+            {"role_id": payload["role_id"]},
+        )
+        if perm.first() is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Missing permission: user:read")
+        row = (await session.execute(
+            text("SELECT profile_photo_path FROM users WHERE id = :id"), {"id": user_id},
+        )).first()
+
+    if row is None or not row[0]:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile photo")
+    file_path = Path(settings.EMPLOYEE_DOCS_ROOT) / row[0]
+    if not file_path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Profile photo missing on disk")
+    return FileResponse(str(file_path))

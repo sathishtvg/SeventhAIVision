@@ -3,6 +3,11 @@ import { apiClient } from './client'
 // Query-param-JWT auth (same pattern as LiveWall's MJPEG stream URLs) — a
 // plain <img src> can't set an Authorization header, so the token travels
 // in the URL. Returns null if not authenticated (caller should skip render).
+/** A guard's permanent profile photo. Same query-param-JWT reasoning as the
+ *  check-in photo below: an <img> cannot send an Authorization header. */
+export const profilePhotoUrl = (userId: string, token: string | null) =>
+  token ? `${apiClient.defaults.baseURL}/api/v1/users/${userId}/photo?token=${token}` : null
+
 export const checkinPhotoUrl = (shiftId: string, which: 'check_in' | 'check_out', token: string | null) =>
   token ? `${apiClient.defaults.baseURL}/api/v1/shifts/${shiftId}/photo/${which}?token=${token}` : null
 
@@ -34,6 +39,11 @@ export interface LiveAttendanceShift {
   designation: string | null
   on_leave: boolean
   leave_reason: string | null
+  /** Permanent photo, shown until this shift's own check-in selfie exists. */
+  profile_photo_path: string | null
+  /** Grace actually applied to this row — the site's override, or the tenant
+   *  default. Surfaced so the board can explain why someone counts as late. */
+  effective_grace_minutes: number
   /** The board's state ladder. Richer than live_status, which stays for the
    *  Command Centre and Site Map — see services/attendance_status.py. */
   monitor_status: MonitorStatus

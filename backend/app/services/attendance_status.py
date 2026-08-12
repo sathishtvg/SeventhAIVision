@@ -43,6 +43,27 @@ async def get_attendance_setting(db: AsyncSession, key: str) -> int:
     return ATTENDANCE_DEFAULTS[key]
 
 
+async def get_site_grace_minutes(db: AsyncSession, site_id) -> int:
+    """Grace for one site: its own override, else the tenant setting.
+
+    Every caller that decides "is this guard late" must resolve it the same
+    way, or the check-in that writes is_late and the board that renders it end
+    up applying different standards to the same shift — the exact drift this
+    module exists to prevent. Mirrors how sites.geofence_radius_meters already
+    overrides the tenant radius.
+    """
+    if site_id is not None:
+        row = (await db.execute(
+            text("SELECT late_grace_minutes FROM sites WHERE id = :sid"),
+            {"sid": site_id},
+        )).first()
+        # `is not None` rather than truthiness: a deliberate 0 means "no grace
+        # at all", and `or` would silently reinstate the tenant default.
+        if row is not None and row[0] is not None:
+            return row[0]
+    return await get_attendance_setting(db, "attendance.late_grace_minutes")
+
+
 def live_status(row: dict) -> str:
     """The state ladder rendered by the attendance monitor and the map.
 

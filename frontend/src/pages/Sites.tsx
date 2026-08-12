@@ -38,6 +38,9 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
   const [geofenceRadius, setGeofenceRadius] = useState(
     site?.geofence_radius_meters != null ? String(site.geofence_radius_meters) : ''
   )
+  const [lateGrace, setLateGrace] = useState(
+    site?.late_grace_minutes != null ? String(site.late_grace_minutes) : ''
+  )
   const [clientId, setClientId] = useState(site?.client_id ?? '')
   const [billRate, setBillRate] = useState(site?.bill_rate != null ? String(site.bill_rate) : '')
   const [vmsEnabled, setVmsEnabled] = useState(site?.vms_enabled ?? false)
@@ -64,6 +67,7 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         latitude: latitude !== '' ? Number(latitude) : undefined,
         longitude: longitude !== '' ? Number(longitude) : undefined,
         geofence_radius_meters: geofenceRadius !== '' ? Number(geofenceRadius) : undefined,
+        late_grace_minutes: lateGrace !== '' ? Number(lateGrace) : undefined,
         client_id: clientId || undefined,
         bill_rate: billRate !== '' ? Number(billRate) : undefined,
         // Edit-only, and sent as explicit null rather than undefined when
@@ -139,6 +143,17 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
           slotProps={{ htmlInput: { min: 1 } }}
           helperText="Shown as a circle on the map above"
           sx={{ maxWidth: 220 }}
+        />
+        {/* Sites do not behave alike: a remote gate with one bus an hour
+            cannot hold the same standard as a lobby on a train line. Blank
+            keeps the company-wide default, so only sites that need their own
+            rule carry one. */}
+        <TextField
+          label="Late grace (minutes)" type="number" value={lateGrace}
+          onChange={(e) => setLateGrace(e.target.value)}
+          slotProps={{ htmlInput: { min: 0, max: 240 } }}
+          helperText="Minutes after the rostered start before a guard counts as late. Blank = company default."
+          sx={{ maxWidth: 300 }}
         />
         <Typography variant="caption" color="text.secondary">
           Billing — link this site to a client and rate for invoicing

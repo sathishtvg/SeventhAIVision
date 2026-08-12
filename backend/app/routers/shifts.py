@@ -35,6 +35,7 @@ copy here would let the writer and the readers drift apart."""
 from app.services.attendance_status import (  # noqa: E402
     ATTENDANCE_DEFAULTS as _ATTENDANCE_DEFAULTS,
     get_attendance_setting as _get_attendance_setting,
+    get_site_grace_minutes as _get_site_grace_minutes,
 )
 
 _LIVENESS_MIN_SCORE_DEFAULT = 0.7
@@ -472,7 +473,10 @@ async def start_shift(
     )
 
     now = datetime.now(timezone.utc)
-    grace_minutes = await _get_attendance_setting(db, "attendance.late_grace_minutes")
+    # Per-site grace, falling back to the tenant setting. Resolved through the
+    # shared helper so the standard applied here — where is_late is written —
+    # is the same one the attendance board applies when it renders it.
+    grace_minutes = await _get_site_grace_minutes(db, shift_row.site_id)
     raw_late_minutes = (now - shift_row.scheduled_start).total_seconds() / 60
     is_late = raw_late_minutes > grace_minutes
     late_minutes = max(0, round(raw_late_minutes)) if is_late else 0
@@ -580,7 +584,10 @@ async def end_shift(
         over_minutes = (now - shift_row.scheduled_end).total_seconds() / 60
         if over_minutes > threshold:
             overtime_minutes = max(0, round(over_minutes - threshold))
-        grace_minutes = await _get_attendance_setting(db, "attendance.late_grace_minutes")
+        # Same per-site grace that decided lateness on the way in — a site
+        # given a wider allowance at the start of a shift gets it at the end
+        # too, or an early-departure violation contradicts the site's policy.
+        grace_minutes = await _get_site_grace_minutes(db, shift_row.site_id)
         is_early_departure = -over_minutes > grace_minutes
 
     # Safety net: auto-close a break the guard forgot to end.

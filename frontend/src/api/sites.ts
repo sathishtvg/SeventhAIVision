@@ -16,6 +16,7 @@ export const createSite = (data: {
   latitude?: number
   longitude?: number
   geofence_radius_meters?: number
+  late_grace_minutes?: number
   client_id?: string
   bill_rate?: number
 }) => apiClient.post<Site>('/api/v1/sites', data).then((r) => r.data)
@@ -29,6 +30,7 @@ export const updateSite = (
     latitude?: number
     longitude?: number
     geofence_radius_meters?: number
+  late_grace_minutes?: number
     is_active?: boolean
     client_id?: string
     bill_rate?: number
