@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { LocationPickerMap } from '@/components/common/LocationPickerMap'
 import {
   getCameras, createCamera, updateCamera, deleteCamera,
   getStreams, createStream, deleteStream, updateStream, validateStream,
@@ -53,15 +54,28 @@ function CameraDialog({ open, onClose, existing }: CameraDialogProps) {
   const [location, setLocation] = useState(existing?.location ?? '')
   const [modules, setModules] = useState<string[]>(existing?.ai_modules_enabled ?? [])
   const [siteId, setSiteId] = useState<string>((existing as any)?.site_id ?? '')
+  // Cameras have carried latitude/longitude since the first schema, and both
+  // Site Map and Heatmap plot from them — but nothing in the app ever set
+  // them, so a customer's own cameras could never appear on either. Placed on
+  // a map, same as a site.
+  const [lat, setLat] = useState<number | null>((existing as any)?.latitude ?? null)
+  const [lng, setLng] = useState<number | null>((existing as any)?.longitude ?? null)
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const isEdit = !!existing
 
   const mutation = useMutation({
-    mutationFn: () =>
-      isEdit
-        ? updateCamera(existing!.id, { name, location: location || undefined, ai_modules_enabled: modules, site_id: siteId || undefined })
-        : createCamera({ name, location: location || undefined, ai_modules_enabled: modules, site_id: siteId || undefined }),
+    mutationFn: () => {
+      const payload = {
+        name,
+        location: location || undefined,
+        ai_modules_enabled: modules,
+        site_id: siteId || undefined,
+        latitude: lat ?? undefined,
+        longitude: lng ?? undefined,
+      }
+      return isEdit ? updateCamera(existing!.id, payload) : createCamera(payload)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cameras'] })
       onClose()
@@ -84,6 +98,17 @@ function CameraDialog({ open, onClose, existing }: CameraDialogProps) {
             {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
           </Select>
         </FormControl>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+            Position on map — where this camera appears on Site Map and Heatmap
+          </Typography>
+          <LocationPickerMap
+            latitude={lat}
+            longitude={lng}
+            onChange={(la, ln) => { setLat(la); setLng(ln) }}
+            height={240}
+          />
+        </Box>
         <Box>
           <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
             AI Modules
