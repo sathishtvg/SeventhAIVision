@@ -29,22 +29,80 @@ export interface LiveAttendanceShift {
   guard_name: string | null
   guard_phone: string | null
   site_name: string | null
+  shift_type: 'day' | 'night' | 'split' | null
+  employment_type: 'full_time' | 'part_time' | 'contract' | null
+  designation: string | null
+  on_leave: boolean
+  leave_reason: string | null
+  /** The board's state ladder. Richer than live_status, which stays for the
+   *  Command Centre and Site Map — see services/attendance_status.py. */
+  monitor_status: MonitorStatus
   live_status: 'not_started' | 'late' | 'checked_in' | 'on_break' | 'checked_out'
 }
 
+export type MonitorStatus =
+  | 'on_leave' | 'not_yet_on_duty' | 'awaiting' | 'on_time'
+  | 'late' | 'on_break' | 'not_reported' | 'checked_out'
+
+/** The eight company-wide figures across the top of the board. */
 export interface LiveAttendanceSummary {
+  rostered: number
   checked_in: number
-  on_break: number
+  reported: number
   late: number
-  not_started: number
-  checked_out: number
+  not_reported: number
+  on_leave: number
+  not_yet_on_duty: number
+  on_duty: number
+}
+
+export interface LiveAttendanceSiteCounts {
+  rostered: number
+  checked_in: number
+  late: number
+  not_reported: number
+  on_leave: number
+  not_yet_on_duty: number
+}
+
+export interface LiveAttendanceSite {
+  site_id: string | null
+  site_name: string
+  counts: LiveAttendanceSiteCounts
+  guards: LiveAttendanceShift[]
+}
+
+export interface LiveAttendanceBoard {
+  /** Server clock at the moment the board was built — drives "Last updated"
+   *  so a frozen dashboard is visibly frozen rather than quietly wrong. */
+  generated_at: string
+  grace_minutes: number
+  summary: LiveAttendanceSummary
+  sites: LiveAttendanceSite[]
+  shifts: LiveAttendanceShift[]
 }
 
 export const getLiveAttendance = (siteId?: string) =>
   apiClient
-    .get<{ shifts: LiveAttendanceShift[]; summary: LiveAttendanceSummary }>('/api/v1/attendance/live', {
-      params: { site_id: siteId },
-    })
+    .get<LiveAttendanceBoard>('/api/v1/attendance/live', { params: { site_id: siteId } })
+    .then((r) => r.data)
+
+export interface RecentAttendanceRow {
+  id: string
+  scheduled_start: string
+  scheduled_end: string
+  actual_start: string | null
+  actual_end: string | null
+  status: string
+  is_late: boolean
+  late_minutes: number | null
+  overtime_minutes: number | null
+  site_name: string | null
+}
+
+export const getGuardRecentAttendance = (guardUserId: string, limit = 7) =>
+  apiClient
+    .get<RecentAttendanceRow[]>(`/api/v1/attendance/guard/${guardUserId}/recent`, { params: { limit } })
     .then((r) => r.data)
 
 export interface AttendanceCorrection {

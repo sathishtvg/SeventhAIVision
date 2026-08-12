@@ -69,6 +69,57 @@ def live_status(row: dict) -> str:
     return "not_started"
 
 
+#: The ladder the live attendance monitor renders. Richer than live_status()
+#: above, which stays as-is because the Command Centre and the Site Map read
+#: it and a five-state board is the right density for them.
+#:
+#: The monitor needs states those two deliberately collapse:
+#:   * on_leave      — rostered but excused; must not read as an absence
+#:   * not_yet_on_duty / awaiting — a shift that has not started yet is not a
+#:     problem, and one inside its grace window is not a problem *yet*. Fusing
+#:     them into "not checked in" is what makes a board cry wolf all morning.
+#:   * on_time vs late — live_status() answers "present?" and returns
+#:     checked_in for both. A command office needs to see punctuality at a
+#:     glance, so lateness survives check-in here instead of being erased by
+#:     it.
+MONITOR_STATUSES = (
+    "on_leave", "not_yet_on_duty", "awaiting", "on_time", "late",
+    "on_break", "not_reported", "checked_out",
+)
+
+
+def monitor_status(row: dict, now, grace_minutes: int) -> str:
+    """State for one rostered guard on the live attendance board.
+
+    `now` is passed in rather than read here so every row in a single refresh
+    is judged against one instant — rows evaluated microseconds apart must not
+    land on different sides of a grace boundary and make the board flicker.
+
+    Order matters. Leave outranks everything: an excused guard is not missing,
+    and showing them red would send the command office chasing someone who
+    filed leave weeks ago.
+    """
+    if row.get("on_leave"):
+        return "on_leave"
+    if row["status"] == "completed":
+        return "checked_out"
+    if row.get("on_break"):
+        return "on_break"
+    if row["status"] == "active":
+        # Lateness is recorded at check-in and kept visible afterwards; a guard
+        # who arrived 40 minutes late is still the story of that shift.
+        return "late" if row.get("is_late") else "on_time"
+
+    start = row.get("scheduled_start")
+    if start is None:
+        return "not_yet_on_duty"
+    if now < start:
+        return "not_yet_on_duty"
+    if (now - start).total_seconds() <= grace_minutes * 60:
+        return "awaiting"
+    return "not_reported"
+
+
 def is_overdue_sql(shift_alias: str = "sh", grace_param: str = "grace_minutes") -> str:
     """SQL fragment: this shift should have started by now and nobody has
     checked in. Expressed in SQL rather than Python so it is evaluated
