@@ -3,7 +3,7 @@ import {
   Box, Typography, Grid, Paper, Chip, Button, Tabs, Tab,
   Table, TableHead, TableRow, TableCell, TableBody, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  Tooltip, CircularProgress, LinearProgress, Alert,
+  Tooltip, CircularProgress, LinearProgress, Alert, MenuItem,
 } from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import VideocamIcon from '@mui/icons-material/Videocam'
@@ -188,10 +188,9 @@ function StartRecordingDialog({ camera, onClose }: { camera: BodyCamera; onClose
         <TextField
           select label="Trigger Type" value={trigger}
           onChange={e => setTrigger(e.target.value)} size="small" fullWidth
-          SelectProps={{ native: true }}
         >
           {['manual', 'pre_event', 'auto_incident', 'panic', 'scheduled'].map(t => (
-            <option key={t} value={t}>{t}</option>
+            <MenuItem key={t} value={t}>{t}</MenuItem>
           ))}
         </TextField>
       </DialogContent>

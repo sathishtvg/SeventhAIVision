@@ -9,6 +9,7 @@ import PaletteIcon from '@mui/icons-material/Palette'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { useColorMode, BRAND_PRESETS } from '@/context/ColorMode'
 import { getSettings, upsertSetting } from '@/api/settings'
 import { getBranding, updateBranding } from '@/api/branding'
 import { get2FAStatus, setup2FA, enable2FA, disable2FA, get2faPolicy, set2faPolicy } from '@/api/guards'
@@ -397,6 +398,19 @@ export default function Settings() {
 
   return (
     <Box>
+      {/* ── My appearance ─────────────────────────────────────────────────
+          Deliberately first, and deliberately separate from Tenant Branding
+          below: branding is what every user of this tenant sees, this is
+          only what *you* see. Keeping them adjacent but clearly labelled is
+          what stops an admin changing their own accent and assuming they
+          just rebranded the company. */}
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+        My Appearance
+      </Typography>
+      <AppearanceSection />
+
+      <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+
       {/* ── Branding ──────────────────────────────────────────────────────── */}
       <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
         Tenant Branding
@@ -470,6 +484,84 @@ export default function Settings() {
  *
  *  Each link is permission-gated exactly as its old nav entry was, so nobody
  *  gains or loses access by the move. */
+/**
+ * Per-user theme choice. Stored against the signed-in user, so on a shared
+ * control-room PC one operator's accent does not follow the next person who
+ * signs in — everyone else keeps the usual colours until they pick their own.
+ */
+function AppearanceSection() {
+  const { mode, toggle, brandColor, setBrandColor, reset } = useColorMode()
+
+  return (
+    <GlassCard sx={{ p: 3, maxWidth: 640 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+        These settings apply to your account only, on this device. They do not
+        change what anyone else sees.
+      </Typography>
+
+      <FormControlLabel
+        control={<Switch checked={mode === 'light'} onChange={toggle} />}
+        label={mode === 'light' ? 'Light mode' : 'Dark mode'}
+        sx={{ mb: 3 }}
+      />
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        Accent colour
+      </Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        {BRAND_PRESETS.map((preset) => (
+          <Tooltip key={preset.hex} title={preset.name}>
+            <Box
+              component="button"
+              aria-label={preset.name}
+              onClick={() => setBrandColor(preset.hex)}
+              sx={{
+                width: 34, height: 34, borderRadius: '50%', cursor: 'pointer',
+                background: preset.hex, padding: 0,
+                border: brandColor.toLowerCase() === preset.hex.toLowerCase()
+                  ? '3px solid currentColor' : '2px solid rgba(128,128,128,0.35)',
+                color: 'text.primary',
+                transition: 'transform 0.12s',
+                '&:hover': { transform: 'scale(1.08)' },
+              }}
+            />
+          </Tooltip>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          type="color"
+          label="Custom"
+          size="small"
+          value={brandColor}
+          onChange={(e) => setBrandColor(e.target.value)}
+          sx={{ width: 110 }}
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
+        <TextField
+          size="small"
+          label="Hex"
+          value={brandColor}
+          onChange={(e) => {
+            const v = e.target.value
+            // Only push a valid colour into the theme — a half-typed "#6C6"
+            // would otherwise repaint the whole app mid-keystroke.
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) setBrandColor(v)
+          }}
+          sx={{ width: 130 }}
+        />
+        <Button size="small" variant="outlined" onClick={reset}>Reset to default</Button>
+      </Box>
+
+      <Alert severity="info" variant="outlined" sx={{ mt: 2.5 }}>
+        Very light accents can be hard to read in light mode. The presets above
+        are checked to stay legible in both.
+      </Alert>
+    </GlassCard>
+  )
+}
+
 function AdvancedLinksSection() {
   const navigate = useNavigate()
 

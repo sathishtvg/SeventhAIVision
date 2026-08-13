@@ -724,18 +724,21 @@ export default function Dashboard() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
           <Box sx={{
             width: 3, height: 28, borderRadius: 2,
-            background: 'linear-gradient(180deg, #6C63FF 0%, #00D9C0 100%)',
-            boxShadow: '0 0 12px rgba(108,99,255,0.7)',
+            background: (t) => `linear-gradient(180deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`,
+            boxShadow: (t) => t.palette.mode === 'dark' ? `0 0 12px ${t.palette.primary.main}b3` : 'none',
             flexShrink: 0,
           }} />
-          <Typography variant="h5" sx={{
+          {/* Same theme-derived treatment as PageHeader: the first gradient
+              stop must be the theme's own text colour, or this title turns
+              near-white-on-white the moment light mode is on. */}
+          <Typography variant="h5" sx={(t) => ({
             fontWeight: 800,
             letterSpacing: '-0.02em',
-            background: 'linear-gradient(135deg, #F1F5F9 30%, rgba(108,99,255,0.9) 100%)',
+            background: `linear-gradient(135deg, ${t.palette.text.primary} 30%, ${t.palette.primary.main} 100%)`,
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-          }}>
+          })}>
             Dashboard
           </Typography>
         </Box>

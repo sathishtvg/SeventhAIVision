@@ -214,11 +214,10 @@ function StreamDialog({ open, onClose, cameraId }: { open: boolean; onClose: () 
           value={method}
           onChange={(e) => setMethod(e.target.value as ConnectionMethod)}
           fullWidth
-          slotProps={{ select: { native: true } }}
         >
-          <option value="manual">Manual URL</option>
-          <option value="static_ip">RTSP — Static IP</option>
-          <option value="ddns">RTSP — DDNS Hostname</option>
+          <MenuItem value="manual">Manual URL</MenuItem>
+          <MenuItem value="static_ip">RTSP — Static IP</MenuItem>
+          <MenuItem value="ddns">RTSP — DDNS Hostname</MenuItem>
         </TextField>
 
         {/* Manual URL mode */}
@@ -237,10 +236,9 @@ function StreamDialog({ open, onClose, cameraId }: { open: boolean; onClose: () 
               value={protocol}
               onChange={(e) => setProtocol(e.target.value)}
               fullWidth
-              slotProps={{ select: { native: true } }}
             >
               {['rtsp', 'rtmp', 'onvif', 'http'].map((p) => (
-                <option key={p} value={p}>{p.toUpperCase()}</option>
+                <MenuItem key={p} value={p}>{p.toUpperCase()}</MenuItem>
               ))}
             </TextField>
           </>
