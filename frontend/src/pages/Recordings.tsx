@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import {
-  Box, Chip, Dialog, DialogContent, DialogTitle, IconButton, Table, TableBody,
+  Box, Chip, IconButton, Table, TableBody,
   TableCell, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material'
-import CloseIcon from '@mui/icons-material/Close'
 import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -14,7 +13,7 @@ import { getSites } from '@/api/sites'
 import { useAuthStore } from '@/store/auth'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
-import { VideoPlayer } from '@/components/common/VideoPlayer'
+import { MediaViewer } from '@/components/common/MediaViewer'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import type { Recording } from '@/types/api'
 
@@ -164,52 +163,23 @@ export function RecordingsPage() {
 
       <FilterRail groups={filterGroups} storageKey="recordings" />
 
-      {/* Built-in playback. Download stays available alongside it — an
-          investigator often wants the file itself, not just a preview. */}
-      <Dialog
-        open={Boolean(playing)}
-        onClose={() => setPlaying(null)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
-              {playing?.camera_name}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {playing && new Date(playing.started_at).toLocaleString()}
-              {playing?.duration_seconds != null && ` · ${formatDuration(playing.duration_seconds)}`}
-            </Typography>
-          </Box>
-          <Tooltip title="Download">
-            <IconButton
-              size="small"
-              component="a"
-              href={playing ? downloadRecordingUrl(playing.id) : undefined}
-              download
-            >
-              <DownloadIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Close">
-            <IconButton size="small" onClick={() => setPlaying(null)} aria-label="Close player">
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 0 }}>
-          {playing && token && (
-            <VideoPlayer
-              src={playRecordingUrl(playing.id, token)}
-              playerKey={playing.id}
-              autoPlay
-              maxHeight="70vh"
-              label={`Recording from ${playing.camera_name}`}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Built-in playback, fitted to the screen. Download stays available in
+          the viewer's toolbar — an investigator often wants the file itself,
+          not just a preview. */}
+      {playing && token && (
+        <MediaViewer
+          open
+          onClose={() => setPlaying(null)}
+          items={[{
+            id: playing.id,
+            kind: 'video',
+            label: `${playing.camera_name} · ${new Date(playing.started_at).toLocaleString()}`
+              + (playing.duration_seconds != null ? ` · ${formatDuration(playing.duration_seconds)}` : ''),
+            src: playRecordingUrl(playing.id, token),
+            downloadUrl: downloadRecordingUrl(playing.id),
+          }]}
+        />
+      )}
     </Box>
   )
 }

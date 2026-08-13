@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Box, Dialog, DialogContent, IconButton, Tooltip, Typography } from '@mui/material'
-import CloseIcon from '@mui/icons-material/Close'
+import { Box, Tooltip } from '@mui/material'
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported'
 import { evidenceImageUrl } from '@/api/evidence'
 import { useAuthStore } from '@/store/auth'
+import { MediaViewer } from './MediaViewer'
 
 interface EvidenceThumbProps {
   /** Full-frame capture — "which vehicle, which lane, when". */
@@ -79,32 +79,20 @@ export function EvidenceThumb({ frameEvidenceId, plateEvidenceId }: EvidenceThum
         )}
       </Box>
 
-      <Dialog open={!!open} onClose={() => setOpen(null)} maxWidth="md" fullWidth>
-        <DialogContent sx={{ p: 0, position: 'relative', background: '#000' }}>
-          <IconButton
-            sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1, background: 'rgba(0,0,0,0.6)' }}
-            onClick={() => setOpen(null)}
-          >
-            <CloseIcon />
-          </IconButton>
-          {open && (
-            <>
-              <Box
-                component="img"
-                src={evidenceImageUrl(open, token) ?? undefined}
-                alt="Detection evidence"
-                sx={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', display: 'block' }}
-              />
-              <Typography
-                variant="caption"
-                sx={{ position: 'absolute', bottom: 8, left: 12, color: 'rgba(255,255,255,0.7)' }}
-              >
-                {ids.find((i) => i.id === open)?.label}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Both captures go into the viewer, so an operator can flick between
+          the crop and the full frame without closing and reopening. */}
+      <MediaViewer
+        open={!!open}
+        onClose={() => setOpen(null)}
+        startIndex={Math.max(0, ids.findIndex((i) => i.id === open))}
+        items={ids.map(({ id, label }) => ({
+          id,
+          kind: 'image' as const,
+          label,
+          src: evidenceImageUrl(id, token) ?? '',
+          downloadUrl: evidenceImageUrl(id, token) ?? undefined,
+        }))}
+      />
     </>
   )
 }

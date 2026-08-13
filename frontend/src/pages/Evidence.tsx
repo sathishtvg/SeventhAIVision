@@ -12,8 +12,10 @@ import PlaceIcon from '@mui/icons-material/Place'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import DownloadIcon from '@mui/icons-material/Download'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
+import OpenInFullIcon from '@mui/icons-material/OpenInFull'
 import { useQuery } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { MediaViewer } from '@/components/common/MediaViewer'
 import { VideoPlayer } from '@/components/common/VideoPlayer'
 import { getEvidence, evidenceImageUrl } from '@/api/evidence'
 import { useAuthStore } from '@/store/auth'
@@ -171,6 +173,7 @@ function Detail({ label, value, mono }: { label: string; value: React.ReactNode;
 
 export default function Evidence() {
   const [selected, setSelected] = useState<EvidenceItem | null>(null)
+  const [viewerOpen, setViewerOpen] = useState(false)
   const [custodyOpen, setCustodyOpen] = useState(false)
   const token = useAuthStore((s) => s.accessToken)
   const { data: items, isLoading } = useQuery({
@@ -222,7 +225,24 @@ export default function Evidence() {
 
           {selected && (
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: 'stretch' }}>
-              <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Box sx={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* This pane shares the dialog with the provenance panel, so it
+                    stays boxed. The expand button hands the same media to the
+                    full-screen viewer, where it fits the display and gains
+                    zoom — the two views serve different jobs. */}
+                <Tooltip title="Open full screen">
+                  <IconButton
+                    aria-label="Open full screen"
+                    onClick={() => setViewerOpen(true)}
+                    sx={{
+                      position: 'absolute', top: 8, left: 8, zIndex: 2,
+                      background: 'rgba(0,0,0,0.6)', color: '#fff',
+                      '&:hover': { background: 'rgba(0,0,0,0.8)' },
+                    }}
+                  >
+                    <OpenInFullIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
                 {selected.media_type === 'video' ? (
                   // Video evidence plays in place, with the same provenance
                   // panel beside it — previously this rendered an <img>, so a
@@ -369,6 +389,20 @@ export default function Evidence() {
           )}
         </DialogContent>
       </Dialog>
+
+      {selected && fullSrc && (
+        <MediaViewer
+          open={viewerOpen}
+          onClose={() => setViewerOpen(false)}
+          items={[{
+            id: selected.id,
+            kind: selected.media_type === 'video' ? 'video' : 'image',
+            label: `${moduleLabel(selected.module_type) ?? 'Evidence'} — ${selected.camera_name ?? 'unknown camera'}`,
+            src: fullSrc,
+            downloadUrl: fullSrc,
+          }]}
+        />
+      )}
     </Box>
   )
 }

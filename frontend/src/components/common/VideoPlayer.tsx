@@ -32,6 +32,10 @@ interface VideoPlayerProps {
   sx?: SxProps<Theme>
   /** Accessible name; falls back to a generic label. */
   label?: string
+  /** Fill the parent and letterbox, instead of sizing by width against a
+   *  maxHeight cap. Used by MediaViewer, where the parent is already sized to
+   *  the viewport and the video must never push past it. */
+  fit?: boolean
 }
 
 export function VideoPlayer({
@@ -41,6 +45,7 @@ export function VideoPlayer({
   maxHeight = '60vh',
   sx,
   label = 'Recorded video',
+  fit = false,
 }: VideoPlayerProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -78,13 +83,25 @@ export function VideoPlayer({
         onError={handleError}
         sx={{
           width: '100%',
-          maxHeight,
           display: 'block',
-          borderRadius: 1,
           background: '#000',
-          // A failed video collapses to near-zero height, which makes the
-          // error message float over nothing; keep the frame reserved.
-          minHeight: error ? 0 : 180,
+          ...(fit
+            ? {
+                // Parent is already viewport-sized: fill it and letterbox.
+                // No maxHeight and no minHeight — either would let the video
+                // push the container past the screen and bring back the
+                // scrollbar this mode exists to remove.
+                height: '100%',
+                objectFit: 'contain',
+              }
+            : {
+                maxHeight,
+                borderRadius: 1,
+                // A failed video collapses to near-zero height, which makes
+                // the error message float over nothing; keep the frame
+                // reserved.
+                minHeight: error ? 0 : 180,
+              }),
         }}
       />
 
