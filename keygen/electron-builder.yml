@@ -1,0 +1,17 @@
+appId: ai.seventh.vision.keygen
+productName: 7th AI Vision Key Generator
+directories:
+  output: release
+# Portable only, deliberately. This tool mints licences — an installer that
+# leaves it registered in Add/Remove Programs on a shared machine is the
+# wrong shape for it. A single .exe you keep beside your keystore (on an
+# encrypted drive, ideally) is easier to control and to move.
+win:
+  target:
+    - portable
+portable:
+  artifactName: 7th AI Vision Key Generator.exe
+  # No unpack-and-forget temp dir: main.js reads PORTABLE_EXECUTABLE_DIR so
+  # the keystore is written next to this .exe, not into the temp folder the
+  # portable target unpacks itself into (which Windows clears).
+  requestExecutionLevel: user

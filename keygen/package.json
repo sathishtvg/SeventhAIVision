@@ -1,0 +1,25 @@
+{
+  "name": "seventh-ai-vision-keygen",
+  "version": "1.0.0",
+  "description": "7th AI Vision — Licence Key Generator (vendor tool, not for distribution)",
+  "author": "Seventh AI",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron electron/main.js",
+    "test": "node test/roundtrip.js",
+    "dist": "npm test && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "extends": "./electron-builder.yml",
+    "files": [
+      "electron/**/*",
+      "lib/**/*",
+      "ui/**/*"
+    ]
+  }
+}

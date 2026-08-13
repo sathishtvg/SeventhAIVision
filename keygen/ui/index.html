@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>7th AI Vision — Licence Key Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #080818; --violet: #6C63FF; --teal: #00D9C0;
+    --err: #FF4560; --ok: #00E396; --warn: #FF9800;
+    --text: #F1F5F9; --muted: #94A3B8; --line: rgba(255,255,255,0.10);
+    --panel: rgba(255,255,255,0.05);
+  }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #080818 0%, #1A0828 50%, #081828 100%);
+    background-attachment: fixed;
+    color: var(--text); min-height: 100vh; font-size: 14px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 24px 48px; }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: .2px; }
+  h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .card {
+    background: var(--panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px; margin-bottom: 18px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=password], input[type=date], input[type=number], textarea, select {
+    width: 100%; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: rgba(8,8,24,0.55);
+    color: var(--text); font-size: 14px; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--violet); outline-offset: 1px; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 220px; }
+  .field { margin-bottom: 16px; }
+  button {
+    padding: 10px 18px; border-radius: 9px; border: 1px solid transparent;
+    background: var(--violet); color: #fff; font-size: 14px; font-weight: 500;
+    cursor: pointer; font-family: inherit; transition: filter .15s;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; border-color: var(--line); color: var(--text); }
+  button.sm { padding: 6px 12px; font-size: 12px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .tabs button { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  .tabs button.on { background: rgba(108,99,255,0.18); border-color: var(--violet); color: var(--text); }
+  .seg { display: flex; gap: 8px; }
+  .seg button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  .seg button.on { background: rgba(0,217,192,0.15); border-color: var(--teal); color: var(--text); }
+  .keybox {
+    font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px;
+    word-break: break-all; line-height: 1.6; padding: 14px;
+    background: rgba(8,8,24,0.7); border: 1px solid var(--teal);
+    border-radius: 10px; user-select: all;
+  }
+  .msg { padding: 10px 14px; border-radius: 9px; font-size: 13px; margin-bottom: 14px; display: none; }
+  .msg.show { display: block; }
+  .msg.err { background: rgba(255,69,96,0.14); border: 1px solid var(--err); color: #FFB3BF; }
+  .msg.ok  { background: rgba(0,227,150,0.12); border: 1px solid var(--ok); color: #A7F3D0; }
+  .msg.warn{ background: rgba(255,152,0,0.12); border: 1px solid var(--warn); color: #FFD9A0; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 6px 12px; border-radius: 20px; border: 1px solid var(--line);
+    font-size: 12px; cursor: pointer; user-select: none; color: var(--muted);
+  }
+  .chip.on { background: rgba(108,99,255,0.2); border-color: var(--violet); color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+  .mono { font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11.5px; }
+  .pill { padding: 2px 8px; border-radius: 12px; font-size: 11px; border: 1px solid var(--line); }
+  .pill.srv { color: var(--teal); border-color: rgba(0,217,192,0.5); }
+  .pill.dsk { color: var(--violet); border-color: rgba(108,99,255,0.5); }
+  .lapsed { color: var(--err); }
+  .center { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .lockcard { width: 420px; }
+  .hidden { display: none !important; }
+  .foot { color: var(--muted); font-size: 11.5px; margin-top: 10px; line-height: 1.6; }
+  .scroll { max-height: 340px; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+<!-- ── Lock screen ─────────────────────────────────────────────── -->
+<div id="lockScreen" class="center">
+  <div class="card lockcard">
+    <h1>7th AI Vision</h1>
+    <div class="sub" id="lockSub">Licence Key Generator</div>
+
+    <div id="lockMsg" class="msg err" style="margin-top:18px"></div>
+
+    <div class="field" style="margin-top:18px">
+      <label for="pw" id="pwLabel">Password</label>
+      <input type="password" id="pw" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field hidden" id="pw2Field">
+      <label for="pw2">Confirm password</label>
+      <input type="password" id="pw2" autocomplete="off" spellcheck="false">
+    </div>
+
+    <button id="lockBtn" style="width:100%">Unlock</button>
+    <div class="foot" id="lockFoot"></div>
+  </div>
+</div>
+
+<!-- ── Main ────────────────────────────────────────────────────── -->
+<div id="app" class="wrap hidden">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px">
+    <div>
+      <h1>Licence Key Generator</h1>
+      <div class="sub">Keys signed with your private key. Keep this tool and its keystore off customer machines.</div>
+    </div>
+    <button class="ghost sm" id="lockNow">Lock</button>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="gen" class="on">Generate</button>
+    <button data-tab="issued">Issued keys</button>
+    <button data-tab="setup">Public key &amp; backup</button>
+  </div>
+
+  <!-- Generate -->
+  <div id="tab-gen">
+    <div class="card">
+      <h2>New licence key</h2>
+      <div id="genMsg" class="msg"></div>
+
+      <div class="field">
+        <label>Key type</label>
+        <div class="seg">
+          <button type="button" data-type="server" class="on">Server key — unlocks the platform (web + mobile + desktop)</button>
+          <button type="button" data-type="desktop">Desktop key — one control-room PC</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="cust">Customer name</label>
+          <input type="text" id="cust" placeholder="Aegis Security Services" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="exp">Expires on</label>
+          <input type="date" id="exp">
+          <div class="chips" style="margin-top:8px">
+            <span class="chip" data-months="3">+3 months</span>
+            <span class="chip" data-months="6">+6 months</span>
+            <span class="chip" data-months="12">+1 year</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="bind"><span id="bindLabel">Install ID</span> to lock this key to</label>
+        <input type="text" id="bind" placeholder="Paste the ID shown by the customer's system" spellcheck="false">
+        <div class="hint" id="bindHint">
+          Leave blank and the key runs on any install — fine for a trial, but a blank key
+          that leaks can be reused by anyone. For a sale, always bind it.
+        </div>
+      </div>
+
+      <div class="field hidden" id="seatsField">
+        <label for="seats">Seats (control-room PCs allowed)</label>
+        <input type="number" id="seats" min="1" value="1">
+      </div>
+
+      <div class="field" id="modsField">
+        <label>Enabled AI modules (blank = all)</label>
+        <div class="chips" id="mods"></div>
+      </div>
+
+      <button id="genBtn">Generate key</button>
+    </div>
+
+    <div class="card hidden" id="resultCard">
+      <h2>Licence key</h2>
+      <div class="keybox" id="keyOut"></div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button id="copyKey">Copy key</button>
+        <button class="ghost" id="copySummary">Copy with details</button>
+      </div>
+      <div class="foot" id="resultMeta"></div>
+    </div>
+  </div>
+
+  <!-- Issued -->
+  <div id="tab-issued" class="hidden">
+    <div class="card">
+      <h2>Keys you have issued</h2>
+      <div class="sub" style="margin-bottom:14px">Recorded locally so you can see what each customer holds and when it lapses.</div>
+      <div class="scroll"><table id="issuedTable">
+        <thead><tr><th>Type</th><th>Customer</th><th>Bound to</th><th>Issued</th><th>Expires</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- Setup -->
+  <div id="tab-setup" class="hidden">
+    <div class="card">
+      <h2>Public key</h2>
+      <div class="sub" style="margin-bottom:12px">
+        Set this on every server you deploy, as <span class="mono">LICENCE_PUBLIC_KEY</span>.
+        It only verifies keys — it cannot create them, so it is safe to ship.
+      </div>
+      <div class="keybox" id="pubOut"></div>
+      <button style="margin-top:14px" id="copyPub">Copy public key</button>
+    </div>
+
+    <div class="card">
+      <h2>Back up your keystore</h2>
+      <div class="msg warn show">
+        Your public key is baked into every build you ship. If you lose
+        <span class="mono">keystore.enc</span> or forget its password, you can never issue
+        another key for anything already installed — every customer would need a new build.
+        Keep at least two copies in separate places.
+      </div>
+      <div style="display:flex;gap:10px">
+        <button id="backupBtn">Save a copy…</button>
+        <button class="ghost" id="openFolderBtn">Open keystore folder</button>
+      </div>
+      <div class="foot" id="dataDirOut"></div>
+    </div>
+
+    <div class="card">
+      <h2>Check a key</h2>
+      <div class="sub" style="margin-bottom:12px">Paste a key to confirm it is genuine and see what it grants.</div>
+      <div class="field"><textarea id="verifyIn" rows="3" spellcheck="false" placeholder="SAV1...."></textarea></div>
+      <button id="verifyBtn">Check key</button>
+      <div id="verifyMsg" class="msg" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MODULES = ['lpr','face','intrusion','ppe','crowd','fire_smoke','weapon','behavior']
+let state = { type: 'server', mods: new Set() }
+
+const $ = (id) => document.getElementById(id)
+function show(el, cls, text) {
+  el.className = 'msg show ' + cls
+  el.textContent = text
+}
+function hide(el) { el.className = 'msg' }
+
+// ── lock screen ──────────────────────────────────────────────
+let isFirstRun = false
+
+async function initLock() {
+  const st = await window.keygen.status()
+  isFirstRun = !st.exists
+  if (isFirstRun) {
+    $('lockSub').textContent = 'First run — choose the password that will protect your signing key'
+    $('pwLabel').textContent = 'Create password'
+    $('pw2Field').classList.remove('hidden')
+    $('lockBtn').textContent = 'Create keystore'
+    $('lockFoot').textContent =
+      'This password encrypts your private signing key. There is no recovery — if you forget it, '
+      + 'you cannot issue keys for any system already running your public key.'
+  } else {
+    $('lockFoot').textContent = 'Keystore folder: ' + st.dataDir
+  }
+  $('pw').focus()
+}
+
+$('lockBtn').addEventListener('click', async () => {
+  const pw = $('pw').value
+  hide($('lockMsg'))
+  try {
+    if (isFirstRun) {
+      if (pw.length < 8) throw new Error('Password must be at least 8 characters')
+      if (pw !== $('pw2').value) throw new Error('Passwords do not match')
+      await window.keygen.create(pw)
+    } else {
+      await window.keygen.unlock(pw)
+    }
+    $('pw').value = ''; $('pw2').value = ''
+    await enterApp()
+  } catch (err) {
+    show($('lockMsg'), 'err', err.message.replace(/^Error: /, ''))
+  }
+})
+$('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lockBtn').click() })
+$('pw2').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lockBtn').click() })
+
+async function enterApp() {
+  const st = await window.keygen.status()
+  $('pubOut').textContent = st.publicKey
+  $('dataDirOut').textContent = 'Keystore folder: ' + st.dataDir
+  $('lockScreen').classList.add('hidden')
+  $('app').classList.remove('hidden')
+  renderModules()
+  setDefaultExpiry(12)
+  await renderIssued()
+}
+
+$('lockNow').addEventListener('click', async () => {
+  await window.keygen.lock()
+  $('app').classList.add('hidden')
+  $('lockScreen').classList.remove('hidden')
+  await initLock()
+})
+
+// ── tabs ─────────────────────────────────────────────────────
+document.querySelectorAll('.tabs button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'))
+    b.classList.add('on')
+    for (const t of ['gen', 'issued', 'setup']) {
+      $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab)
+    }
+    if (b.dataset.tab === 'issued') renderIssued()
+  })
+})
+
+// ── key type ─────────────────────────────────────────────────
+document.querySelectorAll('.seg button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.seg button').forEach((x) => x.classList.remove('on'))
+    b.classList.add('on')
+    state.type = b.dataset.type
+    const isDesktop = state.type === 'desktop'
+    $('seatsField').classList.toggle('hidden', !isDesktop)
+    $('modsField').classList.toggle('hidden', isDesktop)
+    $('bindLabel').textContent = isDesktop ? 'Machine ID' : 'Install ID'
+    $('bindHint').textContent = isDesktop
+      ? 'The machine ID shown in the desktop app’s setup screen. Blank means the key works on any PC.'
+      : 'The install ID shown by the customer’s system on first run. Blank means the key works on any install.'
+  })
+})
+
+function renderModules() {
+  $('mods').innerHTML = ''
+  for (const m of MODULES) {
+    const el = document.createElement('span')
+    el.className = 'chip'
+    el.textContent = m
+    el.addEventListener('click', () => {
+      el.classList.toggle('on')
+      if (state.mods.has(m)) state.mods.delete(m); else state.mods.add(m)
+    })
+    $('mods').appendChild(el)
+  }
+}
+
+function setDefaultExpiry(months) {
+  const d = new Date()
+  d.setMonth(d.getMonth() + months)
+  $('exp').value = d.toISOString().slice(0, 10)
+}
+document.querySelectorAll('.chip[data-months]').forEach((c) => {
+  c.addEventListener('click', () => setDefaultExpiry(Number(c.dataset.months)))
+})
+
+// ── generate ─────────────────────────────────────────────────
+$('genBtn').addEventListener('click', async () => {
+  hide($('genMsg'))
+  try {
+    const form = {
+      type: state.type,
+      customer: $('cust').value,
+      bind: $('bind').value,
+      expires: $('exp').value,
+      seats: state.type === 'desktop' ? Number($('seats').value || 1) : undefined,
+      modules: state.type === 'server' ? [...state.mods] : undefined,
+    }
+    const { key, payload } = await window.keygen.generate(form)
+    $('keyOut').textContent = key
+    $('resultCard').classList.remove('hidden')
+    $('resultMeta').textContent =
+      `${payload.lic} · ${payload.typ} · ${payload.cust} · expires ${payload.exp}`
+      + (payload.bind ? ` · locked to ${payload.bind}` : ' · NOT locked to an install')
+    if (!payload.bind) {
+      show($('genMsg'), 'warn', 'Key generated, but it is not locked to an install — anyone it reaches can use it.')
+    } else {
+      show($('genMsg'), 'ok', 'Key generated and verified.')
+    }
+    $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    renderIssued()
+  } catch (err) {
+    show($('genMsg'), 'err', err.message.replace(/^Error: /, ''))
+  }
+})
+
+$('copyKey').addEventListener('click', () => window.keygen.copy($('keyOut').textContent))
+$('copySummary').addEventListener('click', () => {
+  window.keygen.copy($('resultMeta').textContent + '\n\n' + $('keyOut').textContent)
+})
+$('copyPub').addEventListener('click', () => window.keygen.copy($('pubOut').textContent))
+
+// ── issued ───────────────────────────────────────────────────
+async function renderIssued() {
+  const rows = await window.keygen.issued()
+  const tb = $('issuedTable').querySelector('tbody')
+  tb.innerHTML = ''
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:18px">No keys issued yet.</td></tr>'
+    return
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  for (const r of rows) {
+    const tr = document.createElement('tr')
+    const lapsed = r.expires < today
+    tr.innerHTML =
+      `<td><span class="pill ${r.type === 'server' ? 'srv' : 'dsk'}">${r.type}</span></td>`
+      + `<td>${escapeHtml(r.customer)}</td>`
+      + `<td class="mono">${escapeHtml(r.bind || '— any —')}</td>`
+      + `<td>${r.issued}</td>`
+      + `<td class="${lapsed ? 'lapsed' : ''}">${r.expires}${lapsed ? ' (lapsed)' : ''}</td>`
+      + `<td></td>`
+    const btn = document.createElement('button')
+    btn.className = 'ghost sm'
+    btn.textContent = 'Copy'
+    btn.addEventListener('click', () => window.keygen.copy(r.key))
+    tr.lastElementChild.appendChild(btn)
+    tb.appendChild(tr)
+  }
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+// ── setup ────────────────────────────────────────────────────
+$('backupBtn').addEventListener('click', async () => {
+  const r = await window.keygen.backup()
+  if (r.saved) alert('Keystore copied to:\n' + r.path)
+})
+$('openFolderBtn').addEventListener('click', () => window.keygen.openFolder())
+
+$('verifyBtn').addEventListener('click', async () => {
+  const res = await window.keygen.verify($('verifyIn').value)
+  if (res.valid) {
+    const p = res.payload
+    const today = new Date().toISOString().slice(0, 10)
+    const lapsed = p.exp < today
+    show($('verifyMsg'), lapsed ? 'warn' : 'ok',
+      `Genuine key. ${p.lic} · ${p.typ} · ${p.cust} · expires ${p.exp}`
+      + (lapsed ? ' — ALREADY EXPIRED' : '')
+      + (p.bind ? ` · locked to ${p.bind}` : ' · not locked to an install'))
+  } else {
+    show($('verifyMsg'), 'err', res.error)
+  }
+})
+
+initLock()
+</script>
+</body>
+</html>
