@@ -38,6 +38,9 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
   const [geofenceRadius, setGeofenceRadius] = useState(
     site?.geofence_radius_meters != null ? String(site.geofence_radius_meters) : ''
   )
+  const [polygon, setPolygon] = useState<{ lat: number; lng: number }[]>(
+    site?.geofence_polygon ?? [],
+  )
   const [lateGrace, setLateGrace] = useState(
     site?.late_grace_minutes != null ? String(site.late_grace_minutes) : ''
   )
@@ -68,6 +71,9 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         longitude: longitude !== '' ? Number(longitude) : undefined,
         geofence_radius_meters: geofenceRadius !== '' ? Number(geofenceRadius) : undefined,
         late_grace_minutes: lateGrace !== '' ? Number(lateGrace) : undefined,
+        // Sent even when empty: an explicit [] is how an admin erases a
+        // boundary and reverts the site to its radius.
+        geofence_polygon: polygon.length >= 3 ? polygon : null,
         client_id: clientId || undefined,
         bill_rate: billRate !== '' ? Number(billRate) : undefined,
         // Edit-only, and sent as explicit null rather than undefined when
@@ -136,6 +142,9 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
             setLongitude(lng.toFixed(6))
           }}
           radiusMeters={geofenceRadius !== '' ? Number(geofenceRadius) : null}
+          allowPolygon
+          polygon={polygon}
+          onPolygonChange={setPolygon}
         />
         <TextField
           label="Geofence radius (m)" type="number" value={geofenceRadius}

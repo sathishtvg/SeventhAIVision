@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, Button, TextField, Typography, Tooltip, CircularProgress } from '@mui/material'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import SearchIcon from '@mui/icons-material/Search'
-import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Circle, Polygon, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -51,6 +51,19 @@ const pinIcon = L.divIcon({
     box-shadow:0 0 8px rgba(108,99,255,0.9);
   "></div></div>`,
 })
+
+const vertexIcon = L.divIcon({
+  className: '',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+  html: `<div style="
+    width:12px;height:12px;border-radius:3px;
+    background:#00D9C0;border:2px solid #fff;
+    box-shadow:0 0 6px rgba(0,217,192,0.9);
+  "></div>`,
+})
+
+export interface GeoPoint { lat: number; lng: number }
 
 function ClickToPlace({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
@@ -94,11 +107,30 @@ export interface LocationPickerMapProps {
    *  ground. Omit or pass null to hide it. */
   radiusMeters?: number | null
   height?: number
+  /** Enables the "draw boundary" tools. Sites use it; the camera picker does
+   *  not — a camera is a point, it has no perimeter. */
+  allowPolygon?: boolean
+  /** Drawn boundary, in drawing order. Null/empty means the radius applies. */
+  polygon?: GeoPoint[] | null
+  onPolygonChange?: (points: GeoPoint[]) => void
 }
 
 export function LocationPickerMap({
   latitude, longitude, onChange, radiusMeters, height = 300,
+  allowPolygon = false, polygon, onPolygonChange,
 }: LocationPickerMapProps) {
+  // While drawing, a map click appends a vertex instead of moving the pin —
+  // otherwise every attempt to trace a boundary would drag the site's location
+  // around with it.
+  const [drawing, setDrawing] = useState(false)
+  const points = polygon ?? []
+  const hasPolygon = points.length >= 3
+
+  const addVertex = (lat: number, lng: number) => onPolygonChange?.([...points, { lat, lng }])
+  const moveVertex = (i: number, lat: number, lng: number) =>
+    onPolygonChange?.(points.map((p, idx) => (idx === i ? { lat, lng } : p)))
+  const undoVertex = () => onPolygonChange?.(points.slice(0, -1))
+  const clearPolygon = () => { onPolygonChange?.([]); setDrawing(false) }
   const [search, setSearch] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState('')
@@ -199,7 +231,7 @@ export function LocationPickerMap({
           <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
           <InvalidateOnMount />
           <Recenter lat={latitude} lng={longitude} trigger={recenterTrigger} />
-          <ClickToPlace onPick={onChange} />
+          <ClickToPlace onPick={drawing ? addVertex : onChange} />
           {hasPin && (
             <>
               <Marker
@@ -213,7 +245,7 @@ export function LocationPickerMap({
                   },
                 }}
               />
-              {radiusMeters != null && radiusMeters > 0 && (
+              {radiusMeters != null && radiusMeters > 0 && !hasPolygon && (
                 <Circle
                   center={[latitude!, longitude!]}
                   radius={radiusMeters}
@@ -222,14 +254,65 @@ export function LocationPickerMap({
               )}
             </>
           )}
+
+          {allowPolygon && points.length >= 2 && (
+            <Polygon
+              positions={points.map((p) => [p.lat, p.lng] as [number, number])}
+              pathOptions={{
+                color: '#00D9C0', fillColor: '#00D9C0',
+                fillOpacity: hasPolygon ? 0.18 : 0.06,
+                weight: 2, dashArray: hasPolygon ? undefined : '5,5',
+              }}
+            />
+          )}
+          {allowPolygon && points.map((p, i) => (
+            <Marker
+              key={i}
+              position={[p.lat, p.lng]}
+              icon={vertexIcon}
+              draggable
+              eventHandlers={{
+                dragend: (e) => {
+                  const ll = (e.target as L.Marker).getLatLng()
+                  moveVertex(i, ll.lat, ll.lng)
+                },
+              }}
+            />
+          ))}
         </MapContainer>
       </Box>
 
+      {allowPolygon && (
+        <Box sx={{ display: 'flex', gap: 1, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button
+            size="small"
+            variant={drawing ? 'contained' : 'outlined'}
+            onClick={() => setDrawing((d) => !d)}
+          >
+            {drawing ? 'Done drawing' : points.length ? 'Resume drawing' : 'Draw boundary'}
+          </Button>
+          <Button size="small" variant="outlined" onClick={undoVertex} disabled={!points.length}>
+            Undo point
+          </Button>
+          <Button size="small" variant="outlined" color="error" onClick={clearPolygon} disabled={!points.length}>
+            Clear boundary
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            {points.length} point{points.length === 1 ? '' : 's'}
+            {points.length > 0 && points.length < 3 && ' — need at least 3'}
+          </Typography>
+        </Box>
+      )}
+
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.75, gap: 1 }}>
         <Typography variant="caption" color="text.secondary">
-          {hasPin
-            ? 'Click the map or drag the pin to adjust.'
-            : 'Click the map to place this site’s location.'}
+          {drawing
+            ? 'Click the map to add boundary points. Drag a point to adjust it.'
+            : hasPolygon
+              ? 'Boundary set — it replaces the radius for check-in checks.'
+              : hasPin
+                ? 'Click the map or drag the pin to adjust.'
+                : 'Click the map to place this site’s location.'}
         </Typography>
         {hasPin && (
           <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.disabled' }}>

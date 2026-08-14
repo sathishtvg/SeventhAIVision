@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -20,6 +22,8 @@ class SiteCreate(BaseModel):
     # Minutes past the rostered start before a guard counts as late here.
     # None = fall back to the tenant-wide attendance.late_grace_minutes.
     late_grace_minutes: int | None = None
+    # Drawn boundary, [{lat, lng}, ...]. Wins over the radius when set.
+    geofence_polygon: list[dict] | None = None
     client_id: str | None = None
     bill_rate: float | None = None
 
@@ -32,6 +36,8 @@ class SiteUpdate(BaseModel):
     longitude: float | None = None
     geofence_radius_meters: int | None = None
     late_grace_minutes: int | None = None
+    # Drawn boundary, [{lat, lng}, ...]. Wins over the radius when set.
+    geofence_polygon: list[dict] | None = None
     is_active: bool | None = None
     client_id: str | None = None
     bill_rate: float | None = None
@@ -64,7 +70,7 @@ async def list_sites(
         text(
             f"""
             SELECT s.id, s.name, s.address, s.description,
-                   s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.is_active,
+                   s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.geofence_polygon, s.is_active,
                    s.client_id, s.bill_rate, bc.name AS client_name,
                    s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
                    s.free_parking_minutes,
@@ -88,9 +94,9 @@ async def create_site(body: SiteCreate, db: AsyncSession = Depends(get_db_with_t
     result = await db.execute(
         text(
             "INSERT INTO sites (tenant_id, name, address, description, latitude, longitude, "
-            "geofence_radius_meters, late_grace_minutes, client_id, bill_rate) "
+            "geofence_radius_meters, late_grace_minutes, geofence_polygon, client_id, bill_rate) "
             "VALUES (current_setting('app.current_tenant')::uuid, :name, :address, :description, :lat, :lng, "
-            ":radius, :grace, :client_id, :bill_rate) "
+            ":radius, :grace, CAST(:polygon AS jsonb), :client_id, :bill_rate) "
             "RETURNING id"
         ),
         {
@@ -101,6 +107,9 @@ async def create_site(body: SiteCreate, db: AsyncSession = Depends(get_db_with_t
             "lng": body.longitude,
             "radius": body.geofence_radius_meters,
             "grace": body.late_grace_minutes,
+            # Serialised here rather than passed as a list: the driver would
+            # bind a Python list as a Postgres array, not jsonb.
+            "polygon": json.dumps(body.geofence_polygon) if body.geofence_polygon else None,
             "client_id": body.client_id,
             "bill_rate": body.bill_rate,
         },
@@ -122,7 +131,7 @@ async def get_site(
         text(
             """
             SELECT s.id, s.name, s.address, s.description,
-                   s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.is_active,
+                   s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.geofence_polygon, s.is_active,
                    s.client_id, s.bill_rate, bc.name AS client_name,
                    s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
                    s.free_parking_minutes,
@@ -160,6 +169,13 @@ async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends
         sets.append("geofence_radius_meters = :radius"); params["radius"] = body.geofence_radius_meters
     if body.late_grace_minutes is not None:
         sets.append("late_grace_minutes = :grace"); params["grace"] = body.late_grace_minutes
+    # Keys off model_fields_set, not `is not None`, for the same reason as the
+    # camera bindings below: sending null is how an admin ERASES a drawn
+    # boundary and falls back to the radius. The `is not None` pattern would
+    # silently ignore that and leave the old polygon in force forever.
+    if "geofence_polygon" in body.model_fields_set:
+        sets.append("geofence_polygon = CAST(:polygon AS jsonb)")
+        params["polygon"] = json.dumps(body.geofence_polygon) if body.geofence_polygon else None
     if body.is_active is not None:
         sets.append("is_active = :is_active"); params["is_active"] = body.is_active
     if body.client_id is not None:

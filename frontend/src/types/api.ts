@@ -503,6 +503,9 @@ export interface Site {
   latitude: number | null
   longitude: number | null
   geofence_radius_meters: number | null
+  /** Drawn boundary, in drawing order. When set it replaces the radius for
+   *  attendance check-in checks — see services/geofence.py. */
+  geofence_polygon: { lat: number; lng: number }[] | null
   /** Minutes of lateness tolerated at this site; null = tenant default. */
   late_grace_minutes: number | null
   is_active: boolean

@@ -20,7 +20,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
 from app.services.alarm_shift import arm_site_panels, disarm_site_panels
-from app.services.geofence import haversine_meters
+from app.services.geofence import is_within_site
 from app.services.liveness import check_liveness_sync
 from app.services.violations import VIOLATION_POINTS, create_violation
 
@@ -484,15 +484,25 @@ async def start_shift(
     is_within_geofence: bool | None = None
     if latitude is not None and longitude is not None and shift_row.site_id:
         site_row = (await db.execute(
-            text("SELECT latitude, longitude, geofence_radius_meters FROM sites WHERE id = :sid"),
+            text(
+                "SELECT latitude, longitude, geofence_radius_meters, geofence_polygon "
+                "FROM sites WHERE id = :sid"
+            ),
             {"sid": shift_row.site_id},
         )).first()
-        if site_row is not None and site_row.latitude is not None and site_row.longitude is not None:
-            radius = site_row.geofence_radius_meters or await _get_attendance_setting(
-                db, "attendance.geofence_radius_meters"
+        if site_row is not None:
+            # A drawn boundary takes precedence over the radius; is_within_site
+            # owns that rule so the check-in writer and any future caller
+            # cannot disagree about which shape applies.
+            is_within_geofence = is_within_site(
+                latitude, longitude,
+                site_lat=site_row.latitude,
+                site_lon=site_row.longitude,
+                radius_meters=site_row.geofence_radius_meters or await _get_attendance_setting(
+                    db, "attendance.geofence_radius_meters"
+                ),
+                polygon=site_row.geofence_polygon,
             )
-            distance = haversine_meters(latitude, longitude, site_row.latitude, site_row.longitude)
-            is_within_geofence = distance <= radius
 
     # Auto-detected violations (ShiftSecure Phase 3) — logged in the same
     # transaction as the check-in, never allowed to block it.
