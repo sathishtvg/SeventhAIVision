@@ -16,6 +16,7 @@ import os
 import time
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -700,11 +701,20 @@ async def recording_timeline(
 ):
     """One day of recorded segments + alert markers for a camera (Gap 85).
 
-    date: YYYY-MM-DD (interpreted as UTC day). Segments overlapping the day
-    are returned with started_at/ended_at clamped to reality (active
-    recordings have ended_at = null)."""
+    date: YYYY-MM-DD, interpreted in the TENANT's timezone rather than UTC.
+    An operator asking for "1 August" means their 1 August; served as a UTC
+    day, a Singapore tenant got a window running 08:00 to 08:00 and footage
+    appeared on the wrong date. Same idiom as attendance's live board."""
+    tz_row = (await db.execute(
+        text("SELECT COALESCE(timezone, 'UTC') AS tz FROM tenants "
+             "WHERE id = current_setting('app.current_tenant')::uuid")
+    )).first()
     try:
-        day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        tz = ZoneInfo(tz_row.tz if tz_row else "UTC")
+    except Exception:
+        tz = timezone.utc  # a bad tenant timezone must not 500 the page
+    try:
+        day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tz)
     except ValueError:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "date must be YYYY-MM-DD")
     day_end = day_start + timedelta(days=1)
