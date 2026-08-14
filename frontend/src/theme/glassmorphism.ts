@@ -99,6 +99,24 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
       MuiCssBaseline: {
         styleOverrides: {
           '*, *::before, *::after': { boxSizing: 'border-box' },
+          // Tells the browser how to paint the controls IT owns rather than
+          // us: the date field's calendar button, select arrows, spinners,
+          // scrollbars, and the native date/time popup itself. This was
+          // pinned to `dark` in index.css, so those icons were painted for a
+          // dark UI no matter which theme was active — invisible against a
+          // light background, and unable to follow a theme switch at all.
+          ':root': { colorScheme: isDark ? 'dark' : 'light' },
+          // The calendar/clock buttons are browser-drawn glyphs, so they take
+          // no theme colour of their own. colorScheme above gets them the
+          // right polarity; this gets them a sensible size and a cursor that
+          // says they are clickable.
+          'input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator, input[type="datetime-local"]::-webkit-calendar-picker-indicator':
+            {
+              cursor: 'pointer',
+              opacity: isDark ? 0.85 : 0.65,
+              transition: 'opacity 0.15s',
+              '&:hover': { opacity: 1 },
+            },
           body: {
             fontFamily: '"Fira Sans", "Inter", "Roboto", sans-serif',
             background: isDark

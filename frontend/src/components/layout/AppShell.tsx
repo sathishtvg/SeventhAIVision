@@ -6,6 +6,7 @@ import { Sidebar } from './Sidebar'
 import { VisitorEntryDialog } from '@/components/common/VisitorEntryDialog'
 import { TopBar } from './TopBar'
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents'
+import { useNativePickerOnClick } from '@/hooks/useNativePickerOnClick'
 import { ToastContainer } from './ToastContainer'
 import { useFocusModeStore } from '@/store/focusMode'
 
@@ -40,6 +41,9 @@ const PAGE_TITLES: Record<string, string> = {
 
 export function AppShell() {
   useRealtimeEvents()
+  // One delegated listener covers every date/time field in the app, including
+  // those inside dialogs that mount later.
+  useNativePickerOnClick()
   const location = useLocation()
   const navigate = useNavigate()
   const title = PAGE_TITLES[location.pathname] ?? 'Seventh AI Vision'
