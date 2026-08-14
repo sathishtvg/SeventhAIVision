@@ -18,12 +18,12 @@ import {
   DialogActions,
   TextField,
   MenuItem,
-  CircularProgress,
   Alert,
   Divider,
   Tooltip,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { BrandLoader } from '@/components/common/BrandLoader'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import { openInNewWindow } from '@/lib/popoutWindow'
@@ -124,7 +124,7 @@ function ShiftsTab() {
     },
   })
 
-  if (isLoading) return <CircularProgress />
+  if (isLoading) return <BrandLoader variant="full" />
 
   return (
     <Box>
@@ -290,7 +290,7 @@ function ShiftsTab() {
 function PatrolRoutesTab() {
   const { data: routes = [], isLoading } = useQuery({ queryKey: ['patrol_routes'], queryFn: () => getRoutes() })
 
-  if (isLoading) return <CircularProgress />
+  if (isLoading) return <BrandLoader variant="full" />
 
   return (
     <Box>
@@ -344,7 +344,7 @@ function DOBTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['dob'] }); setOpen(false); setForm({ entry_type: 'general', body: '', severity: '' }) },
   })
 
-  if (isLoading) return <CircularProgress />
+  if (isLoading) return <BrandLoader variant="full" />
 
   return (
     <Box>
@@ -457,7 +457,7 @@ function VisitorsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['visitor_logs'] }); setOpenCheckin(false) },
   })
 
-  if (isLoading) return <CircularProgress />
+  if (isLoading) return <BrandLoader variant="full" />
 
   return (
     <Box>

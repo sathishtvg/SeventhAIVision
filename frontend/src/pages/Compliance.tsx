@@ -30,6 +30,7 @@ import {
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
+import { BrandLoader } from '@/components/common/BrandLoader'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
@@ -229,7 +230,7 @@ function DashboardTab() {
     refetchInterval: 60_000,
   })
 
-  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>
+  if (isLoading) return <BrandLoader variant="full" />
   if (error || !data) return <Alert severity="error">Failed to load compliance dashboard.</Alert>
 
   const completedToday = data.completed_today ?? 0

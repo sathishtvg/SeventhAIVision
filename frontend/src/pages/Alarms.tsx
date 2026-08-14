@@ -29,6 +29,7 @@ import {
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
+import { BrandLoader } from '@/components/common/BrandLoader'
 import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
@@ -322,7 +323,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
     onSuccess: (res) => setRotatedKey(res.api_key),
   })
 
-  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>
+  if (isLoading) return <BrandLoader variant="full" />
   if (!data) return <Alert severity="error">Failed to load panel.</Alert>
 
   return (
@@ -494,7 +495,7 @@ function DashboardTab({ onSelectPanel }: { onSelectPanel: (id: string) => void }
     refetchInterval: 30_000,
   })
 
-  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>
+  if (isLoading) return <BrandLoader variant="full" />
   if (error || !data) return <Alert severity="error">Failed to load alarm dashboard.</Alert>
 
   const ps = data.panel_summary
