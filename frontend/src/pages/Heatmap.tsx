@@ -1,4 +1,21 @@
-import React, { useMemo, useState, useRef } from 'react'
+/**
+ * Activity Heatmap — where is activity concentrated, and what needs attention.
+ *
+ * This used to plot cameras onto an SVG by latitude/longitude. That could not
+ * work: coordinates are recorded per SITE, not per camera, so every camera at
+ * a site resolves to the identical point. Marina Bay Tower's three cameras all
+ * sit on 1.282, 103.8549 — the projection stacked their labels into an
+ * unreadable smear, and the only way to read a value was to hover one blob at
+ * a time while the numbers rendered off the bottom of the page.
+ *
+ * Real geography already has a home in the GIS Map page (/map), which is built
+ * for it. So this page groups by site instead of projecting. Grouping cannot
+ * collide by construction, every number is on screen without hovering, and the
+ * ranking answers the question an operator actually opens this page with:
+ * which cameras are producing the alerts, and which ones have stopped
+ * reporting.
+ */
+import { useMemo, useState } from 'react'
 import {
   Box,
   Typography,
@@ -7,26 +24,23 @@ import {
   Select,
   MenuItem,
   Chip,
-  Paper,
-  Tooltip,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
+  Button,
+  LinearProgress,
   CircularProgress,
   Alert,
+  Tooltip,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import {
-  ThermostatAuto as HeatmapIcon,
-  FiberManualRecord as DotIcon,
-  Warning as WarningIcon,
   Error as CriticalIcon,
+  VideocamOff as OfflineIcon,
 } from '@mui/icons-material'
 import { useQuery } from '@tanstack/react-query'
 import { getHeatmapData } from '@/api/analytics'
 import { getSites } from '@/api/sites'
+import { GlassCard } from '@/components/common/GlassCard'
+import { PageHeader } from '@/components/common/PageHeader'
+import { fadeUpSx, useCountUp } from '@/lib/motion'
 import type { HeatmapCamera } from '@/types/api'
 
 const TIME_OPTIONS = [
@@ -42,8 +56,8 @@ const MODULE_OPTIONS = [
   'tampering', 'abandoned', 'fall',
 ]
 
-// ── colour helpers ──────────────────────────────────────────────────────────
-
+/** Colour by the most severe thing happening, so scanning a column of these
+ *  ranks urgency without reading a legend. */
 function severityColour(cam: HeatmapCamera): string {
   if (cam.critical_alerts > 0) return '#FF4560'
   if (cam.high_alerts > 0) return '#FF9800'
@@ -58,386 +72,254 @@ function statusColour(status: string): string {
   return '#FF4560'
 }
 
-// Normalise lat/lng coords to SVG canvas [0,1] space.
-function normaliseCoords(cameras: HeatmapCamera[], w: number, h: number) {
-  const withGeo = cameras.filter((c) => c.latitude != null && c.longitude != null)
-  if (withGeo.length < 2) return null
-
-  const lats = withGeo.map((c) => c.latitude!)
-  const lngs = withGeo.map((c) => c.longitude!)
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
-  const pad = 60
-
-  return (cam: HeatmapCamera) => {
-    if (cam.latitude == null || cam.longitude == null) return null
-    const x = pad + ((cam.longitude - minLng) / Math.max(maxLng - minLng, 0.001)) * (w - pad * 2)
-    const y = h - pad - ((cam.latitude - minLat) / Math.max(maxLat - minLat, 0.001)) * (h - pad * 2)
-    return { x, y }
-  }
-}
-
-// Grid layout fallback for cameras without geo coordinates.
-function gridLayout(cameras: HeatmapCamera[], w: number, h: number) {
-  const cols = Math.ceil(Math.sqrt(cameras.length))
-  const cellW = (w - 80) / Math.max(cols, 1)
-  const cellH = (h - 80) / Math.max(Math.ceil(cameras.length / cols), 1)
-  return (idx: number) => ({
-    x: 40 + (idx % cols) * cellW + cellW / 2,
-    y: 40 + Math.floor(idx / cols) * cellH + cellH / 2,
-  })
-}
-
-// ── SVG canvas ──────────────────────────────────────────────────────────────
-
-interface CanvasProps {
-  cameras: HeatmapCamera[]
-  maxDetections: number
-  onHover: (cam: HeatmapCamera | null) => void
-}
-
-const HeatmapCanvas: React.FC<CanvasProps> = ({ cameras, maxDetections, onHover }) => {
-  const W = 760
-  const H = 440
-
-  const toPos = useMemo(() => {
-    const geoFn = normaliseCoords(cameras, W, H)
-    if (geoFn) {
-      const fallback = gridLayout(cameras, W, H)
-      return (cam: HeatmapCamera, idx: number) => geoFn(cam) ?? fallback(idx)
-    }
-    const fallback = gridLayout(cameras, W, H)
-    return (_cam: HeatmapCamera, idx: number) => fallback(idx)
-  }, [cameras])
-
-  const minR = 12, maxR = 36
-
+function KpiCard({ label, value, colour, sub }: {
+  label: string; value: number; colour: string; sub?: string
+}) {
+  const animated = useCountUp(value)
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      style={{ width: '100%', height: '100%', maxHeight: 440 }}
-    >
-      <defs>
-        <filter id="blur-heat">
-          <feGaussianBlur stdDeviation="14" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
-        </filter>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="4" result="glow" />
-          <feMerge><feMergeNode in="glow" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-      </defs>
-
-      {/* heat blobs underneath */}
-      {cameras.map((cam, idx) => {
-        const pos = toPos(cam, idx)
-        const r = minR + ((cam.total_detections / Math.max(maxDetections, 1)) * (maxR - minR))
-        const col = severityColour(cam)
-        return (
-          <circle
-            key={`heat-${cam.camera_id}`}
-            cx={pos.x} cy={pos.y} r={r * 2.2}
-            fill={col} opacity={0.12}
-            filter="url(#blur-heat)"
-          />
-        )
-      })}
-
-      {/* camera nodes */}
-      {cameras.map((cam, idx) => {
-        const pos = toPos(cam, idx)
-        const r = minR + ((cam.total_detections / Math.max(maxDetections, 1)) * (maxR - minR))
-        const col = severityColour(cam)
-        const sCol = statusColour(cam.stream_status)
-
-        return (
-          <g key={cam.camera_id}>
-            {cam.critical_alerts > 0 && (
-              <circle cx={pos.x} cy={pos.y} r={r + 8} fill="none" stroke="#FF4560" strokeWidth={2} opacity={0.6}>
-                <animate attributeName="r" values={`${r + 6};${r + 14};${r + 6}`} dur="1.5s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.6;0.1;0.6" dur="1.5s" repeatCount="indefinite" />
-              </circle>
-            )}
-            <circle
-              cx={pos.x} cy={pos.y} r={r}
-              fill={col} opacity={0.85}
-              filter="url(#glow)"
-              style={{ cursor: 'pointer' }}
-              onMouseEnter={() => onHover(cam)}
-              onMouseLeave={() => onHover(null)}
-            />
-            {/* status dot */}
-            <circle cx={pos.x + r * 0.6} cy={pos.y - r * 0.6} r={5} fill={sCol} />
-            {/* label */}
-            <text
-              x={pos.x} y={pos.y + r + 14}
-              textAnchor="middle"
-              fill="rgba(255,255,255,0.7)"
-              fontSize={10}
-              style={{ pointerEvents: 'none', userSelect: 'none' }}
-            >
-              {cam.camera_name.length > 16 ? cam.camera_name.slice(0, 14) + '…' : cam.camera_name}
-            </text>
-            {cam.total_detections > 0 && (
-              <text
-                x={pos.x} y={pos.y + 4}
-                textAnchor="middle"
-                fill="white"
-                fontSize={Math.max(9, r * 0.55)}
-                fontWeight="bold"
-                style={{ pointerEvents: 'none', userSelect: 'none' }}
-              >
-                {cam.total_detections > 999 ? '999+' : cam.total_detections}
-              </text>
-            )}
-          </g>
-        )
-      })}
-    </svg>
+    <GlassCard sx={{ p: 2.5, flex: 1, minWidth: 150 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+        {label}
+      </Typography>
+      <Typography variant="h4" sx={{ fontWeight: 700, color: colour, mt: 0.5 }}>{animated}</Typography>
+      {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
+    </GlassCard>
   )
 }
 
-// ── Main page ───────────────────────────────────────────────────────────────
+/** One camera, with every figure on screen. No hover required — the previous
+ *  version hid all of this behind a mouseover on a 12px circle. */
+function CameraRow({ cam, max }: { cam: HeatmapCamera; max: number }) {
+  const colour = severityColour(cam)
+  const pct = max > 0 ? (cam.total_detections / max) * 100 : 0
+  return (
+    <Box sx={{ py: 0.75, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.4 }}>
+        <Tooltip title={`Stream ${cam.stream_status}`}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: statusColour(cam.stream_status), flexShrink: 0 }} />
+        </Tooltip>
+        <Typography variant="body2" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {cam.camera_name}
+        </Typography>
+        {cam.critical_alerts > 0 && (
+          <Chip size="small" color="error" label={`${cam.critical_alerts} critical`} sx={{ height: 18, fontSize: '0.62rem' }} />
+        )}
+        {cam.open_alerts > 0 && cam.critical_alerts === 0 && (
+          <Chip size="small" color="warning" variant="outlined" label={`${cam.open_alerts} open`} sx={{ height: 18, fontSize: '0.62rem' }} />
+        )}
+        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 120, textAlign: 'right' }}>
+          {cam.total_detections.toLocaleString()} det · {cam.total_alerts} alerts
+        </Typography>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={Math.min(pct, 100)}
+        sx={{
+          height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)',
+          '& .MuiLinearProgress-bar': { bgcolor: colour, borderRadius: 2 },
+        }}
+      />
+    </Box>
+  )
+}
 
 export default function Heatmap() {
   const [hours, setHours] = useState(24)
   const [moduleType, setModuleType] = useState('All Modules')
   const [siteId, setSiteId] = useState('')
-  const [hoveredCam, setHoveredCam] = useState<HeatmapCamera | null>(null)
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const { data: cameras = [], isLoading, isError } = useQuery({
     queryKey: ['heatmap', hours, moduleType, siteId],
-    queryFn: () => getHeatmapData(
-      hours,
-      moduleType === 'All Modules' ? undefined : moduleType,
-      siteId || undefined,
-    ),
-    refetchInterval: 30_000,
+    queryFn: () => getHeatmapData(hours, moduleType === 'All Modules' ? undefined : moduleType, siteId || undefined),
   })
-
-  const maxDetections = useMemo(() => Math.max(...cameras.map((c) => c.total_detections), 1), [cameras])
-  const topCameras = useMemo(
-    () => [...cameras].sort((a, b) => b.total_alerts - a.total_alerts).slice(0, 8),
-    [cameras],
-  )
 
   const totalDetections = cameras.reduce((s, c) => s + c.total_detections, 0)
   const totalAlerts = cameras.reduce((s, c) => s + c.total_alerts, 0)
   const criticalCount = cameras.reduce((s, c) => s + c.critical_alerts, 0)
+  const offline = cameras.filter((c) => c.stream_status !== 'online')
+  const maxDetections = Math.max(...cameras.map((c) => c.total_detections), 1)
+
+  // Group by site. This is what removes the label collisions: co-located
+  // cameras become sibling rows instead of overlapping points.
+  const bySite = useMemo(() => {
+    const map = new Map<string, HeatmapCamera[]>()
+    for (const cam of cameras) {
+      const key = cam.site_name ?? 'Unassigned'
+      const list = map.get(key)
+      if (list) list.push(cam)
+      else map.set(key, [cam])
+    }
+    return [...map.entries()]
+      .map(([site, cams]) => ({
+        site,
+        cams: [...cams].sort((a, b) => b.total_detections - a.total_detections),
+        detections: cams.reduce((s, c) => s + c.total_detections, 0),
+        alerts: cams.reduce((s, c) => s + c.total_alerts, 0),
+        critical: cams.reduce((s, c) => s + c.critical_alerts, 0),
+        offline: cams.filter((c) => c.stream_status !== 'online').length,
+      }))
+      .sort((a, b) => b.alerts - a.alerts || b.detections - a.detections)
+  }, [cameras])
+
+  const hotspots = useMemo(
+    () => [...cameras].filter((c) => c.total_alerts > 0).sort((a, b) => b.total_alerts - a.total_alerts).slice(0, 8),
+    [cameras],
+  )
+  const maxHotspot = hotspots.length ? hotspots[0].total_alerts : 1
+  const windowLabel = TIME_OPTIONS.find((o) => o.value === hours)?.label ?? `${hours}h`
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* header */}
-      <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
-        <HeatmapIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Activity Heatmap
-        </Typography>
-      </Stack>
+    <Box>
+      <PageHeader title="Activity Heatmap" subtitle="Where activity and alerts are concentrated across your sites" />
 
-      {/* filters */}
-      <Stack direction="row" spacing={2} mb={3} flexWrap="wrap">
-        <FormControl size="small" sx={{ minWidth: 130 }}>
+      <Stack direction="row" spacing={2} sx={{ mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel>Time Period</InputLabel>
           <Select value={hours} label="Time Period" onChange={(e) => setHours(Number(e.target.value))}>
-            {TIME_OPTIONS.map((o) => (
-              <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-            ))}
+            {TIME_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
           </Select>
         </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+        <FormControl size="small" sx={{ minWidth: 170 }}>
           <InputLabel>Module</InputLabel>
           <Select value={moduleType} label="Module" onChange={(e) => setModuleType(e.target.value)}>
-            {MODULE_OPTIONS.map((m) => (
-              <MenuItem key={m} value={m}>{m === 'All Modules' ? m : m.replace('_', ' ')}</MenuItem>
-            ))}
+            {MODULE_OPTIONS.map((m) => <MenuItem key={m} value={m}>{m === 'All Modules' ? m : m.toUpperCase()}</MenuItem>)}
           </Select>
         </FormControl>
-
-        {sites.length > 0 && (
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Site</InputLabel>
-            <Select value={siteId} label="Site" onChange={(e) => setSiteId(e.target.value)}>
-              <MenuItem value="">All Sites</MenuItem>
-              {sites.map((s: { id: string; name: string }) => (
-                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: 'auto' }}>
-          <Chip label={`${totalDetections.toLocaleString()} detections`} size="small" color="primary" variant="outlined" />
-          <Chip label={`${totalAlerts} alerts`} size="small" color="warning" variant="outlined" />
-          {criticalCount > 0 && (
-            <Chip label={`${criticalCount} critical`} size="small" color="error" icon={<CriticalIcon />} />
-          )}
-        </Stack>
+        <FormControl size="small" sx={{ minWidth: 170 }}>
+          <InputLabel>Site</InputLabel>
+          <Select value={siteId} label="Site" onChange={(e) => setSiteId(e.target.value)}>
+            <MenuItem value="">All Sites</MenuItem>
+            {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+          </Select>
+        </FormControl>
       </Stack>
 
       {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}
       {isError && <Alert severity="error">Failed to load heatmap data.</Alert>}
 
       {!isLoading && !isError && (
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-          {/* canvas area */}
-          <Paper
-            sx={{
-              flex: 1,
-              minHeight: 460,
-              p: 2,
-              background: 'rgba(8,8,24,0.6)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 2,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 1,
-            }}
-          >
-            {cameras.length === 0 ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-                <Typography color="text.secondary">No camera data for the selected filters</Typography>
-              </Box>
-            ) : (
-              <>
-                <HeatmapCanvas cameras={cameras} maxDetections={maxDetections} onHover={setHoveredCam} />
-
-                {/* tooltip card */}
-                {hoveredCam && (
-                  <Paper
-                    sx={{
-                      p: 1.5,
-                      background: 'rgba(20,20,40,0.95)',
-                      border: '1px solid rgba(108,99,255,0.4)',
-                      borderRadius: 1,
-                      minWidth: 200,
-                    }}
-                  >
-                    <Typography fontWeight={700} fontSize={13}>{hoveredCam.camera_name}</Typography>
-                    {hoveredCam.site_name && (
-                      <Typography fontSize={11} color="text.secondary">{hoveredCam.site_name}</Typography>
-                    )}
-                    {hoveredCam.location && (
-                      <Typography fontSize={11} color="text.secondary">{hoveredCam.location}</Typography>
-                    )}
-                    <Divider sx={{ my: 0.75 }} />
-                    <Stack direction="row" spacing={2}>
-                      <Box>
-                        <Typography fontSize={11} color="text.secondary">Detections</Typography>
-                        <Typography fontSize={14} fontWeight={700} color="primary.main">{hoveredCam.total_detections}</Typography>
-                      </Box>
-                      <Box>
-                        <Typography fontSize={11} color="text.secondary">Alerts</Typography>
-                        <Typography fontSize={14} fontWeight={700} color="warning.main">{hoveredCam.total_alerts}</Typography>
-                      </Box>
-                      <Box>
-                        <Typography fontSize={11} color="text.secondary">Open</Typography>
-                        <Typography fontSize={14} fontWeight={700} color="error.main">{hoveredCam.open_alerts}</Typography>
-                      </Box>
-                    </Stack>
-                    <Box mt={0.5}>
-                      <DotIcon sx={{ fontSize: 10, color: statusColour(hoveredCam.stream_status), mr: 0.5 }} />
-                      <Typography component="span" fontSize={11} color="text.secondary">
-                        {hoveredCam.stream_status}
-                      </Typography>
-                    </Box>
-                  </Paper>
-                )}
-              </>
-            )}
-          </Paper>
-
-          {/* sidebar */}
-          <Paper
-            sx={{
-              width: { xs: '100%', md: 260 },
-              p: 2,
-              background: 'rgba(8,8,24,0.6)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 2,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-            }}
-          >
-            {/* legend */}
-            <Box>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>Legend</Typography>
-              <Stack spacing={0.75}>
-                {[
-                  { col: '#FF4560', label: 'Critical alerts active' },
-                  { col: '#FF9800', label: 'High alerts active' },
-                  { col: '#FFC107', label: 'Open alerts' },
-                  { col: '#00D9C0', label: 'Activity — no open alerts' },
-                  { col: '#6C63FF', label: 'Online — no detections' },
-                ].map(({ col, label }) => (
-                  <Stack key={label} direction="row" spacing={1} alignItems="center">
-                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: col, flexShrink: 0 }} />
-                    <Typography fontSize={11} color="text.secondary">{label}</Typography>
-                  </Stack>
-                ))}
-              </Stack>
-              <Divider sx={{ my: 1.5 }} />
-              <Typography fontSize={11} color="text.secondary" mb={0.5}>Circle size = detection volume</Typography>
-              <Typography fontSize={11} color="text.secondary">Pulsing ring = critical alert</Typography>
+        <>
+          <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }}>
+            <Box sx={{ ...fadeUpSx(0), display: 'flex', flex: 1, minWidth: 150 }}>
+              <KpiCard label="Detections" value={totalDetections} colour="#6C63FF" sub={windowLabel} />
             </Box>
+            <Box sx={{ ...fadeUpSx(1), display: 'flex', flex: 1, minWidth: 150 }}>
+              <KpiCard label="Alerts" value={totalAlerts} colour="#FF9800" sub={windowLabel} />
+            </Box>
+            <Box sx={{ ...fadeUpSx(2), display: 'flex', flex: 1, minWidth: 150 }}>
+              <KpiCard label="Critical" value={criticalCount} colour="#FF4560" sub="needs response" />
+            </Box>
+            <Box sx={{ ...fadeUpSx(3), display: 'flex', flex: 1, minWidth: 150 }}>
+              <KpiCard label="Cameras Down" value={offline.length} colour={offline.length ? '#FF4560' : '#00E396'}
+                       sub={`of ${cameras.length} active`} />
+            </Box>
+          </Stack>
 
-            <Divider />
+          {/* A window with nothing in it is the most common thing an operator
+              sees here, and "0" alone reads as broken. Say which window is
+              empty and offer the one that is not, rather than leaving them to
+              guess the filter is at fault. */}
+          {cameras.length > 0 && totalDetections === 0 && totalAlerts === 0 && (
+            <Alert
+              severity="info"
+              sx={{ mb: 3 }}
+              action={hours < 720 && (
+                <Button color="inherit" size="small" onClick={() => setHours(720)}>Try last 30 days</Button>
+              )}
+            >
+              No detections or alerts in the {windowLabel.toLowerCase()} for these filters. The cameras below are
+              configured and their stream status is current — this window is simply empty.
+            </Alert>
+          )}
 
-            {/* top cameras */}
-            <Box>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-                Top Cameras by Alerts
-              </Typography>
-              <List dense disablePadding>
-                {topCameras.map((cam, idx) => (
-                  <ListItem key={cam.camera_id} disableGutters sx={{ py: 0.3 }}>
-                    <ListItemText
-                      primary={
-                        <Typography fontSize={12} noWrap>
-                          <Typography component="span" fontSize={11} color="text.secondary" mr={0.5}>
-                            {idx + 1}.
-                          </Typography>
-                          {cam.camera_name}
-                        </Typography>
-                      }
-                      secondary={cam.site_name ?? cam.location ?? '—'}
-                      slotProps={{ secondary: { fontSize: 10, color: 'text.secondary' } }}
-                    />
-                    <ListItemSecondaryAction>
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        {cam.critical_alerts > 0 && (
-                          <Chip
-                            label={cam.critical_alerts}
-                            size="small"
-                            color="error"
-                            sx={{ height: 16, fontSize: 9, px: 0 }}
-                          />
+          {offline.length > 0 && (
+            <Alert severity="warning" icon={<OfflineIcon />} sx={{ mb: 3 }}>
+              <strong>{offline.length} camera{offline.length === 1 ? '' : 's'} not reporting</strong>
+              {' — '}
+              {offline.map((c) => `${c.camera_name}${c.site_name ? ` (${c.site_name})` : ''}`).join(', ')}.
+              A camera that is down produces no detections, so any quiet figure above may be under-counting.
+            </Alert>
+          )}
+
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} sx={{ alignItems: 'flex-start' }}>
+            {/* Sites, ranked by alert load */}
+            <Box sx={{ flex: 2, width: '100%' }}>
+              {bySite.length === 0 ? (
+                <GlassCard sx={{ p: 4 }}>
+                  <Typography color="text.secondary" align="center">No cameras match the selected filters.</Typography>
+                </GlassCard>
+              ) : (
+                <Stack spacing={2}>
+                  {bySite.map((group, i) => (
+                    <GlassCard key={group.site} sx={{ p: 2.5, ...fadeUpSx(i) }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>{group.site}</Typography>
+                        {group.critical > 0 && (
+                          <Chip size="small" color="error" icon={<CriticalIcon sx={{ fontSize: 14 }} />}
+                                label={`${group.critical} critical`} sx={{ height: 20 }} />
                         )}
-                        <Chip
-                          label={cam.total_alerts}
-                          size="small"
-                          color={cam.open_alerts > 0 ? 'warning' : 'default'}
-                          variant="outlined"
-                          sx={{ height: 16, fontSize: 9 }}
-                        />
+                        {group.offline > 0 && (
+                          <Chip size="small" color="error" variant="outlined"
+                                label={`${group.offline} down`} sx={{ height: 20 }} />
+                        )}
+                        <Typography variant="caption" color="text.secondary">
+                          {group.cams.length} camera{group.cams.length === 1 ? '' : 's'} ·{' '}
+                          {group.detections.toLocaleString()} detections · {group.alerts} alerts
+                        </Typography>
                       </Stack>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-                {topCameras.length === 0 && (
-                  <Typography fontSize={12} color="text.secondary" mt={1}>
-                    No alert activity in this period.
-                  </Typography>
-                )}
-              </List>
+                      {group.cams.map((cam) => (
+                        <CameraRow key={cam.camera_id} cam={cam} max={maxDetections} />
+                      ))}
+                    </GlassCard>
+                  ))}
+                </Stack>
+              )}
             </Box>
-          </Paper>
-        </Stack>
+
+            {/* Hotspots — the ranking that used to sit below the fold */}
+            <Box sx={{ flex: 1, width: '100%', position: { lg: 'sticky' }, top: { lg: 16 } }}>
+              <GlassCard sx={{ p: 2.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                  Alert Hotspots · {windowLabel}
+                </Typography>
+                {hotspots.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No camera raised an alert in this window.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {hotspots.map((cam, idx) => (
+                      <Box key={cam.camera_id}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline' }}>
+                          <Typography variant="caption" color="text.disabled" sx={{ width: 14 }}>{idx + 1}</Typography>
+                          <Typography variant="body2" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {cam.camera_name}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: severityColour(cam) }}>
+                            {cam.total_alerts}
+                          </Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2.5 }}>
+                          {cam.site_name ?? 'Unassigned'}
+                          {cam.open_alerts > 0 ? ` · ${cam.open_alerts} still open` : ' · all handled'}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={(cam.total_alerts / maxHotspot) * 100}
+                          sx={{
+                            mt: 0.5, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)',
+                            '& .MuiLinearProgress-bar': { bgcolor: severityColour(cam), borderRadius: 2 },
+                          }}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </GlassCard>
+            </Box>
+          </Stack>
+        </>
       )}
     </Box>
   )
