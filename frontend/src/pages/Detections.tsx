@@ -11,6 +11,7 @@ import {
   getPpeEvents, getCrowdEvents, getFireSmokeEvents, getWeaponEvents, getBehaviorEvents,
   getTamperingEvents, getAbandonedEvents, getFallEvents,
 } from '@/api/detections'
+import { PageHeader } from '@/components/common/PageHeader'
 
 interface TabPanelProps {
   children: React.ReactNode
@@ -469,6 +470,7 @@ export default function Detections() {
 
   return (
     <Box>
+      <PageHeader title="Detections" subtitle="Everything the AI recognised, before any alert rule was applied" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">

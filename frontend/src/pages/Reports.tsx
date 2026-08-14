@@ -14,14 +14,13 @@ import { getSites } from '@/api/sites'
 import { getFaceWatchlist, getPlateWatchlist } from '@/api/watchlist'
 import { listVisitors } from '@/api/visitors'
 import { GlassCard } from '@/components/common/GlassCard'
+import { PageHeader } from '@/components/common/PageHeader'
 
 export default function Reports() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
-      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700, color: 'primary.main' }}>
-        Reports & Compliance
-      </Typography>
+      <PageHeader title="Reports &amp; Compliance" subtitle="On-demand PDF reports and PDPA data-subject requests" />
       <Paper sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="primary">
           <Tab label="PDF Reports" />

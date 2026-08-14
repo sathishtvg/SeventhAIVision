@@ -36,6 +36,7 @@ import {
 import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const SEVERITY_COLOR: Record<string, 'error' | 'warning' | 'success' | 'default'> = {
   critical: 'error', high: 'error', medium: 'warning', low: 'success', info: 'default',
@@ -55,10 +56,8 @@ export default function GuardOps() {
 
   return (
     <Box>
+      <PageHeader title="Guard Operations" subtitle="Shift, patrol and occurrence-book activity for guards currently on duty" />
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
-          Guard Operations
-        </Typography>
         {hasVms && (
           <Tooltip title="Open the gatehouse vehicle board in its own full-screen window — every visitor vehicle on site with its entry time and parking expiry">
             <Button

@@ -58,6 +58,7 @@ import { listRoles } from '@/api/roles'
 import { getUserSessions, revokeAllUserSessions, unlockUserAccount } from '@/api/sessions'
 import { getSites } from '@/api/sites'
 import type { User } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const ROLE_LABELS: Record<number, string> = {
   1: 'Super Admin',
@@ -682,6 +683,7 @@ export default function Users() {
 
   return (
     <Box>
+      <PageHeader title="Users" subtitle="Staff accounts, roles, employment details, pay rates and site access" />
       {tiers.length > 0 && (
         <GlassCard sx={{ p: 2, mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>

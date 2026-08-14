@@ -20,6 +20,7 @@ import {
 import type { ReportSchedule, ScheduleCreate } from '@/api/scheduled_reports'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   success: 'success',
@@ -76,10 +77,8 @@ export default function ScheduledReports() {
 
   return (
     <Box>
+      <PageHeader title="Scheduled Reports" subtitle="Reports that generate and send themselves on a recurring schedule" />
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', flex: 1 }}>
-          Scheduled Reports
-        </Typography>
         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
           New Schedule
         </Button>

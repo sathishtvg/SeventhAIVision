@@ -20,6 +20,7 @@ import { VideoPlayer } from '@/components/common/VideoPlayer'
 import { getEvidence, evidenceImageUrl } from '@/api/evidence'
 import { useAuthStore } from '@/store/auth'
 import type { Evidence as EvidenceItem } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 /** Analytic labels — same wording the rest of the app uses for module_type. */
 const MODULE_LABEL: Record<string, string> = {
@@ -185,6 +186,7 @@ export default function Evidence() {
 
   return (
     <Box>
+      <PageHeader title="Evidence" subtitle="Snapshots and clips saved against detections and incidents, each with an integrity checksum" />
       <Grid container spacing={2}>
         {isLoading
           ? Array.from({ length: 12 }).map((_, i) => (

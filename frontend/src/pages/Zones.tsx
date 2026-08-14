@@ -41,6 +41,7 @@ import type { ZonePoint } from '@/components/common/ZoneDrawOverlay'
 import { getCameras } from '@/api/cameras'
 import { getZones, deleteZone, bulkBypassZones, bulkRestoreZones, setZoneSchedule, getCrowdZones, createCrowdZone, deleteCrowdZone } from '@/api/zones'
 import type { RestrictedZone } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const SEVERITY_COLORS: Record<string, 'success' | 'warning' | 'error' | 'info'> = {
   low: 'info', medium: 'warning', high: 'error', critical: 'error',
@@ -491,6 +492,7 @@ export default function Zones() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
+      <PageHeader title="Zones" subtitle="Areas drawn on a camera view that the AI treats as restricted or monitored" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

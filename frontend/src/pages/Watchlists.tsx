@@ -21,6 +21,7 @@ import {
   type BulkImportResult, type PlateRegistryInput,
 } from '@/api/watchlist'
 import type { WatchlistEntry, VehicleCategory } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 function BulkImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
@@ -551,6 +552,7 @@ export default function Watchlists() {
 
   return (
     <Box>
+      <PageHeader title="Watchlists" subtitle="Plates and faces that should raise an alert on sight — and the ones that never should" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

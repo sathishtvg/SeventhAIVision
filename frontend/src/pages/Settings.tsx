@@ -16,6 +16,7 @@ import { get2FAStatus, setup2FA, enable2FA, disable2FA, get2faPolicy, set2faPoli
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
 import { listDedupRules, createDedupRule, deleteDedupRule, type DedupRuleBody } from '@/api/alertDedup'
 import { getCameras } from '@/api/cameras'
+import { PageHeader } from '@/components/common/PageHeader'
 
 interface SettingKnobProps {
   label: string
@@ -398,6 +399,7 @@ export default function Settings() {
 
   return (
     <Box>
+      <PageHeader title="Settings" subtitle="Tenant configuration — AI thresholds, retention periods, branding and appearance" />
       {/* ── My appearance ─────────────────────────────────────────────────
           Deliberately first, and deliberately separate from Tenant Branding
           below: branding is what every user of this tenant sees, this is

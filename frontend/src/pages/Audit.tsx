@@ -23,6 +23,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { getAuditLogs, verifyAuditChain, type VerifyResult } from '@/api/audit'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 function VerifyBanner({ result }: { result: VerifyResult }) {
   if (result.verified) {
@@ -68,6 +69,7 @@ export default function Audit() {
 
   return (
     <Box>
+      <PageHeader title="Audit Log" subtitle="Every action taken in the system, by whom and when — your record for compliance and investigations" />
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
         <Typography variant="h6" fontWeight={700}>Audit Logs</Typography>
         {canVerify && (

@@ -23,6 +23,7 @@ import {
 } from '@/api/platform_licenses'
 import type { TenantProduct } from '@/api/platform_licenses'
 import type { Tenant } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const TIMEZONES = [
   'Asia/Singapore',
@@ -680,6 +681,7 @@ export default function Tenants() {
 
   return (
     <Box>
+      <PageHeader title="Tenants" subtitle="Customer organisations on the platform, their module licensing and account status" />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAddOpen(true)}>
           Add Tenant

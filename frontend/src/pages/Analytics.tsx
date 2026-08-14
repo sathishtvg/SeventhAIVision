@@ -12,6 +12,7 @@ import {
 } from '@/api/analytics'
 import type { AnalyticsCount, AnalyticsTrendPoint } from '@/types/api'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ──────────────────────────────────────────────────────────
 // Helpers
@@ -192,6 +193,7 @@ export default function Analytics() {
 
   return (
     <Box>
+      <PageHeader title="Analytics" subtitle="Detection and alert volume over time — by module, by camera and by period" />
       {/* Data freshness. Without this a screen full of zeros is ambiguous —
           a genuinely quiet period and a dead ingestion pipeline look the
           same, and the second one is an outage nobody is being told about. */}

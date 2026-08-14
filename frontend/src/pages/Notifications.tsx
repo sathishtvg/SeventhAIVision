@@ -16,6 +16,7 @@ import {
   getLogs,
 } from '@/api/notifications'
 import type { NotificationChannel } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 interface TabPanelProps { children: React.ReactNode; value: number; index: number }
 function TabPanel({ children, value, index }: TabPanelProps) {
@@ -357,6 +358,7 @@ export default function Notifications() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
+      <PageHeader title="Notifications" subtitle="Where alerts get sent — email, SMS and webhook channels, and their delivery history" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
