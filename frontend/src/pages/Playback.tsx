@@ -4,10 +4,12 @@
  */
 import { useMemo, useState } from 'react'
 import {
+  Alert,
   Box,
   Chip,
   MenuItem,
   Select,
+  Snackbar,
   TextField,
   Tooltip,
   Typography,
@@ -34,11 +36,23 @@ const SEVERITY_COLORS: Record<string, string> = {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  // Local date, not toISOString()'s UTC one. In UTC+8 the two disagree for
+  // the first eight hours of every day, so "today" opened on yesterday's
+  // footage all morning.
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** Percentage offsets of a segment within the selected UTC day. Exported logic
- *  kept pure via useMemo below. */
+/** Why this segment cannot be opened, or null when it can. Drives the tooltip,
+ *  the cursor and the click handler together, so a dead click is never silent. */
+function notPlayableReason(seg: TimelineSegment): string | null {
+  if (seg.is_active) return 'Still recording — playable once it ends'
+  if (seg.status === 'completed') return null
+  if (seg.status === 'failed') return 'This recording failed and has no footage'
+  return `Not playable (${seg.status})`
+}
+
+/** Percentage offsets of a segment within the selected local day. */
 function segmentSpan(seg: TimelineSegment, dayStartMs: number) {
   const start = new Date(seg.started_at).getTime()
   const end = seg.ended_at ? new Date(seg.ended_at).getTime() : Date.now()
@@ -52,6 +66,14 @@ export function PlaybackPage() {
   const [cameraId, setCameraId] = useState('')
   const [date, setDate] = useState(todayStr())
   const [playing, setPlaying] = useState<TimelineSegment | null>(null)
+  // Shown when an operator clicks a segment that has no footage behind it.
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const openSegment = (seg: TimelineSegment) => {
+    const reason = notPlayableReason(seg)
+    if (reason) setNotice(reason)
+    else setPlaying(seg)
+  }
 
   const { data: cameras = [] } = useQuery({
     queryKey: ['cameras'],
@@ -65,7 +87,11 @@ export function PlaybackPage() {
     refetchInterval: 60_000,
   })
 
-  const dayStartMs = useMemo(() => new Date(`${date}T00:00:00Z`).getTime(), [date])
+  // Local midnight, matching fmtTime's toLocaleTimeString and the axis ticks
+  // an operator reads as local. Positioning against UTC midnight while
+  // labelling in local drew every segment hours from where its label said —
+  // a recording stamped 22:55 rendered hard against the left edge.
+  const dayStartMs = useMemo(() => new Date(`${date}T00:00:00`).getTime(), [date])
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -132,19 +158,27 @@ export function PlaybackPage() {
                 {/* Recording segments */}
                 {timeline?.segments.map((seg) => {
                   const { left, width } = segmentSpan(seg, dayStartMs)
+                  const reason = notPlayableReason(seg)
+                  const span = `${fmtTime(seg.started_at)} – ${seg.ended_at ? fmtTime(seg.ended_at) : 'now'}`
                   return (
                     <Tooltip
                       key={seg.id}
-                      title={`${fmtTime(seg.started_at)} – ${seg.ended_at ? fmtTime(seg.ended_at) : 'now'}${seg.is_active ? ' (recording)' : ''}`}
+                      // The reason belongs in the tooltip, not just in the click
+                      // response — an operator scanning the bar should be able to
+                      // tell a watchable segment from a dead one before clicking.
+                      title={reason ? `${span} — ${reason}` : `${span} · click to play`}
                     >
                       <Box
-                        onClick={() => !seg.is_active && seg.status === 'completed' && setPlaying(seg)}
+                        onClick={() => openSegment(seg)}
                         sx={{
                           position: 'absolute', left: `${left}%`, width: `${width}%`,
                           top: 8, bottom: 8, borderRadius: 0.5,
                           background: seg.is_active ? 'rgba(255,69,96,0.75)'
+                            : seg.status !== 'completed' ? 'rgba(148,163,184,0.45)'
                             : playing?.id === seg.id ? '#6C63FF' : 'rgba(0,227,150,0.65)',
-                          cursor: seg.status === 'completed' ? 'pointer' : 'default',
+                          // Always a pointer: the bar always answers a click now,
+                          // either by playing or by saying why it can't.
+                          cursor: 'pointer',
                           '&:hover': { filter: 'brightness(1.25)' },
                         }}
                       />
@@ -234,7 +268,13 @@ export function PlaybackPage() {
                       <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
                         {seg.file_size_bytes ? `${(seg.file_size_bytes / 1024 / 1024).toFixed(1)} MB` : ''}
                       </Typography>
-                      {seg.status === 'completed' && (
+                      {notPlayableReason(seg) ? (
+                        <Tooltip title={notPlayableReason(seg) as string}>
+                          <Typography variant="caption" color="text.disabled">
+                            No footage
+                          </Typography>
+                        </Tooltip>
+                      ) : (
                         <Chip icon={<PlayArrowIcon sx={{ fontSize: 14 }} />} label="Play"
                               size="small" clickable onClick={() => setPlaying(seg)} />
                       )}
@@ -246,6 +286,17 @@ export function PlaybackPage() {
           </GlassCard>
         </>
       )}
+
+      <Snackbar
+        open={notice !== null}
+        autoHideDuration={4000}
+        onClose={() => setNotice(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="info" variant="filled" onClose={() => setNotice(null)}>
+          {notice}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

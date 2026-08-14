@@ -40,6 +40,7 @@ const store = new Store({
 
 let mainWindow = null
 let setupWindow = null
+let splashWindow = null
 // Secondary windows for multi-monitor control-room setups (Live Wall,
 // Attendance, Command Centre, Action Center) — kept in one array purely so
 // they aren't garbage-collected while open; closing one just drops it from
@@ -195,6 +196,105 @@ function createSetupWindow() {
   `)}`)
 }
 
+// ── Launch splash ─────────────────────────────────────────────
+// The main window stays hidden until 'ready-to-show', which on a cold start
+// is a second or more after the user double-clicks the exe — with nothing on
+// screen in between. This covers that gap. It is a separate window rather
+// than an early-shown mainWindow because showing mainWindow before it is
+// ready is exactly the white-flash-then-repaint this avoids.
+//
+// The animation deliberately matches the web boot splash (frontend/index.html)
+// so desktop and browser launch look like one product. Inline data: URL, no
+// asset loading — an image request here would be racing the very startup it
+// exists to cover.
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 300,
+    frame: false,
+    resizable: false,
+    center: true,
+    show: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    backgroundColor: '#020617',
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  })
+
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px;
+    background:
+      radial-gradient(ellipse 80% 55% at 10% 0%, #0d0a2e 0%, #020617 60%),
+      radial-gradient(ellipse 55% 45% at 92% 95%, #041228 0%, #020617 60%), #020617;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden; user-select: none; -webkit-app-region: drag;
+  }
+  .stage { position: relative; width: 104px; height: 104px; display: grid; place-items: center; }
+  .ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid rgba(108,99,255,0.35);
+    animation: pulse 2.6s cubic-bezier(0,0,0.2,1) infinite;
+  }
+  .ring:nth-child(2) { animation-delay: 0.85s; }
+  @keyframes pulse {
+    0% { transform: scale(0.55); opacity: 0; }
+    35% { opacity: 0.9; }
+    100% { transform: scale(1.15); opacity: 0; }
+  }
+  .sweep {
+    position: absolute; inset: 5px; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(0,217,192,0) 0deg, rgba(0,217,192,0) 250deg,
+                rgba(0,217,192,0.28) 330deg, rgba(108,99,255,0.55) 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 34%, #000 36%);
+    animation: spin 2.4s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .mark { width: 36px; filter: drop-shadow(0 0 16px rgba(134,59,255,0.7)); }
+  h1 {
+    font-size: 21px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+    background: linear-gradient(100deg, #f8fafc 0%, #f8fafc 38%, #a78bfa 48%,
+                #00d9c0 56%, #f8fafc 66%, #f8fafc 100%);
+    background-size: 300% 100%; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    animation: shimmer 2.8s linear infinite;
+  }
+  h1 span { font-size: 0.55em; vertical-align: super; }
+  @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+  p { font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(248,250,252,0.4); margin-top: -12px; }
+  .bar { position: relative; width: 160px; height: 2px; border-radius: 99px; overflow: hidden; background: rgba(248,250,252,0.09); }
+  .bar i { position: absolute; inset: 0; width: 42%; border-radius: 99px;
+           background: linear-gradient(90deg, #6c63ff, #00d9c0); animation: slide 1.35s cubic-bezier(0.4,0,0.2,1) infinite; }
+  @keyframes slide { from { transform: translateX(-110%); } to { transform: translateX(280%); } }
+</style></head>
+<body>
+  <div class="stage">
+    <span class="ring"></span><span class="ring"></span><span class="sweep"></span>
+    <svg class="mark" viewBox="0 0 48 46" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="48" y2="46" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#A78BFA"/><stop offset="0.55" stop-color="#863bff"/><stop offset="1" stop-color="#47bfff"/>
+      </linearGradient></defs>
+      <path fill="url(#g)" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"/>
+    </svg>
+  </div>
+  <h1>7<span>th</span> AI Vision</h1>
+  <p>Intelligent Surveillance</p>
+  <div class="bar"><i></i></div>
+</body></html>
+  `)}`)
+
+  splashWindow.on('closed', () => { splashWindow = null })
+  return splashWindow
+}
+
+function closeSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close()
+  splashWindow = null
+}
+
 // ── Main application window ───────────────────────────────────
 function createMainWindow(serverUrl) {
   mainWindow = new BrowserWindow({
@@ -227,11 +327,17 @@ function createMainWindow(serverUrl) {
   mainWindow.loadURL('app://./index.html')
 
   mainWindow.once('ready-to-show', () => {
+    closeSplashWindow()
     mainWindow.show()
     if (setupWindow && !setupWindow.isDestroyed()) {
       setupWindow.close()
     }
   })
+
+  // Never leave the splash stranded on top if the window fails to become
+  // ready — a stuck always-on-top splash would be worse than no splash.
+  mainWindow.webContents.on('did-fail-load', closeSplashWindow)
+  setTimeout(closeSplashWindow, 20_000)
 
   // Open external links in the system browser, not in Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -411,8 +517,11 @@ app.whenReady().then(() => {
   const serverUrl = store.get('serverUrl')
 
   if (!serverUrl) {
+    // First run goes straight to the wizard — no splash, there is nothing to
+    // wait for and the wizard itself is the first thing to show.
     createSetupWindow()
   } else {
+    createSplashWindow()
     createMainWindow(serverUrl)
     createTray(mainWindow)
   }
