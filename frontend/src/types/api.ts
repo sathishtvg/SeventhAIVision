@@ -424,6 +424,18 @@ export interface AnalyticsSummary {
   alerts_7d: number
   detections_7d: number
   active_recordings: number
+  active_cameras_total?: number
+  // Sized by the `days` query param rather than fixed at 7.
+  detections_window?: number
+  alerts_window?: number
+  // Equal-length period immediately before the window, for period-on-period.
+  detections_window_prev?: number
+  alerts_window_prev?: number
+  alerts_window_critical?: number
+  alerts_window_unresolved?: number
+  // ISO timestamps, null when nothing has ever been recorded.
+  last_detection_at?: string | null
+  last_alert_at?: string | null
 }
 
 export interface AnalyticsCount {
