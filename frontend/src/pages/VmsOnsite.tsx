@@ -10,7 +10,12 @@ import TimerOffIcon from '@mui/icons-material/TimerOff'
 import { useQuery } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { PageHeader } from '@/components/common/PageHeader'
-import { listOnsiteVehicles, type OnsiteVehicle } from '@/api/vms'
+import {
+  listOnsiteVehicles, VISIT_TYPES, VISIT_TYPE_LABELS,
+  type OnsiteVehicle, type VisitType,
+} from '@/api/vms'
+import { RegisterVisitorDialog } from '@/components/vms/RegisterVisitorDialog'
+import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import { getSites } from '@/api/sites'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 
@@ -36,6 +41,8 @@ function formatEntry(iso: string): string {
  * doesn't meter parking has no allowance and therefore no expiry — showing a
  * fabricated one there would be worse than showing none. */
 function expiryLabel(v: OnsiteVehicle): { text: string; remaining: number | null } {
+  // No vehicle means no parking clock, whatever the site's allowance says.
+  if (v.vehicle_entry_at == null) return { text: '—', remaining: null }
   if (v.allowance_minutes == null) return { text: 'No limit', remaining: null }
   const remaining = v.allowance_minutes - v.minutes_on_site
   const due = new Date(new Date(v.vehicle_entry_at).getTime() + v.allowance_minutes * 60_000)
@@ -46,6 +53,8 @@ function expiryLabel(v: OnsiteVehicle): { text: string; remaining: number | null
 export default function VmsOnsite() {
   const [siteId, setSiteId] = useState('')
   const [overstayedOnly, setOverstayedOnly] = useState(false)
+  const [visitType, setVisitType] = useState<VisitType | ''>('')
+  const [registerOpen, setRegisterOpen] = useState(false)
   const { kiosk, toggleKiosk } = useKioskToggle()
 
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
@@ -60,8 +69,8 @@ export default function VmsOnsite() {
   )
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['vms-onsite', siteId, overstayedOnly],
-    queryFn: () => listOnsiteVehicles(siteId || undefined, overstayedOnly),
+    queryKey: ['vms-onsite', siteId, overstayedOnly, visitType],
+    queryFn: () => listOnsiteVehicles(siteId || undefined, overstayedOnly, visitType || undefined),
     refetchInterval: 30_000,
   })
 
@@ -71,10 +80,22 @@ export default function VmsOnsite() {
   return (
     <Box>
       <PageHeader
-        title="Vehicles On Site"
-        subtitle="Live visitor vehicles, entry time and parking expiry"
+        title="Visitors On Site"
+        subtitle="Everyone currently on site — walk-ins, deliveries and vehicles — with arrival time and parking expiry"
         action={
           <Stack direction="row" spacing={1} alignItems="center">
+            {/* The gatehouse's primary action, so it leads and is the only
+                contained button here. Every site starts without an entry LPR
+                camera, which makes registering by hand the normal path, not
+                the fallback. */}
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<PersonAddIcon />}
+              onClick={() => setRegisterOpen(true)}
+            >
+              Register
+            </Button>
             <Tooltip title="Refresh now">
               <span>
                 <Button
@@ -121,6 +142,19 @@ export default function VmsOnsite() {
             <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
           ))}
         </TextField>
+        <TextField
+          select
+          size="small"
+          label="Visit type"
+          value={visitType}
+          onChange={(e) => setVisitType(e.target.value as VisitType | '')}
+          sx={{ minWidth: 170 }}
+        >
+          <MenuItem value="">All types</MenuItem>
+          {VISIT_TYPES.map((tt) => (
+            <MenuItem key={tt} value={tt}>{VISIT_TYPE_LABELS[tt]}</MenuItem>
+          ))}
+        </TextField>
         <Tooltip title="Show only vehicles past their allowed parking time">
           <ToggleButton
             size="small"
@@ -149,6 +183,7 @@ export default function VmsOnsite() {
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell>Type</TableCell>
               <TableCell>Plate</TableCell>
               <TableCell>Visitor</TableCell>
               <TableCell>Company</TableCell>
@@ -157,20 +192,21 @@ export default function VmsOnsite() {
               <TableCell>On site</TableCell>
               <TableCell>Expires</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Registered by</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading &&
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 8 }).map((__, j) => (
+                  {Array.from({ length: 10 }).map((__, j) => (
                     <TableCell key={j}><Skeleton /></TableCell>
                   ))}
                 </TableRow>
               ))}
             {!isLoading && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={10}>
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                     {overstayedOnly ? 'No vehicles are overstaying.' : 'No visitor vehicles on site.'}
                   </Typography>
@@ -186,6 +222,9 @@ export default function VmsOnsite() {
                   sx={v.is_overstayed ? { bgcolor: 'rgba(255,69,96,0.08)' } : undefined}
                 >
                   <TableCell>
+                    <Chip size="small" variant="outlined" label={VISIT_TYPE_LABELS[v.visit_type] ?? v.visit_type} />
+                  </TableCell>
+                  <TableCell>
                     <Typography sx={{ fontWeight: 700, letterSpacing: '0.04em' }}>
                       {v.vehicle_plate ?? '—'}
                     </Typography>
@@ -193,7 +232,7 @@ export default function VmsOnsite() {
                   <TableCell>{v.full_name}</TableCell>
                   <TableCell>{v.company ?? '—'}</TableCell>
                   <TableCell>{v.site_name ?? '—'}</TableCell>
-                  <TableCell>{formatEntry(v.vehicle_entry_at)}</TableCell>
+                  <TableCell>{formatEntry(v.arrived_at)}</TableCell>
                   <TableCell>{formatDuration(v.minutes_on_site)}</TableCell>
                   <TableCell>
                     {exp.text}
@@ -216,12 +255,22 @@ export default function VmsOnsite() {
                       color={v.is_overstayed ? 'error' : 'success'}
                     />
                   </TableCell>
+                  <TableCell>
+                    <Typography variant="caption" color="text.secondary">
+                      {v.registered_by ?? 'LPR'}
+                    </Typography>
+                  </TableCell>
                 </TableRow>
               )
             })}
           </TableBody>
         </Table>
       </TableContainer>
+      <RegisterVisitorDialog
+        open={registerOpen}
+        onClose={() => setRegisterOpen(false)}
+        defaultSiteId={siteId || undefined}
+      />
     </Box>
   )
 }
