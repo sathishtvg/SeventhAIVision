@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
 import { useColorMode } from '@/context/ColorMode'
 import { getBranding } from '@/api/branding'
+import { setTenantTimeZone, installTenantTimeZoneDefault } from '@/lib/tenantTime'
 import { AppShell } from '@/components/layout/AppShell'
 import Login from '@/pages/Login'
 import ForgotPassword from '@/pages/ForgotPassword'
@@ -63,7 +64,16 @@ import TrainingPage from '@/pages/Training'
 import EmergencyBroadcastPage from '@/pages/EmergencyBroadcast'
 import VisitorPreRegPage from '@/pages/VisitorPreReg'
 
-function BrandColorSync() {
+// At module load, before anything renders: from here on a Date formats in the
+// tenant's timezone rather than the machine's. Inert until branding arrives
+// and setTenantTimeZone runs below, so nothing changes for a tenant that has
+// no timezone configured.
+installTenantTimeZoneDefault()
+
+/** Applies the tenant's own settings — brand colour and timezone — once
+ *  branding has loaded. Both are properties of the subscriber, not of the
+ *  machine the app happens to be running on. */
+function TenantSettingsSync() {
   const { setBrandColor } = useColorMode()
   const { data } = useQuery({ queryKey: ['branding'], queryFn: getBranding, staleTime: 5 * 60 * 1000 })
   useEffect(() => {
@@ -72,6 +82,13 @@ function BrandColorSync() {
       setBrandColor(color)
     }
   }, [data, setBrandColor])
+  useEffect(() => {
+    // Makes every Date in the app render in the site's clock rather than the
+    // operator's machine — see lib/tenantTime.ts. Set here because this is
+    // already where the tenant's settings land, and it must apply before any
+    // page formats a timestamp.
+    setTenantTimeZone(data?.timezone)
+  }, [data])
   return null
 }
 
@@ -104,7 +121,7 @@ export default function App() {
         path="/"
         element={
           <RequireAuth>
-            <BrandColorSync />
+            <TenantSettingsSync />
             <ShellOrPortal />
           </RequireAuth>
         }

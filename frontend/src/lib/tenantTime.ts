@@ -21,6 +21,66 @@ import { getBranding } from '@/api/branding'
  * be looking at it from — which also makes a client checking their portal from
  * abroad see the times their guards actually worked.
  */
+/* ── The app-wide default ───────────────────────────────────────────────────
+ *
+ * There were 121 date-formatting call sites across 47 files, none passing a
+ * timeZone. Editing each one would have fixed today and regressed the first
+ * time anyone added a date — and missed the ones inside MUI, charts and any
+ * other library rendering a Date.
+ *
+ * So the tenant zone becomes the DEFAULT for Date formatting, set once, rather
+ * than an argument every call site has to remember. Three deliberate limits
+ * keep that honest:
+ *
+ *   · Only Date.prototype is touched. Number.prototype.toLocaleString is a
+ *     different function, so money and counts are untouched — this app formats
+ *     salaries and detection totals through it.
+ *   · An explicit timeZone in the options always wins, so a caller that means
+ *     UTC still gets UTC.
+ *   · Before branding loads, or for a tenant with no timezone set, nothing is
+ *     injected and behaviour is exactly what it is today.
+ *
+ * Display only: nothing here parses a formatted string back into a value, so
+ * there is no round trip to break.
+ */
+let _tenantTimeZone: string | undefined
+let _installed = false
+
+/** Read by the formatters below and by the prototype default. */
+export function tenantTimeZone(): string | undefined {
+  return _tenantTimeZone
+}
+
+export function setTenantTimeZone(tz: string | null | undefined): void {
+  _tenantTimeZone = tz || undefined
+}
+
+type DateFmt = (locales?: unknown, options?: Intl.DateTimeFormatOptions) => string
+
+export function installTenantTimeZoneDefault(): void {
+  if (_installed) return
+  _installed = true
+
+  const patch = (name: 'toLocaleString' | 'toLocaleDateString' | 'toLocaleTimeString') => {
+    const original = Date.prototype[name] as DateFmt
+    Object.defineProperty(Date.prototype, name, {
+      configurable: true,
+      writable: true,
+      value: function (this: Date, locales?: unknown, options?: Intl.DateTimeFormatOptions) {
+        const tz = tenantTimeZone()
+        if (!tz || (options && options.timeZone)) {
+          return original.call(this, locales, options)
+        }
+        return original.call(this, locales, { ...options, timeZone: tz })
+      },
+    })
+  }
+
+  patch('toLocaleString')
+  patch('toLocaleDateString')
+  patch('toLocaleTimeString')
+}
+
 export function useTenantTimeZone(): string | undefined {
   const { data } = useQuery({
     queryKey: ['branding'],
