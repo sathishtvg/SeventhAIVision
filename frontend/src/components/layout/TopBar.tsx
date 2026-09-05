@@ -184,8 +184,14 @@ export function TopBar({ title }: Props) {
     queryFn: getBranding,
     staleTime: 5 * 60 * 1000,
   })
-  const companyName =
-    tenantBrand?.branding?.company_name || tenantBrand?.name || '7th AI Vision'
+  // The tenant's own name, NOT branding.company_name. These are two different
+  // things that the code used to treat as alternatives: `company_name` is the
+  // short brand label an operator sets for themselves ("Security"), while
+  // `name` is the company ("Aegis Security Services"). Falling back from one to
+  // the other meant only ever seeing whichever was set, and the sidebar
+  // already shows the brand label — so the full company name appeared nowhere.
+  // The brand mark stays on the left in the sidebar; the company reads here.
+  const companyName = tenantBrand?.name || '7th AI Vision'
   const { i18n: i18nInstance } = useTranslation()
   const currentLocale = (i18nInstance.language?.slice(0, 2) ?? 'en') as SupportedLocale
 
