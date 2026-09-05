@@ -18,6 +18,7 @@ import { RegisterVisitorDialog } from '@/components/vms/RegisterVisitorDialog'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import { getSites } from '@/api/sites'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
+import { useTenantTimeZone, formatDateTimeIn, formatTimeIn, timeZoneLabel } from '@/lib/tenantTime'
 
 /** Human-readable time on site. Minutes alone stop being readable somewhere
  * around the two-hour mark, which is exactly the range an overstaying vehicle
@@ -29,24 +30,20 @@ function formatDuration(minutes: number): string {
   return `${h}h ${m % 60}m`
 }
 
-function formatEntry(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString(undefined, {
-    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-  })
+function formatEntry(iso: string, tz?: string): string {
+  return formatDateTimeIn(iso, tz)
 }
 
 /** Expiry is derived, not stored: entry + the site's allowance. A site that
  * doesn't meter parking has no allowance and therefore no expiry — showing a
  * fabricated one there would be worse than showing none. */
-function expiryLabel(v: OnsiteVehicle): { text: string; remaining: number | null } {
+function expiryLabel(v: OnsiteVehicle, tz?: string): { text: string; remaining: number | null } {
   // No vehicle means no parking clock, whatever the site's allowance says.
   if (v.vehicle_entry_at == null) return { text: '—', remaining: null }
   if (v.allowance_minutes == null) return { text: 'No limit', remaining: null }
   const remaining = v.allowance_minutes - v.minutes_on_site
   const due = new Date(new Date(v.vehicle_entry_at).getTime() + v.allowance_minutes * 60_000)
-  const clock = due.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const clock = formatTimeIn(due.toISOString(), tz)
   return { text: clock, remaining }
 }
 
@@ -56,6 +53,8 @@ export default function VmsOnsite() {
   const [visitType, setVisitType] = useState<VisitType | ''>('')
   const [registerOpen, setRegisterOpen] = useState(false)
   const { kiosk, toggleKiosk } = useKioskToggle()
+  const tz = useTenantTimeZone()
+  const tzLabel = timeZoneLabel(tz)
 
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
@@ -188,7 +187,7 @@ export default function VmsOnsite() {
               <TableCell>Visitor</TableCell>
               <TableCell>Company</TableCell>
               <TableCell>Site</TableCell>
-              <TableCell>Entry</TableCell>
+              <TableCell>Arrived{tzLabel ? ` (${tzLabel})` : ''}</TableCell>
               <TableCell>On site</TableCell>
               <TableCell>Expires</TableCell>
               <TableCell>Status</TableCell>
@@ -214,7 +213,7 @@ export default function VmsOnsite() {
               </TableRow>
             )}
             {rows.map((v) => {
-              const exp = expiryLabel(v)
+              const exp = expiryLabel(v, tz)
               return (
                 <TableRow
                   key={v.id}
@@ -232,7 +231,7 @@ export default function VmsOnsite() {
                   <TableCell>{v.full_name}</TableCell>
                   <TableCell>{v.company ?? '—'}</TableCell>
                   <TableCell>{v.site_name ?? '—'}</TableCell>
-                  <TableCell>{formatEntry(v.arrived_at)}</TableCell>
+                  <TableCell>{formatEntry(v.arrived_at, tz)}</TableCell>
                   <TableCell>{formatDuration(v.minutes_on_site)}</TableCell>
                   <TableCell>
                     {exp.text}
