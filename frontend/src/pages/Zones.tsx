@@ -12,7 +12,6 @@ import {
   TableRow,
   Chip,
   IconButton,
-  Skeleton,
   Paper,
   Tooltip,
   Dialog,
@@ -27,6 +26,7 @@ import {
   InputLabel,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { SkeletonRows } from '@/components/common/SkeletonRows'
 import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import PauseIcon from '@mui/icons-material/Pause'
@@ -58,17 +58,6 @@ function TabPanel({ children, value, index }: TabPanelProps) {
   return <Box hidden={value !== index}>{value === index && children}</Box>
 }
 
-function SkeletonRows({ cols, rows = 4 }: { cols: number; rows?: number }) {
-  return (
-    <>
-      {Array.from({ length: rows }).map((_, i) => (
-        <TableRow key={i}>
-          {Array.from({ length: cols }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}
-        </TableRow>
-      ))}
-    </>
-  )
-}
 
 // ──────────────────────────────────────────────────────────
 // Zone schedule dialog

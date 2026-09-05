@@ -188,9 +188,13 @@ export function TopBar({ title }: Props) {
   const wsLabel = status === 'open' ? 'Live'     : status === 'connecting' ? 'Connecting'  : 'Offline'
   const wsRgb   = status === 'open' ? '34,197,94' : status === 'connecting' ? '245,158,11' : '255,69,96'
 
-  const titleGradient = isDark
-    ? 'linear-gradient(90deg, #F1F5F9 0%, rgba(108,99,255,0.85) 100%)'
-    : 'linear-gradient(90deg, #0F172A 0%, #6C63FF 100%)'
+  // Derived from the theme rather than hardcoded, for the same reason
+  // PageHeader is: a fixed #6C63FF ignores whatever brand colour the signed-in
+  // tenant chose, so the title stopped matching the rest of the accented UI.
+  // The first stop is always the theme's own text colour, which is what keeps
+  // the word legible on either ground; only the second stop is decorative.
+  const titleGradient =
+    `linear-gradient(90deg, ${theme.palette.text.primary} 0%, ${theme.palette.primary.main} 100%)`
 
   return (
     <>
@@ -239,6 +243,15 @@ export function TopBar({ title }: Props) {
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
             letterSpacing: '-0.02em',
+            // Without this the title is painted with transparent fill and no
+            // clipped background to show through, so it disappears completely
+            // rather than merely losing its gradient. PageHeader already had
+            // the guard; this one did not.
+            '@supports not ((-webkit-background-clip: text) or (background-clip: text))': {
+              background: 'none',
+              WebkitTextFillColor: 'initial',
+              color: 'text.primary',
+            },
           }}
         >
           {title}

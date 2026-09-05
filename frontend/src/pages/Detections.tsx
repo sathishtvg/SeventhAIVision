@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import {
   Box, Tabs, Tab, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Chip, Skeleton, Paper, LinearProgress,
+  TableHead, TableRow, Chip, Paper, LinearProgress,
 } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { SkeletonRows } from '@/components/common/SkeletonRows'
 import { EvidenceThumb } from '@/components/common/EvidenceThumb'
 import {
   getLprEvents, getFaceEvents, getIntrusionEvents,
@@ -23,17 +24,6 @@ function TabPanel({ children, value, index }: TabPanelProps) {
   return <Box hidden={value !== index}>{value === index && children}</Box>
 }
 
-function SkeletonRows({ cols, rows = 5 }: { cols: number; rows?: number }) {
-  return (
-    <>
-      {Array.from({ length: rows }).map((_, i) => (
-        <TableRow key={i}>
-          {Array.from({ length: cols }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}
-        </TableRow>
-      ))}
-    </>
-  )
-}
 
 // ──────────────────────────────────────────────────────────
 // Phase 1 tables

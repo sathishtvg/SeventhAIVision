@@ -297,14 +297,25 @@ function NavLink({ label, path, icon, permission, rail = false }: NavLinkProps) 
       }}
     >
       <ListItemIcon
-        sx={{
+        sx={(theme) => ({
           minWidth: rail ? 0 : 34,
-          color: selected ? '#6C63FF' : 'text.secondary',
+          // Icons sat on text.secondary, the same value as the label beside
+          // them, and read as noticeably fainter: a glyph is thin strokes and
+          // a few outlines where a word is solid letterforms, so matching the
+          // label's alpha under-serves the icon. They get their own step,
+          // brighter than the label but still clearly below the selected
+          // state. Selected follows the theme's primary rather than a fixed
+          // #6C63FF, so a tenant's brand colour actually reaches it.
+          color: selected
+            ? theme.palette.primary.main
+            : theme.palette.mode === 'dark'
+              ? 'rgba(248,250,252,0.82)'
+              : 'rgba(15,23,42,0.72)',
           transition: 'color 0.18s, filter 0.18s',
           filter: selected
-            ? 'drop-shadow(0 0 5px rgba(108,99,255,0.85))'
+            ? `drop-shadow(0 0 5px ${theme.palette.primary.main}d9)`
             : 'none',
-        }}
+        })}
       >
         {icon}
       </ListItemIcon>

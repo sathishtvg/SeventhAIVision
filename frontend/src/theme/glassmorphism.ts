@@ -49,7 +49,12 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
     palette: {
       mode,
       background: {
-        default: '#020617',
+        // Was '#020617' unconditionally, which left light mode declaring a
+        // near-black default. CssBaseline paints its own light gradient over
+        // the body so the page looked right, but anything reading
+        // background.default — MUI internals, autofill, any component that
+        // paints its own surface — got near-black behind near-black text.
+        default: isDark ? '#020617' : '#F2F1FF',
         paper:   glassBg,
       },
       primary:   { main: p, light: pl, dark: pd },
