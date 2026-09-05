@@ -93,9 +93,21 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up 
 The overlay sets `DEVICE: cuda`, reserves one GPU per worker and raises
 `shm_size` to 2 GB for CUDA tensor operations. It covers all twelve workers.
 
-**Watch memory.** One GPU with `count: 1` per worker means twelve workers each
-claiming a device; on a single-GPU laptop change `count` to `all` so they share
-it, or start only the workers you are testing:
+**Two things this overlay does not do.** It sets `DEVICE: cuda` but never
+swaps in the GPU image — every `ai-worker-*` service still builds from
+`ai-worker.Dockerfile`, whose installed wheels are `torch==2.13.0+cpu`,
+CPU `onnxruntime` and CPU `paddlepaddle`. Forcing `cuda` onto a CPU-only
+torch build does not work. `ai-worker-gpu.Dockerfile` installs all three GPU
+builds correctly (torch cu121, `onnxruntime-gpu`, `paddlepaddle-gpu`), so the
+overlay needs an `image:`/`build:` override per worker before any of this
+runs on the GPU. And it puts `tampering` and `abandoned` on CUDA even though
+both are pure OpenCV by design — a wasted CUDA context each.
+
+**Watch VRAM, not scheduling.** `count: 1` is fine on a single-GPU host —
+containers share device 0 rather than fighting over it. What actually breaks
+is memory: every worker is a separate process with its own CUDA context, so
+they add up. On a 4 GB card (roughly 3.3–3.7 GB usable through WSL2) expect
+room for two or three workers, not nine. Start only what you are testing:
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml \
