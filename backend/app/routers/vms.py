@@ -22,7 +22,7 @@ import uuid as _uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,9 +95,25 @@ class CompleteEntry(BaseModel):
     custom_fields: dict[str, Any] = Field(default_factory=dict)
 
 
+# Kept in step with ck_visitors_visit_type (migration 0087). Validated here so
+# an unknown type is rejected at the API boundary with a readable message
+# rather than as a database constraint violation.
+VISIT_TYPES = ("vehicle", "walk_in", "delivery", "drop_off", "pick_up")
+
+
 class ManualEntry(CompleteEntry):
     site_id: str
     vehicle_plate: str | None = None
+    # Defaults to walk_in rather than vehicle: the gatehouse records far more
+    # people on foot than in cars, and a plate present is handled below anyway.
+    visit_type: str = "walk_in"
+
+    @field_validator("visit_type")
+    @classmethod
+    def _known_visit_type(cls, v: str) -> str:
+        if v not in VISIT_TYPES:
+            raise ValueError(f"unknown visit_type '{v}'; expected one of: {', '.join(VISIT_TYPES)}")
+        return v
 
 
 def _validate_field_def(field_type: str, options: list[Any] | None) -> None:
@@ -324,22 +340,28 @@ async def manual_entry(
                     id, tenant_id, site_id, full_name, company, id_number,
                     host_user_id, host_name, purpose, visitor_email, vehicle_plate,
                     status, qr_token, custom_fields, free_parking_minutes,
-                    vehicle_entry_at, created_by_user_id
+                    visit_type, arrived_at, vehicle_entry_at, created_by_user_id
                 ) VALUES (
                     CAST(:id AS uuid), current_setting('app.current_tenant')::uuid,
                     CAST(:site_id AS uuid), :full_name, :company, :id_number,
                     CAST(:host_user_id AS uuid), :host_name, :purpose, :visitor_email, :plate,
                     'arrived', :qr, CAST(:custom_fields AS jsonb), :free_parking_minutes,
+                    :visit_type,
+                    -- Everyone standing at the gate has arrived, car or not.
+                    -- This is what the on-site board reads and orders by.
+                    now(),
                     -- The cast is load-bearing: a bare `:plate IS NULL` gives
                     -- the driver no type to infer from, and asyncpg rejects the
                     -- whole statement with AmbiguousParameterError.
-                    -- The parking clock only starts if a vehicle was recorded;
-                    -- a walk-in visitor has no plate and no parking to meter.
+                    -- The parking clock is separate and only starts if a
+                    -- vehicle was recorded; a visitor on foot has no parking to
+                    -- meter, and starting it would raise overstay alerts about
+                    -- a car that does not exist.
                     CASE WHEN CAST(:plate AS varchar) IS NULL THEN NULL ELSE now() END,
                     CAST(:uid AS uuid)
                 )
-                RETURNING id, full_name, company, vehicle_plate, status,
-                          vehicle_entry_at, free_parking_minutes, custom_fields
+                RETURNING id, full_name, company, vehicle_plate, status, visit_type,
+                          arrived_at, vehicle_entry_at, free_parking_minutes, custom_fields
                 """
             ),
             {
@@ -372,19 +394,36 @@ async def manual_entry(
 async def vehicles_onsite(
     site_id: str | None = None,
     overstayed_only: bool = False,
+    visit_type: str | None = None,
     db: AsyncSession = Depends(get_db_with_tenant),
 ):
-    """Vehicles currently on site with their parking clock.
+    """Everyone currently on site — not just vehicles.
 
-    `free_parking_minutes` resolves per-visit override first, then the site
-    default; NULL at both levels means this site does not meter parking, and
-    such a visit can never be flagged as overstayed.
+    This used to require `vehicle_entry_at IS NOT NULL`, which made it a car
+    park board: a walk-in, a courier delivering, someone dropping a passenger
+    off could never appear, however carefully the guard registered them. A
+    gatehouse needs the whole picture, so presence is now keyed off arrived_at.
+
+    Parking is still vehicle-only. `free_parking_minutes` resolves per-visit
+    override first, then the site default; NULL at both levels means this site
+    does not meter parking, and such a visit can never be flagged as
+    overstayed. Anyone without a vehicle entry simply has no parking clock,
+    which is why is_overstayed guards on vehicle_entry_at rather than on the
+    allowance alone.
     """
-    clauses = ["v.vehicle_entry_at IS NOT NULL", "v.vehicle_exit_at IS NULL", "v.is_active = TRUE"]
+    clauses = ["v.arrived_at IS NOT NULL", "v.vehicle_exit_at IS NULL", "v.is_active = TRUE"]
     params: dict[str, Any] = {}
     if site_id:
         clauses.append("v.site_id = CAST(:site_id AS uuid)")
         params["site_id"] = site_id
+    if visit_type:
+        if visit_type not in VISIT_TYPES:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"unknown visit_type '{visit_type}'; expected one of: {', '.join(VISIT_TYPES)}",
+            )
+        clauses.append("v.visit_type = :visit_type")
+        params["visit_type"] = visit_type
     if overstayed_only:
         clauses.append(
             "COALESCE(v.free_parking_minutes, s.free_parking_minutes) IS NOT NULL "
@@ -396,22 +435,32 @@ async def vehicles_onsite(
             text(
                 f"""
                 SELECT v.id, v.full_name, v.company, v.vehicle_plate, v.status,
-                       v.vehicle_entry_at, v.site_id, s.name AS site_name,
+                       v.visit_type, v.purpose,
+                       v.arrived_at, v.vehicle_entry_at, v.site_id, s.name AS site_name,
                        v.custom_fields,
                        COALESCE(v.free_parking_minutes, s.free_parking_minutes)
                            AS allowance_minutes,
-                       FLOOR(EXTRACT(EPOCH FROM (now() - v.vehicle_entry_at))/60)::int
+                       -- Time on site is measured from the person arriving, so
+                       -- it is meaningful for a walk-in too.
+                       FLOOR(EXTRACT(EPOCH FROM (now() - v.arrived_at))/60)::int
                            AS minutes_on_site,
-                       (COALESCE(v.free_parking_minutes, s.free_parking_minutes) IS NOT NULL
+                       -- Overstay stays a parking judgement: no vehicle entry
+                       -- means no clock to exceed, however long someone has
+                       -- been on foot.
+                       (v.vehicle_entry_at IS NOT NULL
+                        AND COALESCE(v.free_parking_minutes, s.free_parking_minutes) IS NOT NULL
                         AND EXTRACT(EPOCH FROM (now() - v.vehicle_entry_at))/60
                             > COALESCE(v.free_parking_minutes, s.free_parking_minutes))
                            AS is_overstayed,
+                       -- Who registered this visit, for the gatehouse log.
+                       u.full_name AS registered_by,
                        {_PLATE_EVIDENCE_COLS}
                 FROM visitors v
                 LEFT JOIN sites s ON s.id = v.site_id
+                LEFT JOIN users u ON u.id = v.created_by_user_id
                 {_PLATE_EVIDENCE_JOINS}
                 WHERE {' AND '.join(clauses)}
-                ORDER BY v.vehicle_entry_at
+                ORDER BY v.arrived_at
                 """
             ),
             params,
