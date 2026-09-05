@@ -14,7 +14,7 @@ import LanguageIcon from '@mui/icons-material/Language'
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
 import VolumeOffIcon from '@mui/icons-material/VolumeOff'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getBranding } from '@/api/branding'
+import { PRODUCT_NAME } from '@/lib/brand'
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
 import { useAuthStore } from '@/store/auth'
 import { useNotificationStore } from '@/store/notifications'
@@ -174,24 +174,6 @@ export function TopBar({ title }: Props) {
   const isDark = mode === 'dark'
   const [profileOpen, setProfileOpen] = useState(false)
 
-  // The company name lived only in the sidebar header, which disappears the
-  // moment the menu is collapsed to its rail — so on a folded menu, or in
-  // full-screen, nothing on screen said whose system this was. It belongs on
-  // the bar that is present on every page. Same query key as the sidebar, so
-  // this shares that cache rather than adding a request.
-  const { data: tenantBrand } = useQuery({
-    queryKey: ['branding'],
-    queryFn: getBranding,
-    staleTime: 5 * 60 * 1000,
-  })
-  // The tenant's own name, NOT branding.company_name. These are two different
-  // things that the code used to treat as alternatives: `company_name` is the
-  // short brand label an operator sets for themselves ("Security"), while
-  // `name` is the company ("Aegis Security Services"). Falling back from one to
-  // the other meant only ever seeing whichever was set, and the sidebar
-  // already shows the brand label — so the full company name appeared nowhere.
-  // The brand mark stays on the left in the sidebar; the company reads here.
-  const companyName = tenantBrand?.name || '7th AI Vision'
   const { i18n: i18nInstance } = useTranslation()
   const currentLocale = (i18nInstance.language?.slice(0, 2) ?? 'en') as SupportedLocale
 
@@ -242,7 +224,11 @@ export function TopBar({ title }: Props) {
           }}
         />
 
-        {/* Company first, then where you are inside it. Both are solid text:
+        {/* The product name, then where you are inside it. This bar is the one
+            element on every screen, so it is what guarantees "Seventh AI
+            Vision" is always visible; the subscriber's own label and logo stay
+            in the sidebar rather than competing for the same spot. Both are
+            solid text:
             these used to be painted as a gradient clipped to the glyphs, which
             fades every title into the accent colour toward its end and reads as
             washed out on both themes — worse the longer the word. The accent
@@ -260,7 +246,7 @@ export function TopBar({ title }: Props) {
               flexShrink: 0,
             }}
           >
-            {companyName}
+            {PRODUCT_NAME}
           </Typography>
           <Typography
             variant="body2"

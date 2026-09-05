@@ -54,6 +54,7 @@ import RuleIcon from '@mui/icons-material/Rule'
 import CableIcon from '@mui/icons-material/Cable'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
+import { PRODUCT_NAME } from '@/lib/brand'
 import { usePermission, getPermissionsForRole } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
 
@@ -495,7 +496,7 @@ export function Sidebar() {
   })
 
   const brandLogoUrl   = tenantBrand?.branding?.logo_url     ?? null
-  const brandName      = tenantBrand?.branding?.company_name || tenantBrand?.name || '7th AI Vision'
+  const brandName      = tenantBrand?.branding?.company_name || tenantBrand?.name || PRODUCT_NAME
   const accentColor    = tenantBrand?.branding?.primary_color ?? '#6C63FF'
 
   const initials = 'U'

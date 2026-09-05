@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@/test/utils'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { useAuthStore } from '@/store/auth'
+import { PRODUCT_NAME } from '@/lib/brand'
 
 vi.mock('@/store/auth', () => ({
   useAuthStore: vi.fn(),
@@ -47,7 +48,7 @@ describe('Sidebar', () => {
   it('renders the app branding', () => {
     mockUser(2)
     render(<Sidebar />)
-    expect(screen.getByText('7th AI Vision')).toBeInTheDocument()
+    expect(screen.getByText(PRODUCT_NAME)).toBeInTheDocument()
   })
 
   it('admin sees Users and Settings in the admin section', () => {
