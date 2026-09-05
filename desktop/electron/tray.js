@@ -8,7 +8,7 @@ let tray = null
 function buildMenu(mainWindow) {
   return Menu.buildFromTemplate([
     {
-      label: 'Open 7th AI Vision',
+      label: 'Open Seventh AI Vision',
       click: () => {
         if (mainWindow) {
           mainWindow.show()
@@ -42,7 +42,7 @@ function createTray(mainWindow) {
   }
 
   tray = new Tray(icon)
-  tray.setToolTip('7th AI Vision')
+  tray.setToolTip('Seventh AI Vision')
   tray.setContextMenu(buildMenu(mainWindow))
 
   tray.on('click', () => {
@@ -62,9 +62,9 @@ function setBadge(count) {
   if (!tray) return
   try {
     if (count > 0) {
-      tray.setToolTip(`7th AI Vision — ${count} alert${count > 1 ? 's' : ''}`)
+      tray.setToolTip(`Seventh AI Vision — ${count} alert${count > 1 ? 's' : ''}`)
     } else {
-      tray.setToolTip('7th AI Vision')
+      tray.setToolTip('Seventh AI Vision')
     }
   } catch {}
 }

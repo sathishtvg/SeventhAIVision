@@ -1,5 +1,5 @@
 appId: ai.seventh.vision.desktop
-productName: "7th AI Vision"
+productName: "Seventh AI Vision"
 copyright: "Copyright © 2026 Seventh AI"
 
 directories:
@@ -36,7 +36,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "7th AI Vision"
+  shortcutName: "Seventh AI Vision"
 
 msi:
   oneClick: false
@@ -44,7 +44,7 @@ msi:
   runAfterFinish: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "7th AI Vision"
+  shortcutName: "Seventh AI Vision"
   # Stable UpgradeCode so future MSIs upgrade in place instead of installing
   # side-by-side. Generated once; must never change across releases.
   upgradeCode: "5F3A9C21-8B47-4E2D-9A16-7C0E1F2B3D4A"

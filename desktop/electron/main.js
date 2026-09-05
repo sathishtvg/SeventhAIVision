@@ -177,7 +177,7 @@ function createSetupWindow() {
       </svg>
       <input id="url" type="url" placeholder="http://192.168.1.100:8000" value="http://localhost:8000" autofocus />
     </div>
-    <div class="hint">Enter the IP address and port of your 7th AI Vision backend server.<br>Default port is <strong style="color:rgba(248,250,252,0.7)">8000</strong></div>
+    <div class="hint">Enter the IP address and port of your Seventh AI Vision backend server.<br>Default port is <strong style="color:rgba(248,250,252,0.7)">8000</strong></div>
     <button class="btn" onclick="connect()">Connect to Server</button>
   </div>
   <script>
@@ -302,7 +302,7 @@ function createMainWindow(serverUrl) {
     height: 900,
     minWidth: 1024,
     minHeight: 600,
-    title: '7th AI Vision',
+    title: 'Seventh AI Vision',
     backgroundColor: '#020617',
     autoHideMenuBar: true,
     webPreferences: {
@@ -370,7 +370,7 @@ function createSecondaryWindow(routePath, title) {
     height: 800,
     minWidth: 640,
     minHeight: 480,
-    title: title || '7th AI Vision',
+    title: title || 'Seventh AI Vision',
     backgroundColor: '#020617',
     autoHideMenuBar: true,
     webPreferences: {
@@ -451,7 +451,7 @@ function initAutoUpdater() {
       type: 'info',
       title: 'Update Available',
       message: `Version ${info.version} is available.`,
-      detail: 'A new version of 7th AI Vision has been released.',
+      detail: 'A new version of Seventh AI Vision has been released.',
       buttons: ['Download & Install', 'Later'],
       defaultId: 0,
     }).then(({ response }) => {
