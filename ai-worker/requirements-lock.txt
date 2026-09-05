@@ -1,0 +1,128 @@
+# Fully-resolved third-party dependency versions for the AI workers, captured
+# via `pip freeze` from the docker-ai-worker-intrusion image (built
+# 2026-08-06, the most recent of the eleven and the one most recently run).
+#
+# Why this file exists, concretely rather than in principle: ai-worker/
+# pyproject.toml declares only range pins (torch>=2.2, ultralytics>=8.2, ...),
+# and the eleven worker images on this host were built between 2026-06-22 and
+# 2026-08-06. They have already diverged. Compared on 2026-09-05, the face
+# image carries 106 packages and the intrusion image 100, differing in
+# aiohttp, anyio, annotated-types, certifi, chardet and more. Eleven workers
+# that are meant to be one image are running eleven dependency sets, and a
+# model that behaves in one is not guaranteed to behave in another.
+#
+# Excludes seventh-ai-vision-ai-worker and seventh-ai-vision-shared: both are
+# always installed editable from local source (see docker/ai-worker.Dockerfile)
+# and never resolved from a registry.
+#
+# Reproducible install:
+#   pip install -r ai-worker/requirements-lock.txt
+#   pip install -e shared && pip install -e ai-worker
+#
+# To refresh after intentionally changing a dependency in pyproject.toml,
+# rebuild the image and re-capture:
+#   docker compose -f docker/docker-compose.yml build ai-worker-intrusion
+#   docker run --rm --entrypoint pip docker-ai-worker-intrusion:latest freeze \
+#     | grep -v '^-e ' | grep -v 'Editable install' > ai-worker/requirements-lock.txt
+#   (then re-add this header)
+#
+# NOTE: this is the CPU resolution. docker/ai-worker-gpu.Dockerfile installs
+# torch from the CUDA wheel index, so a GPU host resolves a different torch
+# build; do not expect this file to pin the GPU image byte-for-byte.
+
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+aistudio_sdk==0.3.9
+annotated-types==0.8.0
+anyio==4.14.2
+attrs==26.1.0
+bce-python-sdk==0.9.76
+certifi==2026.7.22
+chardet==7.5.1
+charset-normalizer==3.4.9
+click==8.4.2
+colorlog==6.12.0
+contourpy==1.3.3
+crc32c==2.8
+cycler==0.12.1
+filelock==3.29.0
+flatbuffers==25.12.19
+fonttools==4.63.0
+frozenlist==1.8.0
+fsspec==2026.4.0
+future==1.0.0
+h11==0.16.0
+hf-xet==1.6.0
+httpcore==1.0.9
+httpx==0.28.1
+huggingface_hub==1.26.1
+idna==3.18
+ImageIO==2.37.4
+imagesize==2.0.0
+insightface==1.0.1
+Jinja2==3.1.6
+kiwisolver==1.5.0
+lazy-loader==0.5
+MarkupSafe==3.0.3
+matplotlib==3.11.1
+ml_dtypes==0.5.4
+modelscope==1.39.1
+modelscope-hub==0.2.0
+mpmath==1.3.0
+multidict==6.7.1
+networkx==3.6.1
+numpy==2.3.5
+nvidia-ml-py==13.610.43
+onnx==1.22.0
+onnxruntime==1.28.0
+opencv-contrib-python==4.10.0.84
+opencv-python==5.0.0.93
+opencv-python-headless==5.0.0.93
+opt-einsum==3.3.0
+packaging==26.3
+paddleocr==3.7.0
+paddlepaddle==3.3.1
+paddlex==3.7.2
+pandas==3.0.5
+pillow==12.2.0
+polars==1.43.2
+polars-runtime-32==1.43.2
+prettytable==3.18.0
+prometheus_client==0.26.0
+propcache==0.5.2
+protobuf==7.35.1
+psutil==7.2.2
+psycopg==3.3.4
+psycopg-binary==3.3.4
+py-cpuinfo==9.0.0
+pyclipper==1.4.0
+pycryptodome==3.23.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+pyparsing==3.3.2
+pypdfium2==5.12.1
+python-bidi==0.6.11
+python-dateutil==2.9.0.post0
+PyYAML==6.0.2
+redis==8.1.0
+requests==2.34.2
+ruamel.yaml==0.19.1
+safetensors==0.8.0
+scikit-image==0.26.0
+scipy==1.17.1
+shapely==2.1.2
+six==1.17.0
+sympy==1.14.0
+tifffile==2026.3.3
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+tqdm==4.70.0
+typing-inspection==0.4.2
+typing_extensions==4.16.0
+ujson==5.13.0
+ultralytics==8.4.115
+ultralytics-thop==2.1.6
+urllib3==2.7.0
+wcwidth==0.8.2
+yarl==1.24.5
