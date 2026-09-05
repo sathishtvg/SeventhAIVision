@@ -470,7 +470,7 @@ export default function Detections() {
 
   return (
     <Box>
-      <PageHeader title="Detections" subtitle="Everything the AI recognised, before any alert rule was applied" />
+      <PageHeader pageKey="detections" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">

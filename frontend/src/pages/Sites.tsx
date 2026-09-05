@@ -270,9 +270,7 @@ export function SitesPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <PageHeader
-        title="Sites"
-        subtitle="Manage physical locations that group cameras"
+      <PageHeader pageKey="sites"
         action={
           <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
             Add Site

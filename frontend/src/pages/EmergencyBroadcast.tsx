@@ -19,6 +19,7 @@ import {
 import GlassCard from '@/components/common/GlassCard'
 import { usePermission } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const SEV_CONFIG = {
   info:     { color: '#2196F3', label: 'Info',     bg: 'rgba(33,150,243,0.15)' },
@@ -485,11 +486,9 @@ export default function EmergencyBroadcastPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="emergency-broadcast" />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
         <CampaignIcon sx={{ color: '#FF4560', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Emergency Broadcasts
-        </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)}

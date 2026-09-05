@@ -161,9 +161,7 @@ export function BarriersPage() {
   return (
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-      <PageHeader
-        title="Barriers"
-        subtitle="Gate and boom control, with a full record of every opening"
+      <PageHeader pageKey="barriers"
         action={
           <PermissionGuard permission="barrier:manage">
             <Button

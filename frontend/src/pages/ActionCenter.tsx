@@ -149,9 +149,7 @@ export default function ActionCenter() {
 
   return (
     <Box>
-      <PageHeader
-        title="Action Center"
-        subtitle="What needs your attention right now"
+      <PageHeader pageKey="action-center"
         action={
           <Stack direction="row" spacing={1}>
             <Tooltip title="Send Action Center to another monitor — opens its own window already in full screen (Esc to leave full screen there)">

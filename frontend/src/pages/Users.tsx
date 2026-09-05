@@ -683,7 +683,7 @@ export default function Users() {
 
   return (
     <Box>
-      <PageHeader title="Users" subtitle="Staff accounts, roles, employment details, pay rates and site access" />
+      <PageHeader pageKey="users" />
       {tiers.length > 0 && (
         <GlassCard sx={{ p: 2, mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>

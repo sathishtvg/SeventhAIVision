@@ -23,6 +23,7 @@ import {
 } from '@/api/bwc'
 import type { BodyCamera, BWCRecording } from '@/api/bwc'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -606,9 +607,7 @@ export default function BWCPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" fontWeight={700} mb={3}>
-        Body Worn Camera Management
-      </Typography>
+      <PageHeader pageKey="bwc" />
 
       {/* KPI row */}
       <Grid container spacing={2} mb={3}>

@@ -64,6 +64,7 @@ import {
   type VisitorFormField, type VisitorFormFieldInput, type VisitorFieldType,
 } from '@/api/vms'
 import { getSites } from '@/api/sites'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -817,9 +818,7 @@ export default function VisitorPreRegPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" fontWeight={700} gutterBottom>
-        Visitor Pre-Registration
-      </Typography>
+      <PageHeader pageKey="visitor-prereg" />
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Pre-register visitors, generate QR codes, and track arrivals and departures.
       </Typography>

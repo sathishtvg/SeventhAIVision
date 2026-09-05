@@ -147,8 +147,7 @@ export default function Roles() {
 
   return (
     <Box>
-      <PageHeader title="Roles & Permissions"
-                  subtitle="Built-in roles plus your own custom roles" />
+      <PageHeader pageKey="roles" />
 
       <Stack direction="row" sx={{ mb: 2 }}>
         <Button variant="contained" size="small" startIcon={<AddIcon />}

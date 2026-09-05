@@ -69,7 +69,7 @@ export default function Audit() {
 
   return (
     <Box>
-      <PageHeader title="Audit Log" subtitle="Every action taken in the system, by whom and when — your record for compliance and investigations" />
+      <PageHeader pageKey="audit" />
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
         <Typography variant="h6" fontWeight={700}>Audit Logs</Typography>
         {canVerify && (

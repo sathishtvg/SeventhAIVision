@@ -98,7 +98,7 @@ export function PlaybackPage() {
 
   return (
     <Box>
-      <PageHeader title="Playback" subtitle="Recorded footage timeline with alert markers" />
+      <PageHeader pageKey="playback" />
 
       <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <Select

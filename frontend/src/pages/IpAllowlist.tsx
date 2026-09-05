@@ -30,6 +30,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { listIpRules, addIpRule, deleteIpRule, toggleIpRule } from '@/api/ipallowlist'
+import { PageHeader } from '@/components/common/PageHeader'
 
 function fmtDate(d: string | null) {
   if (!d) return '—'
@@ -126,6 +127,7 @@ export default function IpAllowlist() {
 
   return (
     <PermissionGuard permission="iplist:manage">
+      <PageHeader pageKey="ip-allowlist" />
       <Box sx={{ p: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
           <Stack direction="row" alignItems="center" gap={1.5}>

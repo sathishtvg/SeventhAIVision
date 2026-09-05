@@ -47,6 +47,7 @@ import {
 } from '@/api/parking'
 import type { CarPark, ParkingBay, ParkingSession, LprCameraConfig } from '@/api/parking'
 import { getCameras } from '@/api/cameras'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -908,9 +909,7 @@ export default function ParkingPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" fontWeight={700} mb={3}>
-        Smart Parking Management
-      </Typography>
+      <PageHeader pageKey="parking" />
 
       {/* KPI row */}
       <Grid container spacing={2} mb={3}>

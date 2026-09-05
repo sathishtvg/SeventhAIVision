@@ -186,7 +186,7 @@ export default function Evidence() {
 
   return (
     <Box>
-      <PageHeader title="Evidence" subtitle="Snapshots and clips saved against detections and incidents, each with an integrity checksum" />
+      <PageHeader pageKey="evidence" />
       <Grid container spacing={2}>
         {isLoading
           ? Array.from({ length: 12 }).map((_, i) => (

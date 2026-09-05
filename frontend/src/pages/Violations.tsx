@@ -315,7 +315,7 @@ export function ViolationsPage() {
 
   return (
     <Box>
-      <PageHeader title="Violations" subtitle="Attendance and conduct tracking across all guards" />
+      <PageHeader pageKey="violations" />
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2.5, flexWrap: 'wrap' }}>
         {[

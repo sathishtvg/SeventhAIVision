@@ -20,7 +20,7 @@ export default function Reports() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
-      <PageHeader title="Reports &amp; Compliance" subtitle="On-demand PDF reports and PDPA data-subject requests" />
+      <PageHeader pageKey="reports" />
       <Paper sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="primary">
           <Tab label="PDF Reports" />

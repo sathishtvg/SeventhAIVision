@@ -171,7 +171,7 @@ export default function Heatmap() {
 
   return (
     <Box>
-      <PageHeader title="Activity Heatmap" subtitle="Where activity and alerts are concentrated across your sites" />
+      <PageHeader pageKey="heatmap" />
 
       <Stack direction="row" spacing={2} sx={{ mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
         <FormControl size="small" sx={{ minWidth: 150 }}>

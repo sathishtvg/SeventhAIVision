@@ -237,7 +237,7 @@ export function PostOrdersPage() {
   return (
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-      <PageHeader title="Post Orders" subtitle="Site standing instructions with acknowledgment tracking" />
+      <PageHeader pageKey="post-orders" />
 
       <Stack direction="row" spacing={1.5} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <PermissionGuard permission="shift:manage">

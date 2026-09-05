@@ -51,6 +51,7 @@ import {
   type TourOccurrence,
 } from '@/api/compliance'
 import { apiClient } from '@/api/client'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // Assignable tour guards — Supervisor/Operator/Security Guard only. A raw
 // `role_id >= 4` range check would also sweep in Viewer(6), Client(7), and
@@ -695,9 +696,9 @@ export default function CompliancePage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <PageHeader pageKey="compliance" />
       <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
         <RouteIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>Guard Tour Compliance</Typography>
       </Stack>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>

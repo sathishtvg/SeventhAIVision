@@ -55,6 +55,7 @@ import {
   type AlarmEvent,
   type AlarmZone,
 } from '@/api/alarms'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -695,9 +696,9 @@ export default function AlarmsPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <PageHeader pageKey="alarms" />
       <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
         <SecurityIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>Alarm Panel Integration</Typography>
       </Stack>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>

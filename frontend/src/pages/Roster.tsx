@@ -587,7 +587,7 @@ export function RosterPage() {
 
   return (
     <Box>
-      <PageHeader title="Roster" subtitle="Recurring shift patterns and weekly coverage" />
+      <PageHeader pageKey="roster" />
 
       {activeBatchId && (
         <DraftReviewPanel batchId={activeBatchId} onResolved={() => setActiveBatchId(null)} />

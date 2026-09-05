@@ -594,7 +594,7 @@ export function LeavePage() {
 
   return (
     <Box>
-      <PageHeader title="Leave" subtitle="Leave requests, approvals, and per-guard balances" />
+      <PageHeader pageKey="leave" />
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2.5, flexWrap: 'wrap' }}>
         {[

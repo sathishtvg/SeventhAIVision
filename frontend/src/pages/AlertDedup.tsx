@@ -43,6 +43,7 @@ import {
 } from '@/api/alertDedup'
 import { getCameras } from '@/api/cameras'
 import type { Camera } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const MODULE_TYPES = [
   'lpr', 'face', 'intrusion', 'ppe', 'crowd', 'fire_smoke',
@@ -268,6 +269,7 @@ export default function AlertDedup() {
 
   return (
     <PermissionGuard permission="alert:dedup:manage">
+      <PageHeader pageKey="alert-dedup" />
       <Box sx={{ p: 3 }}>
         {/* Header */}
         <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={3}>

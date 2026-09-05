@@ -261,9 +261,7 @@ export function MapViewPage() {
   return (
     <Box>
       {!isFocus && (
-        <PageHeader
-          title="Site Map"
-          subtitle="Every site plotted with live camera health and manning"
+        <PageHeader pageKey="map"
         />
       )}
 

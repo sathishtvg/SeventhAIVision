@@ -81,7 +81,7 @@ export function RecordingsPage() {
   return (
     <Box sx={{ p: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-      <PageHeader title="Recordings" subtitle="Video recordings from all camera streams" />
+      <PageHeader pageKey="recordings" />
 
       <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
         {allRecordings.filter((r: any) => r.status === 'recording').length > 0 && (

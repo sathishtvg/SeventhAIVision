@@ -552,7 +552,7 @@ export default function Watchlists() {
 
   return (
     <Box>
-      <PageHeader title="Watchlists" subtitle="Plates and faces that should raise an alert on sight — and the ones that never should" />
+      <PageHeader pageKey="watchlists" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

@@ -40,6 +40,7 @@ import {
   listGeofenceEvents, getVehicleJourneys, VEHICLE_TYPES,
 } from '@/api/gps'
 import type { Vehicle, GeofenceEvent, VehicleJourney } from '@/api/gps'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── status helpers ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
@@ -359,10 +360,10 @@ export default function GPSPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="gps" />
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>GPS Fleet Tracking</Typography>
           <Typography variant="body2" color="text.secondary">Live vehicle positions, journeys & geofence alerts</Typography>
         </Box>
         <Stack direction="row" spacing={1}>

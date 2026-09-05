@@ -59,6 +59,7 @@ import { useAuthStore } from '@/store/auth'
 import GlassCard from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const CATEGORY_COLOR: Record<string, string> = {
   general:            '#6C63FF',
@@ -1089,11 +1090,9 @@ export default function TrainingPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="training" />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
         <SchoolIcon sx={{ color: '#6C63FF', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Guard Training & Certifications
-        </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3,

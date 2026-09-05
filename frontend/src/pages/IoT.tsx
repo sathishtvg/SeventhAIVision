@@ -21,6 +21,7 @@ import {
 import type { IoTSensor, IoTAlert } from '@/api/iot'
 import { getSites } from '@/api/sites'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── constants / helpers ───────────────────────────────────────────────────────
 
@@ -317,11 +318,11 @@ export default function IoTPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <PageHeader pageKey="iot" />
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <SensorsIcon sx={{ color: 'primary.main', fontSize: 28 }} />
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 800 }}>Smart Facilities</Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>IoT Sensor Monitoring</Typography>
         </Box>
         {canWrite && (

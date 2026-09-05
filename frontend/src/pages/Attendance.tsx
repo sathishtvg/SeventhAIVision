@@ -689,7 +689,7 @@ export function AttendancePage() {
     <Box sx={{ p: kiosk ? 1.5 : 3 }}>
       <Stack direction="row" alignItems="flex-start" sx={{ mb: 1 }}>
         <Box sx={{ flex: 1 }}>
-          <PageHeader title="Live Attendance" subtitle="Company-wide guard attendance, updating as check-ins arrive" />
+          <PageHeader pageKey="attendance" />
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
           <Tooltip title="Last time this board heard from the server">

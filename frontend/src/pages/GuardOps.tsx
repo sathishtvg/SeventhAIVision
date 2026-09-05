@@ -56,7 +56,7 @@ export default function GuardOps() {
 
   return (
     <Box>
-      <PageHeader title="Guard Operations" subtitle="Shift, patrol and occurrence-book activity for guards currently on duty" />
+      <PageHeader pageKey="guard-ops" />
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         {hasVms && (
           <Tooltip title="Open the gatehouse vehicle board in its own full-screen window — every visitor vehicle on site with its entry time and parking expiry">

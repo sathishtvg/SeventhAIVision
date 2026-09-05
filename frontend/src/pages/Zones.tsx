@@ -492,7 +492,7 @@ export default function Zones() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
-      <PageHeader title="Zones" subtitle="Areas drawn on a camera view that the AI treats as restricted or monitored" />
+      <PageHeader pageKey="zones" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

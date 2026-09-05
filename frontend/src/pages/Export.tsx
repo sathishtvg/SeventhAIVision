@@ -130,7 +130,7 @@ export default function Export() {
 
   return (
     <Box>
-      <PageHeader title="Export" subtitle="Download your data as CSV or JSON for reporting and hand-off" />
+      <PageHeader pageKey="export" />
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Download up to 10,000 rows per export. Apply filters to narrow the result.
       </Typography>

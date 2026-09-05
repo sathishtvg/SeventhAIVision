@@ -681,7 +681,7 @@ export default function Tenants() {
 
   return (
     <Box>
-      <PageHeader title="Tenants" subtitle="Customer organisations on the platform, their module licensing and account status" />
+      <PageHeader pageKey="tenants" />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAddOpen(true)}>
           Add Tenant

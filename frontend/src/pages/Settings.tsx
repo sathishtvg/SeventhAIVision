@@ -17,6 +17,8 @@ import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessi
 import { listDedupRules, createDedupRule, deleteDedupRule, type DedupRuleBody } from '@/api/alertDedup'
 import { getCameras } from '@/api/cameras'
 import { PageHeader } from '@/components/common/PageHeader'
+import { PAGE_LABELS, PAGE_LABELS_SETTING, usePageLabelOverrides, type PageKey } from '@/hooks/usePageLabels'
+import type { PageLabelOverrides } from '@/lib/pageLabels'
 
 interface SettingKnobProps {
   label: string
@@ -399,7 +401,7 @@ export default function Settings() {
 
   return (
     <Box>
-      <PageHeader title="Settings" subtitle="Tenant configuration — AI thresholds, retention periods, branding and appearance" />
+      <PageHeader pageKey="settings" />
       {/* ── My appearance ─────────────────────────────────────────────────
           Deliberately first, and deliberately separate from Tenant Branding
           below: branding is what every user of this tenant sees, this is
@@ -418,6 +420,14 @@ export default function Settings() {
         Tenant Branding
       </Typography>
       <BrandingSection />
+
+      <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+      {/* ── Page names ────────────────────────────────────────────────────── */}
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+        Page Names
+      </Typography>
+      <PageLabelsSection />
 
       <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
 
@@ -1015,6 +1025,116 @@ function TwoFAPolicySection() {
         >
           Save
         </Button>
+      </Box>
+    </GlassCard>
+  )
+}
+
+
+// ── Page names ──────────────────────────────────────────────────────────────
+
+/**
+ * Rename any page to the words this company actually uses.
+ *
+ * Every trade says it differently — occurrence book, day book, DOB — and a
+ * product that insists on its own vocabulary makes staff translate on every
+ * screen. Only edited entries are stored, so a tenant who renames one page
+ * still receives our wording everywhere else, including on pages added later.
+ */
+function PageLabelsSection() {
+  const qc = useQueryClient()
+  const overrides = usePageLabelOverrides()
+  const [filter, setFilter] = useState('')
+  const [draft, setDraft] = useState<Record<string, { title: string; subtitle: string }>>({})
+
+  const save = useMutation({
+    mutationFn: (next: PageLabelOverrides) => upsertSetting(PAGE_LABELS_SETTING, next),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+  })
+
+  const keys = (Object.keys(PAGE_LABELS) as PageKey[]).filter((k) => {
+    if (!filter.trim()) return true
+    const q = filter.toLowerCase()
+    return k.includes(q) || PAGE_LABELS[k].title.toLowerCase().includes(q)
+  })
+
+  const valueFor = (k: PageKey) =>
+    draft[k] ?? {
+      title: overrides[k]?.title ?? PAGE_LABELS[k].title,
+      subtitle: overrides[k]?.subtitle ?? PAGE_LABELS[k].subtitle,
+    }
+
+  const commit = (k: PageKey) => {
+    const v = valueFor(k)
+    const base = PAGE_LABELS[k]
+    const next: PageLabelOverrides = { ...overrides }
+    const entry: { title?: string; subtitle?: string } = {}
+    // Store only what differs from the default — that is what lets our copy
+    // keep improving for everything this tenant did not deliberately reword.
+    if (v.title.trim() && v.title.trim() !== base.title) entry.title = v.title.trim()
+    if (v.subtitle.trim() !== base.subtitle) entry.subtitle = v.subtitle.trim()
+    if (Object.keys(entry).length) next[k] = entry
+    else delete next[k]
+    save.mutate(next)
+    setDraft((d) => { const { [k]: _drop, ...rest } = d; return rest })
+  }
+
+  const reset = (k: PageKey) => {
+    const next = { ...overrides }
+    delete next[k]
+    save.mutate(next)
+    setDraft((d) => { const { [k]: _drop, ...rest } = d; return rest })
+  }
+
+  return (
+    <GlassCard sx={{ p: 3 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Rename any page and rewrite its description to match your own terminology. Everyone in this
+        tenant sees your wording. Anything you leave alone keeps the default and will pick up future
+        improvements.
+      </Typography>
+      <TextField
+        size="small" fullWidth placeholder="Filter pages…" value={filter}
+        onChange={(e) => setFilter(e.target.value)} sx={{ mb: 2 }}
+      />
+      <Box sx={{ maxHeight: 460, overflowY: 'auto', pr: 1 }}>
+        {keys.map((k) => {
+          const v = valueFor(k)
+          const customised = Boolean(overrides[k])
+          const dirty = Boolean(draft[k])
+          return (
+            <Box key={k} sx={{ py: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.75 }}>
+                <Typography variant="caption" color="text.disabled" sx={{ flex: 1, fontFamily: 'monospace' }}>
+                  {k}
+                </Typography>
+                {customised && <Chip size="small" label="Customised" sx={{ height: 18, fontSize: '0.62rem' }} />}
+                {dirty && (
+                  <Button size="small" variant="contained" onClick={() => commit(k)} disabled={save.isPending}>
+                    Save
+                  </Button>
+                )}
+                {customised && !dirty && (
+                  <Button size="small" color="inherit" onClick={() => reset(k)} disabled={save.isPending}>
+                    Reset
+                  </Button>
+                )}
+              </Stack>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                <TextField
+                  size="small" label="Title" value={v.title} sx={{ flex: 1 }}
+                  slotProps={{ htmlInput: { maxLength: 60 } }}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: { ...v, title: e.target.value } }))}
+                />
+                <TextField
+                  size="small" label="Description" value={v.subtitle} sx={{ flex: 2 }}
+                  slotProps={{ htmlInput: { maxLength: 160 } }}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: { ...v, subtitle: e.target.value } }))}
+                />
+              </Stack>
+            </Box>
+          )
+        })}
       </Box>
     </GlassCard>
   )

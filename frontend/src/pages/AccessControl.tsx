@@ -24,6 +24,7 @@ import {
 import GlassCard from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const EVENT_COLOR: Record<string, string> = {
   granted:     '#00E396',
@@ -611,11 +612,9 @@ export default function AccessControlPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="access-control" />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
         <DoorFrontIcon sx={{ color: '#6C63FF', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Access Control
-        </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3,

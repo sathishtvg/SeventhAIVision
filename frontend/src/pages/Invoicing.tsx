@@ -469,7 +469,7 @@ export function InvoicingPage() {
 
   return (
     <Box>
-      <PageHeader title="Client Invoicing" subtitle="Bill your clients for guard services delivered at their sites" />
+      <PageHeader pageKey="invoicing" />
 
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>

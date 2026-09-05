@@ -381,7 +381,7 @@ export function PayrollPage() {
 
   return (
     <Box>
-      <PageHeader title="Payroll" subtitle="Pay runs, CPF contributions, and annual IR8A reporting" />
+      <PageHeader pageKey="payroll" />
 
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>

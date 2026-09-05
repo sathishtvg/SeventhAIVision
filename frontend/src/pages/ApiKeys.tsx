@@ -31,6 +31,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { listApiKeys, createApiKey, revokeApiKey, type ApiKeyCreated } from '@/api/apikeys'
+import { PageHeader } from '@/components/common/PageHeader'
 
 function fmtDate(d: string | null) {
   if (!d) return '—'
@@ -171,6 +172,7 @@ export default function ApiKeys() {
 
   return (
     <PermissionGuard permission="apikey:manage">
+      <PageHeader pageKey="api-keys" />
       <Box sx={{ p: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
           <Stack direction="row" alignItems="center" gap={1.5}>

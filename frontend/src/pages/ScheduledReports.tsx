@@ -77,7 +77,7 @@ export default function ScheduledReports() {
 
   return (
     <Box>
-      <PageHeader title="Scheduled Reports" subtitle="Reports that generate and send themselves on a recurring schedule" />
+      <PageHeader pageKey="scheduled-reports" />
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
           New Schedule

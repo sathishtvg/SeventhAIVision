@@ -24,6 +24,7 @@ import {
 } from '@/api/contractors'
 import type { Contractor, WorkPermit, Delivery } from '@/api/contractors'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -629,6 +630,7 @@ export default function ContractorsPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="contractors" />
       <Typography variant="h5" fontWeight={700} mb={3}>
         Contractor &amp; Delivery Management
       </Typography>

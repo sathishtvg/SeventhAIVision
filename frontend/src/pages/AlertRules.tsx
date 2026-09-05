@@ -141,9 +141,7 @@ export default function AlertRules() {
 
   return (
     <Box>
-      <PageHeader
-        title="Alert Rules"
-        subtitle="Which detections raise an alert, how severe, and which open an incident"
+      <PageHeader pageKey="alert-rules"
         action={
           <Tooltip title="Open Alert Rules in its own window">
             <IconButton size="small" onClick={() => openInNewWindow('/alert-rules')}>
