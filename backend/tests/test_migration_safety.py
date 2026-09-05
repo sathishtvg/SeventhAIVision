@@ -40,8 +40,7 @@ _ENV_PY        = _PROJECT_ROOT / "backend" / "alembic" / "env.py"
 _DESTRUCTIVE_PATTERNS = ["DROP TABLE", "DROP COLUMN", "TRUNCATE TABLE"]
 _NAMING_RE     = re.compile(r"^\d{4}_[a-z0-9_]+\.py$")
 
-_MIN_MIGRATIONS    = 40       # we have 47; this threshold catches accidental deletion
-_EXPECTED_HEAD     = "0057"   # single head as of 2026-07-04
+_MIN_MIGRATIONS    = 40       # we have 86; this threshold catches accidental deletion
 
 
 def _load_yaml(path: Path) -> dict:
@@ -290,11 +289,32 @@ class TestEMigrationChainIntegrity:
         )
 
     def test_head_is_latest_migration(self, revmap):
+        """The chain's head must be the highest-numbered migration on disk.
+
+        This used to compare against a hardcoded _EXPECTED_HEAD that had to be
+        bumped by hand with every migration. It was pinned at "0057" from
+        2026-07-04 while the chain reached 0086 — twenty-nine migrations of
+        drift that nobody saw, because this suite skips itself when run inside
+        the api image and so had not executed since.
+
+        Deriving the expectation removes the maintenance step that failed, and
+        checks the property the test is actually named for. The forked-chain
+        hazard is covered by test_exactly_one_head_migration above; what this
+        adds is that the head is the NEWEST migration, catching a new revision
+        that was written but chained onto the wrong parent — which would leave
+        an older file as head while the new one dangles mid-chain.
+        """
         rev_set = set(revmap.keys())
         referenced_as_parent = {info["down_revision"] for info in revmap.values() if info["down_revision"]}
         heads = rev_set - referenced_as_parent
-        assert _EXPECTED_HEAD in heads, (
-            f"Expected head to be '{_EXPECTED_HEAD}'; got {heads}"
+
+        latest_file = max(revmap.values(), key=lambda info: info["file"])["file"]
+        latest_rev = next(r for r, info in revmap.items() if info["file"] == latest_file)
+
+        assert latest_rev in heads, (
+            f"Head is {heads}, but the newest migration file on disk is "
+            f"'{latest_file}' (revision '{latest_rev}'). A migration was "
+            "probably chained onto the wrong down_revision."
         )
 
     def test_all_migrations_have_upgrade_function(self, revmap):
