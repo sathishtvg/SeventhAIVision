@@ -502,9 +502,6 @@ export function Sidebar() {
   const roleLabel = user ? (ROLE_LABELS[user.roleId] ?? 'User') : 'User'
 
   const divider = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)'
-  const logoTitleGradient = isDark
-    ? `linear-gradient(90deg, #ffffff 30%, ${accentColor}d9 100%)`
-    : `linear-gradient(90deg, #1a1a4e 30%, ${accentColor} 100%)`
 
   return (
     <Drawer
@@ -584,10 +581,7 @@ export function Sidebar() {
                   fontWeight: 800,
                   fontSize: '0.95rem',
                   lineHeight: 1.25,
-                  background: logoTitleGradient,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
+                  color: 'text.primary',
                 }}
               >
                 {brandName}

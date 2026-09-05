@@ -14,6 +14,7 @@ import LanguageIcon from '@mui/icons-material/Language'
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
 import VolumeOffIcon from '@mui/icons-material/VolumeOff'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getBranding } from '@/api/branding'
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
 import { useAuthStore } from '@/store/auth'
 import { useNotificationStore } from '@/store/notifications'
@@ -172,6 +173,19 @@ export function TopBar({ title }: Props) {
   const theme = useTheme()
   const isDark = mode === 'dark'
   const [profileOpen, setProfileOpen] = useState(false)
+
+  // The company name lived only in the sidebar header, which disappears the
+  // moment the menu is collapsed to its rail — so on a folded menu, or in
+  // full-screen, nothing on screen said whose system this was. It belongs on
+  // the bar that is present on every page. Same query key as the sidebar, so
+  // this shares that cache rather than adding a request.
+  const { data: tenantBrand } = useQuery({
+    queryKey: ['branding'],
+    queryFn: getBranding,
+    staleTime: 5 * 60 * 1000,
+  })
+  const companyName =
+    tenantBrand?.branding?.company_name || tenantBrand?.name || '7th AI Vision'
   const { i18n: i18nInstance } = useTranslation()
   const currentLocale = (i18nInstance.language?.slice(0, 2) ?? 'en') as SupportedLocale
 
@@ -187,14 +201,6 @@ export function TopBar({ title }: Props) {
   const wsColor = status === 'open' ? '#22C55E' : status === 'connecting' ? '#F59E0B' : '#FF4560'
   const wsLabel = status === 'open' ? 'Live'     : status === 'connecting' ? 'Connecting'  : 'Offline'
   const wsRgb   = status === 'open' ? '34,197,94' : status === 'connecting' ? '245,158,11' : '255,69,96'
-
-  // Derived from the theme rather than hardcoded, for the same reason
-  // PageHeader is: a fixed #6C63FF ignores whatever brand colour the signed-in
-  // tenant chose, so the title stopped matching the rest of the accented UI.
-  // The first stop is always the theme's own text colour, which is what keeps
-  // the word legible on either ground; only the second stop is decorative.
-  const titleGradient =
-    `linear-gradient(90deg, ${theme.palette.text.primary} 0%, ${theme.palette.primary.main} 100%)`
 
   return (
     <>
@@ -230,32 +236,34 @@ export function TopBar({ title }: Props) {
           }}
         />
 
-        {/* Page title */}
-        <Typography
-          variant="h6"
-          noWrap
-          sx={{
-            flexGrow: 1,
-            fontWeight: 800,
-            fontSize: '0.95rem',
-            background: titleGradient,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            letterSpacing: '-0.02em',
-            // Without this the title is painted with transparent fill and no
-            // clipped background to show through, so it disappears completely
-            // rather than merely losing its gradient. PageHeader already had
-            // the guard; this one did not.
-            '@supports not ((-webkit-background-clip: text) or (background-clip: text))': {
-              background: 'none',
-              WebkitTextFillColor: 'initial',
+        {/* Company first, then where you are inside it. Both are solid text:
+            these used to be painted as a gradient clipped to the glyphs, which
+            fades every title into the accent colour toward its end and reads as
+            washed out on both themes — worse the longer the word. The accent
+            now lives entirely in the bar to the left, where it decorates
+            without costing legibility. */}
+        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 1 }}>
+          <Typography
+            variant="h6"
+            noWrap
+            sx={{
+              fontWeight: 800,
+              fontSize: '0.95rem',
+              letterSpacing: '-0.02em',
               color: 'text.primary',
-            },
-          }}
-        >
-          {title}
-        </Typography>
+              flexShrink: 0,
+            }}
+          >
+            {companyName}
+          </Typography>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{ fontSize: '0.8rem', color: 'text.secondary', minWidth: 0 }}
+          >
+            · {title}
+          </Typography>
+        </Box>
 
         {/* Live clock */}
         <LiveClock />

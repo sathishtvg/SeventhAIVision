@@ -18,16 +18,18 @@ interface PageHeaderProps {
 /**
  * The title block on every page.
  *
- * The title used to be painted with a hardcoded gradient starting at #F1F5F9
- * and `WebkitTextFillColor: transparent`. That reads beautifully on the dark
- * theme and is very nearly invisible on the light one — near-white text on a
- * near-white page — which is what made page titles disappear in light mode.
+ * The title is deliberately solid text, not a gradient clipped to the glyphs.
  *
- * It now derives from the theme instead of hardcoding, so both modes stay
- * legible and the accent follows whatever brand colour the signed-in user has
- * chosen. The gradient's second stop is the only decorative part; the first
- * stop is always the theme's own primary text colour, which is what guarantees
- * the contrast rather than hoping a fixed hex works on both backgrounds.
+ * It was a gradient twice over: first hardcoded from #F1F5F9, which made
+ * titles near-invisible in light mode, then theme-derived, which fixed light
+ * mode but kept the underlying problem — a gradient ending in the accent
+ * colour fades the back half of every word toward that accent, and the longer
+ * the title the more of it is low-contrast. On a page of titles it reads as
+ * washed out in both themes.
+ *
+ * The accent lives in the bar to the left instead, where it carries the brand
+ * without being asked to also be readable text. Reported directly as titles
+ * being hard to see across the app.
  */
 export function PageHeader({ pageKey, title, subtitle, action }: PageHeaderProps) {
   // Called unconditionally — hooks cannot be skipped when pageKey is absent.
@@ -56,22 +58,11 @@ export function PageHeader({ pageKey, title, subtitle, action }: PageHeaderProps
           />
           <Typography
             variant="h5"
-            sx={(theme) => ({
+            sx={{
               fontWeight: 800,
               letterSpacing: '-0.02em',
-              background: `linear-gradient(135deg, ${theme.palette.text.primary} 30%, ${theme.palette.primary.main} 100%)`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              // Fallback for anything that cannot clip a background to text —
-              // without it those renderers get transparent text and the title
-              // vanishes completely rather than merely losing its gradient.
-              '@supports not ((-webkit-background-clip: text) or (background-clip: text))': {
-                background: 'none',
-                WebkitTextFillColor: 'initial',
-                color: theme.palette.text.primary,
-              },
-            })}
+              color: 'text.primary',
+            }}
           >
             {shownTitle}
           </Typography>

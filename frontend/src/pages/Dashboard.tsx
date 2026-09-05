@@ -731,14 +731,11 @@ export default function Dashboard() {
           {/* Same theme-derived treatment as PageHeader: the first gradient
               stop must be the theme's own text colour, or this title turns
               near-white-on-white the moment light mode is on. */}
-          <Typography variant="h5" sx={(t) => ({
+          <Typography variant="h5" sx={{
             fontWeight: 800,
             letterSpacing: '-0.02em',
-            background: `linear-gradient(135deg, ${t.palette.text.primary} 30%, ${t.palette.primary.main} 100%)`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          })}>
+            color: 'text.primary',
+          }}>
             Dashboard
           </Typography>
         </Box>
