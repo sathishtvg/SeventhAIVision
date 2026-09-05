@@ -1,10 +1,16 @@
 name: CI
 
+# `develop` never existed — the working branch is `Development`, and GitHub
+# branch names are case-sensitive, so every push to it triggered nothing. By
+# the time this was noticed, 43 commits had landed without a single check
+# running, including 270 frontend type errors that `npm run typecheck` below
+# would have caught on the first push.
 on:
   push:
-    branches: [main, develop]
+    branches: [main, Development]
   pull_request:
-    branches: [main, develop]
+    branches: [main, Development]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -28,8 +34,13 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ hashFiles('docker/backend.Dockerfile', 'backend/pyproject.toml', 'shared/pyproject.toml') }}
           restore-keys: ${{ runner.os }}-buildx-
 
+      # Compose resolves ${VAR} from the .env in its PROJECT directory, which
+      # is docker/ (where the compose file lives) — not the repo root this used
+      # to copy to. Every variable has a dev default in the compose file, so
+      # the misplaced copy was harmless, but a .env that Compose never reads is
+      # a trap for whoever edits it next expecting an effect.
       - name: Copy env file
-        run: cp .env.example .env
+        run: cp .env.example docker/.env
 
       - name: Build images
         run: docker compose -f docker/docker-compose.yml build --progress=plain api
@@ -57,6 +68,42 @@ jobs:
           docker compose -f docker/docker-compose.yml exec -T api \
             python -m pytest /app/backend/tests/ -v --tb=short \
             --junitxml=/app/backend/test-results.xml
+
+      # The suites above run with `compose exec`, inside the api image — which
+      # ships only backend/. Every test that inspects a repo-root artifact
+      # (Helm charts, Dockerfiles, SOPS and Trivy policy, SBOM and renovate
+      # config, the SLO rules) skips itself there, quite deliberately: see
+      # backend/tests/_repo.py, which says to run them "from a working tree, or
+      # CI with the repo cloned". That never happened, so 1122 tests — every
+      # secret-scanning, container-hardening and dependency-policy check —
+      # ran nowhere at all, and a stale migration head sat failing for two
+      # months unseen. A runner HAS the tree, so mounting the checkout over
+      # /app is all they need.
+      - name: Run repo-inspection suites (skipped inside the api image)
+        run: |
+          API_IMAGE=$(docker compose -f docker/docker-compose.yml images -q api)
+          API_CID=$(docker compose -f docker/docker-compose.yml ps -q api)
+          NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$API_CID")
+          docker run --rm --network "$NET" \
+            -v "${{ github.workspace }}:/app" -w /app \
+            --entrypoint python "$API_IMAGE" \
+            -m pytest -q -p no:cacheprovider --timeout=300 \
+            --junitxml=/app/repo-test-results.xml \
+            backend/tests/test_secret_scanning.py \
+            backend/tests/test_container_hardening.py \
+            backend/tests/test_dependency_policy.py \
+            backend/tests/test_logging_policy.py \
+            backend/tests/test_migration_safety.py \
+            backend/tests/test_backup.py \
+            backend/tests/test_pip_audit.py
+
+      - name: Upload repo-inspection results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-inspection-test-results
+          path: repo-test-results.xml
+          if-no-files-found: ignore
 
       - name: Extract test results
         if: always()
@@ -99,6 +146,13 @@ jobs:
 
       - name: Lint
         run: npm run lint
+        working-directory: frontend
+
+      # The 80 vitest tests existed but ran nowhere in CI. They cover the
+      # permission-driven nav, so a role losing or gaining a menu entry was
+      # invisible to every check here.
+      - name: Test
+        run: npm run test:run
         working-directory: frontend
 
       - name: Build
