@@ -275,7 +275,7 @@ function NewInvoiceDialog({ open, onClose, onCreated }: { open: boolean; onClose
             size="small" label="Period End" type="date" fullWidth
             slotProps={{ inputLabel: { shrink: true } }} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
           />
-          <TextField size="small" label="Tax Rate (%)" type="number" fullWidth value={taxRate} onChange={(e) => setTaxRate(e.target.value)} inputProps={{ min: 0, step: 0.1 }} />
+          <TextField size="small" label="Tax Rate (%)" type="number" fullWidth value={taxRate} onChange={(e) => setTaxRate(e.target.value)} slotProps={{ htmlInput: { min: 0, step: 0.1 } }} />
           <TextField
             size="small" label="Due Date (optional)" type="date" fullWidth
             slotProps={{ inputLabel: { shrink: true } }} value={dueDate} onChange={(e) => setDueDate(e.target.value)}
@@ -326,7 +326,7 @@ function InvoiceDetail({ invoiceId, onBack }: { invoiceId: string; onBack: () =>
     <Box sx={{ p: 2 }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2, flexWrap: 'wrap' }}>
         <IconButton size="small" onClick={onBack}><ArrowBackIcon fontSize="small" /></IconButton>
-        <Typography variant="subtitle1" fontWeight={700}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           {invoice.invoice_number ?? 'Draft'} — {invoice.client_name}
         </Typography>
         <InvoiceStatusChip status={invoice.status} />
@@ -447,7 +447,7 @@ function InvoicesTab() {
               }}
             >
               <Box>
-                <Typography variant="body2" fontWeight={600}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
                   {inv.invoice_number ?? 'Draft'} — {inv.client_name}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">

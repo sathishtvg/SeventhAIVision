@@ -118,7 +118,7 @@ function BackupsPanel() {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <BackupIcon sx={{ fontSize: 18, color: 'secondary.main' }} />
-          <Typography variant="subtitle1" fontWeight={700}>Database Backups</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Database Backups</Typography>
         </Box>
         <Button
           size="small"
@@ -218,7 +218,7 @@ export default function Developer() {
     <Box>
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <ApiIcon sx={{ fontSize: 28, color: 'primary.main' }} />
-        <Typography variant="h5" fontWeight={700}>Developer Portal</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>Developer Portal</Typography>
       </Box>
 
       {/* Quick links */}
@@ -268,7 +268,7 @@ export default function Developer() {
         <Stack spacing={3} sx={{ flex: 1, minWidth: 0 }}>
           {/* Auth quick-ref */}
           <GlassCard sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700 }}>
               Authentication
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -291,7 +291,7 @@ export default function Developer() {
                           bgcolor: `${METHOD_COLORS[m]}22`, color: METHOD_COLORS[m],
                           border: `1px solid ${METHOD_COLORS[m]}55`, fontWeight: 700 }}
                   />
-                  <Typography variant="caption" fontFamily="monospace" color="text.primary">{p}</Typography>
+                  <Typography variant="caption" color="text.primary" sx={{ fontFamily: "monospace" }}>{p}</Typography>
                   <Typography variant="caption" color="text.secondary">— {d}</Typography>
                 </Box>
               ))}
@@ -300,7 +300,7 @@ export default function Developer() {
 
           {/* Key endpoints */}
           <GlassCard sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" fontWeight={700} gutterBottom>Key Endpoints</Typography>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700 }}>Key Endpoints</Typography>
             <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
               <Table size="small">
                 <TableHead>
@@ -340,7 +340,7 @@ export default function Developer() {
         <GlassCard sx={{ p: 2.5, flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <CodeIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Typography variant="subtitle1" fontWeight={700}>Quick Start</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Quick Start</Typography>
           </Box>
 
           <Tabs
@@ -359,7 +359,7 @@ export default function Developer() {
 
           <Divider sx={{ my: 2 }} />
 
-          <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>
             Rate Limits
           </Typography>
           <Stack spacing={0.5}>
@@ -370,14 +370,14 @@ export default function Developer() {
             ].map(([k, v]) => (
               <Box key={k} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
                 <Typography variant="caption" color="text.secondary">{k}</Typography>
-                <Typography variant="caption" fontFamily="monospace" color="text.primary" sx={{ textAlign: 'right' }}>{v}</Typography>
+                <Typography variant="caption" color="text.primary" sx={{ textAlign: 'right', fontFamily: "monospace" }}>{v}</Typography>
               </Box>
             ))}
           </Stack>
 
           <Divider sx={{ my: 2 }} />
 
-          <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>
             WebSocket Push
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>

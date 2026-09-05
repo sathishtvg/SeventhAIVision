@@ -260,7 +260,7 @@ export function PostOrdersPage() {
               <ListItemText
                 primary={
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2" fontWeight={700}>{o.title}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{o.title}</Typography>
                     <Chip label={o.category} size="small"
                           color={CATEGORY_COLORS[o.category] ?? 'default'}
                           sx={{ height: 18, fontSize: '0.62rem' }} />

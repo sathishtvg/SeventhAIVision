@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   Box, Tab, Tabs, Typography, Button, Paper, Table, TableBody, TableCell,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -69,7 +69,7 @@ function PdfReportsTab() {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
           Alerts, incidents, and camera stats for a site over a date range.
         </Typography>
-        <Grid container spacing={2} alignItems="flex-end">
+        <Grid container spacing={2} sx={{ alignItems: "flex-end" }}>
           <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               select label="Site" value={siteForm.site_id} fullWidth size="small"
@@ -115,7 +115,7 @@ function PdfReportsTab() {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
           Printable DOB extract for PLRD compliance and handover purposes.
         </Typography>
-        <Grid container spacing={2} alignItems="flex-end">
+        <Grid container spacing={2} sx={{ alignItems: "flex-end" }}>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField
               label="From" type="date" value={dobForm.date_from} fullWidth size="small"
@@ -162,7 +162,7 @@ function PdfReportsTab() {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
           Full incident report with evidence chain of custody and timeline.
         </Typography>
-        <Grid container spacing={2} alignItems="flex-end">
+        <Grid container spacing={2} sx={{ alignItems: "flex-end" }}>
           <Grid size={{ xs: 12, sm: 8 }}>
             <TextField
               label="Incident ID" value={incidentId} fullWidth size="small"

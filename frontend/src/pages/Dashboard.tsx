@@ -195,7 +195,7 @@ function LiveEventsFeed() {
 
   return (
     <GlassCard sx={{ p: 2.5, height: '100%' }}>
-      <Typography variant="subtitle2" fontWeight={700} gutterBottom>Live Events</Typography>
+      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Live Events</Typography>
       <Box sx={{ overflowY: 'auto', maxHeight: 340 }}>
         {events.length === 0 ? (
           <Typography variant="caption" color="text.disabled">Waiting for events…</Typography>
@@ -205,7 +205,7 @@ function LiveEventsFeed() {
               ? <SeverityChip severity={e.severity as AlertSeverity} />
               : <Chip label={e.event_type.replace('_', ' ')} size="small" variant="outlined" sx={{ fontSize: '0.6rem', height: 18 }} />}
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="caption" noWrap display="block">{e.title}</Typography>
+              <Typography variant="caption" noWrap sx={{ display: "block" }}>{e.title}</Typography>
               <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.62rem' }}>
                 {e.site_name && `${e.site_name} · `}{new Date(e.ts).toLocaleTimeString()}
               </Typography>
@@ -231,7 +231,7 @@ function CameraStatusGrid({ siteFilter }: { siteFilter: string }) {
 
   return (
     <GlassCard sx={{ p: 2.5 }}>
-      <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>
         Camera Status
         <Chip label={`${streams.length}`} size="small" sx={{ ml: 1, height: 18, fontSize: '0.68rem' }} />
       </Typography>
@@ -243,10 +243,10 @@ function CameraStatusGrid({ siteFilter }: { siteFilter: string }) {
               <Box sx={{ p: 1, borderRadius: 1, border: '1px solid', borderColor: `${statusColor(s.status)}33`, bgcolor: `${statusColor(s.status)}08` }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: statusColor(s.status), flexShrink: 0 }} />
-                  <Typography variant="caption" fontWeight={600} noWrap>{s.camera_name}</Typography>
+                  <Typography variant="caption" noWrap sx={{ fontWeight: 600 }}>{s.camera_name}</Typography>
                 </Box>
                 {s.site_name && (
-                  <Typography variant="caption" color="text.disabled" display="block" noWrap sx={{ fontSize: '0.62rem' }}>{s.site_name}</Typography>
+                  <Typography variant="caption" color="text.disabled" noWrap sx={{ fontSize: '0.62rem', display: "block" }}>{s.site_name}</Typography>
                 )}
               </Box>
             </Tooltip>
@@ -273,7 +273,7 @@ function AlertSeverityBreakdown() {
 
   return (
     <GlassCard sx={{ p: 2.5 }}>
-      <Typography variant="subtitle2" fontWeight={700} gutterBottom>Alert Severity (7 days)</Typography>
+      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Alert Severity (7 days)</Typography>
       {data.length === 0 ? (
         <Typography variant="caption" color="text.disabled">No alerts</Typography>
       ) : (
@@ -321,7 +321,7 @@ function ActiveRecordingsPanel({ siteFilter }: { siteFilter: string }) {
     <GlassCard sx={{ p: 2.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <FiberManualRecordIcon sx={{ color: 'error.main', fontSize: 14 }} />
-        <Typography variant="subtitle2" fontWeight={700}>Active Recordings</Typography>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Active Recordings</Typography>
         <Chip label={recordings.length} size="small" color="error" variant="outlined" sx={{ height: 18, fontSize: '0.62rem' }} />
       </Box>
       {recordings.length === 0 ? (
@@ -332,9 +332,9 @@ function ActiveRecordingsPanel({ siteFilter }: { siteFilter: string }) {
             <Box key={r.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 1.5s infinite' }} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="caption" noWrap fontWeight={500}>{r.camera_name ?? r.camera_id}</Typography>
+                <Typography variant="caption" noWrap sx={{ fontWeight: 500 }}>{r.camera_name ?? r.camera_id}</Typography>
                 {r.site_name && (
-                  <Typography variant="caption" color="text.disabled" display="block" sx={{ fontSize: '0.62rem' }}>{r.site_name}</Typography>
+                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.62rem', display: "block" }}>{r.site_name}</Typography>
                 )}
               </Box>
               <Typography variant="caption" color="error.light" sx={{ fontFamily: 'monospace' }}>
@@ -361,7 +361,7 @@ function SiteHealthCards() {
 
   return (
     <GlassCard sx={{ p: 2.5 }}>
-      <Typography variant="subtitle2" fontWeight={700} gutterBottom>Site Health</Typography>
+      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Site Health</Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 1 }}>
         {(sites as any[]).map((site) => {
           const siteStreams = (streams as any[]).filter((s) => s.site_id === site.id)
@@ -372,7 +372,7 @@ function SiteHealthCards() {
           const color = allOnline ? '#00E396' : someOnline ? '#FF9800' : '#ff4560'
           return (
             <Box key={site.id} sx={{ p: 1, borderRadius: 1, border: '1px solid', borderColor: `${color}33`, bgcolor: `${color}08` }}>
-              <Typography variant="caption" fontWeight={700} noWrap display="block">{site.name}</Typography>
+              <Typography variant="caption" noWrap sx={{ fontWeight: 700, display: "block" }}>{site.name}</Typography>
               <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.62rem' }}>
                 {online}/{total} online
               </Typography>
@@ -402,7 +402,7 @@ function NotificationChannelsStatus() {
 
   return (
     <GlassCard sx={{ p: 2.5 }}>
-      <Typography variant="subtitle2" fontWeight={700} gutterBottom>Notification Channels</Typography>
+      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Notification Channels</Typography>
       <Stack spacing={0.5}>
         {(channels as any[]).map((ch) => (
           <Box key={ch.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -442,7 +442,7 @@ function IncidentResolutionPanel() {
     <GlassCard sx={{ p: 2.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <TimerIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-        <Typography variant="subtitle2" fontWeight={700}>Incident Resolution (30 days)</Typography>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Incident Resolution (30 days)</Typography>
       </Box>
       {!data ? (
         <Skeleton height={60} />
@@ -455,7 +455,7 @@ function IncidentResolutionPanel() {
             { label: 'Total', value: (data as any).total_resolved ?? 0 },
           ].map((m) => (
             <Box key={m.label} sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" fontWeight={700} color="secondary.main">{m.value}</Typography>
+              <Typography variant="h6" color="secondary.main" sx={{ fontWeight: 700 }}>{m.value}</Typography>
               <Typography variant="caption" color="text.disabled">{m.label}</Typography>
             </Box>
           ))}
@@ -483,7 +483,7 @@ function SystemHealth() {
   return (
     <GlassCard sx={{ p: 1.5 }}>
       <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="center">
-        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mr: 1 }}>System</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ mr: 1, fontWeight: 600 }}>System</Typography>
         {CORE.map((svc) => (
           <Tooltip key={svc} title={`${svc}: ${services[svc] ?? 'unknown'}`}>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ cursor: 'default' }}>
@@ -493,7 +493,7 @@ function SystemHealth() {
           </Tooltip>
         ))}
         <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-        <Typography variant="caption" color="text.secondary" fontWeight={600}>AI Workers</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>AI Workers</Typography>
         {WORKERS.map((mod) => {
           const s = services[`worker_${mod}`]
           return (
@@ -821,7 +821,7 @@ export default function Dashboard() {
             <CameraStatusGrid siteFilter={siteFilter} />
             <ActiveRecordingsPanel siteFilter={siteFilter} />
             <GlassCard sx={{ p: 2.5 }}>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>Recent Open Alerts</Typography>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Recent Open Alerts</Typography>
               {!recentAlerts ? (
                 <Skeleton height={120} />
               ) : !recentAlerts.items?.length ? (
@@ -832,9 +832,9 @@ export default function Dashboard() {
                     <Box key={a.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <SeverityChip severity={a.severity as AlertSeverity} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="caption" noWrap fontWeight={500}>{a.title}</Typography>
+                        <Typography variant="caption" noWrap sx={{ fontWeight: 500 }}>{a.title}</Typography>
                         {a.site_name && (
-                          <Typography variant="caption" color="text.disabled" display="block" sx={{ fontSize: '0.62rem' }}>
+                          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.62rem', display: "block" }}>
                             {a.site_name}
                           </Typography>
                         )}
@@ -851,7 +851,7 @@ export default function Dashboard() {
         <Grid size={{ xs: 12, md: 4 }}>
           <Stack spacing={2}>
             <GlassCard sx={{ p: 2.5 }}>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>Detections — 7 Days</Typography>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Detections — 7 Days</Typography>
               <Sparkline data={trend as any[]} color="#6C63FF" height={60} />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
                 <Typography variant="caption" color="text.disabled">
@@ -864,7 +864,7 @@ export default function Dashboard() {
             <AlertSeverityBreakdown />
 
             <GlassCard sx={{ p: 2.5 }}>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>Alerts by Module (7 days)</Typography>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Alerts by Module (7 days)</Typography>
               {(moduleData as any[]).length === 0 ? (
                 <Typography variant="caption" color="text.disabled">No data</Typography>
               ) : (
@@ -889,7 +889,7 @@ export default function Dashboard() {
             </GlassCard>
 
             <GlassCard sx={{ p: 2.5 }}>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>Top Cameras by Alerts (30 days)</Typography>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Top Cameras by Alerts (30 days)</Typography>
               {(topCameras as any[]).length === 0 ? (
                 <Typography variant="caption" color="text.disabled">No data</Typography>
               ) : (

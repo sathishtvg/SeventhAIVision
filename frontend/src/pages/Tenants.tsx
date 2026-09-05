@@ -736,8 +736,8 @@ export default function Tenants() {
                     {t.subdomain && t.subdomain !== t.slug && (
                       <Typography
                         variant="caption"
-                        display="block"
-                        sx={{ color: 'text.disabled', fontSize: '0.65rem' }}
+
+                        sx={{ color: 'text.disabled', fontSize: '0.65rem', display: "block" }}
                       >
                         {t.subdomain}
                       </Typography>

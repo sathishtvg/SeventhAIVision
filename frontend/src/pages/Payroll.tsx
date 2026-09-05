@@ -191,7 +191,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
     <Box sx={{ p: 2 }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
         <IconButton size="small" onClick={onBack}><ArrowBackIcon fontSize="small" /></IconButton>
-        <Typography variant="subtitle1" fontWeight={700}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           {run.period_start} – {run.period_end}
         </Typography>
         <RunStatusChip status={run.status} />
@@ -305,7 +305,7 @@ function RunsTab() {
                 cursor: 'pointer', borderRadius: '8px', '&:hover': { backgroundColor: 'rgba(255,255,255,0.04)' },
               }}
             >
-              <Typography variant="body2" fontWeight={600}>{r.period_start} – {r.period_end}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{r.period_start} – {r.period_end}</Typography>
               <RunStatusChip status={r.status} />
             </Box>
           ))}

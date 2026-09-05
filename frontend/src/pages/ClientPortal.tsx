@@ -62,7 +62,7 @@ function KpiCard({ icon, label, value, accent }: {
           {icon}
         </Box>
         <Box>
-          <Typography variant="h5" fontWeight={800}>{value}</Typography>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>{value}</Typography>
           <Typography variant="caption" color="text.secondary">{label}</Typography>
         </Box>
       </Stack>
@@ -123,7 +123,7 @@ export default function ClientPortal() {
             <ShieldIcon />
           )}
           <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
               {brandName}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -162,7 +162,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Recent Alerts
                 </Typography>
                 {alerts.length === 0 ? (
@@ -191,7 +191,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Open Incidents
                 </Typography>
                 {openIncidents.length === 0 ? (
@@ -220,7 +220,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Cameras
                 </Typography>
                 {streams.length === 0 ? (
@@ -270,7 +270,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Occurrence Book
                 </Typography>
                 {dobEntries.length === 0 ? (
@@ -304,7 +304,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Invoices
                 </Typography>
                 {invoices.length === 0 ? (

@@ -11,7 +11,7 @@
  * latch open, and offering a button that is guaranteed to fail is worse than
  * not offering it.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactElement } from 'react'
 import {
   Box, Typography, Chip, Select, MenuItem, FormControl, InputLabel, Skeleton,
   Button, Divider, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
@@ -31,7 +31,7 @@ import {
   listBarriers, createBarrier, updateBarrier, deleteBarrier, issueBarrierCommand,
   getBarrierStatus, listBarrierCommands, getVendorCapabilities,
   VENDOR_LABELS, COMMAND_LABELS,
-  type Barrier, type BarrierVendor, type BarrierCommand, type BarrierInput,
+  type Barrier, type BarrierVendor, type BarrierCommand, type BarrierCapability, type BarrierInput,
 } from '@/api/barriers'
 import { getSites } from '@/api/sites'
 import { getCameras } from '@/api/cameras'
@@ -54,7 +54,7 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
  * CAMERA's address, not a separate controller's. */
 const CAMERA_IO_VENDORS: BarrierVendor[] = ['hikvision_camera_io', 'dahua_camera_io']
 
-const COMMAND_ICONS: Record<string, JSX.Element> = {
+const COMMAND_ICONS: Record<string, ReactElement> = {
   open: <LockOpenIcon fontSize="small" />,
   close: <LockIcon fontSize="small" />,
   hold_open: <PushPinIcon fontSize="small" />,
@@ -98,7 +98,7 @@ export function BarriersPage() {
     queryFn: getVendorCapabilities,
   })
 
-  const capsFor = (vendor: BarrierVendor): BarrierCommand[] =>
+  const capsFor = (vendor: BarrierVendor): BarrierCapability[] =>
     capabilities.find((c) => c.vendor === vendor)?.commands ?? []
 
   const invalidate = () => {
@@ -191,7 +191,7 @@ export function BarriersPage() {
         ].map((k, i) => (
           <GlassCard key={k.label} sx={{ ...fadeUpSx(i), p: 2, minWidth: 170, flex: 1 }}>
             <Typography variant="caption" color="text.secondary">{k.label}</Typography>
-            <Typography variant="h4" fontWeight={700}>{k.value}</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>{k.value}</Typography>
           </GlassCard>
         ))}
       </Stack>
@@ -215,7 +215,7 @@ export function BarriersPage() {
               <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <Box sx={{ minWidth: 220, flex: 1 }}>
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                    <Typography fontWeight={700}>{b.name}</Typography>
+                    <Typography sx={{ fontWeight: 700 }}>{b.name}</Typography>
                     <StatusChip status={b.last_status} />
                     {!b.is_active && <Chip size="small" label="Inactive" />}
                   </Stack>

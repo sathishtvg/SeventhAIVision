@@ -117,7 +117,7 @@ function IncidentDrawer({ incident, onClose }: IncidentDrawerProps) {
 
             {/* Status stepper */}
             <Box sx={{ mb: 2 }}>
-              <Stepper activeStep={currentStepIndex} alternativeLabel size="small">
+              <Stepper activeStep={currentStepIndex} alternativeLabel>
                 {STATUS_STEPS.map((s) => (
                   <Step key={s} completed={currentStepIndex > STATUS_STEPS.indexOf(s)}>
                     <StepLabel sx={{ '& .MuiStepLabel-label': { fontSize: '0.6rem' } }}>

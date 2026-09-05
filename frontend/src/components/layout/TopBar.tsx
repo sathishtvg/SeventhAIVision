@@ -88,7 +88,7 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
                     s.last_seen_at ? `Last seen: ${new Date(s.last_seen_at).toLocaleString()}` : null,
                   ].filter(Boolean).join('  ·  ')}
                   slotProps={{
-                    primary: { variant: 'body2', fontWeight: 600 },
+                    primary: { variant: 'body2', sx: { fontWeight: 600 } },
                     secondary: { variant: 'caption', color: 'text.secondary' },
                   }}
                 />
@@ -179,7 +179,7 @@ export function TopBar({ title }: Props) {
     i18n.changeLanguage(locale)
     localStorage.setItem('locale', locale)
     // Persist to backend (fire-and-forget)
-    import('@/api/client').then(({ default: apiClient }) => {
+    import('@/api/client').then(({ apiClient }) => {
       apiClient.put('/api/v1/i18n/me/locale', { locale }).catch(() => {/* ignore if logged out */})
     })
   }

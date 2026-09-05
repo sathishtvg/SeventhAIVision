@@ -64,9 +64,9 @@ function KpiCard({ label, value, icon, color, sub }: {
         {icon}
       </Box>
       <Box>
-        <Typography variant="h5" fontWeight={700}>{value}</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>{value}</Typography>
         <Typography variant="caption" color="text.secondary">{label}</Typography>
-        {sub && <Typography variant="caption" color="text.secondary" display="block">{sub}</Typography>}
+        {sub && <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>{sub}</Typography>}
       </Box>
     </Paper>
   )
@@ -79,19 +79,6 @@ const BAY_COLOR: Record<string, string> = {
   occupied: '#FF4560',
   reserved: '#FF9800',
   blocked: '#9E9E9E',
-}
-
-function BayChip({ status }: { status: string }) {
-  return (
-    <Box
-      sx={{
-        width: 14, height: 14, borderRadius: '3px',
-        background: BAY_COLOR[status] ?? '#555',
-        display: 'inline-block',
-        title: status,
-      }}
-    />
-  )
 }
 
 function SessionStatusChip({ status }: { status: string }) {
@@ -130,7 +117,7 @@ function OccupancyGrid({ carparkId }: { carparkId: string }) {
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
           <Typography variant="caption">{occupied} / {totalBays} occupied</Typography>
-          <Typography variant="caption" fontWeight={700} color={pct > 80 ? 'error.main' : pct > 60 ? 'warning.main' : 'success.main'}>
+          <Typography variant="caption" color={pct > 80 ? 'error.main' : pct > 60 ? 'warning.main' : 'success.main'} sx={{ fontWeight: 700 }}>
             {pct}%
           </Typography>
         </Box>
@@ -163,7 +150,7 @@ function OccupancyGrid({ carparkId }: { carparkId: string }) {
         const zoneBays = data.bays.filter((b: ParkingBay) => b.zone_name === zone.name)
         return (
           <Box key={zone.id} sx={{ mb: 2 }}>
-            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block', fontWeight: 700 }}>
               {zone.name} — {zone.zone_type} (L{zone.level})
               &nbsp;·&nbsp;{zone.available ?? 0} free / {zoneBays.length} total
             </Typography>
@@ -340,7 +327,7 @@ function ExitDialog({ session, onClose }: { session: ParkingSession; onClose: ()
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
         {result ? (
           <Box sx={{ textAlign: 'center', py: 2 }}>
-            <Typography variant="h4" fontWeight={700} color="success.main">
+            <Typography variant="h4" color="success.main" sx={{ fontWeight: 700 }}>
               SGD {result.fee_amount.toFixed(2)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -461,7 +448,7 @@ function OverviewTab() {
                 <Paper sx={{ p: 2, borderRadius: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Box>
-                      <Typography variant="subtitle1" fontWeight={700}>{cp.name}</Typography>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{cp.name}</Typography>
                       {cp.site_name && (
                         <Typography variant="caption" color="text.secondary">{cp.site_name}</Typography>
                       )}
@@ -477,10 +464,10 @@ function OverviewTab() {
                   </Box>
 
                   <Box sx={{ display: 'flex', gap: 3, mb: 1 }}>
-                    <Box><Typography variant="h6" fontWeight={700}>{cp.available_bays ?? 0}</Typography><Typography variant="caption" color="success.main">Available</Typography></Box>
-                    <Box><Typography variant="h6" fontWeight={700}>{occ}</Typography><Typography variant="caption" color="error.main">Occupied</Typography></Box>
-                    <Box><Typography variant="h6" fontWeight={700}>{total}</Typography><Typography variant="caption" color="text.secondary">Total</Typography></Box>
-                    <Box><Typography variant="h6" fontWeight={700}>{cp.levels}</Typography><Typography variant="caption" color="text.secondary">Levels</Typography></Box>
+                    <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>{cp.available_bays ?? 0}</Typography><Typography variant="caption" color="success.main">Available</Typography></Box>
+                    <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>{occ}</Typography><Typography variant="caption" color="error.main">Occupied</Typography></Box>
+                    <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>{total}</Typography><Typography variant="caption" color="text.secondary">Total</Typography></Box>
+                    <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>{cp.levels}</Typography><Typography variant="caption" color="text.secondary">Levels</Typography></Box>
                   </Box>
 
                   <LinearProgress
@@ -502,7 +489,7 @@ function OverviewTab() {
                       <OccupancyGrid carparkId={cp.id} />
                       {rates.length > 0 && (
                         <Box sx={{ mt: 2 }}>
-                          <Typography variant="caption" fontWeight={700} color="text.secondary">Rates</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>Rates</Typography>
                           {rates.map(r => (
                             <Box key={r.id} sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
                               <Chip label={r.rate_name} size="small" />
@@ -619,7 +606,7 @@ function SessionsTab() {
               {sessions.map(s => (
                 <TableRow key={s.id} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={600} fontFamily="monospace">
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: "monospace" }}>
                       {s.vehicle_plate || '—'}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">{s.vehicle_type}</Typography>
@@ -637,7 +624,7 @@ function SessionsTab() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={600}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {s.fee_amount != null ? s.fee_amount.toFixed(2) : '—'}
                     </Typography>
                   </TableCell>
@@ -792,8 +779,8 @@ function LprCamerasTab() {
   return (
     <Box>
       {/* Config table */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6" fontWeight={600}>LPR Camera → Carpark Mappings</Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>LPR Camera → Carpark Mappings</Typography>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAddOpen(true)}>
           Add Camera
         </Button>
@@ -845,8 +832,8 @@ function LprCamerasTab() {
       )}
 
       {/* LPR-triggered sessions */}
-      <Typography variant="h6" fontWeight={600} mb={1}>LPR-Triggered Sessions</Typography>
-      <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>LPR-Triggered Sessions</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
         Parking sessions automatically created or closed by plate recognition
       </Typography>
       <Paper sx={{ overflow: 'auto' }}>
@@ -873,8 +860,8 @@ function LprCamerasTab() {
             )}
             {lprSessions.map((s) => (
               <TableRow key={s.id} hover>
-                <TableCell><Typography variant="body2" fontWeight={600}>{s.vehicle_plate ?? '—'}</Typography></TableCell>
-                <TableCell>{s.carpark_name ?? '—'}</TableCell>
+                <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{s.vehicle_plate ?? '—'}</Typography></TableCell>
+                <TableCell>{s.car_park_name ?? '—'}</TableCell>
                 <TableCell>{s.zone_name ?? '—'}</TableCell>
                 <TableCell><Typography variant="caption">{new Date(s.entry_at).toLocaleString()}</Typography></TableCell>
                 <TableCell><Typography variant="caption">{s.exit_at ? new Date(s.exit_at).toLocaleString() : '—'}</Typography></TableCell>
@@ -912,7 +899,7 @@ export default function ParkingPage() {
       <PageHeader pageKey="parking" />
 
       {/* KPI row */}
-      <Grid container spacing={2} mb={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiCard label="Available Bays" value={dash?.available_bays ?? 0} icon={<LocalParkingIcon />} color="#00E396"
             sub={`${occPct}% occupied`} />

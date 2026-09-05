@@ -69,7 +69,7 @@ function BulkImportDialog({ open, onClose }: { open: boolean; onClose: () => voi
             {result.errors.length > 0 && (
               <Box sx={{ maxHeight: 160, overflowY: 'auto' }}>
                 {result.errors.map((e) => (
-                  <Typography key={e.row} variant="caption" color="error" display="block">
+                  <Typography key={e.row} variant="caption" color="error" sx={{ display: "block" }}>
                     Row {e.row}: {e.error}
                   </Typography>
                 ))}
@@ -298,7 +298,7 @@ function PlateTable() {
             <TextField
               label="Plate Number" value={form.plate_number} size="small" sx={{ flex: 1 }}
               onChange={(e) => set('plate_number', e.target.value)}
-              inputProps={{ style: { textTransform: 'uppercase', letterSpacing: 1 } }}
+              slotProps={{ htmlInput: { style: { textTransform: 'uppercase', letterSpacing: 1 } } }}
             />
             <FormControl size="small" sx={{ flex: 1 }}>
               <InputLabel>Category</InputLabel>
@@ -332,15 +332,15 @@ function PlateTable() {
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
               label="Valid From" type="date" size="small" sx={{ flex: 1 }}
-              InputLabelProps={{ shrink: true }} value={form.valid_from ?? ''}
+ value={form.valid_from ?? ''}
               onChange={(e) => set('valid_from', e.target.value)}
-              helperText="Blank = no start limit"
+              helperText="Blank = no start limit" slotProps={{ inputLabel: { shrink: true } }}
             />
             <TextField
               label="Valid To" type="date" size="small" sx={{ flex: 1 }}
-              InputLabelProps={{ shrink: true }} value={form.valid_to ?? ''}
+ value={form.valid_to ?? ''}
               onChange={(e) => set('valid_to', e.target.value)}
-              helperText="Blank = never expires"
+              helperText="Blank = never expires" slotProps={{ inputLabel: { shrink: true } }}
             />
           </Box>
           <TextField label="Remarks" value={form.remarks ?? ''} size="small" fullWidth multiline minRows={2}

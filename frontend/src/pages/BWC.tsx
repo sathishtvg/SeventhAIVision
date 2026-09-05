@@ -43,7 +43,7 @@ function KpiCard({ label, value, icon, color, warn }: {
         {icon}
       </Box>
       <Box>
-        <Typography variant="h5" fontWeight={700} color={warn && value > 0 ? 'error.main' : 'text.primary'}>
+        <Typography variant="h5" color={warn && value > 0 ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
           {value}
         </Typography>
         <Typography variant="caption" color="text.secondary">{label}</Typography>
@@ -253,7 +253,7 @@ function CamerasTab() {
               }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Box>
-                    <Typography variant="subtitle1" fontWeight={700} fontFamily="monospace">
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, fontFamily: "monospace" }}>
                       {cam.serial_number}
                     </Typography>
                     {cam.model && <Typography variant="caption" color="text.secondary">{cam.model}</Typography>}
@@ -404,7 +404,7 @@ function RecordingsTab() {
   })
   const recordings = _recData?.items ?? []
 
-  const { data: cameras = [] } = useQuery({ queryKey: ['bwc-cameras'], queryFn: () => listCameras() })
+  const { data: _cameras = [] } = useQuery({ queryKey: ['bwc-cameras'], queryFn: () => listCameras() })
 
   const stopMut = useMutation({
     mutationFn: (rec: BWCRecording) => stopRecording(rec.camera_id, rec.id),
@@ -460,7 +460,7 @@ function RecordingsTab() {
               {recordings.map(r => (
                 <TableRow key={r.id} hover>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace">{r.serial_number || r.camera_id.slice(0, 8)}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: "monospace" }}>{r.serial_number || r.camera_id.slice(0, 8)}</Typography>
                   </TableCell>
                   <TableCell><Typography variant="body2">{r.user_name || '—'}</Typography></TableCell>
                   <TableCell>
@@ -561,7 +561,7 @@ function EventsTab() {
                     <Typography variant="caption">{new Date(e.occurred_at).toLocaleString()}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace">{e.serial_number || e.camera_id.slice(0, 8)}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: "monospace" }}>{e.serial_number || e.camera_id.slice(0, 8)}</Typography>
                   </TableCell>
                   <TableCell><Typography variant="body2">{e.user_name || '—'}</Typography></TableCell>
                   <TableCell>
@@ -610,7 +610,7 @@ export default function BWCPage() {
       <PageHeader pageKey="bwc" />
 
       {/* KPI row */}
-      <Grid container spacing={2} mb={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiCard label="Total Cameras" value={dash?.total_cameras ?? 0} icon={<VideocamIcon />} color="#6C63FF" />
         </Grid>

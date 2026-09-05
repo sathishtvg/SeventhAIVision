@@ -123,7 +123,7 @@ export function PlaybackPage() {
           size="small"
           value={date}
           onChange={(e) => { setDate(e.target.value); setPlaying(null) }}
-          inputProps={{ max: todayStr() }}
+          slotProps={{ htmlInput: { max: todayStr() } }}
         />
         {timeline && (
           <Typography variant="caption" color="text.secondary">
@@ -218,7 +218,7 @@ export function PlaybackPage() {
               <Box sx={{ p: 1.5 }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                   <PlayArrowIcon fontSize="small" />
-                  <Typography variant="body2" fontWeight={700} sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ flex: 1, fontWeight: 700 }}>
                     {timeline?.camera_name} — {fmtTime(playing.started_at)}
                     {playing.ended_at ? ` to ${fmtTime(playing.ended_at)}` : ''}
                   </Typography>

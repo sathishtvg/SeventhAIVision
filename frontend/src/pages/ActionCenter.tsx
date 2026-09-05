@@ -5,7 +5,7 @@
  * offline cameras); a security guard sees their own pending duties. The
  * backend self-scopes by role, so this page just renders whatever it returns.
  */
-import { Box, Typography, Chip, Stack, Button, IconButton, Skeleton, Tooltip } from '@mui/material'
+import { Box, Typography, Stack, Button, IconButton, Skeleton, Tooltip } from '@mui/material'
 import PhoneInTalkIcon from '@mui/icons-material/PhoneInTalk'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import RouteIcon from '@mui/icons-material/Route'
@@ -99,7 +99,7 @@ function ActionRow({ item, onNavigate, onRespond }: {
         {CATEGORY_ICON[item.category]}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body2" fontWeight={700} noWrap>{item.title}</Typography>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>{item.title}</Typography>
         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
           {item.subtitle}
         </Typography>
@@ -192,7 +192,7 @@ export default function ActionCenter() {
       ) : items.length === 0 ? (
         <GlassCard sx={{ p: 5, textAlign: 'center' }}>
           <TaskAltIcon sx={{ fontSize: 44, color: '#00E396', mb: 1 }} />
-          <Typography variant="h6" fontWeight={700}>All clear</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>All clear</Typography>
           <Typography variant="body2" color="text.secondary">
             Nothing needs your attention right now.
           </Typography>

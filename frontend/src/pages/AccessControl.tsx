@@ -3,7 +3,7 @@ import {
   Box, Typography, Tab, Tabs, Grid, Chip, Button, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField,
   MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
-  CircularProgress, Skeleton, IconButton, Tooltip, Alert,
+  CircularProgress, Skeleton, IconButton, Tooltip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -74,7 +74,7 @@ function DashboardTab() {
             <GlassCard sx={{ p: 2, borderTop: `3px solid ${kpi.color}` }}>
               {isLoading ? <Skeleton height={40} /> : (
                 <>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: kpi.value > 0 ? kpi.color : 'rgba(255,255,255,0.25)' }}>
+                  <Typography variant="h4" sx={{ color: kpi.value > 0 ? kpi.color : 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
                     {kpi.value}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
@@ -190,7 +190,7 @@ function DoorsTab() {
             ))}
             {data.map(d => (
               <TableRow key={d.id} hover>
-                <TableCell fontWeight={600}>{d.name}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{d.name}</TableCell>
                 <TableCell>
                   <Chip label={d.door_type.replace('_', ' ')} size="small"
                     sx={{ bgcolor: 'rgba(108,99,255,0.15)', color: '#6C63FF', fontSize: '0.7rem' }} />
@@ -305,10 +305,10 @@ function CredentialsTab() {
             ))}
             {data.map(c => (
               <TableRow key={c.id} hover>
-                <TableCell fontWeight={600}>
+                <TableCell sx={{ fontWeight: 600 }}>
                   {c.user_full_name ?? c.holder_name ?? '—'}
                   {c.user_email && (
-                    <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: "block" }}>
                       {c.user_email}
                     </Typography>
                   )}
@@ -428,7 +428,7 @@ function RulesTab() {
             {data.map(r => (
               <TableRow key={r.id} hover>
                 <TableCell>{r.credential_holder ?? '—'}</TableCell>
-                <TableCell fontWeight={600}>{r.door_name}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{r.door_name}</TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 0.3 }}>
                     {DAYS.map((d, i) => {
@@ -570,7 +570,7 @@ function EventsTab() {
                 <TableCell sx={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                   {new Date(ev.occurred_at).toLocaleString()}
                 </TableCell>
-                <TableCell fontWeight={500}>{ev.door_name}</TableCell>
+                <TableCell sx={{ fontWeight: 500 }}>{ev.door_name}</TableCell>
                 <TableCell>
                   <Chip
                     icon={EVENT_ICON[ev.event_type] as any}

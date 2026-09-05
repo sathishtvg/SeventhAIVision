@@ -138,7 +138,7 @@ function PatternDialog({ open, onClose }: { open: boolean; onClose: () => void }
                      onChange={(e) => setStartTime(e.target.value)} sx={{ flex: 1 }} />
           <TextField label="Hours" type="number" size="small" value={durationH}
                      onChange={(e) => setDurationH(Number(e.target.value))}
-                     inputProps={{ min: 1, max: 24 }} sx={{ width: 90 }} />
+                     sx={{ width: 90 }} slotProps={{ htmlInput: { min: 1, max: 24 } }} />
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -251,7 +251,7 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
   return (
     <GlassCard sx={{ p: 2, mb: 2, ...fadeUpSx(0) }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-        <Typography variant="subtitle2" fontWeight={700}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           Draft Roster — {new Date(batch.period_start).toLocaleDateString()} to {new Date(batch.period_end).toLocaleDateString()}
         </Typography>
         <Chip label={batch.status} size="small" color={batch.status === 'draft' ? 'warning' : 'success'} />
@@ -267,7 +267,7 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
       <Stack spacing={1.5} sx={{ maxHeight: 420, overflow: 'auto' }}>
         {Array.from(byDay.entries()).map(([day, shifts]) => (
           <Box key={day}>
-            <Typography variant="caption" fontWeight={700} color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
               {fmtDate(shifts[0].scheduled_start)}
             </Typography>
             <Stack spacing={0.5} sx={{ mt: 0.5 }}>
@@ -410,7 +410,7 @@ function LeavePreferencesCard({ onLeaveCreated }: {
 
   return (
     <GlassCard sx={{ p: 2 }}>
-      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Guard Leave</Typography>
+      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700 }}>Guard Leave</Typography>
       <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
         <Select size="small" displayEmpty value={guardId} onChange={(e) => setGuardId(e.target.value)}
                 renderValue={(v) => guards.find((g) => g.id === v)?.full_name ?? 'Guard…'} sx={{ minWidth: 160 }}>
@@ -472,7 +472,7 @@ function PreferencesEditor() {
 
   return (
     <GlassCard sx={{ p: 2, mt: 2 }}>
-      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Guard Preferences</Typography>
+      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700 }}>Guard Preferences</Typography>
       <Select size="small" displayEmpty value={guardId} onChange={(e) => setGuardId(e.target.value)}
               renderValue={(v) => guards.find((g) => g.id === v)?.full_name ?? 'Select a guard…'}
               sx={{ minWidth: 200, mb: 1.5 }}>
@@ -686,7 +686,7 @@ export function RosterPage() {
       <GlassCard sx={{ mb: 2 }}>
         <Box sx={{ p: 1.5 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-            <Typography variant="subtitle2" fontWeight={700}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Coverage — next 7 days
             </Typography>
             <ToggleButtonGroup size="small" value={viewMode} exclusive
@@ -702,7 +702,7 @@ export function RosterPage() {
                   <TableCell>{viewMode === 'site' ? 'Site' : 'Employee'}</TableCell>
                   {nextDates.map((d) => (
                     <TableCell key={d.toDateString()} align="center">
-                      <Typography variant="caption" fontWeight={700}>
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
                         {DAY_LABELS[(d.getDay() + 6) % 7]} {d.getDate()}
                       </Typography>
                     </TableCell>
@@ -721,7 +721,7 @@ export function RosterPage() {
                 ) : Array.from(activeGrid.entries()).map(([rowKey, dayMap]) => (
                   <TableRow key={rowKey} hover>
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>{rowKey}</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{rowKey}</Typography>
                     </TableCell>
                     {nextDates.map((d) => {
                       const shifts = dayMap.get(d.toDateString()) ?? []

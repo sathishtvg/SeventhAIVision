@@ -23,14 +23,12 @@ import { useAuthStore } from '@/store/auth'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { apiClient } from '@/api/client'
-import { getSites } from '@/api/sites'
 import { startRecording, stopRecording } from '@/api/recordings'
 import { getMyEnabledModules, ALL_AI_MODULES, MODULE_LABELS, type AiModuleType } from '@/api/licenses'
 import {
   createWallLayout, deleteWallLayout, listWallLayouts, updateWallLayout,
   type WallLayout,
 } from '@/api/wallLayouts'
-import { GlassCard } from '@/components/common/GlassCard'
 import { HlsPlayer } from '@/components/common/HlsPlayer'
 import { DetectionOverlay } from '@/components/common/DetectionOverlay'
 import { RestrictedZoneDialog } from '@/components/common/RestrictedZoneDialog'
@@ -200,7 +198,7 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
            * in place — fixes the overlapping-label glitch during auto-pop
            * swaps, where the grid cell's DOM node was being reused. */}
           <Fade in key={cell.camera_id} timeout={250}>
-            <Typography variant="caption" color="white" fontWeight={700} noWrap sx={{ flex: 1 }}>
+            <Typography variant="caption" color="white" noWrap sx={{ flex: 1, fontWeight: 700 }}>
               {cell.camera_name}
             </Typography>
           </Fade>
@@ -589,7 +587,7 @@ export function LiveWallPage() {
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap', flexShrink: 0 }}>
-        <Typography variant="h5" fontWeight={800} sx={{ flex: 1 }}>
+        <Typography variant="h5" sx={{ flex: 1, fontWeight: 800 }}>
           Live Wall
         </Typography>
         <Select

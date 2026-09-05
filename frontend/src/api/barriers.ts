@@ -18,6 +18,10 @@ export type BarrierCommand =
   | 'release_hold'
   | 'emergency_override'
 
+// What a vendor can do. 'status' is reported by the capabilities endpoint but
+// is a query, not something you issue — hence separate from BarrierCommand.
+export type BarrierCapability = BarrierCommand | 'status'
+
 export type BarrierStatus = 'open' | 'closed' | 'held_open' | 'unknown' | 'error'
 
 export const VENDOR_LABELS: Record<BarrierVendor, string> = {
@@ -96,7 +100,7 @@ export interface BarrierInput {
 
 export interface VendorCapability {
   vendor: BarrierVendor
-  commands: BarrierCommand[]
+  commands: BarrierCapability[]
 }
 
 export const listBarriers = (siteId?: string) =>

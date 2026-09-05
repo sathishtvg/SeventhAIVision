@@ -180,7 +180,7 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
           <TextField
             label="Bill Rate ($/hr)" type="number" value={billRate}
             onChange={(e) => setBillRate(e.target.value)} sx={{ flex: 1 }}
-            inputProps={{ min: 0, step: 0.01 }}
+            slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
           />
         </Stack>
 
@@ -229,11 +229,11 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
               label="Free parking (minutes)" type="number" value={freeParking}
               onChange={(e) => setFreeParking(e.target.value)}
               disabled={!vmsEnabled}
-              inputProps={{ min: 0 }}
+
               // Blank is meaningfully different from 0: blank means this site
               // does not meter parking at all, so nothing can ever overstay.
               helperText="Leave blank if this site does not meter parking. Exceeding it alerts the operator."
-              sx={{ maxWidth: 320 }}
+              sx={{ maxWidth: 320 }} slotProps={{ htmlInput: { min: 0 } }}
             />
           </>
         )}

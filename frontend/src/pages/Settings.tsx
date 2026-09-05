@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Typography, Grid, Slider, Button, Alert, Skeleton, TextField, Chip, Divider, List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, Tooltip, Switch, FormControlLabel, MenuItem, Select, InputLabel, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment } from '@mui/material'
+import { Box, Typography, Grid, Stack, Slider, Button, Alert, Skeleton, TextField, Chip, Divider, List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, Tooltip, Switch, FormControlLabel, MenuItem, Select, InputLabel, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment } from '@mui/material'
 import LogoutIcon from '@mui/icons-material/Logout'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -766,8 +766,8 @@ function TwoFASection() {
           <TextField
             label="Verification Code" value={totpCode} size="small"
             onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputProps={{ inputMode: 'numeric', maxLength: 6 }}
-            sx={{ mb: 1, mr: 1, width: 180 }}
+
+            sx={{ mb: 1, mr: 1, width: 180 }} slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 6 } }}
           />
           <Button
             variant="contained" size="small"
@@ -801,8 +801,8 @@ function TwoFASection() {
           <TextField
             label="TOTP Code" value={disableCode} size="small"
             onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputProps={{ inputMode: 'numeric', maxLength: 6 }}
-            sx={{ mb: 1, mr: 1, width: 180 }}
+
+            sx={{ mb: 1, mr: 1, width: 180 }} slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 6 } }}
           />
           <Button
             variant="contained" color="error" size="small"
@@ -937,7 +937,7 @@ function AlertDedupRulesSection() {
             value={windowSeconds}
             onChange={(e) => setWindowSeconds(Math.max(1, Math.min(86400, parseInt(e.target.value) || 300)))}
             helperText={`${formatWindow(windowSeconds)} — suppress duplicates within this period`}
-            inputProps={{ min: 1, max: 86400 }}
+            slotProps={{ htmlInput: { min: 1, max: 86400 } }}
           />
         </DialogContent>
         <DialogActions>
@@ -1013,9 +1013,9 @@ function TwoFAPolicySection() {
           size="small"
           value={graceHours}
           onChange={(e) => setGraceHours(Math.max(0, parseInt(e.target.value, 10) || 0))}
-          inputProps={{ min: 0, max: 720 }}
+
           helperText="0 = immediate; new accounts are exempt for this many hours"
-          sx={{ width: 220 }}
+          sx={{ width: 220 }} slotProps={{ htmlInput: { min: 0, max: 720 } }}
         />
         <Button
           variant="outlined"

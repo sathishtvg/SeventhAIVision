@@ -129,11 +129,11 @@ export default function IpAllowlist() {
     <PermissionGuard permission="iplist:manage">
       <PageHeader pageKey="ip-allowlist" />
       <Box sx={{ p: 3 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
           <Stack direction="row" alignItems="center" gap={1.5}>
             <LanIcon sx={{ color: 'primary.main' }} />
             <Box>
-              <Typography variant="h6" fontWeight={700}>IP Allowlist</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>IP Allowlist</Typography>
               <Typography variant="caption" color="text.secondary">
                 Restrict tenant access to specific IP ranges
               </Typography>
@@ -196,7 +196,7 @@ export default function IpAllowlist() {
                     : rules.map((rule) => (
                       <TableRow key={rule.id} hover sx={{ opacity: rule.is_active ? 1 : 0.5 }}>
                         <TableCell>
-                          <Typography variant="body2" fontFamily="monospace" fontWeight={600}>
+                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: 600 }}>
                             {rule.cidr}
                           </Typography>
                         </TableCell>

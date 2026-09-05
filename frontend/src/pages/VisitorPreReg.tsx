@@ -22,7 +22,6 @@ import {
   Paper,
   Tooltip,
   CircularProgress,
-  Collapse,
   InputAdornment,
   Select,
   MenuItem,
@@ -41,10 +40,8 @@ import {
   Logout as LogoutIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
-  CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
   PersonOff as PersonOffIcon,
-  ContentCopy as CopyIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   DynamicForm as DynamicFormIcon,
@@ -115,7 +112,7 @@ function QRDialog({ visitor, onClose }: { visitor: Visitor; onClose: () => void 
             alt="Visitor QR"
             sx={{ width: 200, height: 200, border: '4px solid white', borderRadius: 2 }}
           />
-          <Typography variant="caption" display="block" sx={{ mt: 1, opacity: 0.6 }}>
+          <Typography variant="caption" sx={{ mt: 1, opacity: 0.6, display: "block" }}>
             Token: {visitor.qr_token.slice(0, 12)}…
           </Typography>
           {visitor.visitor_email && (
@@ -124,7 +121,7 @@ function QRDialog({ visitor, onClose }: { visitor: Visitor; onClose: () => void 
             </Typography>
           )}
           {visitor.qr_email_sent_at && (
-            <Typography variant="caption" color="success.main" display="block">
+            <Typography variant="caption" color="success.main" sx={{ display: "block" }}>
               Email sent {fmtDateTime(visitor.qr_email_sent_at)}
             </Typography>
           )}
@@ -258,8 +255,8 @@ function UpcomingTab() {
           placeholder="Search visitors…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-          sx={{ flex: 1 }}
+
+          sx={{ flex: 1 }} slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
         />
         <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
       </Stack>
@@ -287,7 +284,7 @@ function UpcomingTab() {
               {filtered.map(v => (
                 <TableRow key={v.id} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={600}>{v.full_name}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.full_name}</Typography>
                     <Typography variant="caption" color="text.secondary">{v.company}</Typography>
                   </TableCell>
                   <TableCell>{v.host_name ?? '—'}</TableCell>
@@ -444,8 +441,8 @@ function AllVisitorsTab() {
           placeholder="Search by name, company or ID…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-          sx={{ flex: 1 }}
+
+          sx={{ flex: 1 }} slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
         />
         <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
         {canManage && (
@@ -474,7 +471,7 @@ function AllVisitorsTab() {
               {filtered.map(v => (
                 <TableRow key={v.id} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={600}>{v.full_name}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.full_name}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {v.company} {v.id_number ? `· ID: ${v.id_number}` : ''}
                     </Typography>
@@ -667,7 +664,7 @@ function FormBuilderTab() {
             {fields.map((f) => (
               <TableRow key={f.id} hover sx={{ opacity: f.is_active ? 1 : 0.5 }}>
                 <TableCell>
-                  <Typography variant="body2" fontWeight={600}>{f.label}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{f.label}</Typography>
                   {f.help_text && (
                     <Typography variant="caption" color="text.secondary">{f.help_text}</Typography>
                   )}
@@ -739,7 +736,7 @@ function FormBuilderTab() {
             helperText={editing
               ? 'Cannot be changed — answers already recorded are stored under this key'
               : 'Lowercase letters, digits and underscores'}
-            inputProps={{ style: { fontFamily: 'monospace' } }}
+              slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
           />
           <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl size="small" sx={{ flex: 1 }}>

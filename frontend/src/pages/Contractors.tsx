@@ -22,7 +22,7 @@ import {
   listWorkPermits, createWorkPermit, approvePermit, rejectPermit, completePermit,
   listDeliveries, createDelivery, receiveDelivery, collectDelivery,
 } from '@/api/contractors'
-import type { Contractor, WorkPermit, Delivery } from '@/api/contractors'
+import type { Contractor, Delivery } from '@/api/contractors'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
 
@@ -39,7 +39,7 @@ function KpiCard({ label, value, icon, color }: { label: string; value: number; 
         {icon}
       </Box>
       <Box>
-        <Typography variant="h5" fontWeight={700}>{value ?? 0}</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>{value ?? 0}</Typography>
         <Typography variant="caption" color="text.secondary">{label}</Typography>
       </Box>
     </Paper>
@@ -297,7 +297,7 @@ function ContractorsTab() {
               {contractors.map((c) => (
                 <TableRow key={c.id} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={600}>{c.company_name}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{c.company_name}</Typography>
                     {c.contact_email && (
                       <Typography variant="caption" color="text.secondary">{c.contact_email}</Typography>
                     )}
@@ -427,7 +427,7 @@ function WorkPermitsTab() {
               {permits.map((p) => (
                 <TableRow key={p.id} hover>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace">{p.permit_number || p.id.slice(0, 8)}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: "monospace" }}>{p.permit_number || p.id.slice(0, 8)}</Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{p.company_name || '—'}</Typography>
@@ -562,14 +562,14 @@ function DeliveriesTab() {
               {deliveries.map((d) => (
                 <TableRow key={d.id} hover>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace">{d.tracking_number || '—'}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: "monospace" }}>{d.tracking_number || '—'}</Typography>
                   </TableCell>
                   <TableCell><Typography variant="body2">{d.carrier || '—'}</Typography></TableCell>
                   <TableCell>
                     <Typography variant="body2">{d.sender_name || '—'}</Typography>
                     {d.sender_company && <Typography variant="caption" color="text.secondary">{d.sender_company}</Typography>}
                   </TableCell>
-                  <TableCell><Typography variant="body2" fontWeight={500}>{d.recipient_name}</Typography></TableCell>
+                  <TableCell><Typography variant="body2" sx={{ fontWeight: 500 }}>{d.recipient_name}</Typography></TableCell>
                   <TableCell><Typography variant="caption">{d.recipient_department || '—'}</Typography></TableCell>
                   <TableCell><Typography variant="caption">{fmtDate(d.received_at)}</Typography></TableCell>
                   <TableCell>
@@ -631,12 +631,12 @@ export default function ContractorsPage() {
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader pageKey="contractors" />
-      <Typography variant="h5" fontWeight={700} mb={3}>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
         Contractor &amp; Delivery Management
       </Typography>
 
       {/* KPI row */}
-      <Grid container spacing={2} mb={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiCard label="Total Contractors" value={dash?.total_contractors ?? 0} icon={<EngineeringIcon />} color="#6C63FF" />
         </Grid>

@@ -6,7 +6,7 @@ export interface DedupRule {
   camera_id: string | null
   camera_name: string | null
   window_seconds: number
-  is_active: boolean
+  is_active?: boolean
   created_at: string
   updated_at: string | null
 }
@@ -15,7 +15,7 @@ export interface DedupRuleBody {
   module_type?: string | null
   camera_id?: string | null
   window_seconds: number
-  is_active: boolean
+  is_active?: boolean
 }
 
 export const listDedupRules = (): Promise<DedupRule[]> =>

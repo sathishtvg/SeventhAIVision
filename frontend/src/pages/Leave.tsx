@@ -278,7 +278,7 @@ function ReviewDialog({ leaveRequest, onClose }: { leaveRequest: LeaveRequest | 
               <Chip size="small" label={leaveRequest.leave_type_name} variant="outlined" />
               <StatusChip status={leaveRequest.status} />
             </Box>
-            <Typography variant="body2" fontWeight={600}>{leaveRequest.guard_name}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>{leaveRequest.guard_name}</Typography>
             <Typography variant="caption" color="text.secondary">
               {fmtDate(leaveRequest.start_date)} – {fmtDate(leaveRequest.end_date)} · {leaveRequest.days_count} day(s)
             </Typography>
@@ -388,7 +388,7 @@ function RequestsTab() {
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
                 <Chip size="small" label={r.leave_type_name} variant="outlined" />
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2" fontWeight={600}>{r.guard_name}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{r.guard_name}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     {fmtDate(r.start_date)} – {fmtDate(r.end_date)} · {r.days_count} day(s)
                   </Typography>

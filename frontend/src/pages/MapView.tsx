@@ -406,7 +406,7 @@ export function MapViewPage() {
                     icon={buildIcon(s, severity, statusLine)}
                   >
                     <Popup>
-                      <Typography variant="subtitle2" fontWeight={700}>{s.name}</Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{s.name}</Typography>
                       {s.address && (
                         <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
                           {s.address}

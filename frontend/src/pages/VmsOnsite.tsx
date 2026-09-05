@@ -196,8 +196,8 @@ export default function VmsOnsite() {
                     {exp.remaining != null && (
                       <Typography
                         variant="caption"
-                        display="block"
-                        color={exp.remaining < 0 ? 'error.main' : 'text.secondary'}
+
+                        color={exp.remaining < 0 ? 'error.main' : 'text.secondary'} sx={{ display: "block" }}
                       >
                         {exp.remaining < 0
                           ? `${formatDuration(-exp.remaining)} over`

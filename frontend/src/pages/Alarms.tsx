@@ -34,7 +34,6 @@ import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorIcon from '@mui/icons-material/Error'
 import SecurityIcon from '@mui/icons-material/Security'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -42,7 +41,6 @@ import VpnKeyIcon from '@mui/icons-material/VpnKey'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getAlarmDashboard,
-  listPanels,
   listEvents,
   createPanel,
   armPanel,
@@ -114,7 +112,7 @@ function KpiCard({ label, value, icon, color }: {
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Box>
           <Typography variant="body2" color="text.secondary">{label}</Typography>
-          <Typography variant="h4" fontWeight={700} sx={{ color: color ?? 'text.primary' }}>{value}</Typography>
+          <Typography variant="h4" sx={{ color: color ?? 'text.primary', fontWeight: 700 }}>{value}</Typography>
         </Box>
         {icon && <Box sx={{ color: color ?? 'primary.main', opacity: 0.8 }}>{icon}</Box>}
       </Stack>
@@ -146,9 +144,9 @@ function PanelCard({ panel, onAction }: { panel: AlarmPanel; onAction: () => voi
       border: `1px solid ${inAlarm ? 'rgba(255,69,96,0.4)' : 'rgba(255,255,255,0.08)'}`,
       borderRadius: 2,
     }}>
-      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.5}>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1.5 }}>
         <Box>
-          <Typography fontWeight={600}>{panel.name}</Typography>
+          <Typography sx={{ fontWeight: 600 }}>{panel.name}</Typography>
           {panel.site_name && (
             <Typography variant="caption" color="text.secondary">{panel.site_name}</Typography>
           )}
@@ -331,7 +329,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
     <Stack spacing={3}>
       <Stack direction="row" alignItems="center" spacing={2}>
         <Button size="small" onClick={onBack}>← Back</Button>
-        <Typography variant="h6" fontWeight={600}>{data.name}</Typography>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>{data.name}</Typography>
         {data.site_name && <Typography color="text.secondary">— {data.site_name}</Typography>}
       </Stack>
 
@@ -363,8 +361,8 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
             <TextField
               fullWidth
               value={rotatedKey ?? ''}
-              inputProps={{ readOnly: true, style: { fontFamily: 'monospace', fontSize: 13 } }}
-              size="small"
+
+              size="small" slotProps={{ htmlInput: { readOnly: true, style: { fontFamily: 'monospace', fontSize: 13 } } }}
             />
             <Button size="small" startIcon={<ContentCopyIcon />}
               onClick={() => navigator.clipboard.writeText(rotatedKey ?? '')}>
@@ -409,7 +407,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
                 <TableCell>{z.camera_name ?? '—'}</TableCell>
                 <TableCell>
                   <Button size="small" variant="outlined"
-                    color={z.current_state === 'bypass' ? 'warning' : 'default'}
+                    color={z.current_state === 'bypass' ? 'warning' : 'inherit'}
                     disabled={bypassMut.isPending}
                     onClick={() => bypassMut.mutate(z.id)}>
                     {z.current_state === 'bypass' ? 'Unbypass' : 'Bypass'}
@@ -462,7 +460,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Zone Number" type="number" value={zoneForm.zone_number}
               onChange={e => setZoneForm(f => ({ ...f, zone_number: Number(e.target.value) }))}
-              inputProps={{ min: 1, max: 255 }} />
+              slotProps={{ htmlInput: { min: 1, max: 255 } }} />
             <TextField label="Zone Name" value={zoneForm.name} required
               onChange={e => setZoneForm(f => ({ ...f, name: e.target.value }))} />
             <FormControl fullWidth>
@@ -537,7 +535,7 @@ function DashboardTab({ onSelectPanel }: { onSelectPanel: (id: string) => void }
       ) : (
         <Grid container spacing={2}>
           {data.panels.map(p => (
-            <Grid key={p.id} item xs={12} sm={6} md={4}>
+            <Grid key={p.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <Box onClick={() => onSelectPanel(p.id)} sx={{ cursor: 'pointer' }}>
                 <PanelCard panel={p} onAction={() => refetch()} />
               </Box>
@@ -697,7 +695,7 @@ export default function AlarmsPage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
       <PageHeader pageKey="alarms" />
-      <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
         <SecurityIcon sx={{ color: 'primary.main', fontSize: 28 }} />
       </Stack>
 

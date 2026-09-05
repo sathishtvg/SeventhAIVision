@@ -198,8 +198,8 @@ function RuleDialog({ open, onClose, initial, cameras }: RuleDialogProps) {
           onChange={(e) =>
             setForm((f) => ({ ...f, window_seconds: Math.max(1, Math.min(86400, Number(e.target.value))) }))
           }
-          inputProps={{ min: 1, max: 86400 }}
-          helperText={`≡ ${winPreview}  •  max 86400 (24 h)`}
+
+          helperText={`≡ ${winPreview}  •  max 86400 (24 h)`} slotProps={{ htmlInput: { min: 1, max: 86400 } }}
         />
 
         <FormControlLabel
@@ -272,11 +272,11 @@ export default function AlertDedup() {
       <PageHeader pageKey="alert-dedup" />
       <Box sx={{ p: 3 }}>
         {/* Header */}
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={3}>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 3 }}>
           <Stack direction="row" alignItems="center" gap={1.5}>
             <FilterAltIcon sx={{ color: 'primary.main', mt: 0.25 }} />
             <Box>
-              <Typography variant="h6" fontWeight={700}>Alert Deduplication Rules</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Alert Deduplication Rules</Typography>
               <Typography variant="caption" color="text.secondary">
                 Suppress repeated alerts for the same camera+module within a time window
               </Typography>
@@ -297,7 +297,7 @@ export default function AlertDedup() {
           variant="outlined"
           sx={{ p: 2, mb: 3, borderRadius: 2, borderColor: 'rgba(108,99,255,0.25)', bgcolor: 'rgba(108,99,255,0.05)' }}
         >
-          <Typography variant="body2" color="text.secondary" lineHeight={1.7}>
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
             When a new alert is raised, the most specific matching rule wins:&nbsp;
             <strong>exact camera+module</strong> &gt; <strong>camera only</strong> &gt; <strong>module only</strong> &gt; <strong>global</strong>.
             If an open alert for the same (camera, module) already exists within the window, the new alert is suppressed.
@@ -341,7 +341,7 @@ export default function AlertDedup() {
                       <TableRow key={rule.id} hover sx={{ opacity: rule.is_active ? 1 : 0.5 }}>
                         <TableCell>{scopeLabel(rule)}</TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontFamily="monospace" fontWeight={600}>
+                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: 600 }}>
                             {fmtWindow(rule.window_seconds)}
                           </Typography>
                           <Typography variant="caption" color="text.disabled">

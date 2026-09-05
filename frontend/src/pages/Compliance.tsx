@@ -9,7 +9,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControl,
   Grid,
   InputLabel,
@@ -34,8 +33,6 @@ import { BrandLoader } from '@/components/common/BrandLoader'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import RouteIcon from '@mui/icons-material/Route'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -114,7 +111,7 @@ function KpiCard({ label, value, sub, icon, color }: {
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
         <Box>
           <Typography variant="body2" color="text.secondary">{label}</Typography>
-          <Typography variant="h4" fontWeight={700} sx={{ color: color ?? 'text.primary' }}>
+          <Typography variant="h4" sx={{ color: color ?? 'text.primary', fontWeight: 700 }}>
             {value}
           </Typography>
           {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
@@ -196,9 +193,9 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
             onChange={e => setForm(f => ({ ...f, scheduled_time: e.target.value }))}
             slotProps={{ inputLabel: { shrink: true } }} />
           <TextField label="Window (minutes)" value={form.window_minutes} type="number"
-            inputProps={{ min: 5, max: 120 }}
+
             onChange={e => setForm(f => ({ ...f, window_minutes: Number(e.target.value) }))}
-            helperText="Grace period: tour must start within this many minutes of scheduled time" />
+            helperText="Grace period: tour must start within this many minutes of scheduled time" slotProps={{ htmlInput: { min: 5, max: 120 } }} />
           <FormControl fullWidth>
             <InputLabel>Assigned Guard (optional)</InputLabel>
             <Select value={form.assigned_guard_user_id} label="Assigned Guard (optional)"
@@ -611,10 +608,10 @@ function ReportTab() {
               { label: 'Missed', value: report.summary.missed, color: report.summary.missed ? '#FF4560' : undefined },
               { label: 'Avg Score', value: report.summary.avg_score != null ? `${report.summary.avg_score}%` : '—' },
             ].map(kpi => (
-              <Grid key={kpi.label} item xs={6} md={3}>
+              <Grid key={kpi.label} size={{ xs: 6, md: 3 }}>
                 <Paper sx={{ p: 2, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, textAlign: 'center' }}>
                   <Typography variant="body2" color="text.secondary">{kpi.label}</Typography>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: kpi.color ?? 'text.primary' }}>
+                  <Typography variant="h4" sx={{ color: kpi.color ?? 'text.primary', fontWeight: 700 }}>
                     {kpi.value}
                   </Typography>
                 </Paper>
@@ -697,7 +694,7 @@ export default function CompliancePage() {
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
       <PageHeader pageKey="compliance" />
-      <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
         <RouteIcon sx={{ color: 'primary.main', fontSize: 28 }} />
       </Stack>
 
