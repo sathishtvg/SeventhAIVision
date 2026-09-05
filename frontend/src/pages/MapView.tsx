@@ -37,7 +37,6 @@ import Stack from '@/components/common/Stack'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import PhoneIcon from '@mui/icons-material/Phone'
 import { useQuery } from '@tanstack/react-query'
@@ -307,14 +306,18 @@ export function MapViewPage() {
             <OpenInNewIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-          onClick={toggleKiosk}
-        >
-          {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-        </Button>
+        {/* Same guard as every other full-screen page: AppShell's focus-mode
+            strip owns Exit, so drawing our own would stack two in one corner. */}
+        {!kiosk && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<FullscreenIcon />}
+            onClick={toggleKiosk}
+          >
+            Full Screen
+          </Button>
+        )}
       </Stack>
 
       {isLoading ? (

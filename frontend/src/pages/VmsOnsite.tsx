@@ -6,7 +6,6 @@ import {
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import TimerOffIcon from '@mui/icons-material/TimerOff'
 import { useQuery } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
@@ -89,16 +88,21 @@ export default function VmsOnsite() {
                 </Button>
               </span>
             </Tooltip>
-            <Tooltip title={kiosk ? 'Exit full screen' : 'Full screen for the gatehouse display'}>
-              <Button
-                size="small"
-                variant={kiosk ? 'contained' : 'outlined'}
-                startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-                onClick={toggleKiosk}
-              >
-                {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-              </Button>
-            </Tooltip>
+            {/* Hidden once full screen: AppShell's focus-mode strip already
+                draws Back and Exit, and this page drew its own Exit in the same
+                corner — two Exit Full Screen buttons on the same screen. */}
+            {!kiosk && (
+              <Tooltip title="Full screen for the gatehouse display">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<FullscreenIcon />}
+                  onClick={toggleKiosk}
+                >
+                  Full Screen
+                </Button>
+              </Tooltip>
+            )}
           </Stack>
         }
       />
