@@ -10,6 +10,7 @@ import {
   type VisitType, type VisitorFormField,
 } from '@/api/vms'
 import { getSites } from '@/api/sites'
+import type { LabelVisitor } from '@/components/vms/VisitorLabelDialog'
 
 /** Types that mean a vehicle came through the barrier. Only these show the
  *  plate field, and only these start a parking clock — a walk-in with a plate
@@ -21,6 +22,8 @@ interface Props {
   onClose: () => void
   /** Pre-selects the site when the board is already filtered to one. */
   defaultSiteId?: string
+  /** Called with the created visit so the caller can offer its pass. */
+  onRegistered?: (v: LabelVisitor) => void
 }
 
 /**
@@ -35,7 +38,7 @@ interface Props {
  * flags. That is the point of the field registry — a gatehouse that must
  * capture an NRIC or a delivery docket number should not need a release.
  */
-export function RegisterVisitorDialog({ open, onClose, defaultSiteId }: Props) {
+export function RegisterVisitorDialog({ open, onClose, defaultSiteId, onRegistered }: Props) {
   const qc = useQueryClient()
   const [siteId, setSiteId] = useState(defaultSiteId ?? '')
   const [visitType, setVisitType] = useState<VisitType>('walk_in')
@@ -94,9 +97,21 @@ export function RegisterVisitorDialog({ open, onClose, defaultSiteId }: Props) {
         vehicle_plate: showsPlate && plate.trim() ? plate.trim().toUpperCase() : null,
         custom_fields: custom,
       }),
-    onSuccess: () => {
+    onSuccess: (created: unknown) => {
       void qc.invalidateQueries({ queryKey: ['vms-onsite'] })
+      const c = created as { id?: string; arrived_at?: string }
+      const site = vmsSites.find((s) => s.id === siteId)
       onClose()
+      if (c?.id) {
+        onRegistered?.({
+          id: c.id,
+          full_name: fullName.trim(),
+          company: company.trim() || null,
+          site_name: site?.name ?? null,
+          visit_type_label: VISIT_TYPE_LABELS[visitType],
+          arrived_at: c.arrived_at ?? new Date().toISOString(),
+        })
+      }
     },
     onError: (err: unknown) => {
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail

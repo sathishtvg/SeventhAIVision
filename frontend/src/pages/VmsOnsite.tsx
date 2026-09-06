@@ -15,6 +15,15 @@ import {
   type OnsiteVehicle, type VisitType,
 } from '@/api/vms'
 import { RegisterVisitorDialog } from '@/components/vms/RegisterVisitorDialog'
+import { VisitorLabelDialog, type LabelVisitor } from '@/components/vms/VisitorLabelDialog'
+import { ScanQrDialog } from '@/components/vms/ScanQrDialog'
+import { checkoutVisitor } from '@/api/visitors'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import EventAvailableIcon from '@mui/icons-material/EventAvailable'
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
+import LogoutIcon from '@mui/icons-material/Logout'
+import BadgeIcon from '@mui/icons-material/Badge'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import { getSites } from '@/api/sites'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
@@ -52,6 +61,18 @@ export default function VmsOnsite() {
   const [overstayedOnly, setOverstayedOnly] = useState(false)
   const [visitType, setVisitType] = useState<VisitType | ''>('')
   const [registerOpen, setRegisterOpen] = useState(false)
+  const [scanOpen, setScanOpen] = useState(false)
+  const [labelFor, setLabelFor] = useState<LabelVisitor | null>(null)
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  // Check-out is one click with no confirm: it is the most frequent action at
+  // a gatehouse, and a wrong one is corrected by registering again rather than
+  // by an undo — a dialog on every departure would cost far more than it saves.
+  const { mutate: checkOut, isPending: checkingOut } = useMutation({
+    mutationFn: (id: string) => checkoutVisitor(id, {}),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['vms-onsite'] }) },
+  })
   const { kiosk, toggleKiosk } = useKioskToggle()
   const tz = useTenantTimeZone()
   const tzLabel = timeZoneLabel(tz)
@@ -95,6 +116,26 @@ export default function VmsOnsite() {
             >
               Register
             </Button>
+            <Tooltip title="Book a visitor in for a future date">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EventAvailableIcon />}
+                onClick={() => navigate('/visitor-prereg')}
+              >
+                Pre-register
+              </Button>
+            </Tooltip>
+            <Tooltip title="Scan a visitor pass to check them in or out">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<QrCodeScannerIcon />}
+                onClick={() => setScanOpen(true)}
+              >
+                Scan
+              </Button>
+            </Tooltip>
             <Tooltip title="Refresh now">
               <span>
                 <Button
@@ -192,20 +233,21 @@ export default function VmsOnsite() {
               <TableCell>Expires</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Registered by</TableCell>
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading &&
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 10 }).map((__, j) => (
+                  {Array.from({ length: 11 }).map((__, j) => (
                     <TableCell key={j}><Skeleton /></TableCell>
                   ))}
                 </TableRow>
               ))}
             {!isLoading && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10}>
+                <TableCell colSpan={11}>
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                     {overstayedOnly ? 'No vehicles are overstaying.' : 'No visitor vehicles on site.'}
                   </Typography>
@@ -259,6 +301,41 @@ export default function VmsOnsite() {
                       {v.registered_by ?? 'LPR'}
                     </Typography>
                   </TableCell>
+                  <TableCell align="right">
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Tooltip title="Show this visitor's pass, to reprint or scan">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<BadgeIcon />}
+                          onClick={() => setLabelFor({
+                            id: v.id,
+                            full_name: v.full_name,
+                            company: v.company,
+                            site_name: v.site_name,
+                            visit_type_label: VISIT_TYPE_LABELS[v.visit_type] ?? v.visit_type,
+                            arrived_at: v.arrived_at,
+                          })}
+                        >
+                          Pass
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Check this visitor out — they have left the site">
+                        <span>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="secondary"
+                            startIcon={<LogoutIcon />}
+                            disabled={checkingOut}
+                            onClick={() => checkOut(v.id)}
+                          >
+                            Check out
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
                 </TableRow>
               )
             })}
@@ -269,7 +346,12 @@ export default function VmsOnsite() {
         open={registerOpen}
         onClose={() => setRegisterOpen(false)}
         defaultSiteId={siteId || undefined}
+        // Straight to the pass once registered: the badge is the next physical
+        // step at the gate, and printing stays the operator's choice.
+        onRegistered={(v) => setLabelFor(v)}
       />
+      <ScanQrDialog open={scanOpen} onClose={() => setScanOpen(false)} />
+      <VisitorLabelDialog visitor={labelFor} onClose={() => setLabelFor(null)} />
     </Box>
   )
 }

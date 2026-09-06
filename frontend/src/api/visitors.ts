@@ -92,3 +92,23 @@ export const sendVisitorQR = (visitor_id: string) =>
 
 export const getVisitorQRUrl = (visitor_id: string) =>
   `${client.defaults.baseURL}/api/v1/visitors/${visitor_id}/qr.png`
+
+/** The QR PNG behind an authenticated route, as a data: URL.
+ *
+ * getVisitorQRUrl above returns a bare URL, which is fine for a link but not
+ * for an <img src>: the endpoint requires visitor:read, and a browser image
+ * request carries no Authorization header, so it 401s. Fetching through the
+ * client and inlining the bytes also makes the label printable — a print
+ * window opened with document.write cannot borrow the parent's auth either.
+ */
+export const fetchVisitorQRDataUrl = async (visitor_id: string): Promise<string> => {
+  const res = await client.get<Blob>(`/api/v1/visitors/${visitor_id}/qr.png`, {
+    responseType: 'blob',
+  })
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(res.data)
+  })
+}
