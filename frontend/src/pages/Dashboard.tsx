@@ -720,10 +720,10 @@ export default function Dashboard() {
   return (
     <Box sx={{ p: 0 }}>
       {/* Header + site selector */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: kiosk ? 1 : 2.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
           <Box sx={{
-            width: 3, height: 28, borderRadius: 2,
+            width: 3, height: kiosk ? 20 : 28, borderRadius: 2,
             background: (t) => `linear-gradient(180deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`,
             boxShadow: (t) => t.palette.mode === 'dark' ? `0 0 12px ${t.palette.primary.main}b3` : 'none',
             flexShrink: 0,
@@ -731,10 +731,14 @@ export default function Dashboard() {
           {/* Same theme-derived treatment as PageHeader: the first gradient
               stop must be the theme's own text colour, or this title turns
               near-white-on-white the moment light mode is on. */}
-          <Typography variant="h5" sx={{
+          {/* Full screen the header gives way to the board beneath it: a step
+              smaller, with a third of the margin. The other 46 pages get this
+              from PageHeader; this one draws its own header, so it repeats. */}
+          <Typography variant={kiosk ? 'h6' : 'h5'} sx={{
             fontWeight: 800,
             letterSpacing: '-0.02em',
             color: 'text.primary',
+            ...(kiosk ? { fontSize: '1.05rem', lineHeight: 1.2 } : null),
           }}>
             Dashboard
           </Typography>
