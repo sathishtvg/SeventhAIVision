@@ -868,12 +868,12 @@ export function AttendancePage() {
         </Stack>
       </GlassCard>
 
-      {/* The rail sits to the LEFT of the board: this is a card grid read from
-          a fixed left origin, not a table with row-actions on the right, so
-          the filters belong next to where the eye starts. The strip holds its
-          own 44px of layout, so opening it never reflows the sites. */}
+      {/* The rail sits on the right, the same edge it uses on every other
+          page. One place to reach for filters anywhere in the app beats a
+          per-page argument about which edge suits that page's layout. The
+          strip holds its own 44px of layout, so opening it never reflows
+          the sites. */}
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-        <FilterRail groups={filterGroups} storageKey="attendance" side="left" />
         <Box sx={{ flex: 1, minWidth: 0 }}>
       {/* ── Site grid ──────────────────────────────────────────────────── */}
       {isLoading ? (
@@ -910,6 +910,7 @@ export function AttendancePage() {
         </Box>
       )}
         </Box>
+        <FilterRail groups={filterGroups} storageKey="attendance" />
       </Box>
 
       {/* ── Correction queue (unchanged behaviour) ─────────────────────── */}

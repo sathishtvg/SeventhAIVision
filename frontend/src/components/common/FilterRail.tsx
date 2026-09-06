@@ -66,25 +66,13 @@ interface FilterRailProps {
   groups: FilterGroup[]
   /** Distinguishes persisted pin state between pages. */
   storageKey: string
-  /**
-   * Which edge of the content the strip sits on. Defaults to 'right', which is
-   * where every table page wants it: those carry row-action buttons at the
-   * right end of each row, and a panel opening leftward from that edge never
-   * covers the first columns you are reading.
-   *
-   * A card board has no such column and reads from a fixed left origin, so
-   * there the rail belongs beside where the eye starts. Only the panel's
-   * direction changes — the strip stays in the layout either way, so neither
-   * side reflows the content.
-   */
-  side?: 'left' | 'right'
 }
 
 const RAIL_WIDTH = 44
 const PANEL_WIDTH = 268
 const PIN_PREFIX = 'filterRail.pinned.'
 
-export function FilterRail({ groups, storageKey, side = 'right' }: FilterRailProps) {
+export function FilterRail({ groups, storageKey }: FilterRailProps) {
   // The panel's surface is opaque and theme-dependent, so its text colours
   // have to be picked to contrast with THAT surface, not with the page. An
   // earlier version hardcoded a dark panel while taking text from the theme
@@ -242,9 +230,9 @@ export function FilterRail({ groups, storageKey, side = 'right' }: FilterRailPro
             // the content behind it.
             position: 'absolute',
             top: 0,
-            // Opens away from the content it is attached to, so the panel never
-            // lands on top of what the filter is filtering.
-            ...(side === 'left' ? { left: 0 } : { right: 0 }),
+            // Opens leftward, away from the edge it is attached to, so the
+            // panel never lands on top of what the filter is filtering.
+            right: 0,
             zIndex: 30,
             width: PANEL_WIDTH,
             maxHeight: '78vh',
