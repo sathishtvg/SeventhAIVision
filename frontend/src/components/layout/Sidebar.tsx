@@ -167,7 +167,7 @@ const NAV_SECTIONS: {
       { label: 'Leave',           path: '/leave',       icon: <EventBusyIcon fontSize="small" />,    permission: 'leave:read' },
       { label: 'Payroll',         path: '/payroll',     icon: <PaymentsIcon fontSize="small" />,     permission: 'payroll:read' },
       { label: 'Guard Training',  path: '/training',    icon: <SchoolIcon fontSize="small" />,       permission: 'training:read' },
-      { label: 'Post Orders',     path: '/post-orders', icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'SOP',              path: '/post-orders', icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
     ],
   },
   {

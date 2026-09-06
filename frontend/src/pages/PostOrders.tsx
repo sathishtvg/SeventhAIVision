@@ -1,7 +1,12 @@
 /**
- * Post Orders (Gap 87) — per-site standing instructions with acknowledgment
- * tracking. Guards read + acknowledge; supervisors author and see who still
- * hasn't read the current version.
+ * SOP — standard operating procedures (Gap 87): per-site standing instructions
+ * with acknowledgment tracking. Guards read + acknowledge; supervisors author
+ * and see who still hasn't read the current version.
+ *
+ * Called "Post Orders" everywhere in the code — the route, the table, this
+ * file, the API module — and SOP everywhere a person can see. The rename was
+ * to the wording, not the schema: renaming a route and a table to match a
+ * label costs migrations and broken bookmarks and buys nothing.
  */
 import { useState } from 'react'
 import {
@@ -70,7 +75,7 @@ function EditorDialog({ open, onClose, existing }: {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{existing ? `Edit — ${existing.title}` : 'New Post Order'}</DialogTitle>
+      <DialogTitle>{existing ? `Edit — ${existing.title}` : 'New SOP'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
         {existing && (
           <Typography variant="caption" color="warning.main">
@@ -243,7 +248,7 @@ export function PostOrdersPage() {
         <PermissionGuard permission="shift:manage">
           <Button variant="contained" size="small" startIcon={<AddIcon />}
                   onClick={() => { setEditing(null); setEditorOpen(true) }}>
-            New Post Order
+            New SOP
           </Button>
         </PermissionGuard>
       </Stack>

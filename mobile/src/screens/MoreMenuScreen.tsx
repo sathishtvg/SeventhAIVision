@@ -25,7 +25,7 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'ActionCenter',  label: 'Action Center',      description: 'What needs your attention now',      icon: 'checkmark-done-outline',   color: colors.error },
   { screen: 'Attendance',    label: 'Live Attendance',    description: 'Who is on duty and who is missing',  icon: 'people-circle-outline',    color: colors.success },
   { screen: 'MySchedule',    label: 'My Schedule',        description: 'Your upcoming and recent shifts',    icon: 'calendar-outline',         color: colors.secondary },
-  { screen: 'PostOrders',    label: 'Post Orders',        description: 'Standing instructions for your sites', icon: 'reader-outline',       color: colors.error },
+  { screen: 'PostOrders',    label: 'SOP',                description: 'Standard operating procedures for your sites', icon: 'reader-outline',       color: colors.error },
   { screen: 'Training',      label: 'My Training',        description: 'SOP courses and quizzes',            icon: 'school-outline',           color: colors.primary },
   { screen: 'Visitors',      label: 'Visitor Management', description: 'Check in/out and manage visitors',   icon: 'people-outline',           color: colors.info },
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary },

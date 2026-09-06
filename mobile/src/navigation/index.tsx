@@ -184,7 +184,7 @@ function MoreNavigator() {
       <MoreStack.Screen name="Attendance"    component={AttendanceScreen}           options={{ title: 'Live Attendance' }} />
       <MoreStack.Screen name="MySchedule"    component={MyScheduleScreen}           options={{ title: 'My Schedule' }} />
       <MoreStack.Screen name="Training"      component={TrainingScreen}             options={{ title: 'My Training' }} />
-      <MoreStack.Screen name="PostOrders"    component={PostOrdersScreen}           options={{ title: 'Post Orders' }} />
+      <MoreStack.Screen name="PostOrders"    component={PostOrdersScreen}           options={{ title: 'SOP' }} />
       <MoreStack.Screen name="Visitors"      component={VisitorsScreen}             options={{ title: 'Visitor Management' }} />
       <MoreStack.Screen name="Dispatch"      component={DispatchScreen}             options={{ title: 'Dispatch' }} />
       <MoreStack.Screen name="Detections"    component={DetectionsScreen}           options={{ title: 'AI Detections' }} />

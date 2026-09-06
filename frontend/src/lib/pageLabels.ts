@@ -46,7 +46,7 @@ export const PAGE_LABELS = {
   leave: { title: 'Leave', subtitle: 'Requests, approvals and remaining balances per guard' },
   training: { title: 'Guard Training & Certifications', subtitle: 'Courses, quizzes and certification expiry for your officers' },
   compliance: { title: 'Guard Tour Compliance', subtitle: 'Whether patrols are actually being walked, per route and per guard' },
-  'post-orders': { title: 'Post Orders', subtitle: 'Site-specific standing instructions guards can read on duty' },
+  'post-orders': { title: 'SOP', subtitle: 'Standard operating procedures — the site-specific standing instructions guards follow on duty' },
 
   // ── People & money ────────────────────────────────────────────────────
   users: { title: 'Users', subtitle: 'Staff accounts, roles, employment details, pay rates and site access' },
