@@ -654,13 +654,21 @@ function SiteAccessDialog({ open, onClose, user }: { open: boolean; onClose: () 
 /** Upload / replace a guard's permanent profile photo. */
 function ProfilePhotoField({ user }: { user: User }) {
   const token = useAuthStore((s) => s.accessToken)
+  const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Bumped after a successful upload: the URL is stable per user, so the
   // browser would otherwise keep serving the old cached image.
   const [version, setVersion] = useState(0)
+  // Local record that this user now has a photo, replacing an assignment
+  // straight onto the `user` prop. That object belongs to the react-query
+  // cache and is shared with every other reader of ['users'] — writing to it
+  // changed what they saw without re-rendering them, and left the cache
+  // disagreeing with the server until something happened to refetch.
+  const [justUploaded, setJustUploaded] = useState(false)
 
-  const src = user.profile_photo_path ? `${profilePhotoUrl(user.id, token)}&v=${version}` : null
+  const hasPhoto = Boolean(user.profile_photo_path) || justUploaded
+  const src = hasPhoto ? `${profilePhotoUrl(user.id, token)}&v=${version}` : null
 
   const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -668,8 +676,11 @@ function ProfilePhotoField({ user }: { user: User }) {
     setBusy(true); setErr(null)
     try {
       await uploadProfilePhoto(user.id, file)
-      user.profile_photo_path = 'set'   // reflect immediately without a refetch
+      // Shows the new photo at once; the invalidate then makes the cache
+      // agree with the server rather than leaving it to be corrected later.
+      setJustUploaded(true)
       setVersion((v) => v + 1)
+      queryClient.invalidateQueries({ queryKey: ['users'] })
     } catch {
       setErr('Upload failed — use a JPEG, PNG or WebP image.')
     } finally {
@@ -685,7 +696,7 @@ function ProfilePhotoField({ user }: { user: User }) {
       </Avatar>
       <Box>
         <Button component="label" size="small" variant="outlined" disabled={busy}>
-          {busy ? 'Uploading…' : user.profile_photo_path ? 'Replace photo' : 'Upload photo'}
+          {busy ? 'Uploading…' : hasPhoto ? 'Replace photo' : 'Upload photo'}
           <input hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={onPick} />
         </Button>
         <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}
