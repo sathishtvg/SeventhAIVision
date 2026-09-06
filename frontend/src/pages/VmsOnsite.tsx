@@ -17,9 +17,9 @@ import {
 import { RegisterVisitorDialog } from '@/components/vms/RegisterVisitorDialog'
 import { VisitorLabelDialog, type LabelVisitor } from '@/components/vms/VisitorLabelDialog'
 import { ScanQrDialog } from '@/components/vms/ScanQrDialog'
+import { PreRegisterDialog } from '@/components/vms/PreRegisterDialog'
 import { checkoutVisitor } from '@/api/visitors'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -62,8 +62,8 @@ export default function VmsOnsite() {
   const [visitType, setVisitType] = useState<VisitType | ''>('')
   const [registerOpen, setRegisterOpen] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
+  const [preRegOpen, setPreRegOpen] = useState(false)
   const [labelFor, setLabelFor] = useState<LabelVisitor | null>(null)
-  const navigate = useNavigate()
   const qc = useQueryClient()
 
   // Check-out is one click with no confirm: it is the most frequent action at
@@ -121,7 +121,7 @@ export default function VmsOnsite() {
                 size="small"
                 variant="outlined"
                 startIcon={<EventAvailableIcon />}
-                onClick={() => navigate('/visitor-prereg')}
+                onClick={() => setPreRegOpen(true)}
               >
                 Pre-register
               </Button>
@@ -351,6 +351,12 @@ export default function VmsOnsite() {
         onRegistered={(v) => setLabelFor(v)}
       />
       <ScanQrDialog open={scanOpen} onClose={() => setScanOpen(false)} />
+      <PreRegisterDialog
+        open={preRegOpen}
+        onClose={() => setPreRegOpen(false)}
+        defaultSiteId={siteId || undefined}
+        onCreated={(v) => setLabelFor(v)}
+      />
       <VisitorLabelDialog visitor={labelFor} onClose={() => setLabelFor(null)} />
     </Box>
   )
