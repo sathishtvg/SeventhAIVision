@@ -31,7 +31,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Box, Typography, Chip, Select, MenuItem, FormControl, InputLabel, Skeleton,
+  Box, Typography, Chip, Skeleton,
   Button, Divider, IconButton, Tooltip, Avatar, Dialog, DialogTitle,
   DialogContent, TextField, InputAdornment, Badge,
 } from '@mui/material'
@@ -61,6 +61,7 @@ import {
   type LiveAttendanceShift, type LiveAttendanceSite, type MonitorStatus,
 } from '@/api/attendance'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
@@ -388,7 +389,7 @@ function SiteCard({ site, token, onOpenGuard, index }: {
       )}
 
       <Box sx={{ display: 'grid', gap: 1.25,
-                 gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+                 gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
         {site.guards.map((g) => (
           <GuardCard key={g.id} g={g} token={token} onOpen={() => onOpenGuard(g)} />
         ))}
@@ -678,6 +679,49 @@ export function AttendancePage() {
   }, [board, statusFilter, employmentFilter, shiftFilter, siteFilter, search])
 
   const anyFilter = Boolean(statusFilter || employmentFilter || shiftFilter || siteFilter || search)
+
+  // Status appears twice on purpose: as chips above the board, and here. The
+  // chips are the one-tap triage path an operator actually uses, but the rail's
+  // badge is what answers "why is this board half empty?" — so a status set by
+  // chip has to count as an active filter, which means it has to be a group.
+  const filterGroups: FilterGroup[] = [
+    {
+      key: 'site', label: 'Site', value: siteFilter, onChange: setSiteFilter,
+      options: [
+        { value: '', label: 'All sites' },
+        ...(board?.sites ?? []).map((s) => ({
+          value: String(s.site_id ?? ''), label: s.site_name,
+        })),
+      ],
+    },
+    {
+      key: 'status', label: 'Status', value: statusFilter,
+      onChange: (v) => setStatusFilter(v as MonitorStatus | ''),
+      options: [
+        { value: '', label: 'All statuses' },
+        ...(Object.keys(STATUS_META) as MonitorStatus[]).map((s) => ({
+          value: s, label: STATUS_META[s].label,
+        })),
+      ],
+    },
+    {
+      key: 'employment', label: 'Employment', value: employmentFilter,
+      onChange: setEmploymentFilter,
+      options: [
+        { value: '', label: 'All types' },
+        ...Object.entries(EMPLOYMENT_META).map(([k, v]) => ({ value: k, label: v.label })),
+      ],
+    },
+    {
+      key: 'shift', label: 'Shift', value: shiftFilter, onChange: setShiftFilter,
+      options: [
+        { value: '', label: 'All shifts' },
+        { value: 'day', label: 'Day' },
+        { value: 'night', label: 'Night' },
+        { value: 'split', label: 'Split' },
+      ],
+    },
+  ]
   const clearFilters = () => {
     setStatusFilter(''); setEmploymentFilter(''); setShiftFilter(''); setSiteFilter(''); setSearch('')
   }
@@ -739,57 +783,33 @@ export function AttendancePage() {
           ))}
         </Stack>
 
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+        {/* Search stays on the page; the four narrowing filters moved into the
+            rail. Search is how you find one named person, which is a different
+            job from narrowing the board, and it is the control most often
+            reached for — burying it behind a panel would cost a click every
+            time someone rings the gatehouse asking about a guard. */}
+        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
           <TextField
             size="small" placeholder="Search name or number"
             value={search} onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: 210 }}
+            sx={{ minWidth: 240 }}
             slotProps={{ input: { startAdornment: (
               <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
             ) } }}
           />
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Site</InputLabel>
-            <Select label="Site" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-              <MenuItem value="">All sites</MenuItem>
-              {(board?.sites ?? []).map((s) => (
-                <MenuItem key={String(s.site_id)} value={String(s.site_id ?? '')}>{s.site_name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Status</InputLabel>
-            <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as MonitorStatus | '')}>
-              <MenuItem value="">All statuses</MenuItem>
-              {(Object.keys(STATUS_META) as MonitorStatus[]).map((s) => (
-                <MenuItem key={s} value={s}>{STATUS_META[s].label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Employment</InputLabel>
-            <Select label="Employment" value={employmentFilter} onChange={(e) => setEmploymentFilter(e.target.value)}>
-              <MenuItem value="">All types</MenuItem>
-              {Object.entries(EMPLOYMENT_META).map(([k, v]) => (
-                <MenuItem key={k} value={k}>{v.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel>Shift</InputLabel>
-            <Select label="Shift" value={shiftFilter} onChange={(e) => setShiftFilter(e.target.value)}>
-              <MenuItem value="">All shifts</MenuItem>
-              <MenuItem value="day">Day</MenuItem>
-              <MenuItem value="night">Night</MenuItem>
-              <MenuItem value="split">Split</MenuItem>
-            </Select>
-          </FormControl>
           {anyFilter && (
             <Button size="small" variant="outlined" onClick={clearFilters}>Show All</Button>
           )}
         </Stack>
       </GlassCard>
 
+      {/* The rail sits to the LEFT of the board: this is a card grid read from
+          a fixed left origin, not a table with row-actions on the right, so
+          the filters belong next to where the eye starts. The strip holds its
+          own 44px of layout, so opening it never reflows the sites. */}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+        <FilterRail groups={filterGroups} storageKey="attendance" side="left" />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
       {/* ── Site grid ──────────────────────────────────────────────────── */}
       {isLoading ? (
         <GlassCard sx={{ p: 2 }}><Skeleton height={120} /></GlassCard>
@@ -801,13 +821,31 @@ export function AttendancePage() {
           {anyFilter && <Button size="small" sx={{ mt: 1 }} onClick={clearFilters}>Show All</Button>}
         </GlassCard>
       ) : (
-        <Stack spacing={2}>
+        // Sites sit beside each other, not stacked. Each site used to take a
+        // full-width band, so an operator covering ten sites — which is the
+        // normal case for a security company, not the edge one — scrolled past
+        // nine of them to reach the tenth, and could never see two at once.
+        // The whole point of this board is comparing sites at a glance.
+        //
+        // auto-fill against a 460px minimum rather than a fixed column count:
+        // a laptop gets two, a 1440p control-room screen three, a wall display
+        // four or more, and a phone one, without a breakpoint table to keep in
+        // step. align-items:start lets a quiet site stay short instead of being
+        // stretched to match the busiest site in its row.
+        <Box sx={{
+          display: 'grid',
+          gap: 2,
+          alignItems: 'start',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))',
+        }}>
           {filteredSites.map((s, i) => (
             <SiteCard key={String(s.site_id) + s.site_name} site={s} token={token}
                       onOpenGuard={setSelectedGuard} index={i} />
           ))}
-        </Stack>
+        </Box>
       )}
+        </Box>
+      </Box>
 
       {/* ── Correction queue (unchanged behaviour) ─────────────────────── */}
       <PermissionGuard permission="attendance:manage">
