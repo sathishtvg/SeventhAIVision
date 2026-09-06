@@ -38,6 +38,38 @@ function hhmm(iso: string | null): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * `live_status` collapses two different things into `not_started`: a shift
+ * whose hour has passed with nobody checked in, and a shift that simply has
+ * not begun. Only the first is a problem.
+ *
+ * Treating both as one is what put a guard rostered 20:00 on the top of the
+ * attention list at 14:00, under a red "No show", with a button offering to
+ * phone them about it. The shift's own start time is on every row, so the
+ * board can tell the two apart rather than guessing.
+ */
+function hasStarted(s: LiveAttendanceShift, now = Date.now()): boolean {
+  return new Date(s.scheduled_start).getTime() <= now
+}
+
+/** Should have started and nobody has checked in. */
+function isOverdue(s: LiveAttendanceShift, now = Date.now()): boolean {
+  return s.live_status === 'not_started' && hasStarted(s, now)
+}
+
+/** Worth chasing: late on shift, or overdue and unaccounted for. */
+function needsAttention(s: LiveAttendanceShift, now = Date.now()): boolean {
+  return s.live_status === 'late' || isOverdue(s, now)
+}
+
+/** A shift that has not begun says when it begins, not that it is missing. */
+function statusFor(s: LiveAttendanceShift, now = Date.now()): { label: string; colour: string } {
+  if (s.live_status === 'not_started' && !hasStarted(s, now)) {
+    return { label: `Starts ${hhmm(s.scheduled_start)}`, colour: colors.textDisabled }
+  }
+  return STATUS_META[s.live_status]
+}
+
 export function AttendanceScreen() {
   const [onlyAttention, setOnlyAttention] = useState(false)
 
@@ -55,15 +87,16 @@ export function AttendanceScreen() {
   const rows = useMemo(() => {
     // "Needs attention" = late, or should have started and hasn't. Those sort
     // first; everything else keeps its server order.
-    const rank = (s: LiveAttendanceShift) =>
-      s.live_status === 'late' || s.live_status === 'not_started' ? 0 : 1
+    const rank = (s: LiveAttendanceShift) => (needsAttention(s) ? 0 : 1)
     const filtered = onlyAttention ? shifts.filter((s) => rank(s) === 0) : shifts
     return [...filtered].sort((a, b) => rank(a) - rank(b))
   }, [shifts, onlyAttention])
 
-  const attentionCount = shifts.filter(
-    (s) => s.live_status === 'late' || s.live_status === 'not_started',
-  ).length
+  const attentionCount = shifts.filter((s) => needsAttention(s)).length
+
+  // Counted from the shifts rather than taken from the server summary, whose
+  // not_started lumps the upcoming in with the genuinely absent.
+  const noShowCount = shifts.filter((s) => isOverdue(s)).length
 
   if (isLoading) {
     return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
@@ -106,7 +139,7 @@ export function AttendanceScreen() {
                 <Text style={styles.kpiLabel}>Late</Text>
               </View>
               <View style={styles.kpi}>
-                <Text style={[styles.kpiNum, { color: colors.error }]}>{summary.not_started}</Text>
+                <Text style={[styles.kpiNum, { color: colors.error }]}>{noShowCount}</Text>
                 <Text style={styles.kpiLabel}>No show</Text>
               </View>
             </View>
@@ -136,9 +169,8 @@ export function AttendanceScreen() {
         </Card>
       }
       renderItem={({ item }) => {
-        const meta = STATUS_META[item.live_status]
-        const needsCall =
-          (item.live_status === 'late' || item.live_status === 'not_started') && !!item.guard_phone
+        const meta = statusFor(item)
+        const needsCall = needsAttention(item) && !!item.guard_phone
         return (
           <Card>
             <View style={styles.row}>

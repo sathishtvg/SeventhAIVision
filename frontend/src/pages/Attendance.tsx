@@ -102,8 +102,8 @@ const STATUS_META: Record<MonitorStatus, StatusMeta> = {
     help: 'Duty has started — still inside the grace period',
   },
   not_yet_on_duty: {
-    label: 'Not Yet On Duty', color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 14 }} />,
-    help: 'Rostered later today; nothing expected yet',
+    label: 'Upcoming Shift', color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 14 }} />,
+    help: 'Shift has not started yet — nothing is expected until it does',
   },
   on_leave: {
     label: 'Approved Leave', color: '#00D9C0', icon: <EventBusyIcon sx={{ fontSize: 14 }} />,
@@ -179,22 +179,42 @@ function relativeAge(iso: string | undefined, nowMs: number) {
 // ── Presentational pieces ────────────────────────────────────────────────────
 
 /** Colour + icon + words. Never colour alone. */
-function StatusBadge({ status, size = 'sm' }: { status: MonitorStatus; size?: 'sm' | 'md' }) {
+function StatusBadge({ status, size = 'sm', startsAt }: {
+  status: MonitorStatus
+  size?: 'sm' | 'md'
+  /** This guard's rostered start. Given, a shift that has not begun says the
+   *  hour it begins instead of a state. */
+  startsAt?: string | null
+}) {
   const m = STATUS_META[status]
+  /**
+   * "Not Yet On Duty" read as a complaint about the guard. It is not: a
+   * 20:00 shift seen at 14:00 is simply a shift that has not started, and
+   * the operator's real question is when it does. So where the shift is
+   * known the badge answers that question — "Starts 20:00" — and the state
+   * word is kept only for the legend and the filter, which cover many
+   * guards at once and so have no single hour to name.
+   */
+  const label = status === 'not_yet_on_duty' && startsAt
+    ? `Starts ${fmtTime(startsAt)}`
+    : m.label
   return (
     <Box
       sx={{
         display: 'inline-flex', alignItems: 'center', gap: 0.5,
-        px: size === 'md' ? 1.25 : 0.75, py: size === 'md' ? 0.5 : 0.25,
+        px: size === 'md' ? 1.25 : 0.6, py: size === 'md' ? 0.5 : 0.2,
         borderRadius: '999px', flexShrink: 0,
+        // Scaled here rather than in all eight STATUS_META entries, which are
+        // sized for the roomier 'md' badge in the detail dialog.
+        '& svg': { fontSize: size === 'md' ? 14 : 12 },
         background: `rgba(${hexToRgb(m.color)},0.16)`,
         border: `1px solid rgba(${hexToRgb(m.color)},0.5)`,
         color: m.color,
-        fontSize: size === 'md' ? '0.74rem' : '0.66rem',
+        fontSize: size === 'md' ? '0.74rem' : '0.62rem',
         fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap',
       }}
     >
-      {m.icon}{m.label}
+      {m.icon}{label}
     </Box>
   )
 }
@@ -204,8 +224,8 @@ function EmploymentBadge({ type }: { type: string | null }) {
   return (
     <Box
       sx={{
-        display: 'inline-block', px: 0.75, py: 0.15, borderRadius: '4px',
-        fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.04em',
+        display: 'inline-block', px: 0.6, py: 0.1, borderRadius: '4px',
+        fontSize: '0.56rem', fontWeight: 700, letterSpacing: '0.04em',
         textTransform: 'uppercase', whiteSpace: 'nowrap',
         color: m.color, border: `1px solid rgba(${hexToRgb(m.color)},0.45)`,
         background: `rgba(${hexToRgb(m.color)},0.10)`,
@@ -269,7 +289,7 @@ function GuardCard({ g, token, onOpen }: {
     <Box
       onClick={onOpen}
       sx={{
-        p: 1.25, borderRadius: '12px', cursor: 'pointer', minWidth: 0,
+        p: 1, borderRadius: '10px', cursor: 'pointer', minWidth: 0,
         background: `linear-gradient(135deg, rgba(${hexToRgb(m.color)},0.10) 0%, rgba(255,255,255,0.02) 100%)`,
         border: `1px solid rgba(${hexToRgb(m.color)},0.45)`,
         // Left spine repeats the status colour as a shape, which survives
@@ -287,45 +307,46 @@ function GuardCard({ g, token, onOpen }: {
         } : {}),
       }}
     >
-      <Stack direction="row" spacing={1.25} alignItems="flex-start">
+      <Stack direction="row" spacing={1} alignItems="flex-start">
         <Avatar
           src={photo}
           alt={g.guard_name ?? 'Guard'}
-          sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: `rgba(${hexToRgb(m.color)},0.25)`,
-                color: m.color, fontSize: '0.85rem', fontWeight: 700 }}
+          sx={{ width: 34, height: 34, flexShrink: 0, bgcolor: `rgba(${hexToRgb(m.color)},0.25)`,
+                color: m.color, fontSize: '0.72rem', fontWeight: 700 }}
         >
           {initials(g.guard_name)}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" noWrap sx={{ fontWeight: 700 }} title={g.guard_name ?? undefined}>
+          <Typography variant="body2" noWrap sx={{ fontWeight: 700, fontSize: '0.78rem', lineHeight: 1.3 }}
+                      title={g.guard_name ?? undefined}>
             {g.guard_name ?? 'Unassigned'}
           </Typography>
-          <Typography variant="caption" noWrap sx={{ display: 'block', color: 'text.secondary', fontSize: '0.66rem' }}>
+          <Typography variant="caption" noWrap sx={{ display: 'block', color: 'text.secondary', fontSize: '0.62rem' }}>
             {g.guard_phone || 'No contact number'}
           </Typography>
-          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
-            <StatusBadge status={g.monitor_status} />
+          <Stack direction="row" spacing={0.5} sx={{ mt: 0.4, flexWrap: 'wrap', gap: 0.4 }}>
+            <StatusBadge status={g.monitor_status} startsAt={g.scheduled_start} />
             <EmploymentBadge type={g.employment_type} />
           </Stack>
         </Box>
       </Stack>
 
-      <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.07)' }} />
+      <Divider sx={{ my: 0.75, borderColor: 'rgba(255,255,255,0.07)' }} />
 
-      <Stack direction="row" justifyContent="space-between" sx={{ fontSize: '0.66rem' }}>
+      <Stack direction="row" justifyContent="space-between" sx={{ fontSize: '0.62rem' }}>
         <Box>
-          <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.58rem' }}>
+          <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.54rem', lineHeight: 1.3 }}>
             ROSTERED
           </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.64rem' }}>
             {fmtTime(g.scheduled_start)}–{fmtTime(g.scheduled_end)}
           </Typography>
         </Box>
         <Box sx={{ textAlign: 'right' }}>
-          <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.58rem' }}>
+          <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.54rem', lineHeight: 1.3 }}>
             CHECK-IN
           </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: g.actual_start ? m.color : 'text.disabled' }}>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.64rem', color: g.actual_start ? m.color : 'text.disabled' }}>
             {g.actual_start ? fmtTime(g.actual_start) : 'not received'}
           </Typography>
         </Box>
@@ -373,7 +394,7 @@ function SiteCard({ site, token, onOpenGuard, index }: {
   const thin = !unmanned && c.rostered >= 3 && c.not_reported / c.rostered > 0.5
 
   return (
-    <GlassCard sx={{ p: 1.75, ...fadeUpSx(index) }}>
+    <GlassCard sx={{ p: 1.5, ...fadeUpSx(index) }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25, flexWrap: 'wrap' }}>
         <Badge
           color="error" badgeContent={problems} invisible={problems === 0}
@@ -416,8 +437,8 @@ function SiteCard({ site, token, onOpenGuard, index }: {
         </Stack>
       )}
 
-      <Box sx={{ display: 'grid', gap: 1.25,
-                 gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+      <Box sx={{ display: 'grid', gap: 1,
+                 gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
         {site.guards.map((g) => (
           <GuardCard key={g.id} g={g} token={token} onOpen={() => onOpenGuard(g)} />
         ))}
@@ -466,7 +487,7 @@ function StatDetailDialog({ open, title, guards, token, onClose, onOpenGuard }: 
               </Typography>
               <Chip size="small" label={rows.length} sx={{ height: 17, fontSize: '0.6rem' }} />
             </Stack>
-            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+            <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
               {rows.map((g) => (
                 <GuardCard key={g.id} g={g} token={token} onOpen={() => onOpenGuard(g)} />
               ))}
@@ -514,7 +535,7 @@ function GuardDetailDialog({ g, token, onClose }: {
           <Typography variant="subtitle1" sx={{ fontWeight: 800 }} noWrap>{g.guard_name ?? 'Unassigned'}</Typography>
           <Typography variant="caption" color="text.secondary">{g.designation || 'Security Guard'}</Typography>
         </Box>
-        <StatusBadge status={g.monitor_status} size="md" />
+        <StatusBadge status={g.monitor_status} size="md" startsAt={g.scheduled_start} />
         <IconButton size="small" onClick={onClose} aria-label="Close"><CloseIcon fontSize="small" /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
@@ -639,7 +660,7 @@ const STAT_TILES: { key: StatKey; label: string; color: string; icon: React.Reac
   { key: 'reported',        label: 'Reported Today',   color: '#2196F3', icon: <CheckCircleIcon sx={{ fontSize: 16 }} /> },
   { key: 'late',            label: 'Late to Work',     color: '#FF9800', icon: <AccessTimeIcon sx={{ fontSize: 16 }} /> },
   { key: 'not_reported',    label: 'Not Reported',     color: '#FF4560', icon: <ErrorIcon sx={{ fontSize: 16 }} /> },
-  { key: 'not_yet_on_duty', label: 'Not Yet On Duty',  color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 16 }} /> },
+  { key: 'not_yet_on_duty', label: 'Upcoming Shift',   color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 16 }} /> },
   { key: 'on_leave',        label: 'Approved Leave',   color: '#00D9C0', icon: <EventBusyIcon sx={{ fontSize: 16 }} /> },
 ]
 
@@ -901,7 +922,10 @@ export function AttendancePage() {
           display: 'grid',
           gap: 2,
           alignItems: 'start',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))',
+          // 340px fits two 150px guard cards inside the site's 1.5 padding,
+          // which is the real constraint — a site card can only be as narrow
+          // as a whole number of guards across.
+          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
         }}>
           {filteredSites.map((s, i) => (
             <SiteCard key={String(s.site_id) + s.site_name} site={s} token={token}
