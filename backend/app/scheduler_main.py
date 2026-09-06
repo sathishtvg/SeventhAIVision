@@ -433,6 +433,7 @@ async def close_visits_at_day_rollover(db: AsyncSession) -> int:
             text("""
                 UPDATE visitors v
                    SET vehicle_exit_at = now(),
+                       departed_at = now(),
                        status = 'departed',
                        closed_by_day_rollover = TRUE,
                        updated_at = now()
@@ -440,7 +441,7 @@ async def close_visits_at_day_rollover(db: AsyncSession) -> int:
                  WHERE t.id = v.tenant_id
                    AND v.is_active = TRUE
                    AND v.arrived_at IS NOT NULL
-                   AND v.vehicle_exit_at IS NULL
+                   AND v.departed_at IS NULL
                    AND (v.arrived_at AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
                      < (now()         AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
              RETURNING v.id, v.site_id

@@ -411,7 +411,7 @@ async def vehicles_onsite(
     which is why is_overstayed guards on vehicle_entry_at rather than on the
     allowance alone.
     """
-    clauses = ["v.arrived_at IS NOT NULL", "v.vehicle_exit_at IS NULL", "v.is_active = TRUE"]
+    clauses = ["v.arrived_at IS NOT NULL", "v.departed_at IS NULL", "v.is_active = TRUE"]
     params: dict[str, Any] = {}
     if site_id:
         clauses.append("v.site_id = CAST(:site_id AS uuid)")

@@ -326,7 +326,7 @@ async def handle_lpr_exit(
             text(
                 """
                 UPDATE visitors
-                   SET vehicle_exit_at = now(), status = 'departed',
+                   SET vehicle_exit_at = now(), departed_at = now(), status = 'departed',
                        exit_lpr_detection_id = CAST(:det AS uuid), updated_at = now()
                  WHERE id = (
                      SELECT id FROM visitors

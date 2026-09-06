@@ -356,7 +356,7 @@ async def qr_scan_checkin(
             "notes": body.notes, "qr": body.qr_token,
         })
         await db.execute(
-            text("UPDATE visitors SET status = 'departed' WHERE id = CAST(:id AS uuid)"),
+            text("UPDATE visitors SET status = 'departed', departed_at = now(), updated_at = now() WHERE id = CAST(:id AS uuid)"),
             {"id": str(visitor.id)}
         )
         await db.commit()
@@ -517,7 +517,7 @@ async def checkout_visitor_by_id(
         "gid": token.user_id, "notes": body.notes,
     })).first()
     await db.execute(
-        text("UPDATE visitors SET status = 'departed' WHERE id = CAST(:id AS uuid)"),
+        text("UPDATE visitors SET status = 'departed', departed_at = now(), updated_at = now() WHERE id = CAST(:id AS uuid)"),
         {"id": visitor_id}
     )
     await db.commit()
