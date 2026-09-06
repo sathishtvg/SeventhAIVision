@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import {
   Alert, Autocomplete, Box, Button, Chip, Dialog, DialogActions, DialogContent,
-  DialogTitle, IconButton, Skeleton, Stack, TextField, Tooltip, Typography,
+  DialogTitle, IconButton, Skeleton, TextField, Tooltip, Typography,
 } from '@mui/material'
+// Not MUI's Stack: v9 dropped alignItems/justifyContent/flexWrap/gap as direct
+// props, and this wrapper folds them back into sx. Importing the raw one is
+// what broke CI here — `tsc -b` catches it, `tsc -p` does not.
+import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import LightModeIcon from '@mui/icons-material/LightMode'
