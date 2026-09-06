@@ -226,7 +226,7 @@ function StatTile({ label, value, color, icon, active, onClick, index }: {
     <GlassCard
       onClick={onClick}
       sx={{
-        p: 1.5, cursor: 'pointer', minWidth: 0,
+        px: 1.25, py: 0.9, cursor: 'pointer', minWidth: 0,
         border: `1px solid rgba(${hexToRgb(color)},${active ? 0.9 : 0.28})`,
         background: `linear-gradient(135deg, rgba(${hexToRgb(color)},${active ? 0.22 : 0.09}) 0%, transparent 100%)`,
         transition: 'transform 0.16s, border-color 0.16s, background 0.16s',
@@ -234,15 +234,27 @@ function StatTile({ label, value, color, icon, active, onClick, index }: {
         ...fadeUpSx(index),
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
-        <Box sx={{ color, display: 'flex' }}>{icon}</Box>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.66rem', lineHeight: 1.1 }}>
+      {/* Icon, number and label on ONE line rather than stacked. Stacked, the
+          eight tiles cost about 110px of the most valuable space on the screen
+          — permanently, for figures that are context rather than the work. The
+          board underneath is the work, and on a company with many sites it was
+          starting below the fold. The number keeps its weight and colour, so it
+          is still readable across a control room; only the dead space went. */}
+      <Stack direction="row" spacing={0.9} alignItems="center" sx={{ minWidth: 0 }}>
+        <Box sx={{ color, display: 'flex', flexShrink: 0 }}>{icon}</Box>
+        <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1, color, flexShrink: 0 }}>
+          {shown}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary', fontSize: '0.64rem', lineHeight: 1.15,
+            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >
           {label}
         </Typography>
       </Stack>
-      <Typography sx={{ fontSize: '1.9rem', fontWeight: 800, lineHeight: 1, color }}>
-        {shown}
-      </Typography>
     </GlassCard>
   )
 }
@@ -353,7 +365,12 @@ function SiteCard({ site, token, onOpenGuard, index }: {
   const problems = c.not_reported + c.late
   // "Unusually low attendance" made concrete: over half the roster missing,
   // on a site rostering enough people for that to mean anything.
-  const thin = c.rostered >= 3 && c.not_reported / c.rostered > 0.5
+  // Nobody has reported and someone was due: the site is standing empty right
+  // now. Distinct from "short-handed", and the only state here that is an
+  // incident rather than a delay — so it says so in words instead of leaving
+  // the operator to infer it from "0 in" sitting beside "2 missing".
+  const unmanned = c.not_reported > 0 && c.checked_in === 0
+  const thin = !unmanned && c.rostered >= 3 && c.not_reported / c.rostered > 0.5
 
   return (
     <GlassCard sx={{ p: 1.75, ...fadeUpSx(index) }}>
@@ -376,6 +393,17 @@ function SiteCard({ site, token, onOpenGuard, index }: {
           {c.not_yet_on_duty > 0 && <Chip size="small" variant="outlined" label={`${c.not_yet_on_duty} later`} sx={{ height: 19, fontSize: '0.62rem' }} />}
         </Stack>
       </Stack>
+
+      {unmanned && (
+        <Stack direction="row" spacing={0.75} alignItems="center"
+               sx={{ mb: 1.25, px: 1, py: 0.7, borderRadius: 1,
+                     background: 'rgba(255,69,96,0.22)', border: '1px solid #FF4560' }}>
+          <ErrorIcon sx={{ fontSize: 16, color: '#FF4560' }} />
+          <Typography variant="caption" sx={{ color: '#FF4560', fontWeight: 800 }}>
+            NO GUARD ON SITE — {c.not_reported} due, none reported
+          </Typography>
+        </Stack>
+      )}
 
       {thin && (
         <Stack direction="row" spacing={0.75} alignItems="center"
@@ -670,11 +698,43 @@ export function AttendancePage() {
     return true
   }
 
+  /**
+   * Worst site first, always.
+   *
+   * The board arrived in whatever order the server returned, which on a
+   * company covering twenty sites buries the one that needs a phone call
+   * behind nineteen that are fine. An operator should never have to hunt for
+   * the emergency — it should be the first thing under their eyes.
+   *
+   * The ranking is an escalation ladder, not a score:
+   *
+   *   0  UNMANNED — guards are due and not one has reported. The site is
+   *      standing empty right now, which is the only state on this board that
+   *      is an incident rather than a delay.
+   *   1  Someone missing, but not everyone.
+   *   2  Someone late — they turned up, so it is a conversation, not a gap.
+   *   3  Everything else.
+   *
+   * Within a rank, more missing sorts first, then more late, then name so the
+   * order is stable between refreshes — a board that reshuffles under the
+   * cursor every thirty seconds is unusable.
+   */
   const filteredSites = useMemo(() => {
     if (!board) return []
+    const rank = (c: LiveAttendanceSite['counts']) => {
+      if (c.not_reported > 0 && c.checked_in === 0) return 0
+      if (c.not_reported > 0) return 1
+      if (c.late > 0) return 2
+      return 3
+    }
     return board.sites
       .map((s) => ({ ...s, guards: s.guards.filter(matches) }))
       .filter((s) => s.guards.length > 0)
+      .sort((a, b) =>
+        rank(a.counts) - rank(b.counts) ||
+        b.counts.not_reported - a.counts.not_reported ||
+        b.counts.late - a.counts.late ||
+        a.site_name.localeCompare(b.site_name))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, statusFilter, employmentFilter, shiftFilter, siteFilter, search])
 
@@ -755,8 +815,8 @@ export function AttendancePage() {
       </Stack>
 
       {/* ── Company statistics ─────────────────────────────────────────── */}
-      <Box sx={{ display: 'grid', gap: 1.25, mb: 2,
-                 gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))' }}>
+      <Box sx={{ display: 'grid', gap: 1, mb: 1.25,
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))' }}>
         {STAT_TILES.map((t, i) => (
           <StatTile
             key={t.key} label={t.label} value={board?.summary[t.key] ?? 0}
@@ -768,8 +828,13 @@ export function AttendancePage() {
       </Box>
 
       {/* ── Legend + filters ───────────────────────────────────────────── */}
-      <GlassCard sx={{ p: 1.5, mb: 2 }}>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+      {/* Legend and search share one row instead of stacking. Together they
+          were taking a second full band above the board, on a screen whose
+          entire job is showing the board. On a narrow window they still wrap —
+          the search keeps a 200px floor so it never collapses to a slit. */}
+      <GlassCard sx={{ p: 1.25, mb: 1.5, display: 'flex', alignItems: 'center',
+                       gap: 1.5, flexWrap: 'wrap' }}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75, flex: 1, minWidth: 0 }}>
           {(Object.keys(STATUS_META) as MonitorStatus[]).map((s) => (
             <Tooltip key={s} title={STATUS_META[s].help}>
               <Box
@@ -788,11 +853,11 @@ export function AttendancePage() {
             job from narrowing the board, and it is the control most often
             reached for — burying it behind a panel would cost a click every
             time someone rings the gatehouse asking about a guard. */}
-        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, flexShrink: 0 }}>
           <TextField
             size="small" placeholder="Search name or number"
             value={search} onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: 240 }}
+            sx={{ minWidth: 200 }}
             slotProps={{ input: { startAdornment: (
               <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
             ) } }}
