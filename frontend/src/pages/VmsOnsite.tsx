@@ -99,9 +99,11 @@ export default function VmsOnsite() {
 
   return (
     <Box>
+      {/* Named from the registry rather than hardcoded here, so the title is
+          the same string the Command Centre shortcut and the Guard Ops button
+          use, and a tenant renaming it under Settings renames it everywhere. */}
       <PageHeader
-        title="Visitors On Site"
-        subtitle="Everyone currently on site — walk-ins, deliveries and vehicles — with arrival time and parking expiry"
+        pageKey="vms-onsite"
         action={
           <Stack direction="row" spacing={1} alignItems="center">
             {/* The gatehouse's primary action, so it leads and is the only

@@ -418,8 +418,8 @@ export default function CommandCentre() {
             { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon />,
               hint: 'Open the duty board on another screen — what needs attention right now' },
             ...(hasVms
-              ? [{ label: 'Vehicles On Site', path: '/vms-onsite', icon: <DirectionsCarIcon />,
-                   hint: 'Open the gatehouse vehicle board on another screen — visitor vehicles with entry time and parking expiry' }]
+              ? [{ label: 'VMS', path: '/vms-onsite', icon: <DirectionsCarIcon />,
+                   hint: 'Open the gatehouse board on another screen — everyone on site, with arrival time and parking expiry' }]
               : []),
           ]).map((s) => (
             <Tooltip key={s.path} title={s.hint}>

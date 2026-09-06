@@ -60,7 +60,7 @@ export const PAGE_LABELS = {
   'access-control': { title: 'Access Control', subtitle: 'Doors and readers — who may enter which area, and when' },
   barriers: { title: 'Barriers', subtitle: 'Vehicle barriers and the plate rules that raise them' },
   parking: { title: 'Smart Parking Management', subtitle: 'Bay occupancy and overstay across your car parks' },
-  'vms-onsite': { title: 'Vehicles On Site', subtitle: 'Gatehouse board of every visitor vehicle currently on site' },
+  'vms-onsite': { title: 'VMS', subtitle: 'Gatehouse board of everyone currently on site — walk-ins, deliveries and vehicles' },
   'visitor-prereg': { title: 'Visitor Pre-Registration', subtitle: 'Expected visitors, so the gate knows them before they arrive' },
   watchlists: { title: 'Watchlists', subtitle: 'Plates and faces that should raise an alert on sight — and the ones that never should' },
   zones: { title: 'Zones', subtitle: 'Areas drawn on a camera view that the AI treats as restricted or monitored' },

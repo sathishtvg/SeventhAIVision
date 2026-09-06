@@ -65,7 +65,7 @@ export default function GuardOps() {
               startIcon={<DirectionsCarIcon />}
               onClick={() => openInNewWindow('/vms-onsite', { fullscreen: true })}
             >
-              Vehicles On Site
+              VMS
             </Button>
           </Tooltip>
         )}
