@@ -99,6 +99,10 @@ const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
 
 const GRID_COLUMN_COUNT = 9
 
+// 0 = Monday, the same indexing shift_patterns.days_of_week and the
+// auto-scheduler use, so a chip here means the day the scheduler will read.
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 function payDisplay(user: User): { label: string; isSet: boolean } {
   if (user.monthly_salary != null) return { label: `$${user.monthly_salary.toLocaleString()}/mo`, isSet: true }
   if (user.daily_rate != null) return { label: `$${user.daily_rate}/day`, isSet: true }
@@ -250,6 +254,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
   // Lives on guard_shift_preferences, not users — so it saves through its own
   // endpoint alongside the profile write below.
   const [preferredShift, setPreferredShift] = useState('')
+  const [preferredOffDays, setPreferredOffDays] = useState<number[]>([])
 
   // Resync every field whenever the dialog opens or which user it's editing
   // changes — a bare useState(editUser?.foo ?? '') initializer only runs on
@@ -296,7 +301,8 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
 
   useEffect(() => {
     setPreferredShift(storedPrefs?.preferred_shift_type ?? '')
-  }, [storedPrefs?.preferred_shift_type, editUser?.id])
+    setPreferredOffDays(storedPrefs?.preferred_off_days ?? [])
+  }, [storedPrefs?.preferred_shift_type, storedPrefs?.preferred_off_days, editUser?.id])
 
   // Built-in roles + this tenant's custom roles (Gap 91). Falls back to the
   // hardcoded built-in labels if the caller can't list roles.
@@ -321,8 +327,14 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
       // Two writes because it is two records. Only sent when it actually
       // changed, so editing an admin's phone number does not create a shift
       // preference row for someone who will never stand a shift.
-      if ((storedPrefs?.preferred_shift_type ?? '') !== preferredShift) {
-        await setPreferences(id, { preferred_shift_type: preferredShift || null })
+      // Compared as sorted strings so a reorder is not mistaken for a change.
+      const storedDays = [...(storedPrefs?.preferred_off_days ?? [])].sort().join(',')
+      const currentDays = [...preferredOffDays].sort().join(',')
+      if ((storedPrefs?.preferred_shift_type ?? '') !== preferredShift || storedDays !== currentDays) {
+        await setPreferences(id, {
+          preferred_shift_type: preferredShift || null,
+          preferred_off_days: preferredOffDays,
+        })
       }
       return result
     },
@@ -467,6 +479,30 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
                 The auto-scheduler favours matching shifts when building a roster.
               </FormHelperText>
             </FormControl>
+
+            {/* Also a preference, not a guarantee — the scheduler spreads rest
+                days toward these and will still roster someone on one rather
+                than leave a post empty. */}
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Preferred off days
+              </Typography>
+              <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
+                {DAY_LABELS.map((lbl, i) => {
+                  const on = preferredOffDays.includes(i)
+                  return (
+                    <Chip
+                      key={lbl} label={lbl} size="small" clickable
+                      color={on ? 'primary' : 'default'}
+                      variant={on ? 'filled' : 'outlined'}
+                      onClick={() => setPreferredOffDays((days) =>
+                        days.includes(i) ? days.filter((d) => d !== i) : [...days, i].sort()
+                      )}
+                    />
+                  )
+                })}
+              </Stack>
+            </Box>
           </>
         )}
 

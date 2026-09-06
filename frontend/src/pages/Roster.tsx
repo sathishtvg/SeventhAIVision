@@ -38,8 +38,8 @@ import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   autoSchedule, createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
-  discardBatch, generateRoster, getBatch, getLeaveBlocks, getPreferences, getRosterCoverage,
-  listShiftPatterns, publishBatch, setPreferences, updateDraftShift, updateShift, updateShiftPattern,
+  discardBatch, generateRoster, getBatch, getLeaveBlocks, getRosterCoverage,
+  listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
   type CoverageShift, type DraftShift, type RosterBatch,
 } from '@/api/roster'
 import { getSites } from '@/api/sites'
@@ -448,64 +448,6 @@ function LeavePreferencesCard({ onLeaveCreated }: {
   )
 }
 
-function PreferencesEditor() {
-  const qc = useQueryClient()
-  const [guardId, setGuardId] = useState('')
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
-  const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
-  const { data: prefs } = useQuery({
-    queryKey: ['guard-preferences', guardId],
-    queryFn: () => getPreferences(guardId),
-    enabled: !!guardId,
-  })
-
-  const { mutate: save } = useMutation({
-    mutationFn: (data: { preferred_shift_type?: string | null; preferred_off_days?: number[] | null }) => setPreferences(guardId, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['guard-preferences', guardId] }),
-  })
-
-  const toggleOffDay = (d: number) => {
-    const current = prefs?.preferred_off_days ?? []
-    const next = current.includes(d) ? current.filter((x) => x !== d) : [...current, d].sort()
-    save({ preferred_off_days: next })
-  }
-
-  return (
-    <GlassCard sx={{ p: 2, mt: 2 }}>
-      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700 }}>Guard Preferences</Typography>
-      <Select size="small" displayEmpty value={guardId} onChange={(e) => setGuardId(e.target.value)}
-              renderValue={(v) => guards.find((g) => g.id === v)?.full_name ?? 'Select a guard…'}
-              sx={{ minWidth: 200, mb: 1.5 }}>
-        {guards.map((g) => <MenuItem key={g.id} value={g.id}>{g.full_name ?? g.email}</MenuItem>)}
-      </Select>
-      {guardId && (
-        <Stack spacing={1.5}>
-          <FormControl size="small" sx={{ maxWidth: 220 }}>
-            <InputLabel>Preferred Shift Type</InputLabel>
-            <Select label="Preferred Shift Type" value={prefs?.preferred_shift_type ?? ''}
-                    onChange={(e) => save({ preferred_shift_type: e.target.value || null })}>
-              <MenuItem value="">No preference</MenuItem>
-              <MenuItem value="day">Day</MenuItem>
-              <MenuItem value="night">Night</MenuItem>
-            </Select>
-          </FormControl>
-          <Box>
-            <Typography variant="caption" color="text.secondary">Preferred off days</Typography>
-            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
-              {DAY_LABELS.map((lbl, i) => (
-                <Chip key={lbl} label={lbl} size="small" clickable
-                      color={(prefs?.preferred_off_days ?? []).includes(i) ? 'primary' : 'default'}
-                      variant={(prefs?.preferred_off_days ?? []).includes(i) ? 'filled' : 'outlined'}
-                      onClick={() => toggleOffDay(i)} />
-              ))}
-            </Stack>
-          </Box>
-        </Stack>
-      )}
-    </GlassCard>
-  )
-}
-
 export function RosterPage() {
   const qc = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -759,7 +701,6 @@ export function RosterPage() {
       </GlassCard>
 
       <LeavePreferencesCard onLeaveCreated={openEditShift} />
-      <PreferencesEditor />
 
       <PatternDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
       <AutoScheduleDialog
