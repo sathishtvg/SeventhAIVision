@@ -228,7 +228,9 @@ function SiteTeamDialog({ row, onClose }: { row: DutyOverviewRow | null; onClose
   })
 
   if (!row) return null
-  const guards = users.filter((u: any) => GUARD_ROLES.has(u.role_id) && u.is_active)
+  // getUsers is already typed; the annotation was noise that also tripped
+  // no-explicit-any, which is an error in this config.
+  const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
 
   return (
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
