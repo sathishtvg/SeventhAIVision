@@ -102,8 +102,8 @@ const STATUS_META: Record<MonitorStatus, StatusMeta> = {
     help: 'Duty has started — still inside the grace period',
   },
   not_yet_on_duty: {
-    label: 'Not Yet On Duty', color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 14 }} />,
-    help: 'Rostered later today; nothing expected yet',
+    label: 'Upcoming Shift', color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 14 }} />,
+    help: 'Shift has not started yet — nothing is expected until it does',
   },
   on_leave: {
     label: 'Approved Leave', color: '#00D9C0', icon: <EventBusyIcon sx={{ fontSize: 14 }} />,
@@ -179,8 +179,25 @@ function relativeAge(iso: string | undefined, nowMs: number) {
 // ── Presentational pieces ────────────────────────────────────────────────────
 
 /** Colour + icon + words. Never colour alone. */
-function StatusBadge({ status, size = 'sm' }: { status: MonitorStatus; size?: 'sm' | 'md' }) {
+function StatusBadge({ status, size = 'sm', startsAt }: {
+  status: MonitorStatus
+  size?: 'sm' | 'md'
+  /** This guard's rostered start. Given, a shift that has not begun says the
+   *  hour it begins instead of a state. */
+  startsAt?: string | null
+}) {
   const m = STATUS_META[status]
+  /**
+   * "Not Yet On Duty" read as a complaint about the guard. It is not: a
+   * 20:00 shift seen at 14:00 is simply a shift that has not started, and
+   * the operator's real question is when it does. So where the shift is
+   * known the badge answers that question — "Starts 20:00" — and the state
+   * word is kept only for the legend and the filter, which cover many
+   * guards at once and so have no single hour to name.
+   */
+  const label = status === 'not_yet_on_duty' && startsAt
+    ? `Starts ${fmtTime(startsAt)}`
+    : m.label
   return (
     <Box
       sx={{
@@ -194,7 +211,7 @@ function StatusBadge({ status, size = 'sm' }: { status: MonitorStatus; size?: 's
         fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap',
       }}
     >
-      {m.icon}{m.label}
+      {m.icon}{label}
     </Box>
   )
 }
@@ -304,7 +321,7 @@ function GuardCard({ g, token, onOpen }: {
             {g.guard_phone || 'No contact number'}
           </Typography>
           <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
-            <StatusBadge status={g.monitor_status} />
+            <StatusBadge status={g.monitor_status} startsAt={g.scheduled_start} />
             <EmploymentBadge type={g.employment_type} />
           </Stack>
         </Box>
@@ -514,7 +531,7 @@ function GuardDetailDialog({ g, token, onClose }: {
           <Typography variant="subtitle1" sx={{ fontWeight: 800 }} noWrap>{g.guard_name ?? 'Unassigned'}</Typography>
           <Typography variant="caption" color="text.secondary">{g.designation || 'Security Guard'}</Typography>
         </Box>
-        <StatusBadge status={g.monitor_status} size="md" />
+        <StatusBadge status={g.monitor_status} size="md" startsAt={g.scheduled_start} />
         <IconButton size="small" onClick={onClose} aria-label="Close"><CloseIcon fontSize="small" /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
@@ -639,7 +656,7 @@ const STAT_TILES: { key: StatKey; label: string; color: string; icon: React.Reac
   { key: 'reported',        label: 'Reported Today',   color: '#2196F3', icon: <CheckCircleIcon sx={{ fontSize: 16 }} /> },
   { key: 'late',            label: 'Late to Work',     color: '#FF9800', icon: <AccessTimeIcon sx={{ fontSize: 16 }} /> },
   { key: 'not_reported',    label: 'Not Reported',     color: '#FF4560', icon: <ErrorIcon sx={{ fontSize: 16 }} /> },
-  { key: 'not_yet_on_duty', label: 'Not Yet On Duty',  color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 16 }} /> },
+  { key: 'not_yet_on_duty', label: 'Upcoming Shift',   color: '#8B92A8', icon: <ScheduleIcon sx={{ fontSize: 16 }} /> },
   { key: 'on_leave',        label: 'Approved Leave',   color: '#00D9C0', icon: <EventBusyIcon sx={{ fontSize: 16 }} /> },
 ]
 
