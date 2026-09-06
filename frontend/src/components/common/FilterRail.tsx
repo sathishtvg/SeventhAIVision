@@ -230,6 +230,8 @@ export function FilterRail({ groups, storageKey }: FilterRailProps) {
             // the content behind it.
             position: 'absolute',
             top: 0,
+            // Opens leftward, away from the edge it is attached to, so the
+            // panel never lands on top of what the filter is filtering.
             right: 0,
             zIndex: 30,
             width: PANEL_WIDTH,

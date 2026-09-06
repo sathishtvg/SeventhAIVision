@@ -31,7 +31,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Box, Typography, Chip, Select, MenuItem, FormControl, InputLabel, Skeleton,
+  Box, Typography, Chip, Skeleton,
   Button, Divider, IconButton, Tooltip, Avatar, Dialog, DialogTitle,
   DialogContent, TextField, InputAdornment, Badge,
 } from '@mui/material'
@@ -61,6 +61,7 @@ import {
   type LiveAttendanceShift, type LiveAttendanceSite, type MonitorStatus,
 } from '@/api/attendance'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
@@ -225,7 +226,7 @@ function StatTile({ label, value, color, icon, active, onClick, index }: {
     <GlassCard
       onClick={onClick}
       sx={{
-        p: 1.5, cursor: 'pointer', minWidth: 0,
+        px: 1.25, py: 0.9, cursor: 'pointer', minWidth: 0,
         border: `1px solid rgba(${hexToRgb(color)},${active ? 0.9 : 0.28})`,
         background: `linear-gradient(135deg, rgba(${hexToRgb(color)},${active ? 0.22 : 0.09}) 0%, transparent 100%)`,
         transition: 'transform 0.16s, border-color 0.16s, background 0.16s',
@@ -233,15 +234,27 @@ function StatTile({ label, value, color, icon, active, onClick, index }: {
         ...fadeUpSx(index),
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
-        <Box sx={{ color, display: 'flex' }}>{icon}</Box>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.66rem', lineHeight: 1.1 }}>
+      {/* Icon, number and label on ONE line rather than stacked. Stacked, the
+          eight tiles cost about 110px of the most valuable space on the screen
+          — permanently, for figures that are context rather than the work. The
+          board underneath is the work, and on a company with many sites it was
+          starting below the fold. The number keeps its weight and colour, so it
+          is still readable across a control room; only the dead space went. */}
+      <Stack direction="row" spacing={0.9} alignItems="center" sx={{ minWidth: 0 }}>
+        <Box sx={{ color, display: 'flex', flexShrink: 0 }}>{icon}</Box>
+        <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1, color, flexShrink: 0 }}>
+          {shown}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary', fontSize: '0.64rem', lineHeight: 1.15,
+            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >
           {label}
         </Typography>
       </Stack>
-      <Typography sx={{ fontSize: '1.9rem', fontWeight: 800, lineHeight: 1, color }}>
-        {shown}
-      </Typography>
     </GlassCard>
   )
 }
@@ -352,7 +365,12 @@ function SiteCard({ site, token, onOpenGuard, index }: {
   const problems = c.not_reported + c.late
   // "Unusually low attendance" made concrete: over half the roster missing,
   // on a site rostering enough people for that to mean anything.
-  const thin = c.rostered >= 3 && c.not_reported / c.rostered > 0.5
+  // Nobody has reported and someone was due: the site is standing empty right
+  // now. Distinct from "short-handed", and the only state here that is an
+  // incident rather than a delay — so it says so in words instead of leaving
+  // the operator to infer it from "0 in" sitting beside "2 missing".
+  const unmanned = c.not_reported > 0 && c.checked_in === 0
+  const thin = !unmanned && c.rostered >= 3 && c.not_reported / c.rostered > 0.5
 
   return (
     <GlassCard sx={{ p: 1.75, ...fadeUpSx(index) }}>
@@ -376,6 +394,17 @@ function SiteCard({ site, token, onOpenGuard, index }: {
         </Stack>
       </Stack>
 
+      {unmanned && (
+        <Stack direction="row" spacing={0.75} alignItems="center"
+               sx={{ mb: 1.25, px: 1, py: 0.7, borderRadius: 1,
+                     background: 'rgba(255,69,96,0.22)', border: '1px solid #FF4560' }}>
+          <ErrorIcon sx={{ fontSize: 16, color: '#FF4560' }} />
+          <Typography variant="caption" sx={{ color: '#FF4560', fontWeight: 800 }}>
+            NO GUARD ON SITE — {c.not_reported} due, none reported
+          </Typography>
+        </Stack>
+      )}
+
       {thin && (
         <Stack direction="row" spacing={0.75} alignItems="center"
                sx={{ mb: 1.25, px: 1, py: 0.6, borderRadius: 1,
@@ -388,7 +417,7 @@ function SiteCard({ site, token, onOpenGuard, index }: {
       )}
 
       <Box sx={{ display: 'grid', gap: 1.25,
-                 gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+                 gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
         {site.guards.map((g) => (
           <GuardCard key={g.id} g={g} token={token} onOpen={() => onOpenGuard(g)} />
         ))}
@@ -669,15 +698,90 @@ export function AttendancePage() {
     return true
   }
 
+  /**
+   * Worst site first, always.
+   *
+   * The board arrived in whatever order the server returned, which on a
+   * company covering twenty sites buries the one that needs a phone call
+   * behind nineteen that are fine. An operator should never have to hunt for
+   * the emergency — it should be the first thing under their eyes.
+   *
+   * The ranking is an escalation ladder, not a score:
+   *
+   *   0  UNMANNED — guards are due and not one has reported. The site is
+   *      standing empty right now, which is the only state on this board that
+   *      is an incident rather than a delay.
+   *   1  Someone missing, but not everyone.
+   *   2  Someone late — they turned up, so it is a conversation, not a gap.
+   *   3  Everything else.
+   *
+   * Within a rank, more missing sorts first, then more late, then name so the
+   * order is stable between refreshes — a board that reshuffles under the
+   * cursor every thirty seconds is unusable.
+   */
   const filteredSites = useMemo(() => {
     if (!board) return []
+    const rank = (c: LiveAttendanceSite['counts']) => {
+      if (c.not_reported > 0 && c.checked_in === 0) return 0
+      if (c.not_reported > 0) return 1
+      if (c.late > 0) return 2
+      return 3
+    }
     return board.sites
       .map((s) => ({ ...s, guards: s.guards.filter(matches) }))
       .filter((s) => s.guards.length > 0)
+      .sort((a, b) =>
+        rank(a.counts) - rank(b.counts) ||
+        b.counts.not_reported - a.counts.not_reported ||
+        b.counts.late - a.counts.late ||
+        a.site_name.localeCompare(b.site_name))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, statusFilter, employmentFilter, shiftFilter, siteFilter, search])
 
   const anyFilter = Boolean(statusFilter || employmentFilter || shiftFilter || siteFilter || search)
+
+  // Status appears twice on purpose: as chips above the board, and here. The
+  // chips are the one-tap triage path an operator actually uses, but the rail's
+  // badge is what answers "why is this board half empty?" — so a status set by
+  // chip has to count as an active filter, which means it has to be a group.
+  const filterGroups: FilterGroup[] = [
+    {
+      key: 'site', label: 'Site', value: siteFilter, onChange: setSiteFilter,
+      options: [
+        { value: '', label: 'All sites' },
+        ...(board?.sites ?? []).map((s) => ({
+          value: String(s.site_id ?? ''), label: s.site_name,
+        })),
+      ],
+    },
+    {
+      key: 'status', label: 'Status', value: statusFilter,
+      onChange: (v) => setStatusFilter(v as MonitorStatus | ''),
+      options: [
+        { value: '', label: 'All statuses' },
+        ...(Object.keys(STATUS_META) as MonitorStatus[]).map((s) => ({
+          value: s, label: STATUS_META[s].label,
+        })),
+      ],
+    },
+    {
+      key: 'employment', label: 'Employment', value: employmentFilter,
+      onChange: setEmploymentFilter,
+      options: [
+        { value: '', label: 'All types' },
+        ...Object.entries(EMPLOYMENT_META).map(([k, v]) => ({ value: k, label: v.label })),
+      ],
+    },
+    {
+      key: 'shift', label: 'Shift', value: shiftFilter, onChange: setShiftFilter,
+      options: [
+        { value: '', label: 'All shifts' },
+        { value: 'day', label: 'Day' },
+        { value: 'night', label: 'Night' },
+        { value: 'split', label: 'Split' },
+      ],
+    },
+  ]
   const clearFilters = () => {
     setStatusFilter(''); setEmploymentFilter(''); setShiftFilter(''); setSiteFilter(''); setSearch('')
   }
@@ -711,8 +815,8 @@ export function AttendancePage() {
       </Stack>
 
       {/* ── Company statistics ─────────────────────────────────────────── */}
-      <Box sx={{ display: 'grid', gap: 1.25, mb: 2,
-                 gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))' }}>
+      <Box sx={{ display: 'grid', gap: 1, mb: 1.25,
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))' }}>
         {STAT_TILES.map((t, i) => (
           <StatTile
             key={t.key} label={t.label} value={board?.summary[t.key] ?? 0}
@@ -724,8 +828,13 @@ export function AttendancePage() {
       </Box>
 
       {/* ── Legend + filters ───────────────────────────────────────────── */}
-      <GlassCard sx={{ p: 1.5, mb: 2 }}>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+      {/* Legend and search share one row instead of stacking. Together they
+          were taking a second full band above the board, on a screen whose
+          entire job is showing the board. On a narrow window they still wrap —
+          the search keeps a 200px floor so it never collapses to a slit. */}
+      <GlassCard sx={{ p: 1.25, mb: 1.5, display: 'flex', alignItems: 'center',
+                       gap: 1.5, flexWrap: 'wrap' }}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75, flex: 1, minWidth: 0 }}>
           {(Object.keys(STATUS_META) as MonitorStatus[]).map((s) => (
             <Tooltip key={s} title={STATUS_META[s].help}>
               <Box
@@ -739,57 +848,33 @@ export function AttendancePage() {
           ))}
         </Stack>
 
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+        {/* Search stays on the page; the four narrowing filters moved into the
+            rail. Search is how you find one named person, which is a different
+            job from narrowing the board, and it is the control most often
+            reached for — burying it behind a panel would cost a click every
+            time someone rings the gatehouse asking about a guard. */}
+        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, flexShrink: 0 }}>
           <TextField
             size="small" placeholder="Search name or number"
             value={search} onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: 210 }}
+            sx={{ minWidth: 200 }}
             slotProps={{ input: { startAdornment: (
               <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
             ) } }}
           />
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Site</InputLabel>
-            <Select label="Site" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-              <MenuItem value="">All sites</MenuItem>
-              {(board?.sites ?? []).map((s) => (
-                <MenuItem key={String(s.site_id)} value={String(s.site_id ?? '')}>{s.site_name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Status</InputLabel>
-            <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as MonitorStatus | '')}>
-              <MenuItem value="">All statuses</MenuItem>
-              {(Object.keys(STATUS_META) as MonitorStatus[]).map((s) => (
-                <MenuItem key={s} value={s}>{STATUS_META[s].label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Employment</InputLabel>
-            <Select label="Employment" value={employmentFilter} onChange={(e) => setEmploymentFilter(e.target.value)}>
-              <MenuItem value="">All types</MenuItem>
-              {Object.entries(EMPLOYMENT_META).map(([k, v]) => (
-                <MenuItem key={k} value={k}>{v.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel>Shift</InputLabel>
-            <Select label="Shift" value={shiftFilter} onChange={(e) => setShiftFilter(e.target.value)}>
-              <MenuItem value="">All shifts</MenuItem>
-              <MenuItem value="day">Day</MenuItem>
-              <MenuItem value="night">Night</MenuItem>
-              <MenuItem value="split">Split</MenuItem>
-            </Select>
-          </FormControl>
           {anyFilter && (
             <Button size="small" variant="outlined" onClick={clearFilters}>Show All</Button>
           )}
         </Stack>
       </GlassCard>
 
+      {/* The rail sits on the right, the same edge it uses on every other
+          page. One place to reach for filters anywhere in the app beats a
+          per-page argument about which edge suits that page's layout. The
+          strip holds its own 44px of layout, so opening it never reflows
+          the sites. */}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
       {/* ── Site grid ──────────────────────────────────────────────────── */}
       {isLoading ? (
         <GlassCard sx={{ p: 2 }}><Skeleton height={120} /></GlassCard>
@@ -801,13 +886,32 @@ export function AttendancePage() {
           {anyFilter && <Button size="small" sx={{ mt: 1 }} onClick={clearFilters}>Show All</Button>}
         </GlassCard>
       ) : (
-        <Stack spacing={2}>
+        // Sites sit beside each other, not stacked. Each site used to take a
+        // full-width band, so an operator covering ten sites — which is the
+        // normal case for a security company, not the edge one — scrolled past
+        // nine of them to reach the tenth, and could never see two at once.
+        // The whole point of this board is comparing sites at a glance.
+        //
+        // auto-fill against a 460px minimum rather than a fixed column count:
+        // a laptop gets two, a 1440p control-room screen three, a wall display
+        // four or more, and a phone one, without a breakpoint table to keep in
+        // step. align-items:start lets a quiet site stay short instead of being
+        // stretched to match the busiest site in its row.
+        <Box sx={{
+          display: 'grid',
+          gap: 2,
+          alignItems: 'start',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))',
+        }}>
           {filteredSites.map((s, i) => (
             <SiteCard key={String(s.site_id) + s.site_name} site={s} token={token}
                       onOpenGuard={setSelectedGuard} index={i} />
           ))}
-        </Stack>
+        </Box>
       )}
+        </Box>
+        <FilterRail groups={filterGroups} storageKey="attendance" />
+      </Box>
 
       {/* ── Correction queue (unchanged behaviour) ─────────────────────── */}
       <PermissionGuard permission="attendance:manage">

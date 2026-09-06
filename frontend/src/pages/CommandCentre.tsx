@@ -379,10 +379,23 @@ export default function CommandCentre() {
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0 }}>
 
       {/* ── Header ── */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-        <MonitorIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: kiosk ? 1.25 : 2, flexShrink: 0 }}>
+        <MonitorIcon sx={{ color: 'primary.main', fontSize: kiosk ? 22 : 28 }} />
+        {/* Full screen the clock moves up beside the title instead of sitting
+            under it — the one-line header the rest of the app gets from
+            PageHeader, and the date is the closest thing this page has to a
+            tagline. */}
+        <Box sx={{
+          flex: 1,
+          minWidth: 0,
+          ...(kiosk ? { display: 'flex', alignItems: 'baseline', gap: 1.25, flexWrap: 'wrap' } : null),
+        }}>
+          <Typography variant={kiosk ? 'h6' : 'h5'} sx={{
+            fontWeight: 800,
+            letterSpacing: '-0.01em',
+            lineHeight: 1.2,
+            ...(kiosk ? { fontSize: '1.05rem' } : null),
+          }}>
             Command &amp; Control Centre
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
@@ -418,8 +431,8 @@ export default function CommandCentre() {
             { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon />,
               hint: 'Open the duty board on another screen — what needs attention right now' },
             ...(hasVms
-              ? [{ label: 'Vehicles On Site', path: '/vms-onsite', icon: <DirectionsCarIcon />,
-                   hint: 'Open the gatehouse vehicle board on another screen — visitor vehicles with entry time and parking expiry' }]
+              ? [{ label: 'VMS', path: '/vms-onsite', icon: <DirectionsCarIcon />,
+                   hint: 'Open the gatehouse board on another screen — everyone on site, with arrival time and parking expiry' }]
               : []),
           ]).map((s) => (
             <Tooltip key={s.path} title={s.hint}>

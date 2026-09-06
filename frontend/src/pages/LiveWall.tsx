@@ -586,8 +586,14 @@ export function LiveWallPage() {
         ...(kiosk && { height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap', flexShrink: 0 }}>
-        <Typography variant="h5" sx={{ flex: 1, fontWeight: 800 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: kiosk ? 1 : 2, flexWrap: 'wrap', flexShrink: 0 }}>
+        {/* Compact full screen, same as PageHeader: every row of pixels the
+            title gives up is a row the wall gets. */}
+        <Typography variant={kiosk ? 'h6' : 'h5'} sx={{
+          flex: 1,
+          fontWeight: 800,
+          ...(kiosk ? { fontSize: '1.05rem', lineHeight: 1.2 } : null),
+        }}>
           Live Wall
         </Typography>
         <Select
