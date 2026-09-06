@@ -1,14 +1,20 @@
 """AI roster auto-scheduler (ShiftSecure Phase 2B) — greedy day-by-day,
-slot-by-slot assignment against shift_patterns, scored by 8 rules.
+post-by-post assignment against shift_patterns, scored by 9 rules.
 
 Not a CSP/ILP solver. Rules 1 (min rest), 2 (max consecutive days), and 5
-(respect leave) hard-exclude a candidate from a slot. Rules 3 (balance
+(respect leave) hard-exclude a candidate from a post. Rules 3 (balance
 day/night), 4 (honor preferences), and 8 (off-day stagger) rank the
-survivors via score_candidate. Rules 6 (site minimum coverage) and 7
-(supervisor present) can't be force-satisfied by assignment alone, so they
-become warnings on the draft for a human to resolve before publishing —
-the same "flag, don't block" approach already used for geofence checks in
-Phase 2A.
+survivors via score_candidate. Rule 9 (site duty team) narrows the pool
+before that ranking, where the site has a team. Rules 6 (site minimum
+coverage) and 7 (supervisor present) can't be force-satisfied by
+assignment alone, so they become warnings on the draft for a human to
+resolve before publishing — the same "flag, don't block" approach already
+used for geofence checks in Phase 2A.
+
+A shift pattern is a POST, not a person: a site staffed for three day
+officers produces three draft shifts from one pattern. That count comes
+from sites.day_guards_required / night_guards_required, picked by the
+pattern's inferred shift type.
 """
 from __future__ import annotations
 
@@ -33,6 +39,22 @@ def infer_shift_type(start_time: time) -> str:
     here — only ever set explicitly when two linked slots are created for
     one guard on one day."""
     return "day" if 5 <= start_time.hour < 17 else "night"
+
+
+def posts_for_group(group_slots: list[dict], required: int) -> list[dict]:
+    """Pure: deal `required` posts round-robin across one shift type's patterns.
+
+    A site's strength is a figure for the SHIFT, not for each pattern — "three
+    officers on day duty" is three posts spread over that site's day patterns,
+    not three on every one of them. A site running an 08:00 and a 14:00 day
+    pattern with three due gets two on the first and one on the second.
+
+    Returns [] for a shift type the site does not staff (required 0), which is
+    how a site with no night shift stops generating night shifts at all.
+    """
+    if required <= 0 or not group_slots:
+        return []
+    return [group_slots[i % len(group_slots)] for i in range(required)]
 
 
 def is_guard_on_leave(guard_id: str, on_date: date, leave_blocks: list[dict]) -> bool:
@@ -101,7 +123,7 @@ async def generate_draft(
     patterns = [dict(r) for r in (await db.execute(
         text(f"""
             SELECT p.site_id, p.days_of_week, p.start_time, p.duration_minutes,
-                   s.min_guards_per_shift
+                   s.day_guards_required, s.night_guards_required
             FROM shift_patterns p JOIN sites s ON s.id = p.site_id
             WHERE p.is_active = TRUE {site_clause}
         """),
@@ -127,6 +149,16 @@ async def generate_draft(
     )).mappings().all()]
     preferences = {str(p["guard_user_id"]): p for p in pref_rows}
 
+    # Who is posted to each site, per shift type. A site with a team draws
+    # from it; a site without one draws from every guard, which is what the
+    # scheduler did for every site before duty teams existed.
+    duty_rows = [dict(r) for r in (await db.execute(
+        text("SELECT site_id, guard_user_id, shift_type FROM site_duty_assignments")
+    )).mappings().all()]
+    duty_teams: dict[tuple[str, str], set[str]] = {}
+    for d in duty_rows:
+        duty_teams.setdefault((str(d["site_id"]), d["shift_type"]), set()).add(str(d["guard_user_id"]))
+
     history: dict[str, dict] = {
         gid: {
             "day_count": 0, "night_count": 0,
@@ -146,57 +178,103 @@ async def generate_draft(
         day_slots = [p for p in patterns if weekday in (p["days_of_week"] or [])]
         assigned_today_by_site: dict[str, list[str]] = {}
 
+        # Slots grouped into the thing a site is actually staffed for: a shift
+        # TYPE, not an individual pattern. `day_guards_required` means "three
+        # officers on day duty here", so three posts are filled across that
+        # site's day patterns — not three per pattern, which would multiply a
+        # site that already runs a morning and an afternoon pattern.
+        groups: dict[tuple[str, str], list[dict]] = {}
         for slot in day_slots:
-            site_id_str = str(slot["site_id"])
-            shift_type = infer_shift_type(slot["start_time"])
-            slot_start = datetime.combine(current_date, slot["start_time"], tzinfo=timezone.utc)
-            slot_end = slot_start + timedelta(minutes=slot["duration_minutes"])
+            key = (str(slot["site_id"]), infer_shift_type(slot["start_time"]))
+            groups.setdefault(key, []).append(slot)
 
-            candidates = []
-            for gid in guard_ids:
-                h = history[gid]
-                if is_guard_on_leave(gid, current_date, leave_blocks):
-                    continue  # rule 5
-                if h["last_shift_end"] is not None:
-                    rest_hours = (slot_start - h["last_shift_end"]).total_seconds() / 3600
-                    if rest_hours < min_rest_hours:
-                        continue  # rule 1
-                if h["last_day_index_worked"] == day_index - 1 and h["consecutive_days"] >= max_consecutive:
-                    continue  # rule 2
-                candidates.append(gid)
+        for (site_id_str, shift_type), group_slots in groups.items():
+            required = (group_slots[0]["day_guards_required"] if shift_type == "day"
+                        else group_slots[0]["night_guards_required"])
+            required = max(int(required or 0), 0)
 
-            chosen = None
-            if candidates:
-                chosen = max(candidates, key=lambda gid: score_candidate(gid, shift_type, preferences, history, day_index))
+            team = duty_teams.get((site_id_str, shift_type), set())
+            placed_in_group: set[str] = set()
+            filled_here = 0
 
-            warnings: list[str] = []
-            if chosen is None:
-                warnings.append("unfilled_slot")
-            else:
-                h = history[chosen]
-                h["day_count" if shift_type == "day" else "night_count"] += 1
-                h["last_shift_end"] = slot_end
-                h["consecutive_days"] = (h["consecutive_days"] + 1) if h["last_day_index_worked"] == day_index - 1 else 1
-                h["last_day_index_worked"] = day_index
-                h["last_assigned_day_index"] = day_index
-                assigned_today_by_site.setdefault(site_id_str, []).append(chosen)
+            # Posts dealt round-robin across this shift type's patterns, so a
+            # site with a 08:00 and a 14:00 day pattern and three officers due
+            # gets two on the first and one on the second rather than all
+            # three stacked on whichever pattern was read first.
+            for slot in posts_for_group(group_slots, required):
+                slot_start = datetime.combine(current_date, slot["start_time"], tzinfo=timezone.utc)
+                slot_end = slot_start + timedelta(minutes=slot["duration_minutes"])
 
-            draft_rows.append({
-                "guard_user_id": chosen, "site_id": site_id_str,
-                "scheduled_start": slot_start, "scheduled_end": slot_end,
-                "shift_type": shift_type, "warnings": warnings,
-                "min_coverage": slot["min_guards_per_shift"],
-                "date": current_date,
-            })
+                candidates = []
+                for gid in guard_ids:
+                    if gid in placed_in_group:
+                        continue  # already holds a post of this type here today
+                    h = history[gid]
+                    if is_guard_on_leave(gid, current_date, leave_blocks):
+                        continue  # rule 5
+                    if h["last_shift_end"] is not None:
+                        rest_hours = (slot_start - h["last_shift_end"]).total_seconds() / 3600
+                        if rest_hours < min_rest_hours:
+                            continue  # rule 1
+                    if h["last_day_index_worked"] == day_index - 1 and h["consecutive_days"] >= max_consecutive:
+                        continue  # rule 2
+                    candidates.append(gid)
 
-        # Rules 6 (coverage) + 7 (supervisor present) — evaluated once per
-        # site after all of that day's slots are assigned.
+                # Rule 9 — the site's own team first. Falling back to the wider
+                # pool rather than leaving the post empty is deliberate: an
+                # unmanned post is a worse outcome than an unfamiliar guard,
+                # and the warning says which happened, so a planner can widen
+                # the team instead of discovering the gap at 07:00.
+                warnings: list[str] = []
+                on_team = [gid for gid in candidates if gid in team]
+                if team and on_team:
+                    pool = on_team
+                else:
+                    pool = candidates
+                    if team:
+                        warnings.append("outside_duty_team")
+
+                chosen = None
+                if pool:
+                    chosen = max(pool, key=lambda gid: score_candidate(gid, shift_type, preferences, history, day_index))
+
+                if chosen is None:
+                    # Which pool it would have come from stops being the useful
+                    # thing to say once the post is empty.
+                    warnings = ["unfilled_slot"]
+                else:
+                    filled_here += 1
+                    placed_in_group.add(chosen)
+                    h = history[chosen]
+                    h["day_count" if shift_type == "day" else "night_count"] += 1
+                    h["last_shift_end"] = slot_end
+                    h["consecutive_days"] = (h["consecutive_days"] + 1) if h["last_day_index_worked"] == day_index - 1 else 1
+                    h["last_day_index_worked"] = day_index
+                    h["last_assigned_day_index"] = day_index
+                    assigned_today_by_site.setdefault(site_id_str, []).append(chosen)
+
+                draft_rows.append({
+                    "guard_user_id": chosen, "site_id": site_id_str,
+                    "scheduled_start": slot_start, "scheduled_end": slot_end,
+                    "shift_type": shift_type, "warnings": warnings,
+                    "min_coverage": required,
+                    "date": current_date,
+                })
+
+            # Rule 6 — coverage, judged per shift type rather than per site-day.
+            # A site can be fully staffed by day and short by night, and one
+            # combined figure cannot say that.
+            if required and filled_here < required:
+                for r in draft_rows:
+                    if (r["site_id"] == site_id_str and r["date"] == current_date
+                            and r["shift_type"] == shift_type):
+                        r["warnings"].append("below_min_coverage")
+
+        # Rule 7 — supervisor and manager presence, still judged once per site
+        # per day: the question is whether anyone senior was on site at all,
+        # which does not divide by shift type.
         for site_id_str, assigned in assigned_today_by_site.items():
             site_day_rows = [r for r in draft_rows if r["site_id"] == site_id_str and r["date"] == current_date]
-            min_cov = next((r["min_coverage"] for r in site_day_rows if r["min_coverage"]), None)
-            if min_cov and len(assigned) < min_cov:
-                for r in site_day_rows:
-                    r["warnings"].append("below_min_coverage")
             if not any(gid in supervisor_ids for gid in assigned):
                 for r in site_day_rows:
                     r["warnings"].append("no_supervisor_present")
@@ -212,11 +290,17 @@ async def generate_draft(
     missing_manager_days = len({
         (r["site_id"], r["date"]) for r in draft_rows if "no_manager_present" in r["warnings"]
     })
+    # Posts filled by someone who is not on that site's team. Not a failure —
+    # the roster is complete — but it is the number that tells a planner the
+    # team is too small for the strength the site is configured for.
+    off_team_fills = sum(1 for r in draft_rows if "outside_duty_team" in r["warnings"])
+
     rules_summary = {
         "unfilled_slots": unfilled,
         "coverage_shortfalls": coverage_shortfalls,
         "missing_supervisor_days": missing_supervisor_days,
         "missing_manager_days": missing_manager_days,
+        "off_team_fills": off_team_fills,
     }
 
     batch_row = (await db.execute(

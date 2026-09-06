@@ -21,6 +21,10 @@ export const createSite = (data: {
   geofence_polygon?: { lat: number; lng: number }[] | null
   client_id?: string
   bill_rate?: number
+  /** Officers this site is staffed for, per shift type. 0 is valid — plenty
+   *  of sites run no night shift at all. */
+  day_guards_required?: number
+  night_guards_required?: number
 }) => apiClient.post<Site>('/api/v1/sites', data).then((r) => r.data)
 
 export const updateSite = (
@@ -38,6 +42,8 @@ export const updateSite = (
     is_active?: boolean
     client_id?: string
     bill_rate?: number
+    day_guards_required?: number
+    night_guards_required?: number
     // VMS config is update-only: the cameras have to exist and be assigned to
     // the site before they can be bound to its entry/exit lanes.
     //
@@ -60,3 +66,48 @@ export const getSiteCameras = (siteId: string) =>
 
 export const validateStream = (data: { url: string; username?: string; password?: string }) =>
   apiClient.post('/api/v1/cameras/validate-stream', data).then((r) => r.data)
+
+// ── Duty assignments ────────────────────────────────────────────────────────
+//
+// Who stands at a site, on which shift. Separate from user_sites, which says
+// which sites a person may SEE — a supervisor can be scoped to twelve sites
+// without being on any of their teams.
+
+export interface DutyAssignment {
+  id: string
+  guard_user_id: string
+  shift_type: 'day' | 'night'
+  notes: string | null
+  created_at: string
+  full_name: string | null
+  email: string
+  phone: string | null
+  designation: string | null
+  employment_type: string | null
+  /** The guard's own stated preference, so the page can show where a posting
+   *  disagrees with it. Not an error — worth seeing, though. */
+  preferred_shift_type: 'day' | 'night' | null
+}
+
+export interface DutyOverviewRow {
+  site_id: string
+  site_name: string
+  day_guards_required: number
+  night_guards_required: number
+  day_assigned: number
+  night_assigned: number
+}
+
+export const getDutyOverview = () =>
+  apiClient.get<DutyOverviewRow[]>('/api/v1/sites/duty-assignments/overview').then((r) => r.data)
+
+export const getDutyAssignments = (siteId: string) =>
+  apiClient.get<DutyAssignment[]>(`/api/v1/sites/${siteId}/duty-assignments`).then((r) => r.data)
+
+export const addDutyAssignment = (
+  siteId: string,
+  data: { guard_user_id: string; shift_type: 'day' | 'night'; notes?: string },
+) => apiClient.post(`/api/v1/sites/${siteId}/duty-assignments`, data).then((r) => r.data)
+
+export const removeDutyAssignment = (siteId: string, assignmentId: string) =>
+  apiClient.delete(`/api/v1/sites/${siteId}/duty-assignments/${assignmentId}`).then((r) => r.data)

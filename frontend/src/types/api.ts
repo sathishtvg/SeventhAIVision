@@ -508,6 +508,10 @@ export interface SystemVersion {
 }
 
 export interface Site {
+  /** Officers this site is staffed for, per shift type — what the roster
+   *  auto-scheduler fills. */
+  day_guards_required?: number
+  night_guards_required?: number
   id: string
   name: string
   address: string | null

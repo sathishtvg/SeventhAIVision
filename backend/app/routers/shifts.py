@@ -24,6 +24,8 @@ from app.services.geofence import is_within_site
 from app.services.liveness import check_liveness_sync
 from app.services.violations import VIOLATION_POINTS, create_violation
 
+from app.services.sos import raise_guard_sos
+
 router = APIRouter(prefix="/api/v1/shifts", tags=["guard-ops"])
 
 # ── Attendance settings (ShiftSecure Phase 2A) ────────────────────────────────
@@ -1094,70 +1096,31 @@ async def trigger_sos(
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
-    """Guard panic button — creates a critical occurrence book entry and broadcasts
-    a real-time SOS event to all supervisors connected to this tenant."""
-    user_row = (
-        await db.execute(
-            text("SELECT email, full_name FROM users WHERE id = :uid"),
-            {"uid": token.user_id},
-        )
-    ).first()
-    guard_name = (user_row.full_name or user_row.email) if user_row else "Unknown Guard"
+    """Guard panic button.
 
-    location_note = ""
-    if body.latitude is not None and body.longitude is not None:
-        location_note = f" at ({body.latitude:.5f}, {body.longitude:.5f})"
-
-    entry_body = body.description or f"PANIC ALERT: Guard {guard_name} triggered SOS alarm{location_note}. Immediate response required."
-
-    result = await db.execute(
-        text(
-            """
-            INSERT INTO occurrence_book_entries
-                (tenant_id, site_id, author_user_id, entry_type, body, severity, latitude, longitude)
-            VALUES (
-                current_setting('app.current_tenant')::uuid,
-                CAST(:site_id AS uuid),
-                CAST(:uid AS uuid), 'incident', :body, 'critical',
-                :lat, :lon
-            )
-            RETURNING id, occurred_at
-            """
-        ),
-        {
-            "site_id": body.site_id,
-            "uid": token.user_id,
-            "body": entry_body,
-            "lat": body.latitude,
-            "lon": body.longitude,
-        },
+    Writes the occurrence book entry, raises an incident where the tenant has a
+    camera to hang one on, and pushes a live SOS to supervisors. The work is in
+    services/sos.py so this and POST /patrols/sos cannot drift apart again —
+    they used to do different halves of it.
+    """
+    result = await raise_guard_sos(
+        db,
+        getattr(request.app.state, "redis", None),
+        tenant_id=token.tenant_id,
+        user_id=token.user_id,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        description=body.description,
+        site_id=body.site_id,
     )
-    row = result.first()
-    await db.commit()
 
-    # Broadcast SOS via Redis Pub/Sub for real-time push to supervisors
-    redis = getattr(request.app.state, "redis", None)
-    if redis is not None:
-        try:
-            event = json.dumps({
-                "event_type": "sos_triggered",
-                "tenant_id": token.tenant_id,
-                "payload": {
-                    "entry_id": str(row.id),
-                    "guard_name": guard_name,
-                    "message": entry_body,
-                    "latitude": body.latitude,
-                    "longitude": body.longitude,
-                },
-                "occurred_at": str(row.occurred_at),
-            })
-            await redis.publish(f"tenant_events:{token.tenant_id}", event)
-        except Exception:
-            pass  # Redis failure must not block the SOS response
-
+    # Response shape unchanged — the mobile app reads these four keys.
+    # incident_id is additive, and is None when the tenant has no camera to
+    # attach one to; the occurrence entry and the live push happened either way.
     return {
         "sos_triggered": True,
-        "entry_id": str(row.id),
-        "occurred_at": str(row.occurred_at),
-        "message": entry_body,
+        "entry_id": result["entry_id"],
+        "occurred_at": result["occurred_at"],
+        "message": result["message"],
+        "incident_id": result["incident_id"],
     }

@@ -26,6 +26,12 @@ class SiteCreate(BaseModel):
     geofence_polygon: list[dict] | None = None
     client_id: str | None = None
     bill_rate: float | None = None
+    # How many officers this site is staffed for, per shift type. Two numbers
+    # rather than one because a mall wants four on a Saturday night and two on
+    # a Tuesday morning, and an office block reverses it. Zero is a valid
+    # answer — plenty of sites run no night shift.
+    day_guards_required: int | None = None
+    night_guards_required: int | None = None
 
 
 class SiteUpdate(BaseModel):
@@ -41,6 +47,8 @@ class SiteUpdate(BaseModel):
     is_active: bool | None = None
     client_id: str | None = None
     bill_rate: float | None = None
+    day_guards_required: int | None = None
+    night_guards_required: int | None = None
     # Visitor Management: enabling VMS and binding this site's own ANPR
     # cameras to its entry/exit lanes. Update-only (not on create) because
     # the cameras have to exist and be assigned to the site first — the
@@ -71,6 +79,7 @@ async def list_sites(
             f"""
             SELECT s.id, s.name, s.address, s.description,
                    s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.geofence_polygon, s.is_active,
+                   s.day_guards_required, s.night_guards_required,
                    s.client_id, s.bill_rate, bc.name AS client_name,
                    s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
                    s.free_parking_minutes,
@@ -94,9 +103,11 @@ async def create_site(body: SiteCreate, db: AsyncSession = Depends(get_db_with_t
     result = await db.execute(
         text(
             "INSERT INTO sites (tenant_id, name, address, description, latitude, longitude, "
-            "geofence_radius_meters, late_grace_minutes, geofence_polygon, client_id, bill_rate) "
+            "geofence_radius_meters, late_grace_minutes, geofence_polygon, client_id, bill_rate, "
+            "day_guards_required, night_guards_required) "
             "VALUES (current_setting('app.current_tenant')::uuid, :name, :address, :description, :lat, :lng, "
-            ":radius, :grace, CAST(:polygon AS jsonb), :client_id, :bill_rate) "
+            ":radius, :grace, CAST(:polygon AS jsonb), :client_id, :bill_rate, "
+            "COALESCE(:day_req, 1), COALESCE(:night_req, 1)) "
             "RETURNING id"
         ),
         {
@@ -112,6 +123,8 @@ async def create_site(body: SiteCreate, db: AsyncSession = Depends(get_db_with_t
             "polygon": json.dumps(body.geofence_polygon) if body.geofence_polygon else None,
             "client_id": body.client_id,
             "bill_rate": body.bill_rate,
+            "day_req": body.day_guards_required,
+            "night_req": body.night_guards_required,
         },
     )
     new_id = result.scalar_one()
@@ -132,6 +145,7 @@ async def get_site(
             """
             SELECT s.id, s.name, s.address, s.description,
                    s.latitude, s.longitude, s.geofence_radius_meters, s.late_grace_minutes, s.geofence_polygon, s.is_active,
+                   s.day_guards_required, s.night_guards_required,
                    s.client_id, s.bill_rate, bc.name AS client_name,
                    s.vms_enabled, s.entry_lpr_camera_id, s.exit_lpr_camera_id,
                    s.free_parking_minutes,
@@ -182,6 +196,12 @@ async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends
         sets.append("client_id = :client_id"); params["client_id"] = body.client_id
     if body.bill_rate is not None:
         sets.append("bill_rate = :bill_rate"); params["bill_rate"] = body.bill_rate
+    # Zero is a real strength ("this site runs no night shift"), so these two
+    # cannot use a falsy check — only None means "not being changed".
+    if body.day_guards_required is not None:
+        sets.append("day_guards_required = :day_req"); params["day_req"] = body.day_guards_required
+    if body.night_guards_required is not None:
+        sets.append("night_guards_required = :night_req"); params["night_req"] = body.night_guards_required
     if body.vms_enabled is not None:
         sets.append("vms_enabled = :vms_enabled"); params["vms_enabled"] = body.vms_enabled
     # The LPR camera bindings and the parking allowance key off model_fields_set
@@ -248,5 +268,161 @@ async def list_site_cameras(
             "FROM cameras WHERE site_id = :site_id ORDER BY name"
         ),
         {"site_id": site_id},
+    )
+    return [dict(r._mapping) for r in result]
+
+
+# ── Duty assignments ────────────────────────────────────────────────────────
+#
+# Who stands at this site, on which shift. Deliberately separate from
+# `user_sites`, which answers a different question — which sites a user is
+# permitted to *see*. A supervisor may be scoped to twelve sites without being
+# on any of their duty teams, and a relief officer may be on a team at a site
+# they have no admin visibility into. Conflating the two either over-grants
+# visibility or under-describes the deployment.
+
+
+class DutyAssignmentCreate(BaseModel):
+    guard_user_id: str
+    shift_type: str  # 'day' | 'night'
+    notes: str | None = None
+
+
+def _validate_shift_type(shift_type: str) -> str:
+    if shift_type not in ("day", "night"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "shift_type must be 'day' or 'night'",
+        )
+    return shift_type
+
+
+async def _require_site(db: AsyncSession, site_id: str, allowed_sites: list[str] | None) -> None:
+    if not is_site_allowed(allowed_sites, site_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    exists = await db.execute(text("SELECT id FROM sites WHERE id = CAST(:id AS uuid)"), {"id": site_id})
+    if not exists.scalar_one_or_none():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+
+
+@router.get("/{site_id}/duty-assignments", dependencies=[Depends(require_permission("shift:read"))])
+async def list_duty_assignments(
+    site_id: str,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """This site's day team and night team.
+
+    Returns each guard's own shift preference alongside their assignment, so
+    the page can show where the two disagree — a guard who prefers nights
+    standing on the day team is not an error, but it is worth seeing before
+    the auto-scheduler quietly works around it every month.
+    """
+    await _require_site(db, site_id, allowed_sites)
+    result = await db.execute(
+        text("""
+            SELECT a.id, a.guard_user_id, a.shift_type, a.notes, a.created_at,
+                   u.full_name, u.email, u.phone, u.designation, u.employment_type,
+                   p.preferred_shift_type
+              FROM site_duty_assignments a
+              JOIN users u ON u.id = a.guard_user_id
+         LEFT JOIN guard_shift_preferences p ON p.guard_user_id = a.guard_user_id
+             WHERE a.site_id = CAST(:sid AS uuid)
+          ORDER BY a.shift_type, u.full_name
+        """),
+        {"sid": site_id},
+    )
+    return [dict(r._mapping) for r in result]
+
+
+@router.post("/{site_id}/duty-assignments", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("site:manage"))])
+async def add_duty_assignment(
+    site_id: str,
+    body: DutyAssignmentCreate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    await _require_site(db, site_id, allowed_sites)
+    _validate_shift_type(body.shift_type)
+
+    guard = await db.execute(
+        text("SELECT id FROM users WHERE id = CAST(:uid AS uuid) AND is_active = TRUE"),
+        {"uid": body.guard_user_id},
+    )
+    if not guard.scalar_one_or_none():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Guard not found")
+
+    # ON CONFLICT rather than a pre-check: two supervisors adding the same
+    # relief officer at once would both pass a check and one would 500 on the
+    # unique constraint. Re-adding someone already on the team is a no-op that
+    # updates the note, which is what the operator meant.
+    result = await db.execute(
+        text("""
+            INSERT INTO site_duty_assignments (tenant_id, site_id, guard_user_id, shift_type, notes)
+            VALUES (current_setting('app.current_tenant')::uuid,
+                    CAST(:sid AS uuid), CAST(:uid AS uuid), :stype, :notes)
+            ON CONFLICT (site_id, guard_user_id, shift_type) DO UPDATE
+                SET notes = EXCLUDED.notes, updated_at = now()
+            RETURNING id, guard_user_id, shift_type, notes, created_at
+        """),
+        {"sid": site_id, "uid": body.guard_user_id, "stype": body.shift_type, "notes": body.notes},
+    )
+    row = result.first()
+    await db.commit()
+    return dict(row._mapping)
+
+
+@router.delete("/{site_id}/duty-assignments/{assignment_id}",
+               dependencies=[Depends(require_permission("site:manage"))])
+async def remove_duty_assignment(
+    site_id: str,
+    assignment_id: str,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    await _require_site(db, site_id, allowed_sites)
+    result = await db.execute(
+        text("""
+            DELETE FROM site_duty_assignments
+             WHERE id = CAST(:aid AS uuid) AND site_id = CAST(:sid AS uuid)
+            RETURNING id
+        """),
+        {"aid": assignment_id, "sid": site_id},
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found")
+    await db.commit()
+    return {"id": assignment_id, "removed": True}
+
+
+@router.get("/duty-assignments/overview", dependencies=[Depends(require_permission("shift:read"))])
+async def duty_assignment_overview(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Every site's required strength against how many guards are actually on
+    each team — the shortfall, in one call.
+
+    This is the number the page leads with, because a site configured for four
+    night officers with two on the team will be short every night until
+    somebody notices, and nothing else in the product says so.
+    """
+    params: dict = {}
+    scope = site_scope_clause(allowed_sites, "s.id", params)
+    scope_clause = f"AND {scope}" if scope else ""
+    result = await db.execute(
+        text(f"""
+            SELECT s.id AS site_id, s.name AS site_name,
+                   s.day_guards_required, s.night_guards_required,
+                   COUNT(*) FILTER (WHERE a.shift_type = 'day')   AS day_assigned,
+                   COUNT(*) FILTER (WHERE a.shift_type = 'night') AS night_assigned
+              FROM sites s
+         LEFT JOIN site_duty_assignments a ON a.site_id = s.id
+             WHERE s.is_active = TRUE {scope_clause}
+          GROUP BY s.id, s.name, s.day_guards_required, s.night_guards_required
+          ORDER BY s.name
+        """),
+        params,
     )
     return [dict(r._mapping) for r in result]

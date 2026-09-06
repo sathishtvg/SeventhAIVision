@@ -20,6 +20,7 @@ import {
   Select,
   MenuItem,
   FormControl,
+  FormHelperText,
   InputLabel,
   Skeleton,
   Paper,
@@ -54,6 +55,9 @@ import {
 import { profilePhotoUrl } from '@/api/attendance'
 import { useAuthStore } from '@/store/auth'
 import { listRoles } from '@/api/roles'
+// Reused, not rebuilt: these have driven the Roster page's preference panel
+// since Phase 2B, and the auto-scheduler already scores against them.
+import { getPreferences, setPreferences } from '@/api/roster'
 import { getUserSessions, revokeAllUserSessions, unlockUserAccount } from '@/api/sessions'
 import { getSites } from '@/api/sites'
 import type { User } from '@/types/api'
@@ -240,6 +244,9 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
   const [hourlyRate, setHourlyRate] = useState('')
   const [dailyRate, setDailyRate] = useState('')
   const [monthlySalary, setMonthlySalary] = useState('')
+  // Lives on guard_shift_preferences, not users — so it saves through its own
+  // endpoint alongside the profile write below.
+  const [preferredShift, setPreferredShift] = useState('')
 
   // Resync every field whenever the dialog opens or which user it's editing
   // changes — a bare useState(editUser?.foo ?? '') initializer only runs on
@@ -275,6 +282,19 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editUser?.id])
 
+  // The preference is a separate record, so it needs its own read. Only for
+  // an existing user: a preference cannot be stored against someone who does
+  // not have an id yet, which is why this field is edit-only like pay.
+  const { data: storedPrefs } = useQuery({
+    queryKey: ['guard-preferences', editUser?.id],
+    queryFn: () => getPreferences(editUser!.id),
+    enabled: open && Boolean(editUser?.id),
+  })
+
+  useEffect(() => {
+    setPreferredShift(storedPrefs?.preferred_shift_type ?? '')
+  }, [storedPrefs?.preferred_shift_type, editUser?.id])
+
   // Built-in roles + this tenant's custom roles (Gap 91). Falls back to the
   // hardcoded built-in labels if the caller can't list roles.
   const { data: roles = [] } = useQuery({
@@ -293,8 +313,21 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
   })
 
   const { mutate: update, isPending: updating } = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateUser>[1] }) => updateUser(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); onClose() },
+    mutationFn: async ({ id, data }: { id: string; data: Parameters<typeof updateUser>[1] }) => {
+      const result = await updateUser(id, data)
+      // Two writes because it is two records. Only sent when it actually
+      // changed, so editing an admin's phone number does not create a shift
+      // preference row for someone who will never stand a shift.
+      if ((storedPrefs?.preferred_shift_type ?? '') !== preferredShift) {
+        await setPreferences(id, { preferred_shift_type: preferredShift || null })
+      }
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['guard-preferences'] })
+      onClose()
+    },
   })
 
   const isPending = creating || updating
@@ -412,6 +445,25 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
               label="Date Joined" type="date" value={dateJoined} onChange={(e) => setDateJoined(e.target.value)}
               size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
             />
+            {/* Feeds the roster auto-scheduler directly: a guard whose
+                preference matches a post scores higher for it, so setting this
+                here shapes every roster generated afterwards. It is a
+                preference, not a restriction — the scheduler will still post
+                someone against it rather than leave a site unmanned. */}
+            <FormControl size="small" fullWidth>
+              <InputLabel>Preferred Shift</InputLabel>
+              <Select
+                value={preferredShift} label="Preferred Shift"
+                onChange={(e) => setPreferredShift(e.target.value)}
+              >
+                <MenuItem value=""><em>No preference</em></MenuItem>
+                <MenuItem value="day">Day duty</MenuItem>
+                <MenuItem value="night">Night duty</MenuItem>
+              </Select>
+              <FormHelperText>
+                The auto-scheduler favours matching shifts when building a roster.
+              </FormHelperText>
+            </FormControl>
           </>
         )}
 
