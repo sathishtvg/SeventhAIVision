@@ -814,9 +814,14 @@ export default function Users() {
   const isLocked = (user: User) =>
     user.locked_until != null && new Date(user.locked_until) > new Date()
 
-  // Aegis (the tenant) is the customer org; role_id is already the hierarchy
-  // rank (1=Super Admin down to 7=Client) — group the already-fetched users
-  // by tier for a quick "who's in charge" view, no extra API call needed.
+  // Group the already-fetched users by role for a quick "who's in charge"
+  // view — no extra API call needed.
+  //
+  // Sorting by role_id is a display order, NOT a seniority ranking, however
+  // much it looks like one. 1=Super Admin down to 7=Client reads as a
+  // hierarchy right up to 8=Manager, which the roster service treats as
+  // senior to Supervisor (MANAGER_ROLE_IDS = (1, 2, 8)). Anything that needs
+  // to know who outranks whom has to use an explicit rank map, not this.
   const tiers = useMemo(() => {
     const byRole = new Map<number, User[]>()
     for (const u of users ?? []) {

@@ -1,11 +1,17 @@
-"""Demo seed — populates a realistic 'Aegis Security' tenant for client demos.
+"""Demo seed — populates a realistic "Demo" tenant for client demos.
 
 Run inside the api container:
     docker exec -w /app/backend docker-api-1 \
         python -m scripts.seed_demo
 
-Idempotent: deletes any existing tenant with slug 'aegis' (cascades) then
-recreates everything. Uses the postgres superuser connection to bypass RLS.
+Idempotent: deletes any existing tenant with SLUG (cascades) then recreates
+everything. Uses the postgres superuser connection to bypass RLS.
+
+THE DELETE TAKES THE WHOLE TENANT. SLUG is now 'demo' — the tenant people
+actually work in — so this is not a top-up. It drops that tenant and every
+site, camera, shift, incident and occurrence entry beneath it, then seeds
+fresh demo data in its place. It was named 'aegis' when that was a throwaway
+tenant nobody minded losing; that is no longer what the slug points at.
 
 Partition-safety: alerts + incidents are unpartitioned, so their timestamps
 span 21 days for rich trends. Partitioned tables (detections, intrusion_events,
@@ -32,7 +38,7 @@ _host = os.environ.get("SEED_DB_HOST", "postgres")
 ADMIN_URL = f"postgresql+asyncpg://postgres:change_me_dev_only@{_host}:5432/seventh_ai_vision"
 
 DEMO_PASSWORD = "Demo1234!"
-SLUG = "aegis"
+SLUG = "demo"
 
 AI_MODULES = ["lpr", "face", "intrusion", "ppe", "crowd",
               "fire_smoke", "weapon", "behavior", "tampering", "abandoned", "fall"]
@@ -60,12 +66,15 @@ async def seed():
         await s.commit()
 
         tenant_id = uuid.uuid4()
-        branding = {"primary_color": "#1E88E5", "company_name": "Aegis Security Services",
+        # company_name is the SUBSCRIBER's name. The product name "Seventh AI
+        # Vision" comes from the frontend's lib/brand.ts and is not stored per
+        # tenant, so it stays on every screen whatever this says.
+        branding = {"primary_color": "#1E88E5", "company_name": "Demo",
                     "logo_url": ""}
         await s.execute(
             text("INSERT INTO tenants (id, name, slug, branding, timezone) "
                  "VALUES (:id, :name, :slug, CAST(:b AS jsonb), 'Asia/Singapore')"),
-            {"id": tenant_id, "name": "Aegis Security Services", "slug": SLUG,
+            {"id": tenant_id, "name": "Demo", "slug": SLUG,
              "b": json.dumps(branding)},
         )
 
@@ -76,13 +85,17 @@ async def seed():
             return uid, {"id": uid, "tid": tenant_id, "role": role, "email": email,
                          "pw": pw, "name": name}
 
+        # The super admin is the platform operator, not the subscriber, so it
+        # carries the product's own name and domain. Everyone else belongs to
+        # the demo customer and sits on demo.local — a reserved TLD, so no demo
+        # account can ever be sent real mail by accident.
         users = {
-            "super":  mk_user("super@aegis.demo", 1, "System Administrator"),
-            "ops":    mk_user("ops@aegis.demo", 2, "Priya Nair — Ops Manager"),
-            "sup":    mk_user("supervisor@aegis.demo", 3, "David Lim — Supervisor"),
-            "guard1": mk_user("guard1@aegis.demo", 5, "Tan Wei Ming"),
-            "guard2": mk_user("guard2@aegis.demo", 5, "Rajesh Kumar"),
-            "viewer": mk_user("viewer@aegis.demo", 6, "Control Room Viewer"),
+            "super":  mk_user("superadmin@seventhaivision.com", 1, "Seventh AI Vision"),
+            "ops":    mk_user("ops@demo.local", 2, "Priya Nair — Ops Manager"),
+            "sup":    mk_user("supervisor@demo.local", 3, "David Lim — Supervisor"),
+            "guard1": mk_user("guard1@demo.local", 5, "Tan Wei Ming"),
+            "guard2": mk_user("guard2@demo.local", 5, "Rajesh Kumar"),
+            "viewer": mk_user("viewer@demo.local", 6, "Control Room Viewer"),
             "client": mk_user("client@marinabay.demo", 7, "Marina Bay Property Mgr"),
         }
         for _uid, row in users.values():
@@ -224,7 +237,7 @@ async def seed():
              "3. Escort all non-tenant visitors above level 3."),
             ("Marina Bay Tower", "Emergency Contacts", "contacts",
              "Building Manager: +65 6100 1234\nFire Command Centre: 995\n"
-             "Aegis Ops Room: +65 6200 5678\nPolice: 999"),
+             "Demo Ops Room: +65 6200 5678\nPolice: 999"),
             ("Jurong Logistics Hub", "Vehicle Gate Procedure", "patrol",
              "1. Log every vehicle plate at Gate 1.\n2. Blocklisted plates: deny entry, "
              "notify supervisor immediately.\n3. Patrol the perimeter every 2 hours."),
@@ -255,7 +268,7 @@ async def seed():
                 text("INSERT INTO patrol_checkpoints (id, tenant_id, route_id, sequence, name, qr_code) "
                      "VALUES (:id, :tid, :rid, :seq, :name, :qr)"),
                 {"id": cp, "tid": tenant_id, "rid": route_id, "seq": seq, "name": cpname,
-                 "qr": f"AEGIS-MB-CP{seq}"},
+                 "qr": f"DEMO-MB-CP{seq}"},
             )
         sess_id = uuid.uuid4()
         await s.execute(
@@ -382,8 +395,9 @@ async def seed():
     print("✅ Demo seed complete.")
     print(f"   Tenant slug : {SLUG}")
     print(f"   Password    : {DEMO_PASSWORD} (all users)")
-    print("   Logins      : ops@aegis.demo (admin) · supervisor@aegis.demo ·")
-    print("                 guard1@aegis.demo · viewer@aegis.demo · client@marinabay.demo")
+    print("   Super admin : superadmin@seventhaivision.com")
+    print("   Logins      : ops@demo.local (admin) · supervisor@demo.local ·")
+    print("                 guard1@demo.local · viewer@demo.local · client@marinabay.demo")
     print("   4 sites · 9 cameras · zones · roster (1 active shift) · post orders ·")
     print("   patrol history · ~57 alerts · 14 incidents · 130 detections · occurrence book")
 

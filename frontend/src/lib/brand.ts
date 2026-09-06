@@ -10,7 +10,7 @@
  * interchangeable with it or with each other:
  *
  *   PRODUCT_NAME              this platform            "Seventh AI Vision"
- *   branding.company_name     the subscriber's label   "Security"
- *   tenant.name               the subscriber's company "Aegis Security Services"
+ *   branding.company_name     the subscriber's label   "Demo"
+ *   tenant.name               the subscriber's company "Demo"
  */
 export const PRODUCT_NAME = 'Seventh AI Vision'
