@@ -32,9 +32,11 @@ import {
   Divider,
   Tabs,
   Tab,
+  InputAdornment,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
+import SearchIcon from '@mui/icons-material/Search'
 import BlockIcon from '@mui/icons-material/Block'
 import EditIcon from '@mui/icons-material/Edit'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
@@ -46,6 +48,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import {
   getUsers, createUser, updateUser, deactivateUser, getUserSites, setUserSites,
@@ -703,6 +706,101 @@ export default function Users() {
 
   const { data: users, isLoading } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
+  // The site list comes from the sites API rather than from whichever sites
+  // happen to appear on a user row: an admin looking for "who covers Jurong"
+  // needs to be able to pick Jurong and see that the answer is nobody. Deriving
+  // the options from the rows would hide exactly the site they are worried about.
+  const { data: allSites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
+
+  const [search, setSearch] = useState('')
+  const [siteFilter, setSiteFilter] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
+  const [employmentFilter, setEmploymentFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (users ?? []).filter((u) => {
+      if (q) {
+        // Phone is searchable because it is how a duty manager actually looks
+        // someone up — they have the number from a call, not the spelling of
+        // the name.
+        const hay = [u.full_name, u.email, u.phone, u.designation]
+          .filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      if (siteFilter) {
+        const sites = u.site_names ?? []
+        // "Unrestricted" is a real answer, not the absence of one — it is what
+        // the table shows for a user tied to no site, and "show me everyone who
+        // is not pinned to a site" is a question worth being able to ask.
+        if (siteFilter === '__unrestricted__') {
+          if (sites.length > 0) return false
+        } else if (!sites.includes(siteFilter)) {
+          return false
+        }
+      }
+      if (roleFilter && String(u.role_id) !== roleFilter) return false
+      if (employmentFilter && (u.employment_type ?? '') !== employmentFilter) return false
+      if (statusFilter === 'active' && !u.is_active) return false
+      if (statusFilter === 'inactive' && u.is_active) return false
+      return true
+    })
+  }, [users, search, siteFilter, roleFilter, employmentFilter, statusFilter])
+
+  const filterGroups: FilterGroup[] = [
+    {
+      key: 'site',
+      label: 'Site',
+      value: siteFilter,
+      onChange: setSiteFilter,
+      options: [
+        { value: '', label: 'All sites' },
+        { value: '__unrestricted__', label: 'Unrestricted' },
+        ...allSites.map((s: any) => ({ value: s.name, label: s.name })),
+      ],
+    },
+    {
+      key: 'role',
+      label: 'Role',
+      value: roleFilter,
+      onChange: setRoleFilter,
+      options: [
+        { value: '', label: 'All roles' },
+        ...Object.keys(ROLE_LABELS).map(Number).sort((a, b) => a - b)
+          .map((id) => ({ value: String(id), label: ROLE_LABELS[id] })),
+      ],
+    },
+    {
+      key: 'employment',
+      label: 'Employment',
+      value: employmentFilter,
+      onChange: setEmploymentFilter,
+      options: [
+        { value: '', label: 'All types' },
+        { value: 'full_time', label: 'Full-Time' },
+        { value: 'part_time', label: 'Part-Time' },
+        { value: 'contract', label: 'Contract' },
+      ],
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      value: statusFilter,
+      onChange: setStatusFilter,
+      options: [
+        { value: '', label: 'All' },
+        { value: 'active', label: 'Active' },
+        { value: 'inactive', label: 'Deactivated' },
+      ],
+    },
+  ]
+
+  const anyFilter = Boolean(search || siteFilter || roleFilter || employmentFilter || statusFilter)
+  const clearFilters = () => {
+    setSearch(''); setSiteFilter(''); setRoleFilter(''); setEmploymentFilter(''); setStatusFilter('')
+  }
+
   const { mutate: deactivate } = useMutation({
     mutationFn: deactivateUser,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
@@ -775,14 +873,42 @@ export default function Users() {
         </GlassCard>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      {/* Search shares the row the Add User button already had, rather than
+          taking a band of its own — the same reason the filters live in a rail
+          instead of a chip row. */}
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          placeholder="Search name, email or phone"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ flex: 1, maxWidth: 360 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
+              ),
+            },
+          }}
+        />
+        {anyFilter && (
+          <>
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {filteredUsers.length} of {users?.length ?? 0}
+            </Typography>
+            <Button size="small" variant="outlined" onClick={clearFilters}>Show All</Button>
+          </>
+        )}
+        <Box sx={{ flex: 1 }} />
         <PermissionGuard permission="user:create">
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => { setEditUser(null); setDialogOpen(true) }}>
             Add User
           </Button>
         </PermissionGuard>
-      </Box>
+      </Stack>
 
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
       <GlassCard>
         <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
           <Table size="small">
@@ -808,7 +934,20 @@ export default function Users() {
                       ))}
                     </TableRow>
                   ))
-                : users?.map((user) => {
+                : filteredUsers.length === 0
+                ? (
+                    <TableRow>
+                      <TableCell colSpan={GRID_COLUMN_COUNT} align="center" sx={{ py: 4 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {anyFilter ? 'No users match these filters.' : 'No users yet.'}
+                        </Typography>
+                        {anyFilter && (
+                          <Button size="small" sx={{ mt: 1 }} onClick={clearFilters}>Show All</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                : filteredUsers.map((user) => {
                     const sites = user.site_names ?? []
                     const pay = payDisplay(user)
                     const expired = user.documents_expired_count ?? 0
@@ -945,6 +1084,9 @@ export default function Users() {
           </Table>
         </TableContainer>
       </GlassCard>
+        </Box>
+        <FilterRail groups={filterGroups} storageKey="users" />
+      </Box>
 
       <UserFormDialog
         open={dialogOpen}
