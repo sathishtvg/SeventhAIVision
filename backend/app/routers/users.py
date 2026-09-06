@@ -80,8 +80,47 @@ _USER_SELECT_COLUMNS = (
 )
 
 
+PLATFORM_ADMIN_ROLE_ID = 1
+
+# Role ids are NOT a seniority ranking, however much 1..7 looks like one — 8 is
+# Manager, which the roster service treats as senior to Supervisor (3). So the
+# guard below compares against one specific role rather than doing arithmetic on
+# role_id, which would silently get Managers wrong.
+
+
+def _is_platform_admin(token: TokenPayload) -> bool:
+    return token.role_id == PLATFORM_ADMIN_ROLE_ID
+
+
+async def _assert_may_touch(db: AsyncSession, token: TokenPayload, user_id) -> None:
+    """Refuse to let anyone but a platform admin act on a platform admin.
+
+    RLS scopes users to a tenant and require_permission asks only "does your
+    role hold this code". Neither compares the caller's role to the TARGET's,
+    so a tenant Admin holding user:update could act on the super admin sharing
+    its tenant — including PUT {"new_password": "..."}, after which it simply
+    logs in as them. _assert_assignable_role blocks *becoming* role 1; this
+    blocks the shorter route to the same place.
+
+    404 rather than 403: a tenant Admin has no business learning that a
+    platform admin exists in their tenant, and 403 confirms it.
+    """
+    if _is_platform_admin(token):
+        return
+    target_role = (
+        await db.execute(
+            text("SELECT role_id FROM users WHERE id = :id"), {"id": user_id}
+        )
+    ).scalar_one_or_none()
+    if target_role == PLATFORM_ADMIN_ROLE_ID:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+
 @router.get("", dependencies=[Depends(require_permission("user:read"))])
-async def list_users(db: AsyncSession = Depends(get_db_with_tenant)):
+async def list_users(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
     # Site names and document-expiry counts are list-only additions (Guards
     # grid round) — kept out of _USER_SELECT_COLUMNS so get_user/create_user
     # stay simple, unaliased single-table queries. Both LEFT JOIN subqueries
@@ -111,8 +150,13 @@ async def list_users(db: AsyncSession = Depends(get_db_with_tenant)):
                 FROM employee_documents ed
                 GROUP BY ed.user_id
             ) dc ON dc.user_id = users.id
+            WHERE (:show_platform_admins OR users.role_id <> :platform_role)
             ORDER BY users.created_at DESC
-        """)
+        """),
+        {
+            "show_platform_admins": _is_platform_admin(token),
+            "platform_role": PLATFORM_ADMIN_ROLE_ID,
+        },
     )
     return [dict(row._mapping) for row in result]
 
@@ -169,7 +213,12 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db_with_t
 
 
 @router.get("/{user_id}", dependencies=[Depends(require_permission("user:read"))])
-async def get_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)):
+async def get_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    await _assert_may_touch(db, token, user_id)
     result = await db.execute(
         text(f"SELECT {_USER_SELECT_COLUMNS} FROM users WHERE id = :id"),
         {"id": user_id},
@@ -181,7 +230,15 @@ async def get_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_te
 
 
 @router.put("/{user_id}", dependencies=[Depends(require_permission("user:update"))])
-async def update_user(user_id: uuid.UUID, body: UserUpdate, db: AsyncSession = Depends(get_db_with_tenant)):
+async def update_user(
+    user_id: uuid.UUID,
+    body: UserUpdate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    # Before the role being ASSIGNED is checked, check the user being TOUCHED.
+    # Without this, new_password on a platform admin is a complete takeover.
+    await _assert_may_touch(db, token, user_id)
     if body.role_id is not None:
         await _assert_assignable_role(db, body.role_id)
     updates = {k: v for k, v in body.model_dump(exclude={"new_password"}).items() if v is not None}
@@ -204,7 +261,12 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, db: AsyncSession = D
 
 
 @router.delete("/{user_id}", dependencies=[Depends(require_permission("user:delete"))])
-async def deactivate_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)):
+async def deactivate_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    await _assert_may_touch(db, token, user_id)
     result = await db.execute(
         text("UPDATE users SET is_active = FALSE, updated_at = now() WHERE id = :id RETURNING id, is_active"),
         {"id": user_id},
@@ -223,9 +285,14 @@ class UserSitesBody(BaseModel):
 
 
 @router.get("/{user_id}/sites", dependencies=[Depends(require_permission("user:read"))])
-async def get_user_sites(user_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)):
+async def get_user_sites(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
     """List the sites a user is restricted to. Empty list = unrestricted
     (for internal roles) or no visibility (for the client role)."""
+    await _assert_may_touch(db, token, user_id)
     user_check = await db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
     if user_check.first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -245,9 +312,11 @@ async def set_user_sites(
     user_id: uuid.UUID,
     body: UserSitesBody,
     db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
 ):
     """Replace a user's site assignments. An empty list clears all
     assignments (internal roles become unrestricted; clients lose access)."""
+    await _assert_may_touch(db, token, user_id)
     user_check = await db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
     if user_check.first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -287,7 +356,12 @@ class EmployeeDocumentUpdate(BaseModel):
 
 
 @router.get("/{user_id}/documents", dependencies=[Depends(require_permission("user:read"))])
-async def get_employee_documents(user_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)):
+async def get_employee_documents(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    await _assert_may_touch(db, token, user_id)
     user_check = await db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
     if user_check.first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -321,6 +395,7 @@ async def upload_employee_document(
 ):
     if document_type not in _DOCUMENT_TYPES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"document_type must be one of {sorted(_DOCUMENT_TYPES)}")
+    await _assert_may_touch(db, token, user_id)
     user_check = await db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
     if user_check.first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -362,8 +437,10 @@ async def upload_employee_document(
 
 @router.get("/{user_id}/documents/{doc_id}/file", dependencies=[Depends(require_permission("user:read"))])
 async def download_employee_document(
-    user_id: uuid.UUID, doc_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)
+    user_id: uuid.UUID, doc_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
 ):
+    await _assert_may_touch(db, token, user_id)
     row = (
         await db.execute(
             text("SELECT storage_path FROM employee_documents WHERE id = :id AND user_id = :uid"),
@@ -384,7 +461,9 @@ async def update_employee_document(
     doc_id: uuid.UUID,
     body: EmployeeDocumentUpdate,
     db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
 ):
+    await _assert_may_touch(db, token, user_id)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No fields to update")
@@ -407,8 +486,10 @@ async def update_employee_document(
 
 @router.delete("/{user_id}/documents/{doc_id}", dependencies=[Depends(require_permission("user:delete"))])
 async def delete_employee_document(
-    user_id: uuid.UUID, doc_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)
+    user_id: uuid.UUID, doc_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
 ):
+    await _assert_may_touch(db, token, user_id)
     result = await db.execute(
         text("DELETE FROM employee_documents WHERE id = :id AND user_id = :uid RETURNING storage_path"),
         {"id": doc_id, "uid": user_id},
@@ -489,6 +570,7 @@ async def upload_profile_photo(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"Photo must be one of {sorted(_PROFILE_PHOTO_TYPES)}",
         )
+    await _assert_may_touch(db, token, user_id)
     if (await db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})).first() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
@@ -539,8 +621,16 @@ async def get_profile_photo(
         if perm.first() is None:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Missing permission: user:read")
         row = (await session.execute(
-            text("SELECT profile_photo_path FROM users WHERE id = :id"), {"id": user_id},
+            text("SELECT profile_photo_path, role_id FROM users WHERE id = :id"), {"id": user_id},
         )).first()
+
+    # This endpoint authenticates from a query param and runs its own session,
+    # so it cannot use _assert_may_touch — but it needs the same rule, or a
+    # platform admin's face is readable from a URL by any tenant Admin.
+    if (row is not None
+            and row[1] == PLATFORM_ADMIN_ROLE_ID
+            and payload["role_id"] != PLATFORM_ADMIN_ROLE_ID):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile photo")
 
     if row is None or not row[0]:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile photo")
