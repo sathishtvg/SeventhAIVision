@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Box, Typography, Grid, Paper, Chip, Stack, Divider, CircularProgress,
-  Tooltip, IconButton, useTheme, Badge, Dialog, DialogTitle, DialogContent,
-  DialogActions, Button, Alert as MuiAlert,
+  Box, Typography, Grid, Paper, Chip, Divider, CircularProgress,
+  Tooltip, IconButton, Button,
 } from '@mui/material'
 import LiveTvIcon from '@mui/icons-material/LiveTv'
 import VideocamIcon from '@mui/icons-material/Videocam'
@@ -15,16 +14,14 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import PersonIcon from '@mui/icons-material/Person'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import MonitorIcon from '@mui/icons-material/Monitor'
-import FlagIcon from '@mui/icons-material/Flag'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import { getSites } from '@/api/sites'
 import { useNavigate } from 'react-router-dom'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getCCOverview } from '@/api/commandCentre'
 import { AlertResponseDialog } from '@/components/common/AlertResponseDialog'
 import { openLiveWallWindow } from '@/lib/liveWallWindow'
@@ -441,16 +438,21 @@ export default function CommandCentre() {
               <OpenInNewIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Full screen for continuous monitoring'}>
-            <Button
-              size="small"
-              variant={kiosk ? 'contained' : 'outlined'}
-              startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-              onClick={toggleKiosk}
-            >
-              {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-            </Button>
-          </Tooltip>
+          {/* Enter-only. Once full screen, AppShell's focus-mode strip owns Back
+              and Exit — a second exit button here landed under the strip and
+              read as two overlapping controls in the top-right corner. */}
+          {!kiosk && (
+            <Tooltip title="Full screen for continuous monitoring">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FullscreenIcon />}
+                onClick={toggleKiosk}
+              >
+                Full Screen
+              </Button>
+            </Tooltip>
+          )}
         </Box>
       </Box>
 

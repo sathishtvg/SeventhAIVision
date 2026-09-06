@@ -23,6 +23,7 @@ import {
 } from '@/api/platform_licenses'
 import type { TenantProduct } from '@/api/platform_licenses'
 import type { Tenant } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const TIMEZONES = [
   'Asia/Singapore',
@@ -680,6 +681,7 @@ export default function Tenants() {
 
   return (
     <Box>
+      <PageHeader pageKey="tenants" />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAddOpen(true)}>
           Add Tenant
@@ -734,8 +736,8 @@ export default function Tenants() {
                     {t.subdomain && t.subdomain !== t.slug && (
                       <Typography
                         variant="caption"
-                        display="block"
-                        sx={{ color: 'text.disabled', fontSize: '0.65rem' }}
+
+                        sx={{ color: 'text.disabled', fontSize: '0.65rem', display: "block" }}
                       >
                         {t.subdomain}
                       </Typography>

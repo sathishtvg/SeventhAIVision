@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -92,21 +93,48 @@ from app.routers import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail fast, before touching Postgres/Redis, if this is a production
     # deployment still running on dev-default secrets (see config.py).
     settings.assert_production_secrets_configured()
 
-    # Mark any recordings that were left stuck as 'recording' from a prior crash
+    # Close out recordings left stuck as 'recording' by a prior crash or
+    # restart. _active_recordings lives in this process's memory, so anything
+    # still marked 'recording' at boot was owned by a process that is gone —
+    # it is 'failed', not "in progress".
+    #
+    # This MUST run per tenant. `recordings` has FORCE ROW LEVEL SECURITY, so
+    # a session without app.current_tenant matches zero rows and the UPDATE
+    # silently affects nothing — which is exactly what the previous
+    # single-statement version did at every startup since it was written,
+    # while orphans accumulated. Same tenant-iteration shape the scheduler
+    # jobs use.
+    #
+    # An orphan is not cosmetic: the playback timeline matches segments on
+    # COALESCE(ended_at, now()) > day_start, so one un-ended row appears as a
+    # ghost segment on every day from its start date onward, forever.
     from app.db.session import AsyncSessionLocal
     from sqlalchemy import text as _text
     async with AsyncSessionLocal() as _db:
-        await _db.execute(_text(
-            "UPDATE recordings SET status = 'failed', ended_at = COALESCE(ended_at, now()) "
-            "WHERE status = 'recording'"
-        ))
+        tenant_ids = [r[0] for r in (await _db.execute(_text("SELECT id FROM tenants"))).fetchall()]
+        closed = 0
+        for _tid in tenant_ids:
+            await _db.execute(
+                _text("SELECT set_config('app.current_tenant', :tid, true)"),
+                {"tid": str(_tid)},
+            )
+            result = await _db.execute(_text(
+                "UPDATE recordings SET status = 'failed', ended_at = COALESCE(ended_at, now()) "
+                "WHERE status = 'recording' RETURNING id"
+            ))
+            closed += len(result.fetchall())
         await _db.commit()
+    if closed:
+        logger.info("startup: closed %d orphaned recording(s) from a previous run", closed)
 
     # Main client: health_check_interval keeps pooled connections alive for
     # regular commands (SET, GET, PUBLISH, SMEMBERS, etc.)

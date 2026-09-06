@@ -12,9 +12,6 @@ import {
   Button,
   Chip,
   Container,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Grid,
   IconButton,
   List,
@@ -25,7 +22,6 @@ import {
   Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
-import CloseIcon from '@mui/icons-material/Close'
 import LogoutIcon from '@mui/icons-material/Logout'
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
@@ -41,6 +37,7 @@ import { listAllStreams } from '@/api/recordings'
 import { listInvoices, invoicePdfUrl, type Invoice } from '@/api/invoicing'
 import { useAuthStore } from '@/store/auth'
 import { GlassCard } from '@/components/common/GlassCard'
+import { MediaViewer } from '@/components/common/MediaViewer'
 import { SeverityChip } from '@/components/common/SeverityChip'
 import type { AlertSeverity } from '@/types/api'
 
@@ -65,7 +62,7 @@ function KpiCard({ icon, label, value, accent }: {
           {icon}
         </Box>
         <Box>
-          <Typography variant="h5" fontWeight={800}>{value}</Typography>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>{value}</Typography>
           <Typography variant="caption" color="text.secondary">{label}</Typography>
         </Box>
       </Stack>
@@ -126,7 +123,7 @@ export default function ClientPortal() {
             <ShieldIcon />
           )}
           <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
               {brandName}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -165,7 +162,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Recent Alerts
                 </Typography>
                 {alerts.length === 0 ? (
@@ -194,7 +191,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Open Incidents
                 </Typography>
                 {openIncidents.length === 0 ? (
@@ -223,7 +220,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Cameras
                 </Typography>
                 {streams.length === 0 ? (
@@ -273,7 +270,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Occurrence Book
                 </Typography>
                 {dobEntries.length === 0 ? (
@@ -307,7 +304,7 @@ export default function ClientPortal() {
           <Grid size={{ xs: 12, md: 6 }}>
             <GlassCard>
               <Box sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Invoices
                 </Typography>
                 {invoices.length === 0 ? (
@@ -360,24 +357,20 @@ export default function ClientPortal() {
         </Typography>
       </Container>
 
-      {/* Live view dialog */}
+      {/* Live view — MediaViewer so the frame fits the screen instead of
+          overflowing a fixed-width dialog into a scrollbar. */}
       {liveCam && token && (
-        <Dialog open onClose={() => setLiveCam(null)} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ py: 1 }}>
-            {liveCam.name}
-            <IconButton sx={{ float: 'right' }} size="small" onClick={() => setLiveCam(null)}>
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent sx={{ p: 0 }}>
-            <Box
-              component="img"
-              src={`${apiClient.defaults.baseURL}/api/v1/cameras/${liveCam.camera_id}/streams/${liveCam.stream_id}/live?token=${token}`}
-              alt={liveCam.name}
-              sx={{ width: '100%', display: 'block', background: '#000', minHeight: 240 }}
-            />
-          </DialogContent>
-        </Dialog>
+        <MediaViewer
+          open
+          onClose={() => setLiveCam(null)}
+          items={[{
+            id: liveCam.stream_id,
+            kind: 'image',
+            label: liveCam.name,
+            live: true,
+            src: `${apiClient.defaults.baseURL}/api/v1/cameras/${liveCam.camera_id}/streams/${liveCam.stream_id}/live?token=${token}`,
+          }]}
+        />
       )}
     </Box>
   )

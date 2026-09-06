@@ -9,7 +9,8 @@
     "icons": "node scripts/build-icons.js",
     "start": "electron electron/main.js",
     "build:frontend": "cd ../frontend && npm run build",
-    "copy:dist": "xcopy /E /I /Y ..\\frontend\\dist dist",
+    "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "copy:dist": "npm run clean:dist && xcopy /E /I /Y ..\\frontend\\dist dist",
     "predist": "node scripts/build-icons.js",
     "dist": "npm run build:frontend && npm run copy:dist && electron-builder --win"
   },

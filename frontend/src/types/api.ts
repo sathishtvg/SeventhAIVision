@@ -47,6 +47,8 @@ export interface User {
   emergency_contact_phone: string | null
   hourly_rate: number | null
   daily_rate: number | null
+  /** Permanent photo shown before a guard checks in. */
+  profile_photo_path?: string | null
   monthly_salary: number | null
   // List-only fields (GET /users grid round) — present only in the list
   // response, not GET /users/{id} or POST /users.
@@ -339,6 +341,18 @@ export interface Evidence {
   storage_path: string
   checksum_sha256: string | null
   captured_at: string
+  /* Context resolved server-side (site/camera/analytic). All optional: a
+     capture whose detection has aged out of retention, or one attached to an
+     incident rather than a detection, legitimately has no camera or module. */
+  capture_kind?: string | null
+  module_type?: string | null
+  confidence?: number | null
+  camera_id?: string | null
+  camera_name?: string | null
+  camera_location?: string | null
+  site_id?: string | null
+  site_name?: string | null
+  incident_title?: string | null
 }
 
 export interface AuditLog {
@@ -410,6 +424,18 @@ export interface AnalyticsSummary {
   alerts_7d: number
   detections_7d: number
   active_recordings: number
+  active_cameras_total?: number
+  // Sized by the `days` query param rather than fixed at 7.
+  detections_window?: number
+  alerts_window?: number
+  // Equal-length period immediately before the window, for period-on-period.
+  detections_window_prev?: number
+  alerts_window_prev?: number
+  alerts_window_critical?: number
+  alerts_window_unresolved?: number
+  // ISO timestamps, null when nothing has ever been recorded.
+  last_detection_at?: string | null
+  last_alert_at?: string | null
 }
 
 export interface AnalyticsCount {
@@ -489,6 +515,11 @@ export interface Site {
   latitude: number | null
   longitude: number | null
   geofence_radius_meters: number | null
+  /** Drawn boundary, in drawing order. When set it replaces the radius for
+   *  attendance check-in checks — see services/geofence.py. */
+  geofence_polygon: { lat: number; lng: number }[] | null
+  /** Minutes of lateness tolerated at this site; null = tenant default. */
+  late_grace_minutes: number | null
   is_active: boolean
   camera_count: number
   client_id: string | null

@@ -57,7 +57,9 @@ import {
 import { getUsers } from '@/api/users'
 import { useAuthStore } from '@/store/auth'
 import GlassCard from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const CATEGORY_COLOR: Record<string, string> = {
   general:            '#6C63FF',
@@ -111,8 +113,8 @@ function DashboardTab() {
             <GlassCard sx={{ p: 2, borderTop: `3px solid ${kpi.color}` }}>
               {isLoading ? <Skeleton height={40} /> : (
                 <>
-                  <Typography variant="h4" fontWeight={700}
-                    sx={{ color: typeof kpi.value === 'string' || (kpi.value as number) > 0 ? kpi.color : 'rgba(255,255,255,0.25)' }}>
+                  <Typography variant="h4"
+                    sx={{ color: typeof kpi.value === 'string' || (kpi.value as number) > 0 ? kpi.color : 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
                     {kpi.value}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
@@ -155,7 +157,7 @@ function DashboardTab() {
                 ))}
                 {data?.expiring_certifications.map(c => (
                   <TableRow key={c.id} hover>
-                    <TableCell fontWeight={500}>{c.guard_name}</TableCell>
+                    <TableCell sx={{ fontWeight: 500 }}>{c.guard_name}</TableCell>
                     <TableCell sx={{ fontSize: '0.8rem' }}>
                       {c.certification_type.replace(/_/g, ' ')}
                     </TableCell>
@@ -206,7 +208,7 @@ function DashboardTab() {
                 ))}
                 {data?.expired_training_records.map(r => (
                   <TableRow key={r.id} hover>
-                    <TableCell fontWeight={500}>{r.guard_name}</TableCell>
+                    <TableCell sx={{ fontWeight: 500 }}>{r.guard_name}</TableCell>
                     <TableCell sx={{ fontSize: '0.8rem' }}>{r.course_name}</TableCell>
                     <TableCell sx={{ fontSize: '0.78rem', color: '#FF4560' }}>{r.expires_at}</TableCell>
                   </TableRow>
@@ -279,7 +281,7 @@ function CoursesTab() {
             {data.map(c => (
               <TableRow key={c.id} hover>
                 <TableCell>
-                  <Typography fontWeight={600} fontSize="0.85rem">{c.name}</Typography>
+                  <Typography sx={{ fontWeight: 600, fontSize: "0.85rem" }}>{c.name}</Typography>
                   {c.description && (
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: 'block' }}>
                       {c.description.slice(0, 60)}{c.description.length > 60 ? '…' : ''}
@@ -299,7 +301,7 @@ function CoursesTab() {
                     <LinearProgress variant="determinate" value={c.passing_score}
                       sx={{ width: 40, height: 4, borderRadius: 2,
                             '& .MuiLinearProgress-bar': { bgcolor: '#00E396' } }} />
-                    <Typography fontSize="0.78rem">{c.passing_score}%</Typography>
+                    <Typography sx={{ fontSize: "0.78rem" }}>{c.passing_score}%</Typography>
                   </Box>
                 </TableCell>
                 <TableCell sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
@@ -442,7 +444,7 @@ function QuestionsDialog({ courseId, courseName, onClose }: {
             {questions.map((q, i) => (
               <Box key={q.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.5 }}>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2" fontWeight={600}>{i + 1}. {q.question_text}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{i + 1}. {q.question_text}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     Correct: {q.options[q.correct_index]} · {q.points} pt(s)
                   </Typography>
@@ -551,21 +553,28 @@ function RecordsTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['training-records'] }),
   })
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'passed',
+    label: 'Result',
+    allValue: 'all',
+    value: filterPassed,
+    onChange: setFilterPassed,
+    options: [
+      { value: 'all', label: 'All' },
+      { value: 'true', label: 'Passed' },
+      { value: 'false', label: 'Failed' },
+    ],
+  }]
+
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         {canWrite && (
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setOpen(true)}>
             Record Training
           </Button>
         )}
-        {['all', 'true', 'false'].map(v => (
-          <Chip key={v} label={v === 'all' ? 'All' : v === 'true' ? 'Passed' : 'Failed'}
-            size="small" variant={filterPassed === v ? 'filled' : 'outlined'}
-            onClick={() => setFilterPassed(v)}
-            sx={{ cursor: 'pointer', fontSize: '0.75rem',
-                  ...(filterPassed === v ? { bgcolor: 'rgba(108,99,255,0.2)', color: '#6C63FF' } : {}) }} />
-        ))}
       </Box>
 
       <GlassCard sx={{ p: 0 }}>
@@ -590,11 +599,11 @@ function RecordsTab() {
               return (
                 <TableRow key={r.id} hover>
                   <TableCell>
-                    <Typography fontWeight={500} fontSize="0.85rem">{r.guard_name}</Typography>
+                    <Typography sx={{ fontWeight: 500, fontSize: "0.85rem" }}>{r.guard_name}</Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>{r.guard_email}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography fontSize="0.82rem">{r.course_name}</Typography>
+                    <Typography sx={{ fontSize: "0.82rem" }}>{r.course_name}</Typography>
                     <Chip label={r.course_category.replace(/_/g, ' ')} size="small"
                       sx={{ mt: 0.3, bgcolor: `${CATEGORY_COLOR[r.course_category] ?? '#888'}22`,
                             color: CATEGORY_COLOR[r.course_category] ?? '#888', fontSize: '0.65rem' }} />
@@ -610,7 +619,7 @@ function RecordsTab() {
                                 '& .MuiLinearProgress-bar': {
                                   bgcolor: r.score >= r.course_passing_score ? '#00E396' : '#FF4560'
                                 } }} />
-                        <Typography fontSize="0.78rem">{r.score}%</Typography>
+                        <Typography sx={{ fontSize: "0.78rem" }}>{r.score}%</Typography>
                       </Box>
                     ) : '—'}
                   </TableCell>
@@ -691,6 +700,9 @@ function RecordsTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="training-records" />
     </Box>
   )
 }
@@ -702,15 +714,23 @@ function CertificationsTab() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<string>('all')
+
+  const filterGroups: FilterGroup[] = [{
+    key: 'expiry',
+    label: 'Expiry',
+    allValue: 'all',
+    value: filter,
+    onChange: setFilter,
+    options: [
+      { value: 'all', label: 'All' },
+      { value: 'expiring', label: 'Expiring ≤ 30d' },
+      { value: 'expired', label: 'Expired' },
+    ],
+  }]
   const [form, setForm] = useState({
     user_id: '', certification_type: '', issuing_body: '',
     certificate_number: '', issued_at: '', expires_at: '',
   })
-
-  const params =
-    filter === 'expiring' ? { expiring_days: 30 } :
-    filter === 'expired'  ? { is_valid: true as const } : // we fetch valid only then filter client-side for expired
-    undefined
 
   const { data: certs = [], isLoading } = useQuery({
     queryKey: ['guard-certifications', filter],
@@ -735,24 +755,14 @@ function CertificationsTab() {
     : certs
 
   return (
-    <Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         {canWrite && (
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setOpen(true)}>
             Add Certification
           </Button>
         )}
-        {[
-          { key: 'all',      label: 'All' },
-          { key: 'expiring', label: 'Expiring ≤ 30d' },
-          { key: 'expired',  label: 'Expired' },
-        ].map(({ key, label }) => (
-          <Chip key={key} label={label} size="small"
-            variant={filter === key ? 'filled' : 'outlined'}
-            onClick={() => setFilter(key)}
-            sx={{ cursor: 'pointer', fontSize: '0.75rem',
-                  ...(filter === key ? { bgcolor: 'rgba(108,99,255,0.2)', color: '#6C63FF' } : {}) }} />
-        ))}
       </Box>
 
       <GlassCard sx={{ p: 0 }}>
@@ -778,7 +788,7 @@ function CertificationsTab() {
               return (
                 <TableRow key={c.id} hover>
                   <TableCell>
-                    <Typography fontWeight={500} fontSize="0.85rem">{c.guard_name}</Typography>
+                    <Typography sx={{ fontWeight: 500, fontSize: "0.85rem" }}>{c.guard_name}</Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>{c.guard_email}</Typography>
                   </TableCell>
                   <TableCell sx={{ fontSize: '0.82rem' }}>
@@ -867,6 +877,9 @@ function CertificationsTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="training-certifications" />
     </Box>
   )
 }
@@ -924,7 +937,7 @@ function QuizDialog({ courseId, courseName, onClose }: {
           <Skeleton height={200} />
         ) : result ? (
           <Alert severity={result.passed ? 'success' : 'warning'} sx={{ mb: 1 }}>
-            <Typography fontWeight={700}>
+            <Typography sx={{ fontWeight: 700 }}>
               {result.passed ? 'Passed!' : 'Not Passed'} — {result.score}% ({result.correct_count}/{result.total_count} correct)
             </Typography>
             {result.passed && (
@@ -991,7 +1004,7 @@ function MyTrainingTab() {
 
   return (
     <Box>
-      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>Available Quizzes</Typography>
+      <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 700 }}>Available Quizzes</Typography>
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {coursesLoading && [...Array(3)].map((_, i) => (
           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}><Skeleton height={140} /></Grid>
@@ -1003,7 +1016,7 @@ function MyTrainingTab() {
                 <Chip label={c.category.replace(/_/g, ' ')} size="small"
                   sx={{ bgcolor: `${CATEGORY_COLOR[c.category] ?? '#888'}22`,
                         color: CATEGORY_COLOR[c.category] ?? '#888', fontSize: '0.7rem', mb: 1 }} />
-                <Typography fontWeight={700} sx={{ mb: 0.5 }}>{c.name}</Typography>
+                <Typography sx={{ mb: 0.5, fontWeight: 700 }}>{c.name}</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
                   {c.question_count} question{c.question_count === 1 ? '' : 's'} · Pass at {c.passing_score}%
                 </Typography>
@@ -1026,7 +1039,7 @@ function MyTrainingTab() {
         )}
       </Grid>
 
-      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>My Results</Typography>
+      <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 700 }}>My Results</Typography>
       <GlassCard sx={{ p: 2 }}>
         {resultsLoading ? <Skeleton height={60} /> : myResults.length === 0 ? (
           <Typography color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>No quiz attempts yet.</Typography>
@@ -1035,7 +1048,7 @@ function MyTrainingTab() {
             {myResults.map(a => (
               <Box key={a.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
                 <Box>
-                  <Typography variant="body2" fontWeight={600}>{a.course_name}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{a.course_name}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     {a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : ''}
                   </Typography>
@@ -1072,11 +1085,9 @@ export default function TrainingPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="training" />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
         <SchoolIcon sx={{ color: '#6C63FF', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Guard Training & Certifications
-        </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3,

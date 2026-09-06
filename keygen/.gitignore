@@ -1,0 +1,11 @@
+# Never commit any of this.
+#
+# keystore.enc holds the private key that signs every licence. Anyone with
+# it and its password can mint keys for your product, so it must not enter
+# git history — where it would persist even after a later delete.
+keystore.enc
+keystore*.enc
+issued-keys.json
+
+node_modules/
+release/

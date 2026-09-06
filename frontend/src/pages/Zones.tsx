@@ -12,7 +12,6 @@ import {
   TableRow,
   Chip,
   IconButton,
-  Skeleton,
   Paper,
   Tooltip,
   Dialog,
@@ -27,6 +26,7 @@ import {
   InputLabel,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { SkeletonRows } from '@/components/common/SkeletonRows'
 import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import PauseIcon from '@mui/icons-material/Pause'
@@ -36,11 +36,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { RestrictedZoneDialog } from '@/components/common/RestrictedZoneDialog'
+import { ZonePolygonEditor } from '@/components/common/ZonePolygonEditor'
+import type { ZonePoint } from '@/components/common/ZoneDrawOverlay'
+import { getCameras } from '@/api/cameras'
 import { getZones, deleteZone, bulkBypassZones, bulkRestoreZones, setZoneSchedule, getCrowdZones, createCrowdZone, deleteCrowdZone } from '@/api/zones'
 import type { RestrictedZone } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const SEVERITY_COLORS: Record<string, 'success' | 'warning' | 'error' | 'info'> = {
   low: 'info', medium: 'warning', high: 'error', critical: 'error',
+}
+
+/** Fill colour for the drawn crowd polygon — mirrors the map used by
+ *  RestrictedZoneDialog so both editors read the same way. */
+const CROWD_SEVERITY_HEX: Record<string, string> = {
+  low: '#00E396', medium: '#FF9800', high: '#FF4560', critical: '#FF4560',
 }
 
 interface TabPanelProps { children: React.ReactNode; value: number; index: number }
@@ -48,17 +58,6 @@ function TabPanel({ children, value, index }: TabPanelProps) {
   return <Box hidden={value !== index}>{value === index && children}</Box>
 }
 
-function SkeletonRows({ cols, rows = 4 }: { cols: number; rows?: number }) {
-  return (
-    <>
-      {Array.from({ length: rows }).map((_, i) => (
-        <TableRow key={i}>
-          {Array.from({ length: cols }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}
-        </TableRow>
-      ))}
-    </>
-  )
-}
 
 // ──────────────────────────────────────────────────────────
 // Zone schedule dialog
@@ -327,15 +326,16 @@ function CrowdZoneDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [name, setName] = useState('')
   const [maxCapacity, setMaxCapacity] = useState('10')
   const [severity, setSeverity] = useState('medium')
-  const [polygonJson, setPolygonJson] = useState('[{"x":0.1,"y":0.1},{"x":0.9,"y":0.1},{"x":0.9,"y":0.9},{"x":0.1,"y":0.9}]')
-  const [jsonError, setJsonError] = useState('')
+  // Drawn on the camera's own feed, exactly like a restricted zone. This was
+  // a JSON textarea of normalized {x,y} pairs — nobody can look at a camera
+  // view and work out that the escalator landing is x 0.62-0.81, y 0.4-0.95.
+  const [polygon, setPolygon] = useState<ZonePoint[]>([])
+
+  const { data: cameras = [] } = useQuery({ queryKey: ['cameras'], queryFn: getCameras, enabled: open })
 
   const mutation = useMutation({
-    mutationFn: () => {
-      let polygon: Array<{ x: number; y: number }> = []
-      try { polygon = JSON.parse(polygonJson) } catch { throw new Error('Invalid JSON in polygon') }
-      return createCrowdZone({ camera_id: cameraId, name, polygon, max_capacity: parseInt(maxCapacity, 10) || 10, severity })
-    },
+    mutationFn: () =>
+      createCrowdZone({ camera_id: cameraId, name, polygon, max_capacity: parseInt(maxCapacity, 10) || 10, severity }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['crowd-zones'] }); onClose() },
   })
 
@@ -343,7 +343,22 @@ function CrowdZoneDialog({ open, onClose }: { open: boolean; onClose: () => void
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add Crowd Zone</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-        <TextField label="Camera ID (UUID)" value={cameraId} onChange={(e) => setCameraId(e.target.value)} fullWidth />
+        {/* Pick the camera by name. Asking an operator to paste a UUID meant
+            they had to go and look one up somewhere else first. */}
+        <FormControl fullWidth>
+          <InputLabel>Camera</InputLabel>
+          <Select
+            value={cameraId}
+            label="Camera"
+            onChange={(e) => { setCameraId(e.target.value); setPolygon([]) }}
+          >
+            {cameras.map((c: any) => (
+              <MenuItem key={c.id} value={c.id}>
+                {c.name}{c.location ? ` — ${c.location}` : ''}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <TextField label="Zone Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth />
         <TextField
           label="Max Capacity (persons)"
@@ -359,23 +374,29 @@ function CrowdZoneDialog({ open, onClose }: { open: boolean; onClose: () => void
             {['low', 'medium', 'high', 'critical'].map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
           </Select>
         </FormControl>
-        <TextField
-          label="Polygon (JSON array of {x,y} normalized 0..1)"
-          value={polygonJson}
-          onChange={(e) => {
-            setPolygonJson(e.target.value)
-            try { JSON.parse(e.target.value); setJsonError('') } catch { setJsonError('Invalid JSON') }
-          }}
-          multiline rows={3}
-          error={!!jsonError}
-          helperText={jsonError || 'Normalized coordinates 0.0–1.0 relative to frame size'}
-          fullWidth
-        />
+        {cameraId ? (
+          <ZonePolygonEditor
+            cameraId={cameraId}
+            value={polygon}
+            onChange={setPolygon}
+            severityColor={CROWD_SEVERITY_HEX[severity]}
+          />
+        ) : (
+          <Typography variant="caption" color="text.disabled">
+            Select a camera to draw the zone on its live feed.
+          </Typography>
+        )}
         {mutation.error && <Typography color="error" variant="caption">{String(mutation.error)}</Typography>}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={() => mutation.mutate()} disabled={!cameraId || !name || !!jsonError || mutation.isPending}>Add</Button>
+        <Button
+          variant="contained"
+          onClick={() => mutation.mutate()}
+          disabled={!cameraId || !name || polygon.length < 3 || mutation.isPending}
+        >
+          Add
+        </Button>
       </DialogActions>
     </Dialog>
   )
@@ -460,6 +481,7 @@ export default function Zones() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
+      <PageHeader pageKey="zones" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

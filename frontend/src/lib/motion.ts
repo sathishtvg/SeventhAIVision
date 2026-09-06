@@ -38,8 +38,8 @@ function prefersReducedMotion(): boolean {
 export function useCountUp(target: number | undefined, durationMs = 800): number {
   const [display, setDisplay] = useState(0)
   const fromRef = useRef(0)
-  const rafRef = useRef<number>()
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const rafRef = useRef<number | undefined>(undefined)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     if (target === undefined) return

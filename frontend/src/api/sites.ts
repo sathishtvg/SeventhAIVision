@@ -16,6 +16,9 @@ export const createSite = (data: {
   latitude?: number
   longitude?: number
   geofence_radius_meters?: number
+  late_grace_minutes?: number
+  /** Drawn boundary; overrides geofence_radius_meters when set. */
+  geofence_polygon?: { lat: number; lng: number }[] | null
   client_id?: string
   bill_rate?: number
 }) => apiClient.post<Site>('/api/v1/sites', data).then((r) => r.data)
@@ -29,6 +32,9 @@ export const updateSite = (
     latitude?: number
     longitude?: number
     geofence_radius_meters?: number
+  late_grace_minutes?: number
+  /** Drawn boundary; overrides geofence_radius_meters when set. */
+  geofence_polygon?: { lat: number; lng: number }[] | null
     is_active?: boolean
     client_id?: string
     bill_rate?: number

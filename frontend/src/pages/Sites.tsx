@@ -18,6 +18,7 @@ import type { Site } from '@/types/api'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { RecordingPolicyDialog } from '@/components/common/RecordingPolicyDialog'
+import { LocationPickerMap } from '@/components/common/LocationPickerMap'
 import { usePermission } from '@/hooks/usePermission'
 
 interface SiteDialogProps {
@@ -36,6 +37,12 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
   const [longitude, setLongitude] = useState(site?.longitude != null ? String(site.longitude) : '')
   const [geofenceRadius, setGeofenceRadius] = useState(
     site?.geofence_radius_meters != null ? String(site.geofence_radius_meters) : ''
+  )
+  const [polygon, setPolygon] = useState<{ lat: number; lng: number }[]>(
+    site?.geofence_polygon ?? [],
+  )
+  const [lateGrace, setLateGrace] = useState(
+    site?.late_grace_minutes != null ? String(site.late_grace_minutes) : ''
   )
   const [clientId, setClientId] = useState(site?.client_id ?? '')
   const [billRate, setBillRate] = useState(site?.bill_rate != null ? String(site.bill_rate) : '')
@@ -63,6 +70,10 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         latitude: latitude !== '' ? Number(latitude) : undefined,
         longitude: longitude !== '' ? Number(longitude) : undefined,
         geofence_radius_meters: geofenceRadius !== '' ? Number(geofenceRadius) : undefined,
+        late_grace_minutes: lateGrace !== '' ? Number(lateGrace) : undefined,
+        // Sent even when empty: an explicit [] is how an admin erases a
+        // boundary and reverts the site to its radius.
+        geofence_polygon: polygon.length >= 3 ? polygon : null,
         client_id: clientId || undefined,
         bill_rate: billRate !== '' ? Number(billRate) : undefined,
         // Edit-only, and sent as explicit null rather than undefined when
@@ -118,21 +129,41 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         <Typography variant="caption" color="text.secondary">
           Geofence — required for attendance check-in/out distance validation
         </Typography>
-        <Stack direction="row" spacing={1.5}>
-          <TextField
-            label="Latitude" type="number" value={latitude}
-            onChange={(e) => setLatitude(e.target.value)} sx={{ flex: 1 }}
-          />
-          <TextField
-            label="Longitude" type="number" value={longitude}
-            onChange={(e) => setLongitude(e.target.value)} sx={{ flex: 1 }}
-          />
-          <TextField
-            label="Radius (m)" type="number" value={geofenceRadius}
-            onChange={(e) => setGeofenceRadius(e.target.value)} sx={{ flex: 1 }}
-            inputProps={{ min: 1 }}
-          />
-        </Stack>
+        {/* Placed on a map rather than typed. The stored values are unchanged;
+            only the way an admin produces them differs. The radius circle is
+            drawn around the pin so "200" is legible on the ground instead of
+            being a number you find out was wrong when check-ins start
+            failing. */}
+        <LocationPickerMap
+          latitude={latitude !== '' ? Number(latitude) : null}
+          longitude={longitude !== '' ? Number(longitude) : null}
+          onChange={(lat, lng) => {
+            setLatitude(lat.toFixed(6))
+            setLongitude(lng.toFixed(6))
+          }}
+          radiusMeters={geofenceRadius !== '' ? Number(geofenceRadius) : null}
+          allowPolygon
+          polygon={polygon}
+          onPolygonChange={setPolygon}
+        />
+        <TextField
+          label="Geofence radius (m)" type="number" value={geofenceRadius}
+          onChange={(e) => setGeofenceRadius(e.target.value)}
+          slotProps={{ htmlInput: { min: 1 } }}
+          helperText="Shown as a circle on the map above"
+          sx={{ maxWidth: 220 }}
+        />
+        {/* Sites do not behave alike: a remote gate with one bus an hour
+            cannot hold the same standard as a lobby on a train line. Blank
+            keeps the company-wide default, so only sites that need their own
+            rule carry one. */}
+        <TextField
+          label="Late grace (minutes)" type="number" value={lateGrace}
+          onChange={(e) => setLateGrace(e.target.value)}
+          slotProps={{ htmlInput: { min: 0, max: 240 } }}
+          helperText="Minutes after the rostered start before a guard counts as late. Blank = company default."
+          sx={{ maxWidth: 300 }}
+        />
         <Typography variant="caption" color="text.secondary">
           Billing — link this site to a client and rate for invoicing
         </Typography>
@@ -149,7 +180,7 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
           <TextField
             label="Bill Rate ($/hr)" type="number" value={billRate}
             onChange={(e) => setBillRate(e.target.value)} sx={{ flex: 1 }}
-            inputProps={{ min: 0, step: 0.01 }}
+            slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
           />
         </Stack>
 
@@ -198,11 +229,11 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
               label="Free parking (minutes)" type="number" value={freeParking}
               onChange={(e) => setFreeParking(e.target.value)}
               disabled={!vmsEnabled}
-              inputProps={{ min: 0 }}
+
               // Blank is meaningfully different from 0: blank means this site
               // does not meter parking at all, so nothing can ever overstay.
               helperText="Leave blank if this site does not meter parking. Exceeding it alerts the operator."
-              sx={{ maxWidth: 320 }}
+              sx={{ maxWidth: 320 }} slotProps={{ htmlInput: { min: 0 } }}
             />
           </>
         )}
@@ -239,9 +270,7 @@ export function SitesPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <PageHeader
-        title="Sites"
-        subtitle="Manage physical locations that group cameras"
+      <PageHeader pageKey="sites"
         action={
           <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
             Add Site

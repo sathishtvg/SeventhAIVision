@@ -5,7 +5,7 @@
  * offline cameras); a security guard sees their own pending duties. The
  * backend self-scopes by role, so this page just renders whatever it returns.
  */
-import { Box, Typography, Chip, Stack, Button, IconButton, Skeleton, Tooltip } from '@mui/material'
+import { Box, Typography, Stack, Button, IconButton, Skeleton, Tooltip } from '@mui/material'
 import PhoneInTalkIcon from '@mui/icons-material/PhoneInTalk'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import RouteIcon from '@mui/icons-material/Route'
@@ -20,7 +20,6 @@ import LaunchIcon from '@mui/icons-material/Launch'
 import ShieldIcon from '@mui/icons-material/Shield'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -100,7 +99,7 @@ function ActionRow({ item, onNavigate, onRespond }: {
         {CATEGORY_ICON[item.category]}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body2" fontWeight={700} noWrap>{item.title}</Typography>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>{item.title}</Typography>
         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
           {item.subtitle}
         </Typography>
@@ -150,9 +149,7 @@ export default function ActionCenter() {
 
   return (
     <Box>
-      <PageHeader
-        title="Action Center"
-        subtitle="What needs your attention right now"
+      <PageHeader pageKey="action-center"
         action={
           <Stack direction="row" spacing={1}>
             <Tooltip title="Send Action Center to another monitor — opens its own window already in full screen (Esc to leave full screen there)">
@@ -160,16 +157,20 @@ export default function ActionCenter() {
                 <OpenInNewIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Full screen for continuous monitoring'}>
-              <Button
-                size="small"
-                variant={kiosk ? 'contained' : 'outlined'}
-                startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-                onClick={toggleKiosk}
-              >
-                {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-              </Button>
-            </Tooltip>
+            {/* Enter-only — AppShell's focus-mode strip owns Back and Exit once
+                full screen, so the two don't stack in the same corner. */}
+            {!kiosk && (
+              <Tooltip title="Full screen for continuous monitoring">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<FullscreenIcon />}
+                  onClick={toggleKiosk}
+                >
+                  Full Screen
+                </Button>
+              </Tooltip>
+            )}
           </Stack>
         }
       />
@@ -191,7 +192,7 @@ export default function ActionCenter() {
       ) : items.length === 0 ? (
         <GlassCard sx={{ p: 5, textAlign: 'center' }}>
           <TaskAltIcon sx={{ fontSize: 44, color: '#00E396', mb: 1 }} />
-          <Typography variant="h6" fontWeight={700}>All clear</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>All clear</Typography>
           <Typography variant="body2" color="text.secondary">
             Nothing needs your attention right now.
           </Typography>

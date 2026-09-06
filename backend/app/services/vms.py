@@ -213,6 +213,11 @@ async def handle_lpr_entry(
                 """
                 UPDATE visitors
                    SET vehicle_entry_at = now(), status = 'arrived',
+                       -- The person arrived when their vehicle did. The
+                       -- on-site board reads arrived_at, not the parking
+                       -- clock, so it holds for walk-ins too.
+                       arrived_at = COALESCE(arrived_at, now()),
+                       visit_type = 'vehicle',
                        entry_lpr_detection_id = CAST(:det AS uuid),
                        site_id = COALESCE(site_id, CAST(:site AS uuid)),
                        updated_at = now()
@@ -233,11 +238,11 @@ async def handle_lpr_entry(
                 """
                 INSERT INTO visitors (
                     id, tenant_id, site_id, full_name, vehicle_plate, status,
-                    qr_token, vehicle_entry_at, entry_lpr_detection_id
+                    qr_token, visit_type, arrived_at, vehicle_entry_at, entry_lpr_detection_id
                 ) VALUES (
                     CAST(:id AS uuid), current_setting('app.current_tenant')::uuid,
                     CAST(:site AS uuid), :name, :plate, 'pending',
-                    :qr, now(), CAST(:det AS uuid)
+                    :qr, 'vehicle', now(), now(), CAST(:det AS uuid)
                 )
                 """
             ),
@@ -321,7 +326,7 @@ async def handle_lpr_exit(
             text(
                 """
                 UPDATE visitors
-                   SET vehicle_exit_at = now(), status = 'departed',
+                   SET vehicle_exit_at = now(), departed_at = now(), status = 'departed',
                        exit_lpr_detection_id = CAST(:det AS uuid), updated_at = now()
                  WHERE id = (
                      SELECT id FROM visitors

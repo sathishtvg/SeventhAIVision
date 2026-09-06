@@ -7,6 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.attendance_status import (
+    get_attendance_setting,
+    is_overdue_sql,
+    live_status,
+)
 
 router = APIRouter(prefix="/api/v1/command-centre", tags=["command-centre"])
 
@@ -116,6 +121,76 @@ async def get_cc_overview(
         guards_by_site.setdefault(sid, []).append(entry)
         all_guards.append(entry)
 
+    # ── Today's full roster, with presence state ─────────────────────────────
+    # Deliberately SEPARATE from `guards` above rather than widening it.
+    # `guards` means "on an active shift" and the Command Centre renders
+    # `guards.length` directly as "Guards on Duty" — folding rostered-but-
+    # absent guards into it would silently count a no-show as present, which
+    # is the exact opposite of what this data is for.
+    #
+    # The Site Map needs the absences: a marker that can only ever say
+    # "manned" is not showing status, and an unmanned site is the single
+    # most important thing a site map can tell an operator.
+    grace_minutes = await get_attendance_setting(db, "attendance.late_grace_minutes")
+    roster_params = {**scope_params, "grace_minutes": grace_minutes}
+    roster_result = await db.execute(text(f"""
+        SELECT
+            sh.id            AS shift_id,
+            sh.site_id,
+            sh.status,
+            sh.is_late,
+            sh.late_minutes,
+            sh.scheduled_start,
+            sh.scheduled_end,
+            sh.actual_start,
+            u.full_name      AS guard_name,
+            u.phone          AS guard_phone,
+            EXISTS(
+                SELECT 1 FROM shift_breaks b
+                WHERE b.shift_id = sh.id AND b.break_end IS NULL
+            ) AS on_break,
+            {is_overdue_sql("sh")} AS is_overdue
+        FROM shifts sh
+        JOIN tenants t ON t.id = sh.tenant_id
+        LEFT JOIN users u ON u.id = sh.guard_user_id
+        WHERE (
+            -- (a) Scheduled for the tenant's local calendar day. Local, not
+            -- the Postgres server's day: a Singapore tenant's "today" must
+            -- not roll over at 08:00 local (same fix as attendance.py).
+            (sh.scheduled_start AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+              = (now() AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+
+            -- (b) OR its window covers this moment. Without this a night
+            -- shift that began before local midnight silently vanishes at
+            -- 00:00 — measured on real data, a 16:00→04:00 shift with
+            -- nobody checked in disappeared from the board at exactly the
+            -- hour it most needed watching. "Today's date" is the wrong
+            -- question for a 24-hour operation; "covering now" is right.
+            OR (now() BETWEEN sh.scheduled_start AND sh.scheduled_end)
+
+            -- (c) OR someone is actually on it, whenever it started.
+            OR sh.status = 'active'
+        )
+        {scoped("sh.site_id")}
+        ORDER BY sh.scheduled_start, u.full_name
+    """), roster_params)
+
+    roster_by_site: dict = {}
+    for r in roster_result.mappings():
+        row = dict(r)
+        sid = str(row["site_id"]) if row["site_id"] else "__none__"
+        roster_by_site.setdefault(sid, []).append({
+            "shift_id":        str(row["shift_id"]),
+            "guard_name":      row["guard_name"],
+            "guard_phone":     row["guard_phone"],
+            "live_status":     live_status(row),
+            "is_overdue":      bool(row["is_overdue"]),
+            "late_minutes":    row["late_minutes"],
+            "scheduled_start": row["scheduled_start"].isoformat() if row["scheduled_start"] else None,
+            "scheduled_end":   row["scheduled_end"].isoformat()   if row["scheduled_end"]   else None,
+            "actual_start":    row["actual_start"].isoformat()    if row["actual_start"]    else None,
+        })
+
     # ── Assemble per-site cards ──────────────────────────────────────────────
     site_cards = []
     for s in sites:
@@ -138,6 +213,7 @@ async def get_cc_overview(
             "high_alerts":      int(alert_info.get("high", 0)),
             "medium_alerts":    int(alert_info.get("medium", 0)),
             "guards":           guards_by_site.get(sid, []),
+            "roster":           roster_by_site.get(sid, []),
         })
 
     # ── Active alert total ────────────────────────────────────────────────────

@@ -16,6 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.attendance_status import (
+    get_attendance_setting,
+    live_status as _live_status,
+    monitor_status,
+)
 
 router = APIRouter(prefix="/api/v1/attendance", tags=["guard-ops"])
 
@@ -38,36 +43,60 @@ async def _publish_attendance_event(request: Request, tenant_id: str, shift_id: 
         pass
 
 
-def _live_status(row: dict) -> str:
-    if row["status"] == "completed":
-        return "checked_out"
-    if row["on_break"]:
-        return "on_break"
-    if row["status"] == "active":
-        return "checked_in"
-    if row["is_late"]:
-        return "late"
-    return "not_started"
-
-
 @router.get("/live", dependencies=[Depends(require_permission("attendance:read"))])
 async def get_live_attendance(db: AsyncSession = Depends(get_db_with_tenant), site_id: str | None = None):
+    """The command office's live board: every guard rostered today, grouped by
+    site, with the company-wide counts above them.
+
+    Rostered guards stay on the board for the whole duty period whether or not
+    they have checked in — an absence is the single most important thing this
+    screen has to show, and a row that only appears once someone turns up can
+    never show it.
+
+    Leave is joined in from guard_leave_blocks (the same table the roster
+    scheduler treats as authority on availability) so an excused guard reads
+    as excused rather than missing.
+    """
     site_clause = "AND sh.site_id = CAST(:site_id AS uuid)" if site_id else ""
     params: dict = {"site_id": site_id} if site_id else {}
+    grace_minutes = await get_attendance_setting(db, "attendance.late_grace_minutes")
+
     result = await db.execute(
         text(f"""
             SELECT sh.id, sh.guard_user_id, sh.site_id, sh.scheduled_start, sh.scheduled_end,
-                   sh.actual_start, sh.actual_end, sh.status, sh.is_late, sh.late_minutes,
-                   sh.overtime_minutes, sh.is_within_geofence,
+                   sh.actual_start, sh.actual_end, sh.status, sh.shift_type,
+                   sh.is_late, sh.late_minutes, sh.overtime_minutes, sh.is_within_geofence,
                    sh.check_in_photo_path, sh.check_out_photo_path,
                    sh.check_in_liveness_score, sh.check_out_liveness_score,
                    sh.check_in_is_mock_location, sh.check_out_is_mock_location,
-                   EXISTS(SELECT 1 FROM shift_breaks b WHERE b.shift_id = sh.id AND b.break_end IS NULL) AS on_break,
-                   u.full_name AS guard_name, u.phone AS guard_phone, s.name AS site_name
+                   EXISTS(SELECT 1 FROM shift_breaks b
+                          WHERE b.shift_id = sh.id AND b.break_end IS NULL) AS on_break,
+                   u.full_name AS guard_name, u.phone AS guard_phone,
+                   u.employment_type, u.designation,
+                   -- Permanent photo, shown until the shift's own check-in
+                   -- selfie exists. Path only; the board builds the URL.
+                   u.profile_photo_path,
+                   s.name AS site_name,
+                   -- Per-site grace, NULL meaning "use the tenant default".
+                   -- Resolved per row below so a board spanning sites with
+                   -- different allowances judges each by its own.
+                   s.late_grace_minutes AS site_grace_minutes,
+                   lv.reason AS leave_reason,
+                   (lv.guard_user_id IS NOT NULL) AS on_leave
             FROM shifts sh
             JOIN tenants t ON t.id = sh.tenant_id
             LEFT JOIN users u ON u.id = sh.guard_user_id
             LEFT JOIN sites s ON s.id = sh.site_id
+            -- Approved leave covering the tenant-local today. LATERAL keeps it
+            -- to one row per shift even where overlapping blocks exist.
+            LEFT JOIN LATERAL (
+                SELECT gl.guard_user_id, gl.reason
+                FROM guard_leave_blocks gl
+                WHERE gl.guard_user_id = sh.guard_user_id
+                  AND (now() AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+                      BETWEEN gl.start_date AND gl.end_date
+                LIMIT 1
+            ) lv ON TRUE
             WHERE (sh.scheduled_start AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
                 = (now() AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
             {site_clause}
@@ -75,15 +104,106 @@ async def get_live_attendance(db: AsyncSession = Depends(get_db_with_tenant), si
         """),
         params,
     )
-    shifts = []
-    summary = {"checked_in": 0, "on_break": 0, "late": 0, "not_started": 0, "checked_out": 0}
+
+    # One instant for the whole refresh: rows judged microseconds apart must
+    # not land on opposite sides of a grace boundary.
+    now = datetime.now(timezone.utc)
+
+    shifts: list[dict] = []
+    sites: dict[str, dict] = {}
+    summary = {k: 0 for k in (
+        "rostered", "checked_in", "reported", "late", "not_reported",
+        "on_leave", "not_yet_on_duty", "on_duty",
+    )}
+
     for r in result.mappings():
         row = dict(r)
-        live = _live_status(row)
-        row["live_status"] = live
-        summary[live] += 1
+        # `is not None` rather than `or`: a site deliberately set to 0 means
+        # "no grace at all", which `or` would quietly turn back into the
+        # tenant default.
+        site_grace = row.pop("site_grace_minutes", None)
+        effective_grace = site_grace if site_grace is not None else grace_minutes
+        row["effective_grace_minutes"] = effective_grace
+        state = monitor_status(row, now, effective_grace)
+        row["monitor_status"] = state
+        # Kept so anything still reading the old field keeps working.
+        row["live_status"] = _live_status(row)
+
+        summary["rostered"] += 1
+        if row["actual_start"] is not None:
+            summary["reported"] += 1
+            if row["actual_end"] is None:
+                summary["checked_in"] += 1
+        if row["is_late"]:
+            summary["late"] += 1
+        if state == "not_reported":
+            summary["not_reported"] += 1
+        if state == "on_leave":
+            summary["on_leave"] += 1
+        if state == "not_yet_on_duty":
+            summary["not_yet_on_duty"] += 1
+        if row["status"] == "active":
+            summary["on_duty"] += 1
+
+        key = str(row["site_id"]) if row["site_id"] else "unassigned"
+        site = sites.setdefault(key, {
+            "site_id": row["site_id"],
+            "site_name": row["site_name"] or "Unassigned site",
+            "counts": {k: 0 for k in ("rostered", "checked_in", "late",
+                                      "not_reported", "on_leave", "not_yet_on_duty")},
+            "guards": [],
+        })
+        site["counts"]["rostered"] += 1
+        if row["actual_start"] is not None and row["actual_end"] is None:
+            site["counts"]["checked_in"] += 1
+        if row["is_late"]:
+            site["counts"]["late"] += 1
+        if state in ("not_reported", "on_leave", "not_yet_on_duty"):
+            site["counts"][state] += 1
+        site["guards"].append(row)
         shifts.append(row)
-    return {"shifts": shifts, "summary": summary}
+
+    return {
+        # Lets the board say when it last heard from the server, so a frozen
+        # dashboard is visibly frozen instead of quietly wrong.
+        "generated_at": now.isoformat(),
+        "grace_minutes": grace_minutes,
+        "summary": summary,
+        "sites": sorted(sites.values(), key=lambda s: s["site_name"]),
+        "shifts": shifts,
+    }
+
+
+@router.get("/guard/{guard_user_id}/recent",
+            dependencies=[Depends(require_permission("attendance:read"))])
+async def get_guard_recent_attendance(
+    guard_user_id: str,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    limit: int = 7,
+):
+    """Recent shifts for one guard — the history panel of the detail popup.
+
+    Excludes today's shift: the popup already shows today in full above this,
+    and repeating it as the first history row reads like a duplicate.
+    """
+    result = await db.execute(
+        text("""
+            SELECT sh.id, sh.scheduled_start, sh.scheduled_end,
+                   sh.actual_start, sh.actual_end, sh.status,
+                   sh.is_late, sh.late_minutes, sh.overtime_minutes,
+                   s.name AS site_name
+            FROM shifts sh
+            JOIN tenants t ON t.id = sh.tenant_id
+            LEFT JOIN sites s ON s.id = sh.site_id
+            WHERE sh.guard_user_id = CAST(:gid AS uuid)
+              AND (sh.scheduled_start AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+                < (now() AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+            ORDER BY sh.scheduled_start DESC
+            LIMIT :limit
+        """),
+        {"gid": guard_user_id, "limit": min(max(limit, 1), 30)},
+    )
+    return [dict(r) for r in result.mappings()]
 
 
 # ── Correction requests ───────────────────────────────────────────────────────

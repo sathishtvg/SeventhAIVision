@@ -22,41 +22,77 @@ _READ = Depends(require_permission("alert:read"))
 @router.get("/summary", dependencies=[_READ])
 async def get_summary(
     site_id: str | None = None,
+    days: int = 7,
     db: AsyncSession = Depends(get_db_with_tenant),
 ):
-    """Counts: open alerts, open incidents, active cameras, detections today."""
-    if site_id:
-        # Site-scoped variant — join through cameras for alert/incident/detection counts
-        result = await db.execute(text("""
-            SELECT
-                (SELECT COUNT(*) FROM alerts a JOIN cameras c ON c.id = a.camera_id
-                 WHERE a.status = 'open' AND c.site_id = CAST(:site_id AS uuid))::int         AS open_alerts,
-                (SELECT COUNT(*) FROM incidents i JOIN cameras c ON c.id = i.camera_id
-                 WHERE i.status IN ('open','investigating') AND c.site_id = CAST(:site_id AS uuid))::int AS open_incidents,
-                (SELECT COUNT(*) FROM cameras WHERE is_active = TRUE AND site_id = CAST(:site_id AS uuid))::int AS active_cameras,
-                (SELECT COUNT(*) FROM detections d JOIN cameras c ON c.id = d.camera_id
-                 WHERE d.detected_at >= CURRENT_DATE AND c.site_id = CAST(:site_id AS uuid))::int AS detections_today,
-                (SELECT COUNT(*) FROM alerts a JOIN cameras c ON c.id = a.camera_id
-                 WHERE a.created_at >= CURRENT_DATE AND c.site_id = CAST(:site_id AS uuid))::int AS alerts_today,
-                (SELECT COUNT(*) FROM alerts a JOIN cameras c ON c.id = a.camera_id
-                 WHERE a.created_at >= NOW() - INTERVAL '7 days' AND c.site_id = CAST(:site_id AS uuid))::int AS alerts_7d,
-                (SELECT COUNT(*) FROM detections d JOIN cameras c ON c.id = d.camera_id
-                 WHERE d.detected_at >= NOW() - INTERVAL '7 days' AND c.site_id = CAST(:site_id AS uuid))::int AS detections_7d,
-                (SELECT COUNT(*) FROM recordings WHERE status = 'recording'
-                 AND camera_id IN (SELECT id FROM cameras WHERE site_id = CAST(:site_id AS uuid)))::int AS active_recordings
-        """), {"site_id": site_id})
-    else:
-        result = await db.execute(text("""
-            SELECT
-                (SELECT COUNT(*) FROM alerts WHERE status = 'open')::int                   AS open_alerts,
-                (SELECT COUNT(*) FROM incidents WHERE status IN ('open','investigating'))::int AS open_incidents,
-                (SELECT COUNT(*) FROM cameras WHERE is_active = TRUE)::int                  AS active_cameras,
-                (SELECT COUNT(*) FROM detections WHERE detected_at >= CURRENT_DATE)::int    AS detections_today,
-                (SELECT COUNT(*) FROM alerts WHERE created_at >= CURRENT_DATE)::int         AS alerts_today,
-                (SELECT COUNT(*) FROM alerts WHERE created_at >= NOW() - INTERVAL '7 days')::int AS alerts_7d,
-                (SELECT COUNT(*) FROM detections WHERE detected_at >= NOW() - INTERVAL '7 days')::int AS detections_7d,
-                (SELECT COUNT(*) FROM recordings WHERE status = 'recording')::int           AS active_recordings
-        """))
+    """Counts: open alerts, open incidents, active cameras, detections today.
+
+    `days` sizes the windowed counts (detections_window / alerts_window) and
+    the equal-length period immediately before them (*_window_prev), so the UI
+    can show a trend rather than a bare number. detections_7d / alerts_7d are
+    kept at a fixed 7 days for the callers that already depend on them.
+
+    Also returns last_detection_at / last_alert_at. Without those, a zero is
+    unreadable: a quiet site and a pipeline that died last week look exactly
+    the same on screen.
+    """
+    days = max(1, min(days, 365))
+    # One query for both variants. The site-scoped and tenant-wide versions
+    # used to be two hand-maintained copies of the same SQL; adding fields to
+    # both is precisely where they drift apart, so the site filter is now a
+    # predicate instead of a second query.
+    site_clause = "AND c.site_id = CAST(:site_id AS uuid)" if site_id else ""
+    cam_clause = "WHERE site_id = CAST(:site_id AS uuid)" if site_id else ""
+
+    # "Today" means the operator's today. CURRENT_DATE is the Postgres
+    # server's, which for an Asia/Singapore tenant rolls over at 08:00 local —
+    # the same defect already fixed in attendance.py's live monitor.
+    tz = "(SELECT COALESCE(timezone, 'UTC') FROM tenants WHERE id = current_setting('app.current_tenant')::uuid)"
+    local_midnight = f"(date_trunc('day', now() AT TIME ZONE {tz}) AT TIME ZONE {tz})"
+
+    result = await db.execute(text(f"""
+        WITH d AS (SELECT d.detected_at FROM detections d
+                   JOIN cameras c ON c.id = d.camera_id WHERE TRUE {site_clause}),
+             a AS (SELECT a.created_at, a.status, a.severity FROM alerts a
+                   JOIN cameras c ON c.id = a.camera_id WHERE TRUE {site_clause})
+        SELECT
+            (SELECT COUNT(*) FROM a WHERE status = 'open')::int                       AS open_alerts,
+            (SELECT COUNT(*) FROM incidents i JOIN cameras c ON c.id = i.camera_id
+             WHERE i.status IN ('open','investigating') {site_clause})::int           AS open_incidents,
+            (SELECT COUNT(*) FROM cameras {cam_clause})::int                          AS active_cameras_total,
+            (SELECT COUNT(*) FROM cameras WHERE is_active = TRUE
+             {"AND site_id = CAST(:site_id AS uuid)" if site_id else ""})::int         AS active_cameras,
+            (SELECT COUNT(*) FROM d WHERE detected_at >= {local_midnight})::int        AS detections_today,
+            (SELECT COUNT(*) FROM a WHERE created_at   >= {local_midnight})::int       AS alerts_today,
+            (SELECT COUNT(*) FROM a WHERE created_at   >= NOW() - INTERVAL '7 days')::int  AS alerts_7d,
+            (SELECT COUNT(*) FROM d WHERE detected_at  >= NOW() - INTERVAL '7 days')::int  AS detections_7d,
+
+            (SELECT COUNT(*) FROM d
+              WHERE detected_at >= NOW() - :days * INTERVAL '1 day')::int              AS detections_window,
+            (SELECT COUNT(*) FROM a
+              WHERE created_at  >= NOW() - :days * INTERVAL '1 day')::int              AS alerts_window,
+            -- Equal-length period immediately before the window, for the trend.
+            (SELECT COUNT(*) FROM d
+              WHERE detected_at >= NOW() - 2 * :days * INTERVAL '1 day'
+                AND detected_at <  NOW() - :days * INTERVAL '1 day')::int              AS detections_window_prev,
+            (SELECT COUNT(*) FROM a
+              WHERE created_at  >= NOW() - 2 * :days * INTERVAL '1 day'
+                AND created_at  <  NOW() - :days * INTERVAL '1 day')::int              AS alerts_window_prev,
+
+            (SELECT COUNT(*) FROM a
+              WHERE created_at >= NOW() - :days * INTERVAL '1 day'
+                AND severity IN ('critical','high'))::int                              AS alerts_window_critical,
+            (SELECT COUNT(*) FROM a
+              WHERE created_at >= NOW() - :days * INTERVAL '1 day'
+                AND status = 'open')::int                                              AS alerts_window_unresolved,
+
+            -- Freshness. A zero count is ambiguous without these.
+            (SELECT MAX(detected_at) FROM d)                                           AS last_detection_at,
+            (SELECT MAX(created_at)  FROM a)                                           AS last_alert_at,
+
+            (SELECT COUNT(*) FROM recordings WHERE status = 'recording'
+             {"AND camera_id IN (SELECT id FROM cameras WHERE site_id = CAST(:site_id AS uuid))" if site_id else ""})::int AS active_recordings
+    """), {"site_id": site_id, "days": days} if site_id else {"days": days})
     return dict(result.mappings().first())
 
 

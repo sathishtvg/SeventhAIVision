@@ -3,7 +3,7 @@ import {
   Box, Typography, Grid, Paper, Chip, Button, Tabs, Tab,
   Table, TableHead, TableRow, TableCell, TableBody, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  Tooltip, CircularProgress, LinearProgress, Alert,
+  Tooltip, CircularProgress, LinearProgress, Alert, MenuItem,
 } from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import VideocamIcon from '@mui/icons-material/Videocam'
@@ -22,6 +22,8 @@ import {
   startRecording, stopRecording, listRecordings, listBWCEvents, linkRecordingToIncident,
 } from '@/api/bwc'
 import type { BodyCamera, BWCRecording } from '@/api/bwc'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@ function KpiCard({ label, value, icon, color, warn }: {
         {icon}
       </Box>
       <Box>
-        <Typography variant="h5" fontWeight={700} color={warn && value > 0 ? 'error.main' : 'text.primary'}>
+        <Typography variant="h5" color={warn && value > 0 ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
           {value}
         </Typography>
         <Typography variant="caption" color="text.secondary">{label}</Typography>
@@ -187,10 +189,9 @@ function StartRecordingDialog({ camera, onClose }: { camera: BodyCamera; onClose
         <TextField
           select label="Trigger Type" value={trigger}
           onChange={e => setTrigger(e.target.value)} size="small" fullWidth
-          SelectProps={{ native: true }}
         >
           {['manual', 'pre_event', 'auto_incident', 'panic', 'scheduled'].map(t => (
-            <option key={t} value={t}>{t}</option>
+            <MenuItem key={t} value={t}>{t}</MenuItem>
           ))}
         </TextField>
       </DialogContent>
@@ -252,7 +253,7 @@ function CamerasTab() {
               }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Box>
-                    <Typography variant="subtitle1" fontWeight={700} fontFamily="monospace">
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, fontFamily: "monospace" }}>
                       {cam.serial_number}
                     </Typography>
                     {cam.model && <Typography variant="caption" color="text.secondary">{cam.model}</Typography>}
@@ -403,7 +404,7 @@ function RecordingsTab() {
   })
   const recordings = _recData?.items ?? []
 
-  const { data: cameras = [] } = useQuery({ queryKey: ['bwc-cameras'], queryFn: () => listCameras() })
+  const { data: _cameras = [] } = useQuery({ queryKey: ['bwc-cameras'], queryFn: () => listCameras() })
 
   const stopMut = useMutation({
     mutationFn: (rec: BWCRecording) => stopRecording(rec.camera_id, rec.id),
@@ -420,21 +421,22 @@ function RecordingsTab() {
     return `${m}m ${sec}s`
   }
 
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
-        <TextField
-          select size="small" label="Status" value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)} sx={{ minWidth: 160 }}
-          SelectProps={{ native: true }}
-        >
-          <option value="">All</option>
-          {['recording', 'completed', 'failed', 'deleted'].map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </TextField>
-      </Box>
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['recording', 'completed', 'failed', 'deleted'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
 
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
       ) : (
@@ -458,7 +460,7 @@ function RecordingsTab() {
               {recordings.map(r => (
                 <TableRow key={r.id} hover>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace">{r.serial_number || r.camera_id.slice(0, 8)}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: "monospace" }}>{r.serial_number || r.camera_id.slice(0, 8)}</Typography>
                   </TableCell>
                   <TableCell><Typography variant="body2">{r.user_name || '—'}</Typography></TableCell>
                   <TableCell>
@@ -512,6 +514,9 @@ function RecordingsTab() {
         </Paper>
       )}
       {linkTarget && <LinkIncidentDialog recording={linkTarget} onClose={() => setLinkTarget(null)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="bwc-recordings" />
     </Box>
   )
 }
@@ -556,7 +561,7 @@ function EventsTab() {
                     <Typography variant="caption">{new Date(e.occurred_at).toLocaleString()}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace">{e.serial_number || e.camera_id.slice(0, 8)}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: "monospace" }}>{e.serial_number || e.camera_id.slice(0, 8)}</Typography>
                   </TableCell>
                   <TableCell><Typography variant="body2">{e.user_name || '—'}</Typography></TableCell>
                   <TableCell>
@@ -602,12 +607,10 @@ export default function BWCPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" fontWeight={700} mb={3}>
-        Body Worn Camera Management
-      </Typography>
+      <PageHeader pageKey="bwc" />
 
       {/* KPI row */}
-      <Grid container spacing={2} mb={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiCard label="Total Cameras" value={dash?.total_cameras ?? 0} icon={<VideocamIcon />} color="#6C63FF" />
         </Grid>

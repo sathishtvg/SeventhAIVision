@@ -3,7 +3,7 @@ import {
   Box, Typography, Tab, Tabs, Grid, Chip, Button, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField,
   MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
-  CircularProgress, Skeleton, IconButton, Tooltip, Alert,
+  CircularProgress, Skeleton, IconButton, Tooltip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -22,7 +22,9 @@ import {
   listAccessEvents,
 } from '@/api/access'
 import GlassCard from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const EVENT_COLOR: Record<string, string> = {
   granted:     '#00E396',
@@ -72,7 +74,7 @@ function DashboardTab() {
             <GlassCard sx={{ p: 2, borderTop: `3px solid ${kpi.color}` }}>
               {isLoading ? <Skeleton height={40} /> : (
                 <>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: kpi.value > 0 ? kpi.color : 'rgba(255,255,255,0.25)' }}>
+                  <Typography variant="h4" sx={{ color: kpi.value > 0 ? kpi.color : 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
                     {kpi.value}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
@@ -188,7 +190,7 @@ function DoorsTab() {
             ))}
             {data.map(d => (
               <TableRow key={d.id} hover>
-                <TableCell fontWeight={600}>{d.name}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{d.name}</TableCell>
                 <TableCell>
                   <Chip label={d.door_type.replace('_', ' ')} size="small"
                     sx={{ bgcolor: 'rgba(108,99,255,0.15)', color: '#6C63FF', fontSize: '0.7rem' }} />
@@ -303,10 +305,10 @@ function CredentialsTab() {
             ))}
             {data.map(c => (
               <TableRow key={c.id} hover>
-                <TableCell fontWeight={600}>
+                <TableCell sx={{ fontWeight: 600 }}>
                   {c.user_full_name ?? c.holder_name ?? '—'}
                   {c.user_email && (
-                    <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: "block" }}>
                       {c.user_email}
                     </Typography>
                   )}
@@ -426,7 +428,7 @@ function RulesTab() {
             {data.map(r => (
               <TableRow key={r.id} hover>
                 <TableCell>{r.credential_holder ?? '—'}</TableCell>
-                <TableCell fontWeight={600}>{r.door_name}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{r.door_name}</TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 0.3 }}>
                     {DAYS.map((d, i) => {
@@ -533,17 +535,20 @@ function EventsTab() {
 
   const EVENT_TYPES = ['', 'granted', 'denied', 'forced', 'held_open', 'tamper', 'door_opened', 'door_closed']
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'eventType',
+    label: 'Event Type',
+    value: eventType,
+    onChange: setEventType,
+    options: EVENT_TYPES.map((t) => ({
+      value: t,
+      label: t ? t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ') : 'All',
+    })),
+  }]
+
   return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        {EVENT_TYPES.map(t => (
-          <Chip key={t || 'all'} label={t || 'All'} size="small"
-            variant={eventType === t ? 'filled' : 'outlined'}
-            onClick={() => setEventType(t)}
-            sx={{ cursor: 'pointer', fontSize: '0.75rem',
-                  ...(eventType === t ? { bgcolor: 'rgba(108,99,255,0.2)', color: '#6C63FF' } : {}) }} />
-        ))}
-      </Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <GlassCard sx={{ p: 0 }}>
         <Table size="small">
           <TableHead>
@@ -565,7 +570,7 @@ function EventsTab() {
                 <TableCell sx={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                   {new Date(ev.occurred_at).toLocaleString()}
                 </TableCell>
-                <TableCell fontWeight={500}>{ev.door_name}</TableCell>
+                <TableCell sx={{ fontWeight: 500 }}>{ev.door_name}</TableCell>
                 <TableCell>
                   <Chip
                     icon={EVENT_ICON[ev.event_type] as any}
@@ -593,6 +598,9 @@ function EventsTab() {
           </TableBody>
         </Table>
       </GlassCard>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="access-events" />
     </Box>
   )
 }
@@ -604,11 +612,9 @@ export default function AccessControlPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="access-control" />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
         <DoorFrontIcon sx={{ color: '#6C63FF', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Access Control
-        </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3,

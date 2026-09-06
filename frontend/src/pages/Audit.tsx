@@ -23,6 +23,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { getAuditLogs, verifyAuditChain, type VerifyResult } from '@/api/audit'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 function VerifyBanner({ result }: { result: VerifyResult }) {
   if (result.verified) {
@@ -42,8 +43,8 @@ function VerifyBanner({ result }: { result: VerifyResult }) {
       {result.tampered_count} row{result.tampered_count !== 1 ? 's' : ''} with mismatched
       hash{result.chain_broken ? '; chain continuity also broken (rows may have been deleted)' : ''}.
       {result.tampered_ids.length > 0 && (
-        <Box mt={0.5}>
-          <Typography variant="caption" fontFamily="monospace">
+        <Box sx={{ mt: 0.5 }}>
+          <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
             Affected IDs: {result.tampered_ids.join(', ')}
           </Typography>
         </Box>
@@ -68,8 +69,9 @@ export default function Audit() {
 
   return (
     <Box>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
-        <Typography variant="h6" fontWeight={700}>Audit Logs</Typography>
+      <PageHeader pageKey="audit" />
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>Audit Logs</Typography>
         {canVerify && (
           <Tooltip title="Re-compute HMAC hashes for all signed rows and report any tampering">
             <span>

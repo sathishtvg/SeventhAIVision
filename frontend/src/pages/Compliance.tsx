@@ -9,7 +9,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControl,
   Grid,
   InputLabel,
@@ -29,11 +28,11 @@ import {
   Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
+import { BrandLoader } from '@/components/common/BrandLoader'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import RouteIcon from '@mui/icons-material/Route'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -49,6 +48,7 @@ import {
   type TourOccurrence,
 } from '@/api/compliance'
 import { apiClient } from '@/api/client'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // Assignable tour guards — Supervisor/Operator/Security Guard only. A raw
 // `role_id >= 4` range check would also sweep in Viewer(6), Client(7), and
@@ -111,7 +111,7 @@ function KpiCard({ label, value, sub, icon, color }: {
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
         <Box>
           <Typography variant="body2" color="text.secondary">{label}</Typography>
-          <Typography variant="h4" fontWeight={700} sx={{ color: color ?? 'text.primary' }}>
+          <Typography variant="h4" sx={{ color: color ?? 'text.primary', fontWeight: 700 }}>
             {value}
           </Typography>
           {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
@@ -193,9 +193,9 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
             onChange={e => setForm(f => ({ ...f, scheduled_time: e.target.value }))}
             slotProps={{ inputLabel: { shrink: true } }} />
           <TextField label="Window (minutes)" value={form.window_minutes} type="number"
-            inputProps={{ min: 5, max: 120 }}
+
             onChange={e => setForm(f => ({ ...f, window_minutes: Number(e.target.value) }))}
-            helperText="Grace period: tour must start within this many minutes of scheduled time" />
+            helperText="Grace period: tour must start within this many minutes of scheduled time" slotProps={{ htmlInput: { min: 5, max: 120 } }} />
           <FormControl fullWidth>
             <InputLabel>Assigned Guard (optional)</InputLabel>
             <Select value={form.assigned_guard_user_id} label="Assigned Guard (optional)"
@@ -228,7 +228,7 @@ function DashboardTab() {
     refetchInterval: 60_000,
   })
 
-  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>
+  if (isLoading) return <BrandLoader variant="full" />
   if (error || !data) return <Alert severity="error">Failed to load compliance dashboard.</Alert>
 
   const completedToday = data.completed_today ?? 0
@@ -446,26 +446,30 @@ function OccurrencesTab() {
     },
   })
 
+  // Status is a closed set and moves to the rail. The date range stays: two
+  // date pickers are not a chip list, and a report you scope by date is one
+  // you change the dates on constantly.
+  const filterGroups: FilterGroup[] = [{
+    key: 'status',
+    label: 'Status',
+    value: statusFilter,
+    onChange: setStatusFilter,
+    options: [
+      { value: '', label: 'All' },
+      ...['pending', 'completed', 'missed', 'late', 'incomplete'].map((v) => ({
+        value: v, label: v.charAt(0).toUpperCase() + v.slice(1),
+      })),
+    ],
+  }]
+
   return (
-    <Stack spacing={2}>
-      {/* Filters */}
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Stack spacing={2} sx={{ flex: 1, minWidth: 0 }}>
       <Stack direction="row" spacing={2} flexWrap="wrap">
         <TextField label="From" type="date" size="small" value={dateFrom}
           onChange={e => setDateFrom(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         <TextField label="To" type="date" size="small" value={dateTo}
           onChange={e => setDateTo(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-        <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel>Status</InputLabel>
-          <Select value={statusFilter} label="Status"
-            onChange={e => setStatusFilter(e.target.value)}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="completed">Completed</MenuItem>
-            <MenuItem value="missed">Missed</MenuItem>
-            <MenuItem value="late">Late</MenuItem>
-            <MenuItem value="incomplete">Incomplete</MenuItem>
-          </Select>
-        </FormControl>
       </Stack>
 
       {isLoading
@@ -555,7 +559,10 @@ function OccurrencesTab() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+      </Stack>
+
+      <FilterRail groups={filterGroups} storageKey="compliance-occurrences" />
+    </Box>
   )
 }
 
@@ -601,10 +608,10 @@ function ReportTab() {
               { label: 'Missed', value: report.summary.missed, color: report.summary.missed ? '#FF4560' : undefined },
               { label: 'Avg Score', value: report.summary.avg_score != null ? `${report.summary.avg_score}%` : '—' },
             ].map(kpi => (
-              <Grid key={kpi.label} item xs={6} md={3}>
+              <Grid key={kpi.label} size={{ xs: 6, md: 3 }}>
                 <Paper sx={{ p: 2, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, textAlign: 'center' }}>
                   <Typography variant="body2" color="text.secondary">{kpi.label}</Typography>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: kpi.color ?? 'text.primary' }}>
+                  <Typography variant="h4" sx={{ color: kpi.color ?? 'text.primary', fontWeight: 700 }}>
                     {kpi.value}
                   </Typography>
                 </Paper>
@@ -686,9 +693,9 @@ export default function CompliancePage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
+      <PageHeader pageKey="compliance" />
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
         <RouteIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>Guard Tour Compliance</Typography>
       </Stack>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>

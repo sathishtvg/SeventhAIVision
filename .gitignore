@@ -34,3 +34,7 @@ mobile/.git.bak-nested-repo/
 .DS_Store
 Thumbs.db
 *.log
+
+# Database dumps taken before destructive operations. Local only — these
+# can contain production-shaped data and are far too large for the repo.
+backups/

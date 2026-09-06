@@ -294,12 +294,11 @@ export default function Login() {
                   sx={{
                     fontWeight: 800,
                     lineHeight: 1.1,
-                    background: tenantResolved
-                      ? `linear-gradient(135deg, #F1F5F9 30%, ${accentColor} 100%)`
-                      : 'linear-gradient(135deg, #F1F5F9 30%, #8B85FF 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
+                    // Solid, not a gradient clipped to the glyphs: the sign-in
+                    // card is where the company name is read first, and a
+                    // gradient fading into the accent made the back half of a
+                    // long name hard to read. The accent stays on the shield.
+                    color: '#F1F5F9',
                     letterSpacing: '-0.02em',
                   }}
                 >

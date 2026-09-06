@@ -33,9 +33,19 @@ beforeEach(() => {
 })
 
 describe('Alerts', () => {
-  it('renders all filter chips', () => {
+  // Filters now live in the collapsing FilterRail rather than as chip rows on
+  // the page, so they are deliberately absent until the rail is opened. These
+  // two tests drive that interaction instead of asserting the chips are
+  // permanently on screen — the chips being gone at rest IS the feature.
+  it('keeps filter chips out of the page until the rail is opened', () => {
     render(<Alerts />)
-    // Status, site, and module filter rows each have their own "All" chip
+    expect(screen.queryByText('Acknowledged')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^filters/i })).toBeInTheDocument()
+  })
+
+  it('renders all status filter chips once the rail is opened', () => {
+    render(<Alerts />)
+    fireEvent.click(screen.getByRole('button', { name: /^filters/i }))
     expect(screen.getAllByText('All').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Open')).toBeInTheDocument()
     expect(screen.getByText('Acknowledged')).toBeInTheDocument()
@@ -87,13 +97,16 @@ describe('Alerts', () => {
     })
   })
 
-  it('switches filter by clicking a status chip', async () => {
+  it('switches filter by clicking a status chip in the rail', async () => {
     render(<Alerts />)
+    fireEvent.click(screen.getByRole('button', { name: /^filters/i }))
     fireEvent.click(screen.getByText('Acknowledged'))
     await waitFor(() => {
       // Page passes (status, siteId, moduleType) since the Phase 10 site/module filters
       expect(vi.mocked(getAlerts)).toHaveBeenCalledWith('acknowledged', undefined, undefined)
     })
+    // Picking auto-hides the rail — the behaviour that keeps the page clean.
+    expect(screen.queryByText('Dismissed')).not.toBeInTheDocument()
   })
 
   it('does not show Ack button for acknowledged alerts (status !== open)', async () => {

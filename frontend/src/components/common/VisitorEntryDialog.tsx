@@ -120,8 +120,8 @@ function DynamicField({
       )
     case 'date':
       return (
-        <TextField {...common} type="date" InputLabelProps={{ shrink: true }}
-          value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+        <TextField {...common} type="date"
+          value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
       )
     case 'textarea':
       return (

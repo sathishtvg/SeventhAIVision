@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useFocusModeStore } from '@/store/focusMode'
 import { FULLSCREEN_PARAM } from '@/lib/popoutWindow'
@@ -15,40 +15,51 @@ import { FULLSCREEN_PARAM } from '@/lib/popoutWindow'
  * and that must not block hiding our own chrome, which is the actual ask).
  * Esc exits browser fullscreen (Electron handles Esc itself); the
  * fullscreenchange listener keeps focus-mode in sync when a real
- * fullscreen session ends. Branches on our own `kiosk` state, not
- * document.fullscreenElement — if requestFullscreen() is ever rejected,
- * fullscreenElement stays null while kiosk is already true, and keying off
- * fullscreenElement would re-enter instead of exit, leaving the user stuck
- * with no way to bring the chrome back via this button.
+ * fullscreen session ends.
+ *
+ * `kiosk` READS the focus-mode store rather than keeping its own copy. It
+ * used to be local state, which silently drifted the moment anything other
+ * than this hook turned focus mode off — AppShell's focus-mode strip owns
+ * Exit now, so after exiting there the page still believed it was in kiosk
+ * and kept its "Full Screen" button hidden, leaving no way back in. One
+ * source of truth removes that class of bug entirely. Still keyed off our
+ * own state and not document.fullscreenElement: if requestFullscreen() is
+ * rejected, fullscreenElement stays null while we are already in focus
+ * mode, and branching on it would re-enter instead of exit.
  */
 export function useKioskToggle() {
-  const [kiosk, setKiosk] = useState(false)
+  const kiosk = useFocusModeStore((s) => s.isFocusMode)
   const setFocusMode = useFocusModeStore((s) => s.setFocusMode)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const toggleKiosk = async () => {
     if (window.electronAPI?.setKiosk) {
-      const now = await window.electronAPI.setKiosk(!kiosk)
-      setKiosk(now)
-      setFocusMode(now)
+      // Apply focus mode from OUR intent, never from what Electron reports
+      // back. Windows kiosk is unreliable — setKiosk() can leave isKiosk()
+      // false, and trusting that return value meant the button did nothing
+      // at all: no OS fullscreen AND no chrome hidden. Hiding our own chrome
+      // is the part we fully control and the part the operator actually
+      // asked for, so it applies regardless; the window-level call is
+      // best-effort on top, exactly as it already is in the browser branch.
+      const next = !kiosk
+      setFocusMode(next)
+      try { await window.electronAPI.setKiosk(next) } catch { /* window stays as-is */ }
       return
     }
     if (kiosk) {
-      setKiosk(false)
       setFocusMode(false)
       if (document.fullscreenElement) {
         try { await document.exitFullscreen() } catch { /* already exiting */ }
       }
       return
     }
-    setKiosk(true)
     setFocusMode(true)
     try { await document.documentElement.requestFullscreen() } catch { /* focus mode still applies */ }
   }
 
   useEffect(() => {
     const sync = () => {
-      if (!document.fullscreenElement) { setKiosk(false); setFocusMode(false) }
+      if (!document.fullscreenElement) setFocusMode(false)
     }
     document.addEventListener('fullscreenchange', sync)
     return () => document.removeEventListener('fullscreenchange', sync)
@@ -66,7 +77,6 @@ export function useKioskToggle() {
     if (searchParams.get(FULLSCREEN_PARAM) !== '1') return
     autoAppliedRef.current = true
 
-    setKiosk(true)
     setFocusMode(true)
     if (window.electronAPI?.setKiosk) {
       void window.electronAPI.setKiosk(true)

@@ -1,5 +1,5 @@
 appId: ai.seventh.vision.desktop
-productName: "7th AI Vision"
+productName: "Seventh AI Vision"
 copyright: "Copyright © 2026 Seventh AI"
 
 directories:
@@ -20,8 +20,12 @@ win:
   # environment variables are present; without them the build is unsigned
   # (unchanged from before). publisherName must match the certificate's
   # subject CN — override via the WIN_PUBLISHER_NAME env var at build time.
-  publisherName: ${env.WIN_PUBLISHER_NAME}
   signtoolOptions:
+    # Was `win.publisherName`, which electron-builder deprecated in favour of
+    # this block — it warned on every single build. Left where it was, it
+    # stops being read at the next major, and the failure mode is bad: the
+    # build still succeeds, just unsigned or with a mismatched publisher.
+    publisherName: ${env.WIN_PUBLISHER_NAME}
     # rfc3161TimeStampServer keeps signatures valid after the cert expires.
     rfc3161TimeStampServer: http://timestamp.digicert.com
     signingHashAlgorithms:
@@ -32,7 +36,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "7th AI Vision"
+  shortcutName: "Seventh AI Vision"
 
 msi:
   oneClick: false
@@ -40,7 +44,7 @@ msi:
   runAfterFinish: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "7th AI Vision"
+  shortcutName: "Seventh AI Vision"
   # Stable UpgradeCode so future MSIs upgrade in place instead of installing
   # side-by-side. Generated once; must never change across releases.
   upgradeCode: "5F3A9C21-8B47-4E2D-9A16-7C0E1F2B3D4A"

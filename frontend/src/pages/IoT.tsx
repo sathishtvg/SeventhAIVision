@@ -11,7 +11,6 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import ErrorIcon from '@mui/icons-material/Error'
 import SignalWifiOffIcon from '@mui/icons-material/SignalWifiOff'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import SettingsIcon from '@mui/icons-material/Settings'
 import SensorsIcon from '@mui/icons-material/Sensors'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -21,6 +20,7 @@ import {
 import type { IoTSensor, IoTAlert } from '@/api/iot'
 import { getSites } from '@/api/sites'
 import { usePermission } from '@/hooks/usePermission'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── constants / helpers ───────────────────────────────────────────────────────
 
@@ -46,26 +46,6 @@ function relativeTime(iso: string | null) {
   if (diff < 60) return `${diff}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   return `${Math.floor(diff / 3600)}h ago`
-}
-
-// ── Sparkline (simple inline SVG) ────────────────────────────────────────────
-function MiniSparkline({ readings, color }: { readings: { value: number }[]; color: string }) {
-  if (readings.length < 2) return null
-  const vals = readings.map(r => r.value)
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
-  const range = max - min || 1
-  const W = 80, H = 24
-  const pts = vals.slice(0, 20).reverse().map((v, i) => {
-    const x = (i / (Math.min(vals.length, 20) - 1)) * W
-    const y = H - ((v - min) / range) * (H - 4) - 2
-    return `${x},${y}`
-  }).join(' ')
-  return (
-    <svg width={W} height={H} style={{ display: 'block' }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-    </svg>
-  )
 }
 
 // ── Sensor Card ───────────────────────────────────────────────────────────────
@@ -259,7 +239,7 @@ function AlertsTab() {
           <TableRow key={a.id}>
             <TableCell>
               <Typography variant="caption" sx={{ fontWeight: 600 }}>{a.sensor_name}</Typography>
-              <Typography variant="caption" display="block" sx={{ color: 'text.secondary', fontSize: '0.6rem' }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.6rem', display: "block" }}>
                 {sensorTypeLabel(a.sensor_type)}
               </Typography>
             </TableCell>
@@ -317,11 +297,11 @@ export default function IoTPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <PageHeader pageKey="iot" />
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <SensorsIcon sx={{ color: 'primary.main', fontSize: 28 }} />
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 800 }}>Smart Facilities</Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>IoT Sensor Monitoring</Typography>
         </Box>
         {canWrite && (

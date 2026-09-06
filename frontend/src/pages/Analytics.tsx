@@ -12,12 +12,19 @@ import {
 } from '@/api/analytics'
 import type { AnalyticsCount, AnalyticsTrendPoint } from '@/types/api'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ──────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color = 'primary.main' }: { label: string; value: number | undefined | null; color?: string }) {
+function StatCard({ label, value, color = 'primary.main', sub }: {
+  label: string
+  value: number | undefined | null
+  color?: string
+  /** Small line under the number — trend, or why the number is what it is. */
+  sub?: React.ReactNode
+}) {
   const animatedValue = useCountUp(value ?? undefined)
   return (
     <GlassCard sx={{ p: 3, height: '100%' }}>
@@ -31,7 +38,42 @@ function StatCard({ label, value, color = 'primary.main' }: { label: string; val
           {value === null ? '—' : animatedValue}
         </Typography>
       )}
+      {sub != null && <Box sx={{ mt: 0.5 }}>{sub}</Box>}
     </GlassCard>
+  )
+}
+
+/** "8 days ago" / "3h ago". Returns null when there is no timestamp at all. */
+function relativeAge(iso: string | null | undefined): { text: string; days: number } | null {
+  if (!iso) return null
+  const ms = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(ms / 60000)
+  const days = ms / 86_400_000
+  if (mins < 1) return { text: 'just now', days }
+  if (mins < 60) return { text: `${mins}m ago`, days }
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return { text: `${hrs}h ago`, days }
+  const d = Math.floor(hrs / 24)
+  return { text: `${d} day${d === 1 ? '' : 's'} ago`, days }
+}
+
+/** Period-on-period change, rendered as a coloured delta. Rising alerts are
+ *  not "good", so this deliberately does not colour by direction — it colours
+ *  by magnitude of change and lets the operator judge. */
+function TrendDelta({ current, previous, days }: { current?: number; previous?: number; days: number }) {
+  if (current == null || previous == null) return null
+  if (previous === 0 && current === 0) {
+    return <Typography variant="caption" color="text.disabled">no activity either period</Typography>
+  }
+  if (previous === 0) {
+    return <Typography variant="caption" color="text.secondary">new vs. previous {days}d</Typography>
+  }
+  const pct = Math.round(((current - previous) / previous) * 100)
+  const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '—'
+  return (
+    <Typography variant="caption" color="text.secondary">
+      {arrow} {Math.abs(pct)}% vs. previous {days}d
+    </Typography>
   )
 }
 
@@ -126,13 +168,24 @@ export default function Analytics() {
   const [window, setWindow] = useState<'7' | '30' | '90'>('30')
   const days = parseInt(window, 10)
 
-  const { data: summary } = useQuery({ queryKey: ['analytics-summary'], queryFn: getSummary })
+  const { data: summary } = useQuery({
+    queryKey: ['analytics-summary', days],
+    queryFn: () => getSummary(undefined, days),
+  })
   const { data: bySeverity } = useQuery({ queryKey: ['analytics-by-severity', days], queryFn: () => getAlertsBySeverity(days) })
   const { data: byModule } = useQuery({ queryKey: ['analytics-by-module', days], queryFn: () => getAlertsByModule(days) })
-  const { data: detTrend } = useQuery({ queryKey: ['analytics-det-trend', 7], queryFn: () => getDetectionsTrend(7) })
-  const { data: alertTrend } = useQuery({ queryKey: ['analytics-alert-trend', 7], queryFn: () => getAlertsTrend(7) })
+  // Pinned to 7 before, so selecting 30/90 left these two charts showing a
+  // week — and reading "No data" whenever the last week happened to be quiet.
+  const { data: detTrend } = useQuery({ queryKey: ['analytics-det-trend', days], queryFn: () => getDetectionsTrend(days) })
+  const { data: alertTrend } = useQuery({ queryKey: ['analytics-alert-trend', days], queryFn: () => getAlertsTrend(days) })
   const { data: topCams } = useQuery({ queryKey: ['analytics-top-cameras', days], queryFn: () => getTopCameras(days, 8) })
   const { data: resolutionTime } = useQuery({ queryKey: ['analytics-resolution', days], queryFn: () => getIncidentResolutionTime(days) })
+
+  const detAge = relativeAge(summary?.last_detection_at)
+  const alertAge = relativeAge(summary?.last_alert_at)
+  // One day of silence on a 24/7 surveillance platform is not a quiet day,
+  // it is something to look at. This is the threshold the banner uses.
+  const pipelineStale = detAge != null && detAge.days > 1
 
   const totalBySeverity = bySeverity?.reduce((s, i) => s + i.count, 0) ?? 0
   const totalByModule = byModule?.reduce((s, i) => s + i.count, 0) ?? 0
@@ -140,6 +193,27 @@ export default function Analytics() {
 
   return (
     <Box>
+      <PageHeader pageKey="analytics" />
+      {/* Data freshness. Without this a screen full of zeros is ambiguous —
+          a genuinely quiet period and a dead ingestion pipeline look the
+          same, and the second one is an outage nobody is being told about. */}
+      {pipelineStale && (
+        <GlassCard sx={{ p: 2, mb: 3, borderLeft: '3px solid', borderColor: 'warning.main' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            No detections for {detAge!.text.replace(' ago', '')} — today's counters read 0 because
+            nothing has arrived, not because the site was quiet.
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Last detection {detAge!.text}
+            {alertAge ? ` · last alert ${alertAge.text}` : ''}
+            {summary?.active_cameras != null && summary?.active_cameras_total != null
+              ? ` · ${summary.active_cameras} of ${summary.active_cameras_total} cameras active`
+              : ''}
+            . Check the ingestion service and AI workers if this is unexpected.
+          </Typography>
+        </GlassCard>
+      )}
+
       {/* Time window selector */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
         <ToggleButtonGroup
@@ -157,16 +231,36 @@ export default function Analytics() {
       {/* KPI summary row */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(0)}>
-          <StatCard label="Detections Today" value={summary?.detections_today} color="#6C63FF" />
+          <StatCard
+            label="Detections Today" value={summary?.detections_today} color="#6C63FF"
+            sub={detAge && (
+              <Typography variant="caption" color={detAge.days > 1 ? 'warning.main' : 'text.secondary'}>
+                last detection {detAge.text}
+              </Typography>
+            )}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(1)}>
-          <StatCard label="Alerts Today" value={summary?.alerts_today} color="#FF4560" />
+          <StatCard
+            label="Alerts Today" value={summary?.alerts_today} color="#FF4560"
+            sub={alertAge && (
+              <Typography variant="caption" color={alertAge.days > 1 ? 'warning.main' : 'text.secondary'}>
+                last alert {alertAge.text}
+              </Typography>
+            )}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(2)}>
-          <StatCard label={`Detections (${window}d)`} value={summary?.detections_7d} color="#00D9C0" />
+          <StatCard
+            label={`Detections (${window}d)`} value={summary?.detections_window} color="#00D9C0"
+            sub={<TrendDelta current={summary?.detections_window} previous={summary?.detections_window_prev} days={days} />}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(3)}>
-          <StatCard label={`Alerts (${window}d)`} value={summary?.alerts_7d} color="#FF9800" />
+          <StatCard
+            label={`Alerts (${window}d)`} value={summary?.alerts_window} color="#FF9800"
+            sub={<TrendDelta current={summary?.alerts_window} previous={summary?.alerts_window_prev} days={days} />}
+          />
         </Grid>
       </Grid>
 
@@ -174,13 +268,13 @@ export default function Analytics() {
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, md: 6 }}>
           <GlassCard sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Detections (last 7 days)</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Detections (last {days} days)</Typography>
             {!detTrend ? <Skeleton height={80} /> : <TrendBars data={detTrend} color="#6C63FF" />}
           </GlassCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <GlassCard sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Alerts (last 7 days)</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Alerts (last {days} days)</Typography>
             {!alertTrend ? <Skeleton height={80} /> : <TrendBars data={alertTrend} color="#FF4560" />}
           </GlassCard>
         </Grid>

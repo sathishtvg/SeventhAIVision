@@ -94,7 +94,7 @@ export function CameraPicker({ open, onClose, onAdd, existing }: CameraPickerPro
             </ListItemButton>
           ))}
           {filteredCameras.length === 0 && (
-            <Typography color="text.secondary" p={2}>No cameras available</Typography>
+            <Typography color="text.secondary" sx={{ p: 2 }}>No cameras available</Typography>
           )}
         </List>
       </DialogContent>

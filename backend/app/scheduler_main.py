@@ -403,6 +403,71 @@ async def check_parking_overstays(db: AsyncSession, redis: Redis) -> int:
     return total
 
 
+async def close_visits_at_day_rollover(db: AsyncSession) -> int:
+    """Close visits still open after the site's local day has ended.
+
+    A visit nobody checks out stays open for ever, and every "currently on
+    site" count after it is wrong — a gatehouse that forgets one delivery on
+    Monday is still carrying them on Friday. Closing the day makes each date a
+    complete record: whatever is open when the local date rolls is closed with
+    the reason recorded.
+
+    LOCAL date, not UTC. A tenant in Singapore rolls over eight hours before
+    UTC does, and closing its day at 08:00 local would cut the morning shift in
+    half. `timezone` lives on the tenant — sites do not carry one — so the
+    comparison uses that, falling back to UTC where a tenant has none set.
+
+    Marked with closed_by_day_rollover so it stays distinguishable from a real
+    departure. An LPR exit read means the vehicle actually left; this means
+    nobody checked them out, and a gatehouse's discipline is exactly the sort
+    of thing a client asks about. Collapsing the two would make that
+    unanswerable.
+    """
+    tenants = (await db.execute(text("SELECT id FROM tenants WHERE is_active = TRUE"))).fetchall()
+    total = 0
+    for (tenant_id,) in tenants:
+        await db.execute(
+            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": str(tenant_id)}
+        )
+        closed = (await db.execute(
+            text("""
+                UPDATE visitors v
+                   SET vehicle_exit_at = now(),
+                       departed_at = now(),
+                       status = 'departed',
+                       closed_by_day_rollover = TRUE,
+                       updated_at = now()
+                  FROM tenants t
+                 WHERE t.id = v.tenant_id
+                   AND v.is_active = TRUE
+                   AND v.arrived_at IS NOT NULL
+                   AND v.departed_at IS NULL
+                   AND (v.arrived_at AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+                     < (now()         AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+             RETURNING v.id, v.site_id
+            """)
+        )).fetchall()
+
+        for visitor_id, site_id in closed:
+            # The action log has to carry this too, or the visit simply ends
+            # with no explanation of who ended it. guard_user_id is NULL
+            # because no one did — checkin_method names the actor instead.
+            await db.execute(
+                text("""
+                    INSERT INTO visitor_logs (tenant_id, visitor_id, site_id, guard_user_id,
+                                              event_type, checkin_method, is_unregistered, notes)
+                    VALUES (current_setting('app.current_tenant')::uuid, :vid, :sid, NULL,
+                            'departure', 'day_close', FALSE,
+                            'Auto-closed: still on site when the site''s local day ended')
+                """),
+                {"vid": visitor_id, "sid": site_id},
+            )
+            total += 1
+
+        await db.commit()
+    return total
+
+
 async def check_no_show_shifts(db: AsyncSession, redis: Redis) -> int:
     """Auto-flags a no_show violation (ShiftSecure Phase 3) for any shift
     still 'scheduled' well past its start time. Mirrors
@@ -1097,6 +1162,18 @@ async def main() -> None:
                             logger.info("check_parking_overstays: created %d alerts", n)
                 except Exception:
                     logger.exception("check_parking_overstays failed")
+                # Day-close rides the same 15-minute cadence rather than a
+                # midnight cron: sites span timezones, so there is no single
+                # midnight to fire at, and a sweep that simply asks "has this
+                # site's local date moved past the arrival's?" is correct for
+                # all of them and self-correcting if the scheduler was down.
+                try:
+                    async with AsyncSessionLocal() as db:
+                        n = await close_visits_at_day_rollover(db)
+                        if n:
+                            logger.info("close_visits_at_day_rollover: closed %d visits", n)
+                except Exception:
+                    logger.exception("close_visits_at_day_rollover failed")
                 last_overstay = now
 
             # Tour compliance: auto-expire missed + auto-link completed sessions (every 15 min)

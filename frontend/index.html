@@ -4,10 +4,214 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>7th AI Vision</title>
+    <title>Seventh AI Vision</title>
+
+    <!--
+      Boot splash. Lives in index.html rather than in React on purpose: the app
+      bundle imports every page eagerly (no route splitting), so there is a real
+      gap between the browser painting the document and React mounting. Anything
+      React-rendered arrives at the END of that gap; only markup already in the
+      document covers it. No external requests here either — a font or logo
+      fetch would be racing the very bundle this is meant to cover.
+
+      It is painted on the dark brand backdrop unconditionally: at this point no
+      user is known, so the per-user theme preference cannot be read, and the
+      screen it hands over to (Login) is deliberately dark-backdropped too.
+    -->
+    <style>
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+        background:
+          radial-gradient(ellipse 80% 55% at 10% 0%, #0d0a2e 0%, #020617 60%),
+          radial-gradient(ellipse 55% 45% at 92% 95%, #041228 0%, #020617 60%),
+          #020617;
+        font-family: 'Fira Sans', 'Segoe UI', 'Inter', system-ui, sans-serif;
+        opacity: 1;
+        transition: opacity 420ms ease, visibility 420ms ease;
+      }
+      #boot-splash.bs-done {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      /* ── Mark: the logo sitting inside a radar sweep ──────────────────── */
+      .bs-stage {
+        position: relative;
+        width: 148px;
+        height: 148px;
+        display: grid;
+        place-items: center;
+      }
+      .bs-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1px solid rgba(108, 99, 255, 0.35);
+        animation: bs-pulse 2.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+      }
+      .bs-ring:nth-child(2) { animation-delay: 0.65s; }
+      .bs-ring:nth-child(3) { animation-delay: 1.3s; }
+      @keyframes bs-pulse {
+        0%   { transform: scale(0.55); opacity: 0; }
+        35%  { opacity: 0.9; }
+        100% { transform: scale(1.15); opacity: 0; }
+      }
+
+      /* The sweep — a conic wedge rotating behind the mark, masked to a disc.
+         This is the "camera is scanning" read the product is built around. */
+      .bs-sweep {
+        position: absolute;
+        inset: 6px;
+        border-radius: 50%;
+        background: conic-gradient(
+          from 0deg,
+          rgba(0, 217, 192, 0) 0deg,
+          rgba(0, 217, 192, 0) 250deg,
+          rgba(0, 217, 192, 0.28) 330deg,
+          rgba(108, 99, 255, 0.55) 360deg
+        );
+        -webkit-mask: radial-gradient(circle, transparent 34%, #000 36%);
+        mask: radial-gradient(circle, transparent 34%, #000 36%);
+        animation: bs-spin 2.4s linear infinite;
+      }
+      @keyframes bs-spin { to { transform: rotate(360deg); } }
+
+      .bs-mark {
+        width: 52px;
+        height: 50px;
+        filter: drop-shadow(0 0 18px rgba(134, 59, 255, 0.65));
+        animation: bs-mark-in 900ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes bs-mark-in {
+        from { transform: scale(0.4); opacity: 0; }
+        to   { transform: scale(1);   opacity: 1; }
+      }
+
+      /* ── Wordmark ─────────────────────────────────────────────────────── */
+      .bs-name {
+        margin: 0;
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        background: linear-gradient(
+          100deg,
+          #f8fafc 0%, #f8fafc 38%,
+          #a78bfa 48%, #00d9c0 56%,
+          #f8fafc 66%, #f8fafc 100%
+        );
+        background-size: 300% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+        animation: bs-shimmer 2.8s linear infinite, bs-rise 700ms 120ms ease both;
+      }
+      /* Browsers without background-clip:text would render this invisible. */
+      @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+        .bs-name { color: #f8fafc; -webkit-text-fill-color: #f8fafc; }
+      }
+      .bs-name .bs-ord { font-size: 0.55em; vertical-align: super; letter-spacing: 0.05em; }
+      @keyframes bs-shimmer {
+        from { background-position: 150% 0; }
+        to   { background-position: -150% 0; }
+      }
+      @keyframes bs-rise {
+        from { transform: translateY(10px); opacity: 0; }
+        to   { transform: translateY(0);    opacity: 1; }
+      }
+
+      .bs-tag {
+        margin: -14px 0 0;
+        font-size: 12px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: rgba(248, 250, 252, 0.42);
+        animation: bs-rise 700ms 320ms ease both;
+      }
+
+      /* ── Indeterminate track ──────────────────────────────────────────── */
+      .bs-bar {
+        position: relative;
+        width: 190px;
+        height: 2px;
+        border-radius: 99px;
+        overflow: hidden;
+        background: rgba(248, 250, 252, 0.09);
+        animation: bs-rise 700ms 460ms ease both;
+      }
+      .bs-bar i {
+        position: absolute;
+        inset: 0;
+        width: 42%;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #6c63ff, #00d9c0);
+        animation: bs-slide 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      @keyframes bs-slide {
+        from { transform: translateX(-110%); }
+        to   { transform: translateX(280%); }
+      }
+
+      /* An operator who has asked the OS to calm animations down gets a still,
+         legible splash rather than no splash. */
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash *,
+        #boot-splash *::before,
+        #boot-splash *::after {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .bs-name { color: #f8fafc; -webkit-text-fill-color: #f8fafc; background: none; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="boot-splash" role="status" aria-label="Loading Seventh AI Vision">
+      <div class="bs-stage">
+        <span class="bs-ring"></span>
+        <span class="bs-ring"></span>
+        <span class="bs-ring"></span>
+        <span class="bs-sweep"></span>
+        <svg class="bs-mark" viewBox="0 0 48 46" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="bs-g" x1="0" y1="0" x2="48" y2="46" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#A78BFA" />
+              <stop offset="0.55" stop-color="#863bff" />
+              <stop offset="1" stop-color="#47bfff" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#bs-g)" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" />
+        </svg>
+      </div>
+
+      <p class="bs-name">7<span class="bs-ord">th</span> AI Vision</p>
+      <p class="bs-tag">Intelligent Surveillance</p>
+      <div class="bs-bar"><i></i></div>
+    </div>
+
+    <script>
+      // Safety net only. main.tsx dismisses the splash as soon as React has
+      // painted; this exists so a bundle that fails to execute at all leaves
+      // the user looking at the app (or its error) rather than at a splash
+      // that spins forever.
+      setTimeout(function () {
+        var el = document.getElementById('boot-splash')
+        if (el) el.classList.add('bs-done')
+      }, 12000)
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

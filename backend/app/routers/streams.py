@@ -16,6 +16,7 @@ import os
 import time
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +32,7 @@ from app.db.session import AsyncSessionLocal
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.video_compat import H264Writer, ensure_browser_playable
 
 router = APIRouter(prefix="/api/v1/cameras", tags=["streams"])
 
@@ -430,15 +432,20 @@ async def get_camera_health(
 # ──────────────────────────────────────────────────────────
 
 def _record_to_file(file_path: str, rtsp_url: str, stop_event: asyncio.Event) -> tuple[int, int]:
-    """Write RTSP stream frames to MP4. Returns (frame_count, file_size_bytes)."""
+    """Write RTSP stream frames to MP4. Returns (frame_count, file_size_bytes).
+
+    Encodes H.264 via `H264Writer`, not `cv2.VideoWriter`. This used to write
+    the `mp4v` fourcc, which produces MPEG-4 Part 2 — a format no browser can
+    decode, so recorded footage downloaded fine but never played back in the
+    web or desktop app. See `app/services/video_compat` for why cv2 can't do
+    H.264 itself."""
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     cap = cv2.VideoCapture(rtsp_url)
     if not cap.isOpened():
         return 0, 0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1280
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 720
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(file_path, fourcc, 10.0, (w, h))
+    writer = H264Writer(file_path, fps=10.0, size=(w, h))
     frame_count = 0
     try:
         while not stop_event.is_set():
@@ -448,6 +455,8 @@ def _record_to_file(file_path: str, rtsp_url: str, stop_event: asyncio.Event) ->
             writer.write(frame)
             frame_count += 1
     finally:
+        # release() is what finalises the container (and runs the faststart
+        # rewrite), so the file size has to be read after it returns.
         writer.release()
         cap.release()
     file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
@@ -692,11 +701,20 @@ async def recording_timeline(
 ):
     """One day of recorded segments + alert markers for a camera (Gap 85).
 
-    date: YYYY-MM-DD (interpreted as UTC day). Segments overlapping the day
-    are returned with started_at/ended_at clamped to reality (active
-    recordings have ended_at = null)."""
+    date: YYYY-MM-DD, interpreted in the TENANT's timezone rather than UTC.
+    An operator asking for "1 August" means their 1 August; served as a UTC
+    day, a Singapore tenant got a window running 08:00 to 08:00 and footage
+    appeared on the wrong date. Same idiom as attendance's live board."""
+    tz_row = (await db.execute(
+        text("SELECT COALESCE(timezone, 'UTC') AS tz FROM tenants "
+             "WHERE id = current_setting('app.current_tenant')::uuid")
+    )).first()
     try:
-        day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        tz = ZoneInfo(tz_row.tz if tz_row else "UTC")
+    except Exception:
+        tz = timezone.utc  # a bad tenant timezone must not 500 the page
+    try:
+        day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tz)
     except ValueError:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "date must be YYYY-MM-DD")
     day_end = day_start + timedelta(days=1)
@@ -800,8 +818,14 @@ async def play_recording(
     file_path = os.path.join(RECORDINGS_ROOT, row[0])
     if not os.path.exists(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recording file not found on disk")
-    # Inline (no attachment disposition) so the browser <video> element plays it
-    return FileResponse(file_path, media_type="video/mp4")
+    # Footage recorded before the H.264 fix is MPEG-4 Part 2 and won't decode in
+    # any browser; heal it once here so an existing archive stays watchable.
+    # New recordings are already H.264 and pass straight through.
+    playable = await ensure_browser_playable(file_path)
+    # Inline (no attachment disposition) so the browser <video> element plays
+    # it. FileResponse honours the Range header, which is what makes seeking
+    # and mid-file scrubbing work rather than forcing a full download.
+    return FileResponse(playable, media_type="video/mp4")
 
 
 @global_router.get("/streams", dependencies=[Depends(require_permission("camera:read"))])

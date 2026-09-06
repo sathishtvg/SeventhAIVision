@@ -39,6 +39,14 @@ x-app-env: &app-env
 services:
   postgres:
     build: { context: .., dockerfile: docker/postgres.Dockerfile }
+    # Every other core service already had unless-stopped; these two did not,
+    # which is why the stack kept ending up half-dead. When Docker Desktop or
+    # WSL restarts it stops containers cleanly (exit 0, not an OOM kill), and
+    # without a policy the data stores stayed down for good while api,
+    # ingestion and the workers restarted forever into "failed to resolve host
+    # 'postgres'". The foundation must come back at least as reliably as the
+    # things that depend on it.
+    restart: unless-stopped
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-seventh_ai_vision}"
       # Bootstrap superuser — used ONLY for running Alembic migrations. No running
@@ -59,6 +67,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped   # same reasoning as postgres above
     ports: ["6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -75,8 +84,16 @@ services:
     environment:
       <<: *app-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
-      # Alembic uses a separate sync URL with the superuser (DDL requires elevated privileges).
-      # alembic/env.py reads POSTGRES_HOST + POSTGRES_USER + POSTGRES_PASSWORD automatically.
+      # Alembic uses a separate sync URL with the superuser (DDL requires elevated
+      # privileges). Passed explicitly rather than left to alembic/env.py's
+      # host+user+password fallback: this service deliberately exposes the
+      # superuser secret as PGPASSWORD (for pg_dump), NOT as POSTGRES_PASSWORD,
+      # so that fallback silently resolved the password to its hardcoded
+      # "change_me_dev_only" literal. Identical in dev, where the real password
+      # is that same literal — and an auth failure the moment a deployer sets a
+      # real POSTGRES_PASSWORD, which would fail `alembic upgrade head` and, since
+      # it gates uvicorn in this service's command, stop the API from starting.
+      ALEMBIC_DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
       POSTGRES_HOST: postgres
       APP_VERSION: "${APP_VERSION:-0.1.0}"
       GIT_SHA: "${GIT_SHA:-dev}"

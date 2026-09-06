@@ -20,7 +20,9 @@ import ErrorIcon from '@mui/icons-material/Error'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { LocationPickerMap } from '@/components/common/LocationPickerMap'
 import {
   getCameras, createCamera, updateCamera, deleteCamera,
   getStreams, createStream, deleteStream, updateStream, validateStream,
@@ -52,15 +54,28 @@ function CameraDialog({ open, onClose, existing }: CameraDialogProps) {
   const [location, setLocation] = useState(existing?.location ?? '')
   const [modules, setModules] = useState<string[]>(existing?.ai_modules_enabled ?? [])
   const [siteId, setSiteId] = useState<string>((existing as any)?.site_id ?? '')
+  // Cameras have carried latitude/longitude since the first schema, and both
+  // Site Map and Heatmap plot from them — but nothing in the app ever set
+  // them, so a customer's own cameras could never appear on either. Placed on
+  // a map, same as a site.
+  const [lat, setLat] = useState<number | null>((existing as any)?.latitude ?? null)
+  const [lng, setLng] = useState<number | null>((existing as any)?.longitude ?? null)
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const isEdit = !!existing
 
   const mutation = useMutation({
-    mutationFn: () =>
-      isEdit
-        ? updateCamera(existing!.id, { name, location: location || undefined, ai_modules_enabled: modules, site_id: siteId || undefined })
-        : createCamera({ name, location: location || undefined, ai_modules_enabled: modules, site_id: siteId || undefined }),
+    mutationFn: () => {
+      const payload = {
+        name,
+        location: location || undefined,
+        ai_modules_enabled: modules,
+        site_id: siteId || undefined,
+        latitude: lat ?? undefined,
+        longitude: lng ?? undefined,
+      }
+      return isEdit ? updateCamera(existing!.id, payload) : createCamera(payload)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cameras'] })
       onClose()
@@ -83,6 +98,17 @@ function CameraDialog({ open, onClose, existing }: CameraDialogProps) {
             {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
           </Select>
         </FormControl>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+            Position on map — where this camera appears on Site Map and Heatmap
+          </Typography>
+          <LocationPickerMap
+            latitude={lat}
+            longitude={lng}
+            onChange={(la, ln) => { setLat(la); setLng(ln) }}
+            height={240}
+          />
+        </Box>
         <Box>
           <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
             AI Modules
@@ -188,11 +214,10 @@ function StreamDialog({ open, onClose, cameraId }: { open: boolean; onClose: () 
           value={method}
           onChange={(e) => setMethod(e.target.value as ConnectionMethod)}
           fullWidth
-          slotProps={{ select: { native: true } }}
         >
-          <option value="manual">Manual URL</option>
-          <option value="static_ip">RTSP — Static IP</option>
-          <option value="ddns">RTSP — DDNS Hostname</option>
+          <MenuItem value="manual">Manual URL</MenuItem>
+          <MenuItem value="static_ip">RTSP — Static IP</MenuItem>
+          <MenuItem value="ddns">RTSP — DDNS Hostname</MenuItem>
         </TextField>
 
         {/* Manual URL mode */}
@@ -211,10 +236,9 @@ function StreamDialog({ open, onClose, cameraId }: { open: boolean; onClose: () 
               value={protocol}
               onChange={(e) => setProtocol(e.target.value)}
               fullWidth
-              slotProps={{ select: { native: true } }}
             >
               {['rtsp', 'rtmp', 'onvif', 'http'].map((p) => (
-                <option key={p} value={p}>{p.toUpperCase()}</option>
+                <MenuItem key={p} value={p}>{p.toUpperCase()}</MenuItem>
               ))}
             </TextField>
           </>
@@ -650,26 +674,22 @@ export default function Cameras() {
     ? (cameras ?? []).filter((c: any) => c.site_id === siteFilter)
     : cameras
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'site',
+    label: 'Site',
+    value: siteFilter,
+    onChange: setSiteFilter,
+    options: [
+      { value: '', label: 'All Sites' },
+      ...(sites as any[]).map((s) => ({ value: s.id, label: s.name })),
+    ],
+  }]
+
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, gap: 2 }}>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip
-            label="All Sites"
-            onClick={() => setSiteFilter('')}
-            color={siteFilter === '' ? 'primary' : 'default'}
-            variant={siteFilter === '' ? 'filled' : 'outlined'}
-          />
-          {(sites as any[]).map((s) => (
-            <Chip
-              key={s.id}
-              label={s.name}
-              onClick={() => setSiteFilter(s.id)}
-              color={siteFilter === s.id ? 'primary' : 'default'}
-              variant={siteFilter === s.id ? 'filled' : 'outlined'}
-            />
-          ))}
-        </Box>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+      {/* Add Camera keeps its place on the page; only the filter moved out. */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3, gap: 2 }}>
         <PermissionGuard permission="camera:create">
           <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAddOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
             Add Camera
@@ -700,6 +720,9 @@ export default function Cameras() {
       </Grid>
 
       {addOpen && <CameraDialog open={addOpen} onClose={() => setAddOpen(false)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="cameras" />
     </Box>
   )
 }

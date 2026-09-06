@@ -89,3 +89,19 @@ export const deleteEmployeeDocument = (userId: string, docId: string) =>
 
 export const employeeDocumentFileUrl = (userId: string, docId: string) =>
   `/api/v1/users/${userId}/documents/${docId}/file`
+
+/** Replace a guard's permanent profile photo. Multipart; the server stores one
+ *  file per user under a fixed name, so re-uploading overwrites rather than
+ *  accumulating orphans. */
+export const uploadProfilePhoto = (userId: string, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient
+    // The shared client defaults every request to application/json, which would
+    // otherwise win over the multipart type axios infers from FormData and leave
+    // the server with an unparseable body. Every other upload here does the same.
+    .post<{ profile_photo_path: string }>(`/api/v1/users/${userId}/photo`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}

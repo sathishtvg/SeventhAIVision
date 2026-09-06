@@ -12,6 +12,7 @@ import UploadIcon from '@mui/icons-material/Upload'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import {
   getPlateWatchlist, addPlateEntry, updatePlateEntry, deletePlateEntry,
@@ -20,6 +21,7 @@ import {
   type BulkImportResult, type PlateRegistryInput,
 } from '@/api/watchlist'
 import type { WatchlistEntry, VehicleCategory } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 function BulkImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
@@ -67,7 +69,7 @@ function BulkImportDialog({ open, onClose }: { open: boolean; onClose: () => voi
             {result.errors.length > 0 && (
               <Box sx={{ maxHeight: 160, overflowY: 'auto' }}>
                 {result.errors.map((e) => (
-                  <Typography key={e.row} variant="caption" color="error" display="block">
+                  <Typography key={e.row} variant="caption" color="error" sx={{ display: "block" }}>
                     Row {e.row}: {e.error}
                   </Typography>
                 ))}
@@ -174,25 +176,28 @@ function PlateTable() {
   const set = <K extends keyof PlateRegistryInput>(k: K, v: PlateRegistryInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
 
+  // Category is enumerable so it moves to the rail; the free-text plate/owner
+  // search stays on the page — it is one line, not a wrapping chip row, and a
+  // search box you cannot see is a search box nobody uses.
+  const filterGroups: FilterGroup[] = [{
+    key: 'category',
+    label: 'Category',
+    value: categoryFilter,
+    onChange: (v) => setCategoryFilter(v as VehicleCategory | ''),
+    options: [
+      { value: '', label: 'All categories' },
+      ...VEHICLE_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_META[c].label })),
+    ],
+  }]
+
   return (
-    <>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, p: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           size="small" label="Search plate, owner or company" value={search}
           onChange={(e) => setSearch(e.target.value)} sx={{ minWidth: 260 }}
         />
-        <FormControl size="small" sx={{ minWidth: 170 }}>
-          <InputLabel>Category</InputLabel>
-          <Select
-            label="Category" value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as VehicleCategory | '')}
-          >
-            <MenuItem value="">All categories</MenuItem>
-            {VEHICLE_CATEGORIES.map((c) => (
-              <MenuItem key={c} value={c}>{CATEGORY_META[c].label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <Box sx={{ flex: 1 }} />
         <PermissionGuard permission="watchlist:manage">
           <Button startIcon={<UploadIcon />} variant="outlined" size="small" onClick={() => setImportOpen(true)}>
@@ -293,7 +298,7 @@ function PlateTable() {
             <TextField
               label="Plate Number" value={form.plate_number} size="small" sx={{ flex: 1 }}
               onChange={(e) => set('plate_number', e.target.value)}
-              inputProps={{ style: { textTransform: 'uppercase', letterSpacing: 1 } }}
+              slotProps={{ htmlInput: { style: { textTransform: 'uppercase', letterSpacing: 1 } } }}
             />
             <FormControl size="small" sx={{ flex: 1 }}>
               <InputLabel>Category</InputLabel>
@@ -327,15 +332,15 @@ function PlateTable() {
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
               label="Valid From" type="date" size="small" sx={{ flex: 1 }}
-              InputLabelProps={{ shrink: true }} value={form.valid_from ?? ''}
+ value={form.valid_from ?? ''}
               onChange={(e) => set('valid_from', e.target.value)}
-              helperText="Blank = no start limit"
+              helperText="Blank = no start limit" slotProps={{ inputLabel: { shrink: true } }}
             />
             <TextField
               label="Valid To" type="date" size="small" sx={{ flex: 1 }}
-              InputLabelProps={{ shrink: true }} value={form.valid_to ?? ''}
+ value={form.valid_to ?? ''}
               onChange={(e) => set('valid_to', e.target.value)}
-              helperText="Blank = never expires"
+              helperText="Blank = never expires" slotProps={{ inputLabel: { shrink: true } }}
             />
           </Box>
           <TextField label="Remarks" value={form.remarks ?? ''} size="small" fullWidth multiline minRows={2}
@@ -352,7 +357,10 @@ function PlateTable() {
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="watchlist-plates" />
+    </Box>
   )
 }
 
@@ -544,6 +552,7 @@ export default function Watchlists() {
 
   return (
     <Box>
+      <PageHeader pageKey="watchlists" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

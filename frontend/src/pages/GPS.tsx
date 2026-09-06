@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import {
   Box,
   Typography,
@@ -26,20 +26,17 @@ import {
   Alert,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
-import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import AddIcon from '@mui/icons-material/Add'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import LocalShippingIcon from '@mui/icons-material/LocalShipping'
-import FlagIcon from '@mui/icons-material/Flag'
 import RouteIcon from '@mui/icons-material/Route'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  getGPSDashboard, listVehicles, createVehicle, listGeofences,
-  listGeofenceEvents, getVehicleJourneys, VEHICLE_TYPES,
+  getGPSDashboard, createVehicle, listGeofenceEvents, getVehicleJourneys, VEHICLE_TYPES,
 } from '@/api/gps'
-import type { Vehicle, GeofenceEvent, VehicleJourney } from '@/api/gps'
+import type { Vehicle } from '@/api/gps'
+import { PageHeader } from '@/components/common/PageHeader'
 
 // ── status helpers ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
@@ -53,14 +50,6 @@ const STATUS_LABEL: Record<string, string> = {
   offline: 'Offline',
 }
 
-function statusDot(status: string) {
-  return (
-    <Box component="span" sx={{
-      display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-      bgcolor: STATUS_COLOR[status] ?? '#9E9E9E', mr: 1, verticalAlign: 'middle',
-    }} />
-  )
-}
 
 function relativeTime(ts: string | null): string {
   if (!ts) return 'Never'
@@ -112,15 +101,15 @@ function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
       {active.map(v => (
         <Tooltip key={v.id} title={
           <Box>
-            <Typography variant="caption" fontWeight={700}>{v.name}</Typography>
-            {v.plate_number && <Typography variant="caption" display="block">{v.plate_number}</Typography>}
-            <Typography variant="caption" display="block">
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>{v.name}</Typography>
+            {v.plate_number && <Typography variant="caption" sx={{ display: "block" }}>{v.plate_number}</Typography>}
+            <Typography variant="caption" sx={{ display: "block" }}>
               {v.last_speed !== null ? `${v.last_speed} km/h` : 'Speed unknown'}
             </Typography>
-            <Typography variant="caption" display="block" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {v.last_lat?.toFixed(5)}, {v.last_lon?.toFixed(5)}
             </Typography>
-            <Typography variant="caption" display="block" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {relativeTime(v.last_position_at)}
             </Typography>
           </Box>
@@ -174,11 +163,11 @@ function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle; onClick: () => vo
       transition: 'all 0.2s',
       '&:hover': { bgcolor: 'rgba(255,255,255,0.07)', borderColor: STATUS_COLOR[vehicle.current_status] },
     }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <Typography variant="h6" sx={{ lineHeight: 1 }}>{typeInfo?.icon ?? '🚗'}</Typography>
           <Box>
-            <Typography variant="subtitle2" fontWeight={700}>{vehicle.name}</Typography>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{vehicle.name}</Typography>
             {vehicle.plate_number && (
               <Typography variant="caption" color="text.secondary">{vehicle.plate_number}</Typography>
             )}
@@ -299,7 +288,7 @@ function AddVehicleDialog({ onClose }: { onClose: () => void }) {
       slotProps={{ paper: { sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } } }}>
       <DialogTitle>Add Vehicle</DialogTitle>
       <DialogContent>
-        <Stack spacing={2} mt={1}>
+        <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField label="Vehicle Name *" size="small" value={form.name} onChange={e => set('name', e.target.value)} />
           <TextField label="Vehicle Type" select size="small" value={form.vehicle_type} onChange={e => set('vehicle_type', e.target.value)}>
             {VEHICLE_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.icon} {t.label}</MenuItem>)}
@@ -359,10 +348,10 @@ export default function GPSPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="gps" />
       {/* Header */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>GPS Fleet Tracking</Typography>
           <Typography variant="body2" color="text.secondary">Live vehicle positions, journeys & geofence alerts</Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -378,12 +367,12 @@ export default function GPSPage() {
       </Stack>
 
       {/* KPI row */}
-      <Grid container spacing={2} mb={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         {KPI.map(k => (
           <Grid size={{ xs: 6, sm: 3 }} key={k.label}>
             <Paper sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)',
               border: `1px solid ${k.color}33`, textAlign: 'center' }}>
-              <Typography variant="h4" fontWeight={800} sx={{ color: k.color }}>{k.value}</Typography>
+              <Typography variant="h4" sx={{ color: k.color, fontWeight: 800 }}>{k.value}</Typography>
               <Typography variant="caption" color="text.secondary">{k.label}</Typography>
             </Paper>
           </Grid>
@@ -391,14 +380,14 @@ export default function GPSPage() {
       </Grid>
 
       {isLoading ? (
-        <Box display="flex" justifyContent="center" py={6}><CircularProgress /></Box>
+        <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress /></Box>
       ) : (
         <>
           {/* Map + event feed */}
-          <Grid container spacing={2} mb={3}>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid size={{ xs: 12, md: 8 }}>
               <Paper sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)' }}>
-                <Typography variant="subtitle2" fontWeight={700} mb={1} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, mb: 1 }}>
                   <MyLocationIcon fontSize="small" /> Live Positions
                 </Typography>
                 <VehicleMapView vehicles={vehicles} />
@@ -406,7 +395,7 @@ export default function GPSPage() {
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
               <Paper sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', height: '100%' }}>
-                <Typography variant="subtitle2" fontWeight={700} mb={1} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, mb: 1 }}>
                   <WarningAmberIcon fontSize="small" sx={{ color: '#FF9800' }} /> Recent Geofence Events
                 </Typography>
                 <Stack spacing={1} sx={{ maxHeight: 340, overflowY: 'auto' }}>
@@ -418,8 +407,8 @@ export default function GPSPage() {
                   {recentEvents.map((ev: any) => (
                     <Box key={ev.id} sx={{ p: 1.5, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.04)',
                       borderLeft: `3px solid ${ev.event_type === 'entry' ? '#00E396' : ev.event_type === 'exit' ? '#FF4560' : '#FF9800'}` }}>
-                      <Typography variant="caption" fontWeight={700}>{ev.vehicle_name}</Typography>
-                      <Typography variant="caption" display="block" color="text.secondary">
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>{ev.vehicle_name}</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                         {ev.event_type === 'entry' ? 'Entered' : ev.event_type === 'exit' ? 'Exited' : 'Speed violation in'} {ev.geofence_name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">{relativeTime(ev.occurred_at)}</Typography>
@@ -440,7 +429,7 @@ export default function GPSPage() {
             {tab === 0 && (
               <Box sx={{ p: 2 }}>
                 {vehicles.length === 0 ? (
-                  <Typography color="text.secondary" textAlign="center" py={4}>
+                  <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
                     No vehicles registered. Click "Add Vehicle" to get started.
                   </Typography>
                 ) : (

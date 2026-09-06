@@ -110,9 +110,7 @@ export default function DeviceProtocols() {
 
   return (
     <Box>
-      <PageHeader
-        title="Device Protocols"
-        subtitle="What each hardware protocol needs configured, per site"
+      <PageHeader pageKey="device-protocols"
         action={
           <Tooltip title="Open Device Protocols in its own window">
             <IconButton size="small" onClick={() => openInNewWindow('/device-protocols')}>

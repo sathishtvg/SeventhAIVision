@@ -22,7 +22,6 @@ import {
   DialogActions,
   TextField,
   IconButton,
-  Tooltip,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
@@ -251,7 +250,7 @@ function ReviewDialog({ violation, onClose }: { violation: Violation | null; onC
                 <Chip size="small" label="Auto" variant="outlined" sx={{ fontSize: '0.7rem' }} />
               )}
             </Box>
-            <Typography variant="body2" fontWeight={600}>{violation.guard_name}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>{violation.guard_name}</Typography>
             <Typography variant="caption" color="text.secondary">
               {fmtDateTime(violation.occurred_at)} {violation.site_name ? `· ${violation.site_name}` : ''} · {violation.points} pts
             </Typography>
@@ -315,7 +314,7 @@ export function ViolationsPage() {
 
   return (
     <Box>
-      <PageHeader title="Violations" subtitle="Attendance and conduct tracking across all guards" />
+      <PageHeader pageKey="violations" />
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2.5, flexWrap: 'wrap' }}>
         {[
@@ -333,7 +332,7 @@ export function ViolationsPage() {
       {/* Points leaderboard */}
       {summary.length > 0 && (
         <GlassCard sx={{ p: 2, mb: 2.5 }}>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Points Leaderboard (90 days)</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700 }}>Points Leaderboard (90 days)</Typography>
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
             {summary.slice(0, 8).map((row) => {
               const pts = row.total_points ?? 0
@@ -344,7 +343,7 @@ export function ViolationsPage() {
                   px: 1.5, py: 1, borderRadius: '10px', backgroundColor: `rgba(${rgb},0.08)`,
                   border: `1px solid rgba(${rgb},0.2)`, minWidth: 140,
                 }}>
-                  <Typography variant="body2" fontWeight={600} noWrap>{row.guard_name}</Typography>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{row.guard_name}</Typography>
                   <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
                     {pts} pts · {row.violation_count} violations
                   </Typography>
@@ -432,7 +431,7 @@ function ViolationRow({ v }: { v: Violation }) {
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
         <TypeChip type={v.violation_type} />
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" fontWeight={600}>{v.guard_name}</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.guard_name}</Typography>
           <Typography variant="caption" color="text.secondary">
             {fmtDateTime(v.occurred_at)}{v.site_name ? ` · ${v.site_name}` : ''} · {v.points} pts
             {v.is_auto_generated ? ' · auto' : ` · logged by ${v.reported_by_name ?? '—'}`}

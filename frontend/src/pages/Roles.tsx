@@ -95,8 +95,8 @@ function RoleEditor({ open, onClose, existing }: {
         <Box sx={{ maxHeight: 360, overflow: 'auto', pr: 1 }}>
           {[...byCategory.entries()].map(([category, perms]) => (
             <Box key={category} sx={{ mb: 1 }}>
-              <Typography variant="caption" fontWeight={700}
-                          sx={{ textTransform: 'uppercase', color: 'primary.main' }}>
+              <Typography variant="caption"
+                          sx={{ textTransform: 'uppercase', color: 'primary.main', fontWeight: 700 }}>
                 {category}
               </Typography>
               <Stack sx={{ pl: 1 }}>
@@ -147,8 +147,7 @@ export default function Roles() {
 
   return (
     <Box>
-      <PageHeader title="Roles & Permissions"
-                  subtitle="Built-in roles plus your own custom roles" />
+      <PageHeader pageKey="roles" />
 
       <Stack direction="row" sx={{ mb: 2 }}>
         <Button variant="contained" size="small" startIcon={<AddIcon />}
@@ -165,7 +164,7 @@ export default function Roles() {
               <ListItemText
                 primary={
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2" fontWeight={700}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
                       {role.is_custom ? role.name : (BUILTIN_LABELS[role.id] ?? role.name)}
                     </Typography>
                     {role.is_custom ? (

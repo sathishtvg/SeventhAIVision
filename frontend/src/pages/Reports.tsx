@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   Box, Tab, Tabs, Typography, Button, Paper, Table, TableBody, TableCell,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -14,14 +14,13 @@ import { getSites } from '@/api/sites'
 import { getFaceWatchlist, getPlateWatchlist } from '@/api/watchlist'
 import { listVisitors } from '@/api/visitors'
 import { GlassCard } from '@/components/common/GlassCard'
+import { PageHeader } from '@/components/common/PageHeader'
 
 export default function Reports() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
-      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700, color: 'primary.main' }}>
-        Reports & Compliance
-      </Typography>
+      <PageHeader pageKey="reports" />
       <Paper sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="primary">
           <Tab label="PDF Reports" />
@@ -70,7 +69,7 @@ function PdfReportsTab() {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
           Alerts, incidents, and camera stats for a site over a date range.
         </Typography>
-        <Grid container spacing={2} alignItems="flex-end">
+        <Grid container spacing={2} sx={{ alignItems: "flex-end" }}>
           <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               select label="Site" value={siteForm.site_id} fullWidth size="small"
@@ -116,7 +115,7 @@ function PdfReportsTab() {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
           Printable DOB extract for PLRD compliance and handover purposes.
         </Typography>
-        <Grid container spacing={2} alignItems="flex-end">
+        <Grid container spacing={2} sx={{ alignItems: "flex-end" }}>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField
               label="From" type="date" value={dobForm.date_from} fullWidth size="small"
@@ -163,7 +162,7 @@ function PdfReportsTab() {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
           Full incident report with evidence chain of custody and timeline.
         </Typography>
-        <Grid container spacing={2} alignItems="flex-end">
+        <Grid container spacing={2} sx={{ alignItems: "flex-end" }}>
           <Grid size={{ xs: 12, sm: 8 }}>
             <TextField
               label="Incident ID" value={incidentId} fullWidth size="small"

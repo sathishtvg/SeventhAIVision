@@ -1,3 +1,11 @@
 node_modules/
 dist/
 release/
+
+# electron-builder's MSI staging drops copies of dist/index.html and
+# electron/main.js here at the package root. They are byte-identical
+# duplicates that nothing loads — package.json's "main" points at
+# electron/main.js — but an untracked second main.js next to the real one is
+# exactly the kind of thing someone edits by mistake.
+/index.html
+/main.js

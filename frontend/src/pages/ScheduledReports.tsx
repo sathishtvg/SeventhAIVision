@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  Box, Typography, Button, Paper, Table, TableBody, TableCell,
+  Box, Typography, Button, Table, TableBody, TableCell,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, MenuItem, Switch, FormControlLabel, IconButton, Tooltip,
   Collapse, Alert, CircularProgress,
@@ -17,9 +17,10 @@ import {
   listSchedules, createSchedule, updateSchedule, deleteSchedule, listDeliveries, runNow,
   REPORT_TYPES, FREQUENCIES, DELIVERY_METHODS, DAYS_OF_WEEK,
 } from '@/api/scheduled_reports'
-import type { ReportSchedule, ScheduleCreate } from '@/api/scheduled_reports'
+import type { ScheduleCreate } from '@/api/scheduled_reports'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   success: 'success',
@@ -41,7 +42,7 @@ export default function ScheduledReports() {
 
   const { data: sites = [] } = useQuery({
     queryKey: ['sites'],
-    queryFn: getSites,
+    queryFn: () => getSites(),
   })
 
   const createMut = useMutation({
@@ -76,10 +77,8 @@ export default function ScheduledReports() {
 
   return (
     <Box>
+      <PageHeader pageKey="scheduled-reports" />
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', flex: 1 }}>
-          Scheduled Reports
-        </Typography>
         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
           New Schedule
         </Button>
@@ -313,12 +312,12 @@ function CreateScheduleDialog({ open, onClose, onSubmit, loading, sites }: Creat
           <TextField label="Day of Month (1-28)" type="number"
             value={form.day_of_month ?? 1}
             onChange={(e) => set('day_of_month', Math.min(28, Math.max(1, Number(e.target.value))))}
-            inputProps={{ min: 1, max: 28 }} fullWidth />
+ fullWidth slotProps={{ htmlInput: { min: 1, max: 28 } }} />
         )}
 
         <TextField label="Hour UTC (0-23)" type="number" value={form.hour_utc ?? 8}
           onChange={(e) => set('hour_utc', Math.min(23, Math.max(0, Number(e.target.value))))}
-          inputProps={{ min: 0, max: 23 }} fullWidth />
+ fullWidth slotProps={{ htmlInput: { min: 0, max: 23 } }} />
 
         <TextField label="Delivery Method" select value={form.delivery_method}
           onChange={(e) => set('delivery_method', e.target.value)} fullWidth>

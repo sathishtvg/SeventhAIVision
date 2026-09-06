@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNotificationStore } from '@/store/notifications'
 import { playAlertSound, announceAlert } from '@/store/alertSound'
+import { PRODUCT_NAME } from '@/lib/brand'
 import type { RealtimeEvent } from '@/types/realtime'
 import type { AlertSeverity } from '@/types/api'
 import { useWebSocket } from './useWebSocket'
@@ -91,7 +92,7 @@ export function useRealtimeEvents() {
         playAlertSound(severity)
         announceAlert(severity, moduleType, siteName)
         if (window.electronAPI && (severity === 'high' || severity === 'critical')) {
-          window.electronAPI.showNotification('7th AI Vision — Alert', title)
+          window.electronAPI.showNotification(`${PRODUCT_NAME} — Alert`, title)
         }
         break
       }
@@ -100,7 +101,7 @@ export function useRealtimeEvents() {
         const title = (event.payload.title as string) ?? 'New incident'
         push((event.payload.severity as AlertSeverity) ?? 'medium', title)
         if (window.electronAPI) {
-          window.electronAPI.showNotification('7th AI Vision — Incident', title)
+          window.electronAPI.showNotification(`${PRODUCT_NAME} — Incident`, title)
         }
         break
       }

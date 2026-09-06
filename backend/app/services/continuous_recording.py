@@ -167,6 +167,20 @@ async def _start_segment(session: AsyncSession, tenant_id: str, stream: dict) ->
 
     recording_id = str(_uuid.uuid4())
     camera_id = str(stream["camera_id"])
+
+    # Bail before touching the table if an identifier is missing. Postgres
+    # rejects CAST('' AS uuid), so an empty value here aborts the whole tick
+    # with "invalid input syntax for type uuid" — and the tick retries
+    # forever, filling the log and never recording anything. Skipping one bad
+    # stream lets the other cameras keep recording.
+    stream_id = str(stream["stream_id"] or "")
+    if not tenant_id or not camera_id or not stream_id or "" in (tenant_id, camera_id, stream_id):
+        logger.warning(
+            "continuous_recording: skipping stream with missing ids "
+            "(tenant=%r camera=%r stream=%r)", tenant_id, camera_id, stream_id,
+        )
+        return
+
     rel_path = f"{tenant_id}/{camera_id}/{recording_id}.mp4"
     await session.execute(
         text(

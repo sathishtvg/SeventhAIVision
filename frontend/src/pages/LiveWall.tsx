@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Box, Button, ButtonGroup, Checkbox, Chip, Dialog, DialogActions,
-  DialogContent, DialogTitle, Fade, FormControlLabel, Grid, IconButton,
-  ListItemText, ListSubheader, MenuItem, Select, Switch, TextField,
+  DialogContent, DialogTitle, Divider, Fade, FormControlLabel, Grid, IconButton,
+  ListItemText, ListSubheader, MenuItem, Popover, Select, Switch, TextField,
   Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -17,20 +17,18 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import SaveIcon from '@mui/icons-material/Save'
 import StopIcon from '@mui/icons-material/Stop'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
+import TuneIcon from '@mui/icons-material/Tune'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { apiClient } from '@/api/client'
-import { getSites } from '@/api/sites'
 import { startRecording, stopRecording } from '@/api/recordings'
 import { getMyEnabledModules, ALL_AI_MODULES, MODULE_LABELS, type AiModuleType } from '@/api/licenses'
 import {
   createWallLayout, deleteWallLayout, listWallLayouts, updateWallLayout,
   type WallLayout,
 } from '@/api/wallLayouts'
-import { GlassCard } from '@/components/common/GlassCard'
 import { HlsPlayer } from '@/components/common/HlsPlayer'
 import { DetectionOverlay } from '@/components/common/DetectionOverlay'
 import { RestrictedZoneDialog } from '@/components/common/RestrictedZoneDialog'
@@ -200,7 +198,7 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
            * in place — fixes the overlapping-label glitch during auto-pop
            * swaps, where the grid cell's DOM node was being reused. */}
           <Fade in key={cell.camera_id} timeout={250}>
-            <Typography variant="caption" color="white" fontWeight={700} noWrap sx={{ flex: 1 }}>
+            <Typography variant="caption" color="white" noWrap sx={{ flex: 1, fontWeight: 700 }}>
               {cell.camera_name}
             </Typography>
           </Fade>
@@ -314,6 +312,16 @@ export function LiveWallPage() {
   const [activeModules, setActiveModules] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(OVERLAY_MODULES_KEY) ?? '[]') } catch { return [] }
   })
+  const [analyticsAnchor, setAnalyticsAnchor] = useState<HTMLElement | null>(null)
+
+  /** Set + persist together. The All/None shortcuts must not bypass the
+   *  localStorage write that toggleModule does, or the wall would silently
+   *  revert to the old selection on the next load. */
+  const applyModules = (next: string[]) => {
+    setActiveModules(next)
+    localStorage.setItem(OVERLAY_MODULES_KEY, JSON.stringify(next))
+  }
+
   const toggleModule = (m: string) => {
     setActiveModules((prev) => {
       const next = prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
@@ -570,11 +578,16 @@ export function LiveWallPage() {
     <Box
       sx={{
         p: kiosk ? 1 : 3,
-        ...(kiosk && { height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
+        /* 100% of AppShell's content area, not 100vh — in focus mode the shell
+           now renders a Back/Exit strip above this, so a viewport-height wall
+           would overflow by exactly the strip's height and push the bottom row
+           of cameras off screen. The content area is a flex child of a 100vh
+           column, so its height is definite and the percentage resolves. */
+        ...(kiosk && { height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap', flexShrink: 0 }}>
-        <Typography variant="h5" fontWeight={800} sx={{ flex: 1 }}>
+        <Typography variant="h5" sx={{ flex: 1, fontWeight: 800 }}>
           Live Wall
         </Typography>
         <Select
@@ -710,32 +723,88 @@ export function LiveWallPage() {
             </Button>
           </ButtonGroup>
         </Tooltip>
+        {/* Analytics used to be eleven equal-weight chips inline. They wrapped
+            onto two full rows, pushed the primary actions onto a third, and
+            cost roughly 200px of chrome above the video — on the one screen
+            where video is the entire point. It is also a filter an operator
+            sets and then leaves alone, not something toggled every minute, so
+            it does not deserve permanent real estate. Folded into one button
+            that states the current state and opens the same toggles. */}
         {availableModules.length > 0 && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.25 }}>Analytics:</Typography>
-            {availableModules.map((m) => (
-              <Chip
-                key={m}
-                label={MODULE_LABELS[m as AiModuleType] ?? m}
+          <>
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.25, my: 0.5 }} />
+            <Tooltip title="Choose which AI overlays are drawn on the wall">
+              <Button
                 size="small"
-                onClick={() => toggleModule(m)}
-                color={activeModules.includes(m) ? 'primary' : 'default'}
-                variant={activeModules.includes(m) ? 'filled' : 'outlined'}
-                sx={{ cursor: 'pointer' }}
-              />
-            ))}
-          </Box>
+                variant="outlined"
+                startIcon={<TuneIcon />}
+                onClick={(e) => setAnalyticsAnchor(e.currentTarget)}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                Analytics
+                <Box
+                  component="span"
+                  sx={{
+                    ml: 0.75, px: 0.75, borderRadius: 1, fontSize: '0.7rem', lineHeight: 1.6,
+                    bgcolor: activeModules.length ? 'primary.main' : 'action.disabledBackground',
+                    color: activeModules.length ? 'primary.contrastText' : 'text.secondary',
+                  }}
+                >
+                  {activeModules.length === 0
+                    ? 'Off'
+                    : activeModules.length === availableModules.length
+                      ? 'All'
+                      : activeModules.length}
+                </Box>
+              </Button>
+            </Tooltip>
+            <Popover
+              open={Boolean(analyticsAnchor)}
+              anchorEl={analyticsAnchor}
+              onClose={() => setAnalyticsAnchor(null)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              slotProps={{ paper: { sx: { p: 1.5, maxWidth: 380 } } }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Overlays drawn on every cell
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  <Button size="small" onClick={() => applyModules(availableModules)}>All</Button>
+                  <Button size="small" onClick={() => applyModules([])}>None</Button>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {availableModules.map((m) => (
+                  <Chip
+                    key={m}
+                    label={MODULE_LABELS[m as AiModuleType] ?? m}
+                    size="small"
+                    onClick={() => toggleModule(m)}
+                    color={activeModules.includes(m) ? 'primary' : 'default'}
+                    variant={activeModules.includes(m) ? 'filled' : 'outlined'}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Box>
+            </Popover>
+          </>
         )}
-        <Tooltip title={kiosk ? 'Exit full screen (Esc)' : 'Enter full screen for continuous monitoring'}>
-          <Button
-            size="small"
-            variant={kiosk ? 'contained' : 'outlined'}
-            startIcon={kiosk ? <FullscreenExitIcon /> : <FullscreenIcon />}
-            onClick={toggleKiosk}
-          >
-            {kiosk ? 'Exit Full Screen' : 'Full Screen'}
-          </Button>
-        </Tooltip>
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.25, my: 0.5 }} />
+        {/* Enter-only — AppShell's focus-mode strip owns Back and Exit once
+            full screen, so the two don't stack in the same corner. */}
+        {!kiosk && (
+          <Tooltip title="Enter full screen for continuous monitoring">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<FullscreenIcon />}
+              onClick={toggleKiosk}
+            >
+              Full Screen
+            </Button>
+          </Tooltip>
+        )}
         <Button
           variant="contained"
           size="small"

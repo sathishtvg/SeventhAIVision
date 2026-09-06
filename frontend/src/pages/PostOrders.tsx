@@ -41,6 +41,7 @@ import {
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 
 const CATEGORY_COLORS: Record<string, 'default' | 'error' | 'primary' | 'warning' | 'info' | 'success'> = {
@@ -222,17 +223,23 @@ export function PostOrdersPage() {
     setEditorOpen(true)
   }
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'site',
+    label: 'Site',
+    value: siteFilter,
+    onChange: setSiteFilter,
+    options: [
+      { value: '', label: 'All sites' },
+      ...sites.map((s: any) => ({ value: s.id, label: s.name })),
+    ],
+  }]
+
   return (
-    <Box>
-      <PageHeader title="Post Orders" subtitle="Site standing instructions with acknowledgment tracking" />
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <PageHeader pageKey="post-orders" />
 
       <Stack direction="row" spacing={1.5} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Select size="small" displayEmpty value={siteFilter}
-                onChange={(e) => setSiteFilter(e.target.value)} sx={{ minWidth: 180 }}
-                renderValue={(v) => sites.find((s: any) => s.id === v)?.name ?? 'All sites'}>
-          <MenuItem value="">All sites</MenuItem>
-          {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
-        </Select>
         <PermissionGuard permission="shift:manage">
           <Button variant="contained" size="small" startIcon={<AddIcon />}
                   onClick={() => { setEditing(null); setEditorOpen(true) }}>
@@ -253,7 +260,7 @@ export function PostOrdersPage() {
               <ListItemText
                 primary={
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2" fontWeight={700}>{o.title}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{o.title}</Typography>
                     <Chip label={o.category} size="small"
                           color={CATEGORY_COLORS[o.category] ?? 'default'}
                           sx={{ height: 18, fontSize: '0.62rem' }} />
@@ -303,6 +310,9 @@ export function PostOrdersPage() {
       )}
       {readingId && <ReaderDialog orderId={readingId} onClose={() => setReadingId(null)} />}
       {acksId && <AcksDialog orderId={acksId} onClose={() => setAcksId(null)} />}
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="post-orders" />
     </Box>
   )
 }

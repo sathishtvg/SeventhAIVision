@@ -3,9 +3,11 @@ import type {
 } from '@/types/api'
 import { apiClient } from './client'
 
-export const getSummary = (siteId?: string) =>
+export const getSummary = (siteId?: string, days?: number) =>
   apiClient
-    .get<AnalyticsSummary>('/api/v1/analytics/summary', { params: siteId ? { site_id: siteId } : undefined })
+    .get<AnalyticsSummary>('/api/v1/analytics/summary', {
+      params: { ...(siteId ? { site_id: siteId } : {}), ...(days ? { days } : {}) },
+    })
     .then((r) => r.data)
 
 export const getAlertsBySeverity = (days = 30) =>

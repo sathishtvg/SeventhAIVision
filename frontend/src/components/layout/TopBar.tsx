@@ -14,6 +14,7 @@ import LanguageIcon from '@mui/icons-material/Language'
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
 import VolumeOffIcon from '@mui/icons-material/VolumeOff'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { PRODUCT_NAME } from '@/lib/brand'
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
 import { useAuthStore } from '@/store/auth'
 import { useNotificationStore } from '@/store/notifications'
@@ -88,7 +89,7 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
                     s.last_seen_at ? `Last seen: ${new Date(s.last_seen_at).toLocaleString()}` : null,
                   ].filter(Boolean).join('  ·  ')}
                   slotProps={{
-                    primary: { variant: 'body2', fontWeight: 600 },
+                    primary: { variant: 'body2', sx: { fontWeight: 600 } },
                     secondary: { variant: 'caption', color: 'text.secondary' },
                   }}
                 />
@@ -172,6 +173,7 @@ export function TopBar({ title }: Props) {
   const theme = useTheme()
   const isDark = mode === 'dark'
   const [profileOpen, setProfileOpen] = useState(false)
+
   const { i18n: i18nInstance } = useTranslation()
   const currentLocale = (i18nInstance.language?.slice(0, 2) ?? 'en') as SupportedLocale
 
@@ -179,7 +181,7 @@ export function TopBar({ title }: Props) {
     i18n.changeLanguage(locale)
     localStorage.setItem('locale', locale)
     // Persist to backend (fire-and-forget)
-    import('@/api/client').then(({ default: apiClient }) => {
+    import('@/api/client').then(({ apiClient }) => {
       apiClient.put('/api/v1/i18n/me/locale', { locale }).catch(() => {/* ignore if logged out */})
     })
   }
@@ -187,10 +189,6 @@ export function TopBar({ title }: Props) {
   const wsColor = status === 'open' ? '#22C55E' : status === 'connecting' ? '#F59E0B' : '#FF4560'
   const wsLabel = status === 'open' ? 'Live'     : status === 'connecting' ? 'Connecting'  : 'Offline'
   const wsRgb   = status === 'open' ? '34,197,94' : status === 'connecting' ? '245,158,11' : '255,69,96'
-
-  const titleGradient = isDark
-    ? 'linear-gradient(90deg, #F1F5F9 0%, rgba(108,99,255,0.85) 100%)'
-    : 'linear-gradient(90deg, #0F172A 0%, #6C63FF 100%)'
 
   return (
     <>
@@ -226,23 +224,38 @@ export function TopBar({ title }: Props) {
           }}
         />
 
-        {/* Page title */}
-        <Typography
-          variant="h6"
-          noWrap
-          sx={{
-            flexGrow: 1,
-            fontWeight: 800,
-            fontSize: '0.95rem',
-            background: titleGradient,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          {title}
-        </Typography>
+        {/* The product name, then where you are inside it. This bar is the one
+            element on every screen, so it is what guarantees "Seventh AI
+            Vision" is always visible; the subscriber's own label and logo stay
+            in the sidebar rather than competing for the same spot. Both are
+            solid text:
+            these used to be painted as a gradient clipped to the glyphs, which
+            fades every title into the accent colour toward its end and reads as
+            washed out on both themes — worse the longer the word. The accent
+            now lives entirely in the bar to the left, where it decorates
+            without costing legibility. */}
+        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 1 }}>
+          <Typography
+            variant="h6"
+            noWrap
+            sx={{
+              fontWeight: 800,
+              fontSize: '0.95rem',
+              letterSpacing: '-0.02em',
+              color: 'text.primary',
+              flexShrink: 0,
+            }}
+          >
+            {PRODUCT_NAME}
+          </Typography>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{ fontSize: '0.8rem', color: 'text.secondary', minWidth: 0 }}
+          >
+            · {title}
+          </Typography>
+        </Box>
 
         {/* Live clock */}
         <LiveClock />

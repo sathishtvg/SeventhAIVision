@@ -38,7 +38,45 @@ def _choice_validator(*allowed: str) -> Callable[[Any], None]:
     return _validate
 
 
+def _page_labels_validator(v: Any) -> None:
+    """Per-tenant renaming of page titles and descriptions.
+
+    The shape is {page_key: {"title"?: str, "subtitle"?: str}}. Only keys the
+    tenant actually overrode are stored — anything absent falls back to the
+    product default in the frontend's page-label registry, so a tenant that
+    renames one page does not freeze the wording of every other page against
+    future edits.
+
+    The first non-scalar setting here, which is why it validates structurally
+    rather than reusing the range/int/bool helpers above. Lengths are capped
+    because these render into a fixed page header: an unbounded string would
+    push the layout apart, which is the exact class of defect this feature
+    exists to clean up.
+    """
+    if not isinstance(v, dict):
+        raise ValueError("must be an object of {page_key: {title, subtitle}}")
+    if len(v) > 200:
+        raise ValueError("too many page overrides (max 200)")
+    for key, entry in v.items():
+        if not isinstance(key, str) or not key or len(key) > 64:
+            raise ValueError("page keys must be non-empty strings up to 64 chars")
+        if not isinstance(entry, dict):
+            raise ValueError(f"'{key}' must be an object with title and/or subtitle")
+        extra = set(entry) - {"title", "subtitle"}
+        if extra:
+            raise ValueError(f"'{key}' has unknown field(s): {', '.join(sorted(extra))}")
+        for field, limit in (("title", 60), ("subtitle", 160)):
+            if field in entry:
+                val = entry[field]
+                if not isinstance(val, str):
+                    raise ValueError(f"'{key}.{field}' must be a string")
+                if len(val) > limit:
+                    raise ValueError(f"'{key}.{field}' must be {limit} characters or fewer")
+
+
 SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
+    # Tenant-authored page titles/descriptions; defaults live in the frontend.
+    "ui.page_labels": _page_labels_validator,
     "lpr.confidence_threshold": _range_validator(0.0, 1.0),
     "face.match_threshold": _range_validator(0.0, 1.0),
     "intrusion.breach_cooldown_seconds": _positive_int_validator,

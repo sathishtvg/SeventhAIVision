@@ -20,7 +20,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
 from app.services.alarm_shift import arm_site_panels, disarm_site_panels
-from app.services.geofence import haversine_meters
+from app.services.geofence import is_within_site
 from app.services.liveness import check_liveness_sync
 from app.services.violations import VIOLATION_POINTS, create_violation
 
@@ -28,11 +28,16 @@ router = APIRouter(prefix="/api/v1/shifts", tags=["guard-ops"])
 
 # ── Attendance settings (ShiftSecure Phase 2A) ────────────────────────────────
 
-_ATTENDANCE_DEFAULTS = {
-    "attendance.geofence_radius_meters": 200,
-    "attendance.late_grace_minutes": 10,
-    "attendance.overtime_threshold_minutes": 15,
-}
+"""Defaults and the tenant-override lookup now live in
+services/attendance_status.py — shifts.py writes is_late using this grace
+period and the attendance monitor and Site Map read it back, so a second
+copy here would let the writer and the readers drift apart."""
+from app.services.attendance_status import (  # noqa: E402
+    ATTENDANCE_DEFAULTS as _ATTENDANCE_DEFAULTS,
+    get_attendance_setting as _get_attendance_setting,
+    get_site_grace_minutes as _get_site_grace_minutes,
+)
+
 _LIVENESS_MIN_SCORE_DEFAULT = 0.7
 
 
@@ -45,14 +50,6 @@ async def _get_liveness_min_score(db: AsyncSession) -> float:
     return _LIVENESS_MIN_SCORE_DEFAULT
 
 
-async def _get_attendance_setting(db: AsyncSession, key: str) -> int:
-    row = (await db.execute(
-        text("SELECT setting_value FROM tenant_settings WHERE setting_key = :k"),
-        {"k": key},
-    )).first()
-    if row is not None and isinstance(row[0], int):
-        return row[0]
-    return _ATTENDANCE_DEFAULTS[key]
 
 
 async def _process_checkin_photo(
@@ -476,7 +473,10 @@ async def start_shift(
     )
 
     now = datetime.now(timezone.utc)
-    grace_minutes = await _get_attendance_setting(db, "attendance.late_grace_minutes")
+    # Per-site grace, falling back to the tenant setting. Resolved through the
+    # shared helper so the standard applied here — where is_late is written —
+    # is the same one the attendance board applies when it renders it.
+    grace_minutes = await _get_site_grace_minutes(db, shift_row.site_id)
     raw_late_minutes = (now - shift_row.scheduled_start).total_seconds() / 60
     is_late = raw_late_minutes > grace_minutes
     late_minutes = max(0, round(raw_late_minutes)) if is_late else 0
@@ -484,15 +484,25 @@ async def start_shift(
     is_within_geofence: bool | None = None
     if latitude is not None and longitude is not None and shift_row.site_id:
         site_row = (await db.execute(
-            text("SELECT latitude, longitude, geofence_radius_meters FROM sites WHERE id = :sid"),
+            text(
+                "SELECT latitude, longitude, geofence_radius_meters, geofence_polygon "
+                "FROM sites WHERE id = :sid"
+            ),
             {"sid": shift_row.site_id},
         )).first()
-        if site_row is not None and site_row.latitude is not None and site_row.longitude is not None:
-            radius = site_row.geofence_radius_meters or await _get_attendance_setting(
-                db, "attendance.geofence_radius_meters"
+        if site_row is not None:
+            # A drawn boundary takes precedence over the radius; is_within_site
+            # owns that rule so the check-in writer and any future caller
+            # cannot disagree about which shape applies.
+            is_within_geofence = is_within_site(
+                latitude, longitude,
+                site_lat=site_row.latitude,
+                site_lon=site_row.longitude,
+                radius_meters=site_row.geofence_radius_meters or await _get_attendance_setting(
+                    db, "attendance.geofence_radius_meters"
+                ),
+                polygon=site_row.geofence_polygon,
             )
-            distance = haversine_meters(latitude, longitude, site_row.latitude, site_row.longitude)
-            is_within_geofence = distance <= radius
 
     # Auto-detected violations (ShiftSecure Phase 3) — logged in the same
     # transaction as the check-in, never allowed to block it.
@@ -584,7 +594,10 @@ async def end_shift(
         over_minutes = (now - shift_row.scheduled_end).total_seconds() / 60
         if over_minutes > threshold:
             overtime_minutes = max(0, round(over_minutes - threshold))
-        grace_minutes = await _get_attendance_setting(db, "attendance.late_grace_minutes")
+        # Same per-site grace that decided lateness on the way in — a site
+        # given a wider allowance at the start of a shift gets it at the end
+        # too, or an early-departure violation contradicts the site's policy.
+        grace_minutes = await _get_site_grace_minutes(db, shift_row.site_id)
         is_early_departure = -over_minutes > grace_minutes
 
     # Safety net: auto-close a break the guard forgot to end.

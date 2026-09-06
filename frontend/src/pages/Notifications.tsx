@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Box, Tabs, Tab, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Chip, Skeleton, Paper, Button, IconButton, Dialog,
+  TableHead, TableRow, Chip, Paper, Button, IconButton, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem,
   FormControl, InputLabel, Tooltip,
 } from '@mui/material'
@@ -10,29 +10,20 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import SendIcon from '@mui/icons-material/Send'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
+import { SkeletonRows } from '@/components/common/SkeletonRows'
 import {
   getChannels, createChannel, deleteChannel, testChannel,
   getRules, createRule, deleteRule,
   getLogs,
 } from '@/api/notifications'
 import type { NotificationChannel } from '@/types/api'
+import { PageHeader } from '@/components/common/PageHeader'
 
 interface TabPanelProps { children: React.ReactNode; value: number; index: number }
 function TabPanel({ children, value, index }: TabPanelProps) {
   return <Box hidden={value !== index}>{value === index && children}</Box>
 }
 
-function SkeletonRows({ cols, rows = 4 }: { cols: number; rows?: number }) {
-  return (
-    <>
-      {Array.from({ length: rows }).map((_, i) => (
-        <TableRow key={i}>
-          {Array.from({ length: cols }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}
-        </TableRow>
-      ))}
-    </>
-  )
-}
 
 const STATUS_COLORS = { sent: 'success', failed: 'error', pending: 'warning' } as const
 const SEVERITIES = ['info', 'low', 'medium', 'high', 'critical']
@@ -357,6 +348,7 @@ export default function Notifications() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
+      <PageHeader pageKey="notifications" />
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>

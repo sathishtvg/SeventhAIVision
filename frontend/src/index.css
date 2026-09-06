@@ -51,7 +51,11 @@
   --t-slow:   350ms var(--ease-in-out);
   --t-spring: 400ms var(--ease-spring);
 
-  color-scheme: dark;
+  /* color-scheme is set from the active MUI theme (see glassmorphism.ts), not
+     pinned here. It is what tells the browser how to paint the controls IT
+     owns rather than us — the date field's calendar button, select arrows,
+     scrollbars, spinners. Hardcoding it dark left every one of those icons
+     mispainted in light mode, and unable to follow a theme switch at all. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;

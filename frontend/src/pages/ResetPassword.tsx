@@ -139,9 +139,9 @@ export default function ResetPassword() {
                   variant="h5"
                   sx={{
                     fontWeight: 800, lineHeight: 1.1,
-                    background: 'linear-gradient(135deg, #F1F5F9 30%, #8B85FF 100%)',
-                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text', letterSpacing: '-0.02em',
+                    // Solid rather than clipped-gradient text — legibility over the fade.
+                    color: '#F1F5F9',
+                    letterSpacing: '-0.02em',
                   }}
                 >
                   Reset Password

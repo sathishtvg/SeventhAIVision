@@ -7,6 +7,7 @@ import DownloadIcon from '@mui/icons-material/Download'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { exportAlerts, exportIncidents, exportDetections, exportAuditLogs } from '@/api/exports'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const SEVERITIES = ['', 'info', 'low', 'medium', 'high', 'critical']
 const ALERT_STATUSES = ['', 'open', 'acknowledged', 'resolved', 'dismissed']
@@ -129,6 +130,7 @@ export default function Export() {
 
   return (
     <Box>
+      <PageHeader pageKey="export" />
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Download up to 10,000 rows per export. Apply filters to narrow the result.
       </Typography>

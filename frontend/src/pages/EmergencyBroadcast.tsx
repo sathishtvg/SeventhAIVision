@@ -3,8 +3,7 @@ import {
   Box, Typography, Tab, Tabs, Grid, Chip, Button, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField,
   MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
-  CircularProgress, Skeleton, Alert, Collapse, IconButton,
-  LinearProgress, Tooltip,
+  CircularProgress, Skeleton, Alert, Collapse, LinearProgress,
 } from '@mui/material'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -14,11 +13,10 @@ import SendIcon from '@mui/icons-material/Send'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listBroadcasts, getMyBroadcasts, sendBroadcast, acknowledgeBroadcast, getBroadcast,
-  type EmergencyBroadcast,
 } from '@/api/emergency'
 import GlassCard from '@/components/common/GlassCard'
 import { usePermission } from '@/hooks/usePermission'
-import { useAuthStore } from '@/store/auth'
+import { PageHeader } from '@/components/common/PageHeader'
 
 const SEV_CONFIG = {
   info:     { color: '#2196F3', label: 'Info',     bg: 'rgba(33,150,243,0.15)' },
@@ -63,7 +61,6 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const qc = useQueryClient()
-  const user = useAuthStore(s => s.user)
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['broadcast-detail', b.id],
@@ -92,7 +89,7 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
             {expanded ? <ExpandLessIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.4)' }} />
                       : <ExpandMoreIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.4)' }} />}
             <Box>
-              <Typography fontWeight={600} fontSize="0.88rem">{b.title}</Typography>
+              <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{b.title}</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
                 {b.sender_name ?? 'Operations'} · {new Date(b.sent_at || b.created_at).toLocaleString()}
               </Typography>
@@ -160,7 +157,7 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
               {detail?.recipients?.map(r => (
                 <TableRow key={r.user_id} hover>
                   <TableCell>
-                    <Typography fontSize="0.82rem">{r.full_name}</Typography>
+                    <Typography sx={{ fontSize: "0.82rem" }}>{r.full_name}</Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>{r.email}</Typography>
                   </TableCell>
                   <TableCell sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>
@@ -318,7 +315,7 @@ function ComposeTab() {
     return (
       <GlassCard sx={{ p: 4, textAlign: 'center', maxWidth: 480, mx: 'auto' }}>
         <CheckCircleIcon sx={{ fontSize: 64, color: '#00E396', mb: 2 }} />
-        <Typography variant="h6" fontWeight={700} gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 700 }}>
           Broadcast Sent
         </Typography>
         <Typography sx={{ color: 'rgba(255,255,255,0.6)', mb: 3 }}>
@@ -338,7 +335,7 @@ function ComposeTab() {
     <Grid container spacing={3}>
       <Grid size={{ xs: 12, md: 7 }}>
         <GlassCard sx={{ p: 3 }}>
-          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700 }}>
             Compose Broadcast
           </Typography>
 
@@ -437,7 +434,7 @@ function ComposeTab() {
 
       <Grid size={{ xs: 12, md: 5 }}>
         <GlassCard sx={{ p: 3 }}>
-          <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
             Preview
           </Typography>
           <Box sx={{
@@ -452,7 +449,7 @@ function ComposeTab() {
               <Chip label={form.broadcast_type === 'all' ? 'All Staff' : 'Selected Roles'}
                 size="small" sx={{ bgcolor: 'rgba(255,255,255,0.06)', fontSize: '0.7rem' }} />
             </Box>
-            <Typography fontWeight={700} fontSize="0.9rem" gutterBottom>
+            <Typography gutterBottom sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
               {form.title || 'Broadcast Title'}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', whiteSpace: 'pre-wrap' }}>
@@ -485,11 +482,9 @@ export default function EmergencyBroadcastPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      <PageHeader pageKey="emergency-broadcast" />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
         <CampaignIcon sx={{ color: '#FF4560', fontSize: 28 }} />
-        <Typography variant="h5" fontWeight={700}>
-          Emergency Broadcasts
-        </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)}

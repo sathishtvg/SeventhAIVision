@@ -1,16 +1,20 @@
 import { useState } from 'react'
 import {
-  Box, Chip, IconButton, MenuItem, Select, Table, TableBody,
+  Box, Chip, IconButton, Table, TableBody,
   TableCell, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/api/client'
-import { downloadRecordingUrl } from '@/api/recordings'
+import { downloadRecordingUrl, playRecordingUrl } from '@/api/recordings'
 import { getSites } from '@/api/sites'
+import { useAuthStore } from '@/store/auth'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { MediaViewer } from '@/components/common/MediaViewer'
+import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import type { Recording } from '@/types/api'
 
 function formatBytes(bytes: number | null) {
@@ -28,6 +32,8 @@ function formatDuration(s: number | null) {
 
 export function RecordingsPage() {
   const [siteFilter, setSiteFilter] = useState('')
+  const [playing, setPlaying] = useState<any | null>(null)
+  const token = useAuthStore((s) => s.accessToken)
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
   // Fetch cameras to get recordings across all streams
@@ -61,24 +67,23 @@ export function RecordingsPage() {
     ? allRecordings.filter((r: any) => r.site_id === siteFilter)
     : allRecordings
 
+  const filterGroups: FilterGroup[] = [{
+    key: 'site',
+    label: 'Site',
+    value: siteFilter,
+    onChange: setSiteFilter,
+    options: [
+      { value: '', label: 'All Sites' },
+      ...(sites as any[]).map((s) => ({ value: s.id, label: s.name })),
+    ],
+  }]
+
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Recordings" subtitle="Video recordings from all camera streams" />
+    <Box sx={{ p: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <PageHeader pageKey="recordings" />
 
       <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
-        <Typography variant="body2" color="text.secondary">Site:</Typography>
-        <Select
-          size="small"
-          value={siteFilter}
-          onChange={(e) => setSiteFilter(e.target.value)}
-          displayEmpty
-          sx={{ minWidth: 150 }}
-        >
-          <MenuItem value="">All Sites</MenuItem>
-          {(sites as any[]).map((s) => (
-            <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-          ))}
-        </Select>
         {allRecordings.filter((r: any) => r.status === 'recording').length > 0 && (
           <Chip
             icon={<FiberManualRecordIcon sx={{ color: 'red !important', fontSize: '0.75rem !important' }} />}
@@ -98,7 +103,7 @@ export function RecordingsPage() {
               <TableCell>Started</TableCell>
               <TableCell>Duration</TableCell>
               <TableCell>Size</TableCell>
-              <TableCell align="right">Download</TableCell>
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -130,16 +135,23 @@ export function RecordingsPage() {
                 <TableCell>{formatBytes(rec.file_size_bytes)}</TableCell>
                 <TableCell align="right">
                   {rec.status === 'completed' && (
-                    <Tooltip title="Download">
-                      <IconButton
-                        size="small"
-                        component="a"
-                        href={downloadRecordingUrl(rec.id)}
-                        download
-                      >
-                        <DownloadIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    <>
+                      <Tooltip title="Play">
+                        <IconButton size="small" onClick={() => setPlaying(rec)}>
+                          <PlayArrowIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Download">
+                        <IconButton
+                          size="small"
+                          component="a"
+                          href={downloadRecordingUrl(rec.id)}
+                          download
+                        >
+                          <DownloadIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </>
                   )}
                 </TableCell>
               </TableRow>
@@ -147,6 +159,27 @@ export function RecordingsPage() {
           </TableBody>
         </Table>
       </GlassCard>
+      </Box>
+
+      <FilterRail groups={filterGroups} storageKey="recordings" />
+
+      {/* Built-in playback, fitted to the screen. Download stays available in
+          the viewer's toolbar — an investigator often wants the file itself,
+          not just a preview. */}
+      {playing && token && (
+        <MediaViewer
+          open
+          onClose={() => setPlaying(null)}
+          items={[{
+            id: playing.id,
+            kind: 'video',
+            label: `${playing.camera_name} · ${new Date(playing.started_at).toLocaleString()}`
+              + (playing.duration_seconds != null ? ` · ${formatDuration(playing.duration_seconds)}` : ''),
+            src: playRecordingUrl(playing.id, token),
+            downloadUrl: downloadRecordingUrl(playing.id),
+          }]}
+        />
+      )}
     </Box>
   )
 }

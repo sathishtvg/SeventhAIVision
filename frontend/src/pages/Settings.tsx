@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Box, Typography, Grid, Slider, Button, Alert, Skeleton, TextField, Chip, Divider, List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, Tooltip, Switch, FormControlLabel, MenuItem, Select, InputLabel, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment } from '@mui/material'
+import { useNavigate } from 'react-router-dom'
+import { Box, Typography, Grid, Stack, Slider, Button, Alert, Skeleton, TextField, Chip, Divider, List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, Tooltip, Switch, FormControlLabel, MenuItem, Select, InputLabel, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment } from '@mui/material'
 import LogoutIcon from '@mui/icons-material/Logout'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -8,12 +9,16 @@ import PaletteIcon from '@mui/icons-material/Palette'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { useColorMode, BRAND_PRESETS } from '@/context/ColorMode'
 import { getSettings, upsertSetting } from '@/api/settings'
 import { getBranding, updateBranding } from '@/api/branding'
 import { get2FAStatus, setup2FA, enable2FA, disable2FA, get2faPolicy, set2faPolicy } from '@/api/guards'
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
 import { listDedupRules, createDedupRule, deleteDedupRule, type DedupRuleBody } from '@/api/alertDedup'
 import { getCameras } from '@/api/cameras'
+import { PageHeader } from '@/components/common/PageHeader'
+import { PAGE_LABELS, PAGE_LABELS_SETTING, usePageLabelOverrides, type PageKey } from '@/hooks/usePageLabels'
+import type { PageLabelOverrides } from '@/lib/pageLabels'
 
 interface SettingKnobProps {
   label: string
@@ -396,11 +401,33 @@ export default function Settings() {
 
   return (
     <Box>
+      <PageHeader pageKey="settings" />
+      {/* ── My appearance ─────────────────────────────────────────────────
+          Deliberately first, and deliberately separate from Tenant Branding
+          below: branding is what every user of this tenant sees, this is
+          only what *you* see. Keeping them adjacent but clearly labelled is
+          what stops an admin changing their own accent and assuming they
+          just rebranded the company. */}
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+        My Appearance
+      </Typography>
+      <AppearanceSection />
+
+      <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+
       {/* ── Branding ──────────────────────────────────────────────────────── */}
       <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
         Tenant Branding
       </Typography>
       <BrandingSection />
+
+      <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+      {/* ── Page names ────────────────────────────────────────────────────── */}
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+        Page Names
+      </Typography>
+      <PageLabelsSection />
 
       <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
 
@@ -456,7 +483,140 @@ export default function Settings() {
         <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Alert Deduplication Rules</Typography>
         <AlertDedupRulesSection />
       </PermissionGuard>
+
+      <AdvancedLinksSection />
     </Box>
+  )
+}
+
+/** Setup-once plumbing that used to occupy permanent slots in a 53-item
+ *  sidebar an operator reads every shift. The pages are unchanged and the
+ *  routes still work — they just live here now, where you go when you are
+ *  actually configuring the system rather than running it.
+ *
+ *  Each link is permission-gated exactly as its old nav entry was, so nobody
+ *  gains or loses access by the move. */
+/**
+ * Per-user theme choice. Stored against the signed-in user, so on a shared
+ * control-room PC one operator's accent does not follow the next person who
+ * signs in — everyone else keeps the usual colours until they pick their own.
+ */
+function AppearanceSection() {
+  const { mode, toggle, brandColor, setBrandColor, reset } = useColorMode()
+
+  return (
+    <GlassCard sx={{ p: 3, maxWidth: 640 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+        These settings apply to your account only, on this device. They do not
+        change what anyone else sees.
+      </Typography>
+
+      <FormControlLabel
+        control={<Switch checked={mode === 'light'} onChange={toggle} />}
+        label={mode === 'light' ? 'Light mode' : 'Dark mode'}
+        sx={{ mb: 3 }}
+      />
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        Accent colour
+      </Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        {BRAND_PRESETS.map((preset) => (
+          <Tooltip key={preset.hex} title={preset.name}>
+            <Box
+              component="button"
+              aria-label={preset.name}
+              onClick={() => setBrandColor(preset.hex)}
+              sx={{
+                width: 34, height: 34, borderRadius: '50%', cursor: 'pointer',
+                background: preset.hex, padding: 0,
+                border: brandColor.toLowerCase() === preset.hex.toLowerCase()
+                  ? '3px solid currentColor' : '2px solid rgba(128,128,128,0.35)',
+                color: 'text.primary',
+                transition: 'transform 0.12s',
+                '&:hover': { transform: 'scale(1.08)' },
+              }}
+            />
+          </Tooltip>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          type="color"
+          label="Custom"
+          size="small"
+          value={brandColor}
+          onChange={(e) => setBrandColor(e.target.value)}
+          sx={{ width: 110 }}
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
+        <TextField
+          size="small"
+          label="Hex"
+          value={brandColor}
+          onChange={(e) => {
+            const v = e.target.value
+            // Only push a valid colour into the theme — a half-typed "#6C6"
+            // would otherwise repaint the whole app mid-keystroke.
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) setBrandColor(v)
+          }}
+          sx={{ width: 130 }}
+        />
+        <Button size="small" variant="outlined" onClick={reset}>Reset to default</Button>
+      </Box>
+
+      <Alert severity="info" variant="outlined" sx={{ mt: 2.5 }}>
+        Very light accents can be hard to read in light mode. The presets above
+        are checked to stay legible in both.
+      </Alert>
+    </GlassCard>
+  )
+}
+
+function AdvancedLinksSection() {
+  const navigate = useNavigate()
+
+  const links: { label: string; description: string; path: string; permission: string }[] = [
+    { label: 'API Keys', description: 'Issue and revoke machine credentials', path: '/api-keys', permission: 'apikey:manage' },
+    { label: 'IP Allowlist', description: 'Restrict access to known networks', path: '/ip-allowlist', permission: 'iplist:manage' },
+    { label: 'Alert Dedup Rules', description: 'Full editor for the rules above', path: '/alert-dedup', permission: 'alert:dedup:manage' },
+    { label: 'Developer Tools', description: 'API reference and webhook testing', path: '/developer', permission: 'apikey:manage' },
+  ]
+
+  return (
+    <PermissionGuard permission="settings:read">
+      <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+      <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 700 }}>Advanced</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Configured once during setup — kept out of the main menu.
+      </Typography>
+      <Grid container spacing={2}>
+        {links.map((l) => (
+          <PermissionGuard permission={l.permission} key={l.path}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => navigate(l.path)}
+                sx={{
+                  justifyContent: 'flex-start',
+                  textAlign: 'left',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 0.25,
+                  py: 1.25,
+                  textTransform: 'none',
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{l.label}</Typography>
+                <Typography variant="caption" color="text.secondary">{l.description}</Typography>
+              </Button>
+            </Grid>
+          </PermissionGuard>
+        ))}
+      </Grid>
+    </PermissionGuard>
   )
 }
 
@@ -606,8 +766,8 @@ function TwoFASection() {
           <TextField
             label="Verification Code" value={totpCode} size="small"
             onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputProps={{ inputMode: 'numeric', maxLength: 6 }}
-            sx={{ mb: 1, mr: 1, width: 180 }}
+
+            sx={{ mb: 1, mr: 1, width: 180 }} slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 6 } }}
           />
           <Button
             variant="contained" size="small"
@@ -641,8 +801,8 @@ function TwoFASection() {
           <TextField
             label="TOTP Code" value={disableCode} size="small"
             onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputProps={{ inputMode: 'numeric', maxLength: 6 }}
-            sx={{ mb: 1, mr: 1, width: 180 }}
+
+            sx={{ mb: 1, mr: 1, width: 180 }} slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 6 } }}
           />
           <Button
             variant="contained" color="error" size="small"
@@ -777,7 +937,7 @@ function AlertDedupRulesSection() {
             value={windowSeconds}
             onChange={(e) => setWindowSeconds(Math.max(1, Math.min(86400, parseInt(e.target.value) || 300)))}
             helperText={`${formatWindow(windowSeconds)} — suppress duplicates within this period`}
-            inputProps={{ min: 1, max: 86400 }}
+            slotProps={{ htmlInput: { min: 1, max: 86400 } }}
           />
         </DialogContent>
         <DialogActions>
@@ -853,9 +1013,9 @@ function TwoFAPolicySection() {
           size="small"
           value={graceHours}
           onChange={(e) => setGraceHours(Math.max(0, parseInt(e.target.value, 10) || 0))}
-          inputProps={{ min: 0, max: 720 }}
+
           helperText="0 = immediate; new accounts are exempt for this many hours"
-          sx={{ width: 220 }}
+          sx={{ width: 220 }} slotProps={{ htmlInput: { min: 0, max: 720 } }}
         />
         <Button
           variant="outlined"
@@ -865,6 +1025,116 @@ function TwoFAPolicySection() {
         >
           Save
         </Button>
+      </Box>
+    </GlassCard>
+  )
+}
+
+
+// ── Page names ──────────────────────────────────────────────────────────────
+
+/**
+ * Rename any page to the words this company actually uses.
+ *
+ * Every trade says it differently — occurrence book, day book, DOB — and a
+ * product that insists on its own vocabulary makes staff translate on every
+ * screen. Only edited entries are stored, so a tenant who renames one page
+ * still receives our wording everywhere else, including on pages added later.
+ */
+function PageLabelsSection() {
+  const qc = useQueryClient()
+  const overrides = usePageLabelOverrides()
+  const [filter, setFilter] = useState('')
+  const [draft, setDraft] = useState<Record<string, { title: string; subtitle: string }>>({})
+
+  const save = useMutation({
+    mutationFn: (next: PageLabelOverrides) => upsertSetting(PAGE_LABELS_SETTING, next),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+  })
+
+  const keys = (Object.keys(PAGE_LABELS) as PageKey[]).filter((k) => {
+    if (!filter.trim()) return true
+    const q = filter.toLowerCase()
+    return k.includes(q) || PAGE_LABELS[k].title.toLowerCase().includes(q)
+  })
+
+  const valueFor = (k: PageKey) =>
+    draft[k] ?? {
+      title: overrides[k]?.title ?? PAGE_LABELS[k].title,
+      subtitle: overrides[k]?.subtitle ?? PAGE_LABELS[k].subtitle,
+    }
+
+  const commit = (k: PageKey) => {
+    const v = valueFor(k)
+    const base = PAGE_LABELS[k]
+    const next: PageLabelOverrides = { ...overrides }
+    const entry: { title?: string; subtitle?: string } = {}
+    // Store only what differs from the default — that is what lets our copy
+    // keep improving for everything this tenant did not deliberately reword.
+    if (v.title.trim() && v.title.trim() !== base.title) entry.title = v.title.trim()
+    if (v.subtitle.trim() !== base.subtitle) entry.subtitle = v.subtitle.trim()
+    if (Object.keys(entry).length) next[k] = entry
+    else delete next[k]
+    save.mutate(next)
+    setDraft((d) => { const { [k]: _drop, ...rest } = d; return rest })
+  }
+
+  const reset = (k: PageKey) => {
+    const next = { ...overrides }
+    delete next[k]
+    save.mutate(next)
+    setDraft((d) => { const { [k]: _drop, ...rest } = d; return rest })
+  }
+
+  return (
+    <GlassCard sx={{ p: 3 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Rename any page and rewrite its description to match your own terminology. Everyone in this
+        tenant sees your wording. Anything you leave alone keeps the default and will pick up future
+        improvements.
+      </Typography>
+      <TextField
+        size="small" fullWidth placeholder="Filter pages…" value={filter}
+        onChange={(e) => setFilter(e.target.value)} sx={{ mb: 2 }}
+      />
+      <Box sx={{ maxHeight: 460, overflowY: 'auto', pr: 1 }}>
+        {keys.map((k) => {
+          const v = valueFor(k)
+          const customised = Boolean(overrides[k])
+          const dirty = Boolean(draft[k])
+          return (
+            <Box key={k} sx={{ py: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.75 }}>
+                <Typography variant="caption" color="text.disabled" sx={{ flex: 1, fontFamily: 'monospace' }}>
+                  {k}
+                </Typography>
+                {customised && <Chip size="small" label="Customised" sx={{ height: 18, fontSize: '0.62rem' }} />}
+                {dirty && (
+                  <Button size="small" variant="contained" onClick={() => commit(k)} disabled={save.isPending}>
+                    Save
+                  </Button>
+                )}
+                {customised && !dirty && (
+                  <Button size="small" color="inherit" onClick={() => reset(k)} disabled={save.isPending}>
+                    Reset
+                  </Button>
+                )}
+              </Stack>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                <TextField
+                  size="small" label="Title" value={v.title} sx={{ flex: 1 }}
+                  slotProps={{ htmlInput: { maxLength: 60 } }}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: { ...v, title: e.target.value } }))}
+                />
+                <TextField
+                  size="small" label="Description" value={v.subtitle} sx={{ flex: 2 }}
+                  slotProps={{ htmlInput: { maxLength: 160 } }}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: { ...v, subtitle: e.target.value } }))}
+                />
+              </Stack>
+            </Box>
+          )
+        })}
       </Box>
     </GlassCard>
   )

@@ -12,17 +12,58 @@ from app.core.security import InvalidTokenError, decode_access_token
 from app.db.session import AsyncSessionLocal
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+from app.services.video_compat import ensure_browser_playable
 
 router = APIRouter(prefix="/api/v1/evidence", tags=["evidence"])
 
 
 @router.get("", dependencies=[Depends(require_permission("evidence:read"))])
 async def list_evidence(db: AsyncSession = Depends(get_db_with_tenant), limit: int = 50):
+    """Evidence with the context needed to interpret it.
+
+    A stored frame on its own is just a picture — which site, which camera,
+    which analytic fired and how confidently is what turns it into evidence.
+    All of it already exists (evidence.site_id/capture_kind are real columns;
+    the rest joins through the detection), it was simply never selected.
+
+    The detections join is LATERAL with a +/-1 hour window on detected_at
+    rather than a plain equality join on id. detections is partitioned by
+    month, and matching on id alone forces a scan of every partition; the
+    window lets Postgres prune to one or two. Evidence and its detection are
+    written in the same transaction, so an hour is far wider than the real
+    skew and cannot lose a match. capture_kind distinguishes the full frame
+    from a cropped plate/face capture of the same detection.
+    """
     result = await db.execute(
         text(
             """
-            SELECT id, detection_id, incident_id, media_type, storage_path, checksum_sha256, captured_at
-            FROM evidence ORDER BY captured_at DESC LIMIT :limit
+            WITH ev AS (
+                SELECT id, detection_id, incident_id, media_type, storage_path,
+                       checksum_sha256, captured_at, site_id, capture_kind
+                FROM evidence ORDER BY captured_at DESC LIMIT :limit
+            )
+            SELECT ev.id, ev.detection_id, ev.incident_id, ev.media_type,
+                   ev.storage_path, ev.checksum_sha256, ev.captured_at,
+                   ev.capture_kind,
+                   d.module_type, d.confidence,
+                   d.camera_id, c.name AS camera_name, c.location AS camera_location,
+                   COALESCE(c.site_id, ev.site_id) AS site_id,
+                   COALESCE(cs.name, es.name)      AS site_name,
+                   i.title AS incident_title
+            FROM ev
+            LEFT JOIN LATERAL (
+                SELECT module_type, confidence, camera_id
+                FROM detections
+                WHERE id = ev.detection_id
+                  AND detected_at BETWEEN ev.captured_at - INTERVAL '1 hour'
+                                      AND ev.captured_at + INTERVAL '1 hour'
+                LIMIT 1
+            ) d ON TRUE
+            LEFT JOIN cameras   c  ON c.id  = d.camera_id
+            LEFT JOIN sites     cs ON cs.id = c.site_id
+            LEFT JOIN sites     es ON es.id = ev.site_id
+            LEFT JOIN incidents i  ON i.id  = ev.incident_id
+            ORDER BY ev.captured_at DESC
             """
         ),
         {"limit": min(limit, 200)},
@@ -54,8 +95,12 @@ async def download_evidence_file(
     if not file_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Evidence file not found on disk")
 
-    media_type = "image/jpeg" if row.media_type == "image" else "video/mp4"
-    return FileResponse(str(file_path), media_type=media_type)
+    if row.media_type == "image":
+        return FileResponse(str(file_path), media_type="image/jpeg")
+    # Video evidence captured before the H.264 fix is MPEG-4 Part 2, which no
+    # browser decodes — heal it once so it plays in the built-in player.
+    playable = await ensure_browser_playable(str(file_path))
+    return FileResponse(playable, media_type="video/mp4")
 
 
 @router.get("/{evidence_id}/image")
@@ -157,8 +202,15 @@ async def get_evidence_image(
             headers={"Cache-Control": "private, max-age=86400"},
         )
 
-    media_type = "image/jpeg" if row.media_type == "image" else "video/mp4"
-    return FileResponse(str(file_path), media_type=media_type)
+    if row.media_type == "image":
+        return FileResponse(str(file_path), media_type="image/jpeg")
+    # This is the endpoint a <video src> actually hits (a media element can't
+    # send an Authorization header, hence the query-param JWT), so the legacy
+    # heal has to happen here too. FileResponse serves Range requests, which is
+    # what lets the operator scrub the clip instead of only playing it start to
+    # end.
+    playable = await ensure_browser_playable(str(file_path))
+    return FileResponse(playable, media_type="video/mp4")
 
 
 @router.get("/by-detection/{detection_id}", dependencies=[Depends(require_permission("evidence:read"))])
