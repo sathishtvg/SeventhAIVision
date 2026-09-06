@@ -1,6 +1,6 @@
 """Patrol routes, checkpoints, sessions, and guard SOS panic button."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+
+from app.services.sos import raise_guard_sos
 
 router = APIRouter(prefix="/api/v1/patrols", tags=["guard-ops"])
 
@@ -318,48 +320,33 @@ class SOSBody(BaseModel):
 @router.post("/sos", dependencies=[Depends(require_permission("guard:sos"))])
 async def guard_sos(
     body: SOSBody,
+    request: Request,
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
-    """Guard panic/SOS button — creates a critical incident and a high-priority alert."""
-    user_row = (
-        await db.execute(
-            text("SELECT full_name, email FROM users WHERE id = :uid"),
-            {"uid": token.user_id},
-        )
-    ).first()
-    guard_name = user_row.full_name or user_row.email if user_row else "Unknown Guard"
+    """Guard panic/SOS button.
 
-    title = f"GUARD SOS — {guard_name}"
-    description = body.message or "Guard has triggered the emergency SOS button."
-
-    incident_result = await db.execute(
-        text(
-            """
-            INSERT INTO incidents
-                (tenant_id, title, description, severity, status, alert_code,
-                 message_params, camera_id, is_auto_created)
-            SELECT
-                current_setting('app.current_tenant')::uuid,
-                :title, :description, 'critical', 'open', 'guard.sos',
-                CAST(:sos_params AS jsonb),
-                (SELECT id FROM cameras WHERE tenant_id = current_setting('app.current_tenant')::uuid
-                 LIMIT 1),  -- associate with any camera in tenant (SOS isn't camera-specific)
-                TRUE
-            RETURNING id
-            """
-        ),
-        {
-            "title": title,
-            "description": description,
-            "sos_params": f'{{"guard_user_id": "{token.user_id}", "guard_name": "{guard_name}", "latitude": {body.latitude or "null"}, "longitude": {body.longitude or "null"}}}',
-        },
+    Same work as POST /shifts/sos — they share services/sos.py so the two
+    cannot drift apart again. This one used to raise an incident and nothing
+    else: no occurrence book entry, and no live push, so a guard could press
+    panic and nobody watching a screen would be told.
+    """
+    result = await raise_guard_sos(
+        db,
+        getattr(request.app.state, "redis", None),
+        tenant_id=token.tenant_id,
+        user_id=token.user_id,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        description=body.message,
     )
-    incident_row = incident_result.first()
-    await db.commit()
 
+    # Response shape unchanged for the web client, plus entry_id — which is now
+    # the id that always exists. incident_id can still be None (no camera in
+    # the tenant), but that no longer means nothing was recorded.
     return {
         "sos_acknowledged": True,
-        "incident_id": str(incident_row.id) if incident_row else None,
-        "guard_name": guard_name,
+        "incident_id": result["incident_id"],
+        "entry_id": result["entry_id"],
+        "guard_name": result["guard_name"],
     }

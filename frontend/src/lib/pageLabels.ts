@@ -42,6 +42,7 @@ export const PAGE_LABELS = {
   'guard-ops': { title: 'Guard Operations', subtitle: 'Shift, patrol and occurrence-book activity for guards currently on duty' },
   attendance: { title: 'Attendance', subtitle: 'Who is on shift right now, who is late, and who needs chasing' },
   roster: { title: 'Roster', subtitle: 'Who is scheduled where, and auto-scheduling that respects rest and leave' },
+  'duty-assignments': { title: 'Duty Teams', subtitle: 'Who stands day duty and night duty at each site, against the strength it is staffed for' },
   violations: { title: 'Violations', subtitle: 'Attendance and conduct issues logged against guards, with points' },
   leave: { title: 'Leave', subtitle: 'Requests, approvals and remaining balances per guard' },
   training: { title: 'Guard Training & Certifications', subtitle: 'Courses, quizzes and certification expiry for your officers' },

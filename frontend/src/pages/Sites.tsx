@@ -44,6 +44,12 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
   const [lateGrace, setLateGrace] = useState(
     site?.late_grace_minutes != null ? String(site.late_grace_minutes) : ''
   )
+  const [dayGuards, setDayGuards] = useState(
+    site?.day_guards_required != null ? String(site.day_guards_required) : '1'
+  )
+  const [nightGuards, setNightGuards] = useState(
+    site?.night_guards_required != null ? String(site.night_guards_required) : '1'
+  )
   const [clientId, setClientId] = useState(site?.client_id ?? '')
   const [billRate, setBillRate] = useState(site?.bill_rate != null ? String(site.bill_rate) : '')
   const [vmsEnabled, setVmsEnabled] = useState(site?.vms_enabled ?? false)
@@ -71,6 +77,10 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
         longitude: longitude !== '' ? Number(longitude) : undefined,
         geofence_radius_meters: geofenceRadius !== '' ? Number(geofenceRadius) : undefined,
         late_grace_minutes: lateGrace !== '' ? Number(lateGrace) : undefined,
+        // Blank means "leave it alone", not zero — zero is a real answer here
+        // ("this site runs no night shift") and has to survive the round trip.
+        day_guards_required: dayGuards !== '' ? Number(dayGuards) : undefined,
+        night_guards_required: nightGuards !== '' ? Number(nightGuards) : undefined,
         // Sent even when empty: an explicit [] is how an admin erases a
         // boundary and reverts the site to its radius.
         geofence_polygon: polygon.length >= 3 ? polygon : null,
@@ -164,6 +174,30 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
           helperText="Minutes after the rostered start before a guard counts as late. Blank = company default."
           sx={{ maxWidth: 300 }}
         />
+        {/* Two numbers, not one. A mall wants four officers on a Saturday
+            night and two on a Tuesday morning; an office block reverses it.
+            These are what the roster auto-scheduler fills — a site set to
+            three day officers produces three shifts a day, not one. */}
+        <Typography variant="caption" color="text.secondary">
+          Duty strength — how many officers this site is staffed for
+        </Typography>
+        <Stack direction="row" spacing={1.5}>
+          <TextField
+            label="Day duty guards" type="number" value={dayGuards}
+            onChange={(e) => setDayGuards(e.target.value)}
+            slotProps={{ htmlInput: { min: 0, max: 99 } }}
+            helperText="Officers per day shift"
+            sx={{ flex: 1 }}
+          />
+          <TextField
+            label="Night duty guards" type="number" value={nightGuards}
+            onChange={(e) => setNightGuards(e.target.value)}
+            slotProps={{ htmlInput: { min: 0, max: 99 } }}
+            helperText="0 if this site runs no night shift"
+            sx={{ flex: 1 }}
+          />
+        </Stack>
+
         <Typography variant="caption" color="text.secondary">
           Billing — link this site to a client and rate for invoicing
         </Typography>

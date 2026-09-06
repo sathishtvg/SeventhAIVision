@@ -9,6 +9,7 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DashboardIcon from '@mui/icons-material/Dashboard'
+import GroupsIcon from '@mui/icons-material/Groups'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
@@ -161,6 +162,7 @@ const NAV_SECTIONS: {
     items: [
       { label: 'Attendance',      path: '/attendance',  icon: <AccessTimeIcon fontSize="small" />,   permission: 'attendance:read' },
       { label: 'Roster',          path: '/roster',      icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'Duty Teams',      path: '/duty-assignments', icon: <GroupsIcon fontSize="small" />,  permission: 'shift:read' },
       { label: 'Guard Ops',       path: '/guard-ops',   icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
       { label: 'Tour Compliance', path: '/compliance',  icon: <RouteIcon fontSize="small" />,        permission: 'compliance:read' },
       { label: 'Violations',      path: '/violations',  icon: <WarningAmberIcon fontSize="small" />, permission: 'violation:read' },
