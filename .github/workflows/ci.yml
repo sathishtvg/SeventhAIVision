@@ -82,11 +82,20 @@ jobs:
           docker compose -f docker/docker-compose.yml exec -T api sh -c \
             'cd /app/backend && ALEMBIC_DATABASE_URL="${ALEMBIC_DATABASE_URL}_test" alembic upgrade head'
 
+      # --junitxml goes to /tmp, NOT /app/backend.
+      #
+      # The image copies the source in as root with mode 755 and runs as
+      # appuser, so /app/backend is read-only to the process running the
+      # tests. pytest writes the JUnit file in pytest_sessionfinish — AFTER
+      # every test has passed — then dies with PermissionError and exits 1.
+      # So this step failed with the whole suite green and a stack trace
+      # naming neither a test nor a database, which is why it read as a test
+      # failure for months and was not one.
       - name: Run backend tests
         run: |
           docker compose -f docker/docker-compose.yml exec -T api \
             python -m pytest /app/backend/tests/ -v --tb=short \
-            --junitxml=/app/backend/test-results.xml
+            --junitxml=/tmp/test-results.xml
 
       # The suites above run with `compose exec`, inside the api image — which
       # ships only backend/. Every test that inspects a repo-root artifact
@@ -127,7 +136,7 @@ jobs:
       - name: Extract test results
         if: always()
         run: |
-          docker cp "$(docker compose -f docker/docker-compose.yml ps -q api)":/app/backend/test-results.xml \
+          docker cp "$(docker compose -f docker/docker-compose.yml ps -q api)":/tmp/test-results.xml \
             ./test-results.xml 2>/dev/null || true
 
       - name: Upload test results
