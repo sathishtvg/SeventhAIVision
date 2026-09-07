@@ -56,6 +56,17 @@ import { getBWCDashboard } from '@/api/bwc'
 import { getGPSDashboard } from '@/api/gps'
 import { getAlarmDashboard } from '@/api/alarms'
 
+/**
+ * Created once, at module scope.
+ *
+ * This used to be `React.lazy(...)` inside Dashboard's body, which builds a
+ * BRAND NEW lazy component type on every render. React compares element types
+ * by identity, so each render unmounted the previous portal and mounted a
+ * fresh one — losing its state and refiring its queries on every parent
+ * render, for as long as a client had it open.
+ */
+const ClientPortalLazy = React.lazy(() => import('./ClientPortal'))
+
 // ── KPI Card ────────────────────────────────────────────────
 function KpiCard({ label, value, icon, color, sublabel }: {
   label: string; value: number | undefined; icon: React.ReactNode; color: string; sublabel?: string
@@ -670,52 +681,73 @@ function OperationsOverview() {
 
 // ── Main Dashboard ────────────────────────────────────────────
 export default function Dashboard() {
-  // Client role (7) gets a simplified portal view instead of the full operational dashboard
+  // Client role (7) gets a simplified portal view instead of the full
+  // operational dashboard.
+  //
+  // The early return for it USED TO SIT HERE, above the eight hooks below,
+  // which is a crash rather than a style problem. roleId comes from the auth
+  // store, so it is undefined on the first render after a reload and settles
+  // to a number once the store hydrates. A client therefore rendered once
+  // running eight hooks and again running none — "Rendered fewer hooks than
+  // expected", and the page dies.
+  //
+  // So every hook runs unconditionally and the branch happens after them.
+  // The queries are switched off for a client instead of skipped: they would
+  // otherwise fetch a dashboard's worth of data nobody is going to see, some
+  // of it 403 for that role.
   const roleId = useAuthStore((s) => s.user?.roleId)
-  if (roleId === 7) {
-    const ClientPortal = React.lazy(() => import('./ClientPortal'))
-    return (
-      <React.Suspense fallback={<Box sx={{ p: 3 }}><CircularProgress /></Box>}>
-        <ClientPortal />
-      </React.Suspense>
-    )
-  }
+  const isClient = roleId === 7
 
   const [siteFilter, setSiteFilter] = useState('')
-  // Declared alongside the page's other hooks, i.e. after the role-7 early
-  // return above — consistent with every existing hook in this component.
   const { kiosk, toggleKiosk } = useKioskToggle()
-  const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
+  const { data: sites = [] } = useQuery({
+    queryKey: ['sites'], queryFn: () => getSites(), enabled: !isClient,
+  })
 
   const { data: summary } = useQuery({
     queryKey: ['analytics-summary', siteFilter],
     queryFn: () => getSummary(siteFilter || undefined),
     refetchInterval: 30_000,
+    enabled: !isClient,
   })
 
   const { data: recentAlerts } = useQuery({
     queryKey: ['alerts', 'open', siteFilter, ''],
     queryFn: () => getAlerts('open', siteFilter || undefined, undefined, 8),
     refetchInterval: 30_000,
+    enabled: !isClient,
   })
 
   const { data: moduleData = [] } = useQuery({
     queryKey: ['analytics-by-module'],
     queryFn: () => getAlertsByModule(7),
     refetchInterval: 60_000,
+    enabled: !isClient,
   })
 
   const { data: trend = [] } = useQuery({
     queryKey: ['analytics-trend'],
     queryFn: () => getDetectionsTrend(7),
     refetchInterval: 60_000,
+    enabled: !isClient,
   })
 
   const { data: topCameras = [] } = useQuery({
     queryKey: ['top-cameras'],
     queryFn: () => getTopCameras(30, 5),
     refetchInterval: 60_000,
+    enabled: !isClient,
   })
+
+  // Every hook above has run by now, so this branch cannot change how many
+  // were called on any given render.
+  if (isClient) {
+    return (
+      <React.Suspense fallback={<Box sx={{ p: 3 }}><CircularProgress /></Box>}>
+        <ClientPortalLazy />
+      </React.Suspense>
+    )
+  }
 
   return (
     <Box sx={{ p: 0 }}>

@@ -253,9 +253,17 @@ async def create_leave_block(body: LeaveBlockCreate, db: AsyncSession = Depends(
     )
     affected_shifts = [dict(r._mapping) for r in affected]
 
+    # Same treatment as an approved leave request: a supervisor blocking leave
+    # out directly here leaves exactly the same posts uncovered, so it belongs
+    # in the same queue rather than relying on them remembering.
+    await _open_cover_requests_for(
+        db, body.guard_user_id, [s["id"] for s in affected_shifts], leave_block_id=row.id,
+    )
+
     await db.commit()
     result_dict = dict(row._mapping)
     result_dict["affected_shifts"] = affected_shifts
+    result_dict["cover_requests_opened"] = len(affected_shifts)
     return result_dict
 
 
@@ -322,3 +330,201 @@ async def set_preferences(
     row = result.first()
     await db.commit()
     return dict(row._mapping)
+
+
+# ── Cover requests ──────────────────────────────────────────────────────────
+#
+# When approved leave lands on a shift that is already published, the post
+# needs somebody else. These are that queue: one open row per uncovered post,
+# resolved only by a human choosing a replacement or saying none is needed.
+#
+# The supervisor assigns. Nothing here picks a guard automatically — the
+# auto-scheduler builds rosters, but filling a hole left by leave is a
+# judgement about who is actually available and willing, and getting it wrong
+# means somebody finds out at handover.
+
+
+class CoverAssign(BaseModel):
+    guard_user_id: str
+    note: str | None = None
+
+
+class CoverDismiss(BaseModel):
+    note: str | None = None
+
+
+async def _open_cover_requests_for(
+    db: AsyncSession, guard_user_id: str, shift_ids: list,
+    leave_block_id=None, leave_request_id: str | None = None,
+) -> int:
+    """One open request per clashing shift. Idempotent via the partial unique
+    index, so overlapping leave cannot queue the same post twice."""
+    for shift_id in shift_ids:
+        await db.execute(
+            text("""
+                INSERT INTO roster_cover_requests
+                    (tenant_id, shift_id, absent_user_id, leave_request_id, leave_block_id)
+                VALUES (current_setting('app.current_tenant')::uuid,
+                        :sid, CAST(:gid AS uuid), CAST(:rid AS uuid), :bid)
+                ON CONFLICT (shift_id) WHERE status = 'open' DO NOTHING
+            """),
+            {"sid": shift_id, "gid": guard_user_id, "rid": leave_request_id, "bid": leave_block_id},
+        )
+    return len(shift_ids)
+
+
+@router.get("/cover-requests", dependencies=[Depends(require_permission("shift:read"))])
+async def list_cover_requests(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    status_filter: str = "open",
+):
+    """Posts left uncovered by approved leave.
+
+    Ordered by when the shift starts, not when the request was raised: the one
+    that begins tonight matters more than the one raised first.
+    """
+    if status_filter not in ("open", "filled", "dismissed", "all"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "status_filter must be open, filled, dismissed or all")
+    where = "" if status_filter == "all" else "WHERE cr.status = :st"
+    result = await db.execute(
+        text(f"""
+            SELECT cr.id, cr.shift_id, cr.status, cr.note, cr.created_at, cr.resolved_at,
+                   cr.absent_user_id, absent.full_name AS absent_guard_name,
+                   cr.filled_with_user_id, filler.full_name AS filled_with_name,
+                   sh.scheduled_start, sh.scheduled_end, sh.shift_type,
+                   sh.site_id, s.name AS site_name,
+                   sh.guard_user_id AS current_guard_user_id,
+                   current_guard.full_name AS current_guard_name,
+                   lb.start_date AS leave_start, lb.end_date AS leave_end, lb.reason AS leave_reason
+              FROM roster_cover_requests cr
+              JOIN shifts sh ON sh.id = cr.shift_id
+              JOIN users absent ON absent.id = cr.absent_user_id
+         LEFT JOIN users filler ON filler.id = cr.filled_with_user_id
+         LEFT JOIN users current_guard ON current_guard.id = sh.guard_user_id
+         LEFT JOIN sites s ON s.id = sh.site_id
+         LEFT JOIN guard_leave_blocks lb ON lb.id = cr.leave_block_id
+            {where}
+          ORDER BY sh.scheduled_start
+        """),
+        {} if status_filter == "all" else {"st": status_filter},
+    )
+    return [dict(r._mapping) for r in result]
+
+
+@router.post("/cover-requests/{cover_id}/assign",
+             dependencies=[Depends(require_permission("shift:manage"))])
+async def assign_cover(
+    cover_id: str,
+    body: CoverAssign,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Hand the post to a replacement.
+
+    This UPDATES the existing shift rather than creating a new one. The shift
+    is the post; only who stands it changes. Creating a replacement and
+    cancelling the original would leave a pattern-generated shift to be
+    regenerated on the next run, re-assigning the guard who is on leave.
+    """
+    cover = (await db.execute(
+        text("""
+            SELECT cr.id, cr.shift_id, cr.status, sh.scheduled_start, sh.scheduled_end
+              FROM roster_cover_requests cr JOIN shifts sh ON sh.id = cr.shift_id
+             WHERE cr.id = CAST(:id AS uuid)
+        """),
+        {"id": cover_id},
+    )).first()
+    if cover is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover request not found")
+    if cover.status != "open":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Cover request is already {cover.status}")
+
+    guard = (await db.execute(
+        text("SELECT id, full_name FROM users WHERE id = CAST(:id AS uuid) AND is_active = TRUE"),
+        {"id": body.guard_user_id},
+    )).first()
+    if guard is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Guard not found")
+
+    # Refuse to solve one hole by digging another. Both checks are the reason
+    # this is a real endpoint and not a bare UPDATE from the client.
+    on_leave = (await db.execute(
+        text("""
+            SELECT 1 FROM guard_leave_blocks
+             WHERE guard_user_id = CAST(:gid AS uuid)
+               AND :d BETWEEN start_date AND end_date
+        """),
+        {"gid": body.guard_user_id, "d": cover.scheduled_start.date()},
+    )).first()
+    if on_leave:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "That guard is on approved leave for the date of this shift")
+
+    clash = (await db.execute(
+        text("""
+            SELECT 1 FROM shifts
+             WHERE guard_user_id = CAST(:gid AS uuid)
+               AND id <> :sid
+               AND status IN ('scheduled', 'active')
+               AND scheduled_start < :shift_end AND scheduled_end > :shift_start
+        """),
+        {"gid": body.guard_user_id, "sid": cover.shift_id,
+         "shift_start": cover.scheduled_start, "shift_end": cover.scheduled_end},
+    )).first()
+    if clash:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "That guard is already rostered on an overlapping shift")
+
+    await db.execute(
+        text("UPDATE shifts SET guard_user_id = CAST(:gid AS uuid), updated_at = now() WHERE id = :sid"),
+        {"gid": body.guard_user_id, "sid": cover.shift_id},
+    )
+    await db.execute(
+        text("""
+            UPDATE roster_cover_requests
+               SET status = 'filled', filled_with_user_id = CAST(:gid AS uuid),
+                   resolved_by_user_id = CAST(:uid AS uuid), resolved_at = now(),
+                   note = COALESCE(:note, note), updated_at = now()
+             WHERE id = CAST(:id AS uuid)
+        """),
+        {"gid": body.guard_user_id, "uid": token.user_id, "note": body.note, "id": cover_id},
+    )
+    await db.commit()
+    return {
+        "id": cover_id,
+        "status": "filled",
+        "shift_id": str(cover.shift_id),
+        "filled_with_user_id": body.guard_user_id,
+        "filled_with_name": guard.full_name,
+    }
+
+
+@router.post("/cover-requests/{cover_id}/dismiss",
+             dependencies=[Depends(require_permission("shift:manage"))])
+async def dismiss_cover(
+    cover_id: str,
+    body: CoverDismiss,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """No cover needed — the site can run short, or it was handled elsewhere.
+
+    Kept distinct from filled so a monthly report can tell "we covered it"
+    apart from "we decided not to", which are very different answers to a
+    client asking why a post was empty.
+    """
+    result = await db.execute(
+        text("""
+            UPDATE roster_cover_requests
+               SET status = 'dismissed', resolved_by_user_id = CAST(:uid AS uuid),
+                   resolved_at = now(), note = COALESCE(:note, note), updated_at = now()
+             WHERE id = CAST(:id AS uuid) AND status = 'open'
+            RETURNING id
+        """),
+        {"uid": token.user_id, "note": body.note, "id": cover_id},
+    )
+    if result.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Open cover request not found")
+    await db.commit()
+    return {"id": cover_id, "status": "dismissed"}

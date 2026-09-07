@@ -44,6 +44,22 @@ export default function Login() {
   )
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null)
 
+  // ── Form state ─────────────────────────────────────────────────────────────
+  const [tenantSlug, setTenantSlug] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Declared after the state it writes to, which it previously was not.
+  // It worked — an effect body runs after the whole component function has,
+  // so setTenantSlug was initialised by the time this could fire — but it
+  // read as a use-before-declaration and the compiler flagged it as one.
+  //
+  // This moves the effect past six useState calls. That is safe: React needs
+  // hook order to be the same on every render of a component, not the same
+  // as some previous version of the file, and this order is unconditional.
   useEffect(() => {
     if (!DETECTED_SUBDOMAIN) return
     let cancelled = false
@@ -61,14 +77,6 @@ export default function Login() {
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // ── Form state ─────────────────────────────────────────────────────────────
-  const [tenantSlug, setTenantSlug] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
