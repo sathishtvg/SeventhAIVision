@@ -1,0 +1,65 @@
+# Line-ending and diff handling.
+#
+# WHY THIS EXISTS
+# core.autocrlf is true on the machines this is developed on, so Git rewrites
+# LF to CRLF on checkout for anything it considers text. It decides that by
+# looking for a NUL byte in the first 8000 bytes: images and model weights have
+# one almost immediately and are left alone, which is why 130-odd binaries have
+# been safe here without this file.
+#
+# A PDF does not. Its header, metadata and cross-reference table are ASCII, and
+# the first compressed stream can sit past the 8000-byte mark — so Git called
+# docs/Seventh-AI-Vision-Features.pdf text and warned it would convert the 194
+# LF bytes inside it on the next checkout. That is a corrupt PDF for anyone
+# cloning fresh, and it would have been discovered by whoever opened the file
+# rather than by anything that runs in CI.
+#
+# The rest are declared defensively. They are safe today only because their
+# format happens to put a NUL early; saying so explicitly costs nothing and
+# does not depend on that staying true.
+
+# Documents
+*.pdf   binary
+*.docx  binary
+*.xlsx  binary
+*.pptx  binary
+
+# Images
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.bmp   binary
+*.svgz  binary
+
+# Fonts
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+
+# Media
+*.mp4   binary
+*.webm  binary
+*.mov   binary
+*.mp3   binary
+*.wav   binary
+
+# Models and archives
+*.onnx  binary
+*.pt    binary
+*.pth   binary
+*.engine binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.7z    binary
+
+# Shell scripts must keep LF whatever the host does — a .sh with CRLF fails
+# inside a Linux container with a "bad interpreter" error that names the wrong
+# problem. Same for the entrypoints this repo ships to Docker.
+*.sh    text eol=lf
+docker/ssl-entrypoint.sh text eol=lf
