@@ -264,3 +264,67 @@ export const deleteShiftDefinition = (id: string) =>
       `/api/v1/shifts/definitions/${id}`,
     )
     .then((r) => r.data)
+
+// ── Roster grid ───────────────────────────────────────────────────────────────
+
+export interface GridCell {
+  shift_id: string
+  site_id: string | null
+  site_name: string | null
+  shift_definition_id: string | null
+  /** Null for shifts created before shift definitions existed. */
+  shift_name: string | null
+  shift_type: string
+  colour: string | null
+  start: string
+  end: string
+  status: string
+}
+
+export interface GridEmployee {
+  guard_user_id: string
+  full_name: string
+  designation: string | null
+  employment_type: string | null
+  role_id: number
+  profile_photo_path: string | null
+  preferred_shift_type: 'day' | 'night' | null
+  /** Keyed by ISO date; a day can hold more than one shift. */
+  cells: Record<string, GridCell[]>
+  leave_days: string[]
+  site_names: string[]
+}
+
+export interface RosterGrid {
+  start_date: string
+  end_date: string
+  days: string[]
+  employees: GridEmployee[]
+  sites: { id: string; name: string; day_guards_required: number; night_guards_required: number }[]
+  stats: {
+    staff: number
+    day_shifts: number
+    night_shifts: number
+    days_off: number
+    required_posts: number
+    filled_posts: number
+    coverage_pct: number
+  }
+}
+
+export const getRosterGrid = (startDate: string, endDate: string, siteId?: string) =>
+  apiClient
+    .get<RosterGrid>('/api/v1/roster/grid', {
+      params: { start_date: startDate, end_date: endDate, site_id: siteId || undefined },
+    })
+    .then((r) => r.data)
+
+export const assignGridCell = (data: {
+  guard_user_id: string
+  site_id: string
+  shift_definition_id: string
+  on_date: string
+}) => apiClient.post('/api/v1/roster/grid/assign', data).then((r) => r.data)
+
+export const clearGridCell = (shiftId: string) =>
+  apiClient.delete(`/api/v1/roster/grid/assign/${shiftId}`).then((r) => r.data)

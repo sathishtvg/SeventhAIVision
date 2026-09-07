@@ -8,7 +8,7 @@ Shifts") is completely unaffected by drafts; publishing is an explicit
 copy into `shifts`.
 """
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -22,6 +22,12 @@ from app.realtime.redis_listener import _send_expo_push
 from app.services.roster_autoschedule import generate_draft
 
 router = APIRouter(prefix="/api/v1/roster", tags=["guard-ops"])
+
+# Supervisor(3), Operator(4), Security Guard(5) and Manager(8) — the same
+# set the manual-assignment pickers offer. Wider than the auto-scheduler's
+# candidate pool, which excludes Manager: a planner may put a Manager on a
+# shift for oversight, but the scheduler should not choose to.
+GUARD_ROLE_IDS_FOR_GRID = (3, 4, 5, 8)
 
 
 async def _publish_roster_event(request: Request, tenant_id: str, batch_id: str) -> None:
@@ -528,3 +534,336 @@ async def dismiss_cover(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Open cover request not found")
     await db.commit()
     return {"id": cover_id, "status": "dismissed"}
+
+
+# ── Roster grid ─────────────────────────────────────────────────────────────
+#
+# One employee-by-day matrix for a period, across every site unless one is
+# named. /shifts/roster/coverage returns a flat list of shifts in a fixed
+# today-forward window; this returns the grid a planner actually reads —
+# who is on, what shift, at which site, who is on leave, and how much of the
+# required strength is actually covered.
+#
+# Assembled from four queries rather than one join: a month of shifts across
+# forty guards multiplied by their leave blocks and their sites produces a
+# result set mostly made of repetition. Fetching each set once and stitching
+# them in Python keeps the payload proportional to what is displayed.
+
+GRID_MAX_DAYS = 62  # two months; beyond that the grid stops being readable
+
+
+@router.get("/grid", dependencies=[Depends(require_permission("shift:read"))])
+async def roster_grid(
+    start_date: date,
+    end_date: date,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    site_id: str | None = None,
+):
+    if end_date < start_date:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "end_date must not be before start_date")
+    span = (end_date - start_date).days + 1
+    if span > GRID_MAX_DAYS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Range is {span} days; the grid covers at most {GRID_MAX_DAYS}",
+        )
+
+    days = [(start_date + timedelta(days=i)).isoformat() for i in range(span)]
+
+    site_clause = "AND sh.site_id = CAST(:site_id AS uuid)" if site_id else ""
+    params: dict = {"start": start_date, "end": end_date}
+    if site_id:
+        params["site_id"] = site_id
+
+    # ── Who can appear on the grid ───────────────────────────────────────────
+    #
+    # Everyone schedulable, not only those already rostered — an empty row is
+    # the point: it is where a planner sees somebody free and clicks.
+    guards = [dict(r) for r in (await db.execute(
+        text("""
+            SELECT u.id, u.full_name, u.email, u.role_id, u.designation,
+                   u.employment_type, u.profile_photo_path,
+                   p.preferred_shift_type
+              FROM users u
+         LEFT JOIN guard_shift_preferences p ON p.guard_user_id = u.id
+             WHERE u.is_active = TRUE AND u.role_id = ANY(:roles)
+          ORDER BY u.full_name NULLS LAST, u.email
+        """),
+        {"roles": list(GUARD_ROLE_IDS_FOR_GRID)},
+    )).mappings().all()]
+
+    # ── What they are rostered on ────────────────────────────────────────────
+    shifts = [dict(r) for r in (await db.execute(
+        text(f"""
+            SELECT sh.id, sh.guard_user_id, sh.site_id, sh.status,
+                   sh.scheduled_start, sh.scheduled_end,
+                   (sh.scheduled_start AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date AS on_date,
+                   s.name AS site_name,
+                   d.id AS shift_definition_id, d.name AS shift_name,
+                   d.shift_type AS definition_type, d.colour
+              FROM shifts sh
+              JOIN tenants t ON t.id = sh.tenant_id
+         LEFT JOIN sites s ON s.id = sh.site_id
+         LEFT JOIN shift_definitions d ON d.id = sh.shift_definition_id
+             WHERE (sh.scheduled_start AT TIME ZONE COALESCE(t.timezone, 'UTC'))::date
+                   BETWEEN :start AND :end
+               {site_clause}
+          ORDER BY sh.scheduled_start
+        """),
+        params,
+    )).mappings().all()]
+
+    # ── Who is off ───────────────────────────────────────────────────────────
+    leave = [dict(r) for r in (await db.execute(
+        text("""
+            SELECT guard_user_id, start_date, end_date, reason
+              FROM guard_leave_blocks
+             WHERE start_date <= :end AND end_date >= :start
+        """),
+        {"start": start_date, "end": end_date},
+    )).mappings().all()]
+
+    # ── What the estate is meant to be staffed at ────────────────────────────
+    site_rows = [dict(r) for r in (await db.execute(
+        text(f"""
+            SELECT id, name, day_guards_required, night_guards_required
+              FROM sites
+             WHERE is_active = TRUE
+               {"AND id = CAST(:site_id AS uuid)" if site_id else ""}
+          ORDER BY name
+        """),
+        {"site_id": site_id} if site_id else {},
+    )).mappings().all()]
+
+    # ── Stitch ───────────────────────────────────────────────────────────────
+    by_guard: dict[str, dict] = {}
+    for g in guards:
+        by_guard[str(g["id"])] = {
+            "guard_user_id": str(g["id"]),
+            "full_name": g["full_name"] or g["email"],
+            "designation": g["designation"],
+            "employment_type": g["employment_type"],
+            "role_id": g["role_id"],
+            "profile_photo_path": g["profile_photo_path"],
+            "preferred_shift_type": g["preferred_shift_type"],
+            "cells": {},
+            "leave_days": [],
+            "site_names": [],
+        }
+
+    day_count = night_count = 0
+    for sh in shifts:
+        row = by_guard.get(str(sh["guard_user_id"]))
+        if row is None:
+            continue  # rostered but no longer schedulable; not a grid row
+        on = sh["on_date"].isoformat()
+        # A definition wins where the shift has one. Where it does not — every
+        # shift predating shift_definitions — fall back to the same start-hour
+        # rule the scheduler uses, so an old roster still colours correctly
+        # instead of rendering as an unclassified blank.
+        kind = sh["definition_type"] or (
+            "day" if 5 <= sh["scheduled_start"].hour < 17 else "night"
+        )
+        if kind == "day":
+            day_count += 1
+        elif kind == "night":
+            night_count += 1
+        row["cells"].setdefault(on, []).append({
+            "shift_id": str(sh["id"]),
+            "site_id": str(sh["site_id"]) if sh["site_id"] else None,
+            "site_name": sh["site_name"],
+            "shift_definition_id": str(sh["shift_definition_id"]) if sh["shift_definition_id"] else None,
+            "shift_name": sh["shift_name"],
+            "shift_type": kind,
+            "colour": sh["colour"],
+            "start": sh["scheduled_start"].isoformat(),
+            "end": sh["scheduled_end"].isoformat(),
+            "status": sh["status"],
+        })
+        if sh["site_name"] and sh["site_name"] not in row["site_names"]:
+            row["site_names"].append(sh["site_name"])
+
+    for lv in leave:
+        row = by_guard.get(str(lv["guard_user_id"]))
+        if row is None:
+            continue
+        d = max(lv["start_date"], start_date)
+        last = min(lv["end_date"], end_date)
+        while d <= last:
+            iso = d.isoformat()
+            if iso not in row["leave_days"]:
+                row["leave_days"].append(iso)
+            d += timedelta(days=1)
+
+    # Coverage is filled posts against required posts for the whole window.
+    # Required counts every active site every day, because a site that is
+    # staffed for two officers is short on a day nobody was rostered — leaving
+    # those days out would flatter the number precisely where it matters.
+    required = sum(
+        (int(s["day_guards_required"] or 0) + int(s["night_guards_required"] or 0))
+        for s in site_rows
+    ) * span
+    filled = len(shifts)
+    coverage = round(min(filled / required, 1.0) * 100) if required else 0
+
+    days_off = sum(
+        1
+        for row in by_guard.values()
+        for d in days
+        if d not in row["cells"] and d not in row["leave_days"]
+    )
+
+    return {
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "days": days,
+        "employees": list(by_guard.values()),
+        "sites": [
+            {
+                "id": str(s["id"]), "name": s["name"],
+                "day_guards_required": s["day_guards_required"],
+                "night_guards_required": s["night_guards_required"],
+            }
+            for s in site_rows
+        ],
+        "stats": {
+            "staff": len(by_guard),
+            "day_shifts": day_count,
+            "night_shifts": night_count,
+            "days_off": days_off,
+            "required_posts": required,
+            "filled_posts": filled,
+            "coverage_pct": coverage,
+        },
+    }
+
+
+class GridAssign(BaseModel):
+    guard_user_id: str
+    site_id: str
+    shift_definition_id: str
+    on_date: date
+
+
+@router.post("/grid/assign", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("shift:manage"))])
+async def assign_grid_cell(
+    body: GridAssign,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Put a named shift on one person on one day.
+
+    Distinct from POST /shifts, which takes raw timestamps: here the times come
+    from the shift definition, so a cell cannot be filled with something that
+    is not one of the shifts the company actually runs, and the start and end
+    cannot drift from the definition they claim to be.
+
+    The timestamp is built in the TENANT's timezone. Doing it in the browser
+    would make the same click produce a different shift depending on where the
+    planner happened to be sitting.
+    """
+    definition = (await db.execute(
+        text("SELECT id, name, shift_type, start_time, duration_minutes "
+             "FROM shift_definitions WHERE id = CAST(:id AS uuid) AND is_active = TRUE"),
+        {"id": body.shift_definition_id},
+    )).first()
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+
+    guard = (await db.execute(
+        text("SELECT id, full_name FROM users WHERE id = CAST(:id AS uuid) AND is_active = TRUE"),
+        {"id": body.guard_user_id},
+    )).first()
+    if guard is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Guard not found")
+
+    on_leave = (await db.execute(
+        text("SELECT 1 FROM guard_leave_blocks WHERE guard_user_id = CAST(:gid AS uuid) "
+             "AND :d BETWEEN start_date AND end_date"),
+        {"gid": body.guard_user_id, "d": body.on_date},
+    )).first()
+    if on_leave:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "That guard is on approved leave for this date")
+
+    # Built and range-checked in one statement so the overlap test uses exactly
+    # the timestamps that will be stored, rather than a Python reconstruction
+    # of them that could round differently.
+    row = (await db.execute(
+        text("""
+            WITH bounds AS (
+                SELECT (CAST(:d AS date) + CAST(:st AS time))
+                         AT TIME ZONE COALESCE(t.timezone, 'UTC') AS starts_at,
+                       (CAST(:d AS date) + CAST(:st AS time) + make_interval(mins => :dur))
+                         AT TIME ZONE COALESCE(t.timezone, 'UTC') AS ends_at
+                  FROM tenants t
+                 WHERE t.id = current_setting('app.current_tenant')::uuid
+            )
+            SELECT starts_at, ends_at,
+                   EXISTS (
+                       SELECT 1 FROM shifts sh, bounds b
+                        WHERE sh.guard_user_id = CAST(:gid AS uuid)
+                          AND sh.status IN ('scheduled', 'active')
+                          AND sh.scheduled_start < b.ends_at
+                          AND sh.scheduled_end > b.starts_at
+                   ) AS clashes
+              FROM bounds
+        """),
+        {"d": body.on_date, "st": definition.start_time,
+         "dur": definition.duration_minutes, "gid": body.guard_user_id},
+    )).first()
+
+    if row.clashes:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "That guard already has an overlapping shift")
+
+    created = (await db.execute(
+        text("""
+            INSERT INTO shifts
+                (tenant_id, guard_user_id, site_id, scheduled_start, scheduled_end,
+                 shift_type, shift_definition_id, status, created_by_user_id)
+            VALUES (current_setting('app.current_tenant')::uuid,
+                    CAST(:gid AS uuid), CAST(:sid AS uuid), :ss, :se,
+                    :stype, CAST(:def AS uuid), 'scheduled', CAST(:uid AS uuid))
+            RETURNING id, guard_user_id, site_id, scheduled_start, scheduled_end, status
+        """),
+        {
+            "gid": body.guard_user_id, "sid": body.site_id,
+            "ss": row.starts_at, "se": row.ends_at,
+            # 'general' and 'split' definitions store their own type on the
+            # shift so reporting can tell them apart, even though the
+            # scheduler's day/night balance only counts the first two.
+            "stype": definition.shift_type,
+            "def": body.shift_definition_id, "uid": token.user_id,
+        },
+    )).first()
+    await db.commit()
+    return {**dict(created._mapping), "shift_name": definition.name}
+
+
+@router.delete("/grid/assign/{shift_id}",
+               dependencies=[Depends(require_permission("shift:manage"))])
+async def clear_grid_cell(shift_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    """Take a shift off the roster.
+
+    Refused once the shift has started: a guard who has checked in has an
+    attendance record, and removing the shift underneath it would orphan that
+    record and quietly erase hours somebody worked and expects to be paid for.
+    """
+    existing = (await db.execute(
+        text("SELECT status FROM shifts WHERE id = CAST(:id AS uuid)"),
+        {"id": shift_id},
+    )).first()
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+    if existing.status != "scheduled":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This shift is {existing.status} and can no longer be removed from the roster",
+        )
+
+    await db.execute(text("DELETE FROM shifts WHERE id = CAST(:id AS uuid)"), {"id": shift_id})
+    await db.commit()
+    return {"id": shift_id, "removed": True}

@@ -47,6 +47,7 @@ import {
 import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { approveLeaveRequest, listLeaveRequests, rejectLeaveRequest } from '@/api/leave'
+import { RosterGrid } from '@/components/roster/RosterGrid'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -623,7 +624,7 @@ export function RosterPage() {
   const qc = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [genResult, setGenResult] = useState<number | null>(null)
-  const [viewMode, setViewMode] = useState<'site' | 'employee'>('site')
+  const [viewMode, setViewMode] = useState<'grid' | 'site' | 'employee'>('grid')
   const [autoScheduleOpen, setAutoScheduleOpen] = useState(false)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
   const [editShift, setEditShift] = useState<EditableShift | null>(null)
@@ -800,74 +801,77 @@ export function RosterPage() {
         <Box sx={{ p: 1.5 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-              Coverage — next 7 days
+              {viewMode === 'grid' ? 'Roster' : 'Coverage — next 7 days'}
             </Typography>
             <ToggleButtonGroup size="small" value={viewMode} exclusive
                                 onChange={(_, v) => v && setViewMode(v)}>
+              <ToggleButton value="grid">Month Grid</ToggleButton>
               <ToggleButton value="site">By Site</ToggleButton>
               <ToggleButton value="employee">By Employee</ToggleButton>
             </ToggleButtonGroup>
           </Stack>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>{viewMode === 'site' ? 'Site' : 'Employee'}</TableCell>
-                  {nextDates.map((d) => (
-                    <TableCell key={d.toDateString()} align="center">
-                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                        {DAY_LABELS[(d.getDay() + 6) % 7]} {d.getDate()}
-                      </Typography>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {activeGrid.size === 0 ? (
+          {viewMode === 'grid' ? <RosterGrid /> : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={8}>
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                        No upcoming shifts — generate the roster to populate coverage.
-                      </Typography>
-                    </TableCell>
+                    <TableCell>{viewMode === 'site' ? 'Site' : 'Employee'}</TableCell>
+                    {nextDates.map((d) => (
+                      <TableCell key={d.toDateString()} align="center">
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          {DAY_LABELS[(d.getDay() + 6) % 7]} {d.getDate()}
+                        </Typography>
+                      </TableCell>
+                    ))}
                   </TableRow>
-                ) : Array.from(activeGrid.entries()).map(([rowKey, dayMap]) => (
-                  <TableRow key={rowKey} hover>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{rowKey}</Typography>
-                    </TableCell>
-                    {nextDates.map((d) => {
-                      const shifts = dayMap.get(d.toDateString()) ?? []
-                      return (
-                        <TableCell key={d.toDateString()} align="center" sx={{ px: 0.5 }}>
-                          {shifts.length === 0 ? (
-                            <Typography variant="caption" color="error.main">—</Typography>
-                          ) : shifts.map((sh) => (
-                            <Tooltip key={sh.id}
-                                     title={`${viewMode === 'site' ? sh.guard_name ?? 'Guard' : sh.site_name ?? 'No site'} · ${fmtTime(sh.scheduled_start)}–${fmtTime(sh.scheduled_end)} · ${sh.status}${canEditShift ? ' · click to edit' : ''}`}>
-                              <Chip
-                                label={`${(viewMode === 'site' ? sh.guard_name : sh.site_name)?.split(' ')[0] ?? '?'} ${fmtTime(sh.scheduled_start)}`}
-                                size="small"
-                                color={sh.status === 'active' ? 'success' : 'default'}
-                                variant="outlined"
-                                clickable={canEditShift}
-                                onClick={canEditShift ? () => openEditShift({
-                                  id: sh.id, guard_user_id: sh.guard_user_id,
-                                  scheduled_start: sh.scheduled_start, scheduled_end: sh.scheduled_end,
-                                  site_name: sh.site_name,
-                                }) : undefined}
-                                sx={{ height: 18, fontSize: '0.6rem', m: 0.15, cursor: canEditShift ? 'pointer' : 'default' }}
-                              />
-                            </Tooltip>
-                          ))}
-                        </TableCell>
-                      )
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {activeGrid.size === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8}>
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                          No upcoming shifts — generate the roster to populate coverage.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : Array.from(activeGrid.entries()).map(([rowKey, dayMap]) => (
+                    <TableRow key={rowKey} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{rowKey}</Typography>
+                      </TableCell>
+                      {nextDates.map((d) => {
+                        const shifts = dayMap.get(d.toDateString()) ?? []
+                        return (
+                          <TableCell key={d.toDateString()} align="center" sx={{ px: 0.5 }}>
+                            {shifts.length === 0 ? (
+                              <Typography variant="caption" color="error.main">—</Typography>
+                            ) : shifts.map((sh) => (
+                              <Tooltip key={sh.id}
+                                       title={`${viewMode === 'site' ? sh.guard_name ?? 'Guard' : sh.site_name ?? 'No site'} · ${fmtTime(sh.scheduled_start)}–${fmtTime(sh.scheduled_end)} · ${sh.status}${canEditShift ? ' · click to edit' : ''}`}>
+                                <Chip
+                                  label={`${(viewMode === 'site' ? sh.guard_name : sh.site_name)?.split(' ')[0] ?? '?'} ${fmtTime(sh.scheduled_start)}`}
+                                  size="small"
+                                  color={sh.status === 'active' ? 'success' : 'default'}
+                                  variant="outlined"
+                                  clickable={canEditShift}
+                                  onClick={canEditShift ? () => openEditShift({
+                                    id: sh.id, guard_user_id: sh.guard_user_id,
+                                    scheduled_start: sh.scheduled_start, scheduled_end: sh.scheduled_end,
+                                    site_name: sh.site_name,
+                                  }) : undefined}
+                                  sx={{ height: 18, fontSize: '0.6rem', m: 0.15, cursor: canEditShift ? 'pointer' : 'default' }}
+                                />
+                              </Tooltip>
+                            ))}
+                          </TableCell>
+                        )
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </Box>
       </GlassCard>
 
