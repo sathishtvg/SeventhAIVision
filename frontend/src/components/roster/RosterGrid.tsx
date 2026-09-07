@@ -7,6 +7,7 @@ import {
 import Stack from '@/components/common/Stack'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import LibraryAddIcon from '@mui/icons-material/LibraryAdd'
+import TuneIcon from '@mui/icons-material/Tune'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,6 +20,7 @@ import {
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { usePermission } from '@/hooks/usePermission'
+import { PreferencesDialog } from '@/components/roster/PreferencesDialog'
 
 /** Colours for the grid and its legend, matching the Shifts page. */
 const TYPE_COLOUR: Record<string, string> = {
@@ -408,6 +410,7 @@ export function RosterGrid() {
   const [siteFilter, setSiteFilter] = useState('')
   const [cell, setCell] = useState<{ employee: GridEmployee; day: string } | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [prefsOpen, setPrefsOpen] = useState(false)
 
   const { start, end } = useMemo(() => monthBounds(anchor), [anchor])
 
@@ -459,12 +462,20 @@ export function RosterGrid() {
         <Box sx={{ flex: 1 }} />
 
         {canManage && (
-          <Button
-            size="small" variant="outlined" startIcon={<LibraryAddIcon sx={{ fontSize: 16 }} />}
-            onClick={() => setBulkOpen(true)} disabled={definitions.length === 0}
-          >
-            Bulk Assign
-          </Button>
+          <>
+            <Button
+              size="small" variant="outlined" startIcon={<TuneIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setPrefsOpen(true)}
+            >
+              Preferences
+            </Button>
+            <Button
+              size="small" variant="outlined" startIcon={<LibraryAddIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setBulkOpen(true)} disabled={definitions.length === 0}
+            >
+              Bulk Assign
+            </Button>
+          </>
         )}
       </Stack>
 
@@ -646,6 +657,12 @@ export function RosterGrid() {
           </Typography>
         )}
       </Stack>
+
+      <PreferencesDialog
+        open={prefsOpen}
+        employees={grid?.employees ?? []}
+        onClose={() => setPrefsOpen(false)}
+      />
 
       <BulkAssignDialog
         open={bulkOpen}
