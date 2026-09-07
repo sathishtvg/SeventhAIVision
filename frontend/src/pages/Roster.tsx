@@ -30,6 +30,7 @@ import {
   Typography,
   Paper,
 } from '@mui/material'
+import Alert from '@mui/material/Alert'
 import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
@@ -38,12 +39,14 @@ import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   autoSchedule, createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
-  discardBatch, generateRoster, getBatch, getLeaveBlocks, getRosterCoverage,
+  assignCover, discardBatch, dismissCover, generateRoster, getBatch, getCoverRequests,
+  getLeaveBlocks, getRosterCoverage,
   listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
   type CoverageShift, type DraftShift, type RosterBatch,
 } from '@/api/roster'
 import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
+import { approveLeaveRequest, listLeaveRequests, rejectLeaveRequest } from '@/api/leave'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -373,9 +376,19 @@ function EditShiftDialog({ shift, extraNote, onClose }: {
   )
 }
 
-function LeavePreferencesCard({ onLeaveCreated }: {
-  onLeaveCreated: (shift: EditableShift, extraNote: string) => void
-}) {
+/**
+ * Guard leave, read from the leave module rather than kept separately.
+ *
+ * Pending requests are approved or rejected here, so a supervisor planning the
+ * roster does not have to leave the page to unblock themselves — it is the
+ * same request, the same endpoint and the same approval as the Leave page,
+ * just surfaced where the consequence lands.
+ *
+ * Blocking leave directly is still possible below: not every absence arrives
+ * as a request, and somebody phoning in sick at 05:00 needs to be off the
+ * roster before anyone files anything.
+ */
+function GuardLeaveCard() {
   const qc = useQueryClient()
   const [guardId, setGuardId] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -385,32 +398,86 @@ function LeavePreferencesCard({ onLeaveCreated }: {
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
   const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
   const { data: leaveBlocks = [] } = useQuery({ queryKey: ['leave-blocks'], queryFn: () => getLeaveBlocks() })
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ['leave-requests', 'pending'],
+    queryFn: () => listLeaveRequests({ request_status: 'pending' }),
+  })
 
+  // Approving opens cover requests for any published shift it clashes with,
+  // so the cover queue below has to refresh with it.
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['leave-blocks'] })
+    qc.invalidateQueries({ queryKey: ['leave-requests'] })
+    qc.invalidateQueries({ queryKey: ['cover-requests'] })
+    qc.invalidateQueries({ queryKey: ['roster-coverage'] })
+  }
+
+  const { mutate: approve, isPending: approving } = useMutation({
+    mutationFn: (id: string) => approveLeaveRequest(id),
+    onSuccess: invalidateAll,
+  })
+  const { mutate: reject, isPending: rejecting } = useMutation({
+    mutationFn: (id: string) => rejectLeaveRequest(id),
+    onSuccess: invalidateAll,
+  })
   const { mutate: addLeave, isPending } = useMutation({
-    mutationFn: () => createLeaveBlock({ guard_user_id: guardId, start_date: startDate, end_date: endDate, reason: reason || undefined }),
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: ['leave-blocks'] })
+    mutationFn: () => createLeaveBlock({
+      guard_user_id: guardId, start_date: startDate, end_date: endDate, reason: reason || undefined,
+    }),
+    onSuccess: () => {
       setStartDate(''); setEndDate(''); setReason('')
-      if (created.affected_shifts.length > 0) {
-        const guardName = guards.find((g) => g.id === guardId)?.full_name ?? 'This guard'
-        const first = created.affected_shifts[0]
-        const more = created.affected_shifts.length - 1
-        onLeaveCreated(
-          { id: first.id, guard_user_id: null, scheduled_start: first.scheduled_start, scheduled_end: first.scheduled_end, site_name: first.site_name },
-          `${guardName} is now on leave for this published shift — reassign it.` +
-            (more > 0 ? ` ${more} more shift${more === 1 ? '' : 's'} also affected.` : ''),
-        )
-      }
+      invalidateAll()
     },
   })
   const { mutate: removeLeave } = useMutation({
     mutationFn: (id: string) => deleteLeaveBlock(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['leave-blocks'] }),
+    onSuccess: invalidateAll,
   })
+
+  const busy = approving || rejecting
 
   return (
     <GlassCard sx={{ p: 2 }}>
       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700 }}>Guard Leave</Typography>
+
+      {pendingRequests.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+            {pendingRequests.length} request{pendingRequests.length === 1 ? '' : 's'} awaiting approval
+          </Typography>
+          <Stack spacing={0.75}>
+            {pendingRequests.map((r) => (
+              <Stack
+                key={r.id} direction="row" alignItems="center" spacing={1}
+                sx={{
+                  px: 1.25, py: 0.75, borderRadius: '8px',
+                  background: 'rgba(255,193,7,0.08)',
+                  border: '1px solid rgba(255,193,7,0.35)',
+                }}
+              >
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {r.guard_name} · {r.leave_type_name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(r.start_date).toLocaleDateString()} – {new Date(r.end_date).toLocaleDateString()}
+                    {' · '}{r.days_count} day{r.days_count === 1 ? '' : 's'}
+                    {r.reason ? ` · ${r.reason}` : ''}
+                  </Typography>
+                </Box>
+                <Button size="small" color="error" disabled={busy} onClick={() => reject(r.id)}>
+                  Reject
+                </Button>
+                <Button size="small" variant="contained" color="success" disabled={busy}
+                        onClick={() => approve(r.id)}>
+                  Approve
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
       <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
         <Select size="small" displayEmpty value={guardId} onChange={(e) => setGuardId(e.target.value)}
                 renderValue={(v) => guards.find((g) => g.id === v)?.full_name ?? 'Guard…'} sx={{ minWidth: 160 }}>
@@ -424,11 +491,12 @@ function LeavePreferencesCard({ onLeaveCreated }: {
                    onChange={(e) => setReason(e.target.value)} sx={{ flex: 1, minWidth: 140 }} />
         <Button size="small" variant="contained" disabled={isPending || !guardId || !startDate || !endDate}
                 onClick={() => addLeave()}>
-          Add
+          Block leave
         </Button>
       </Stack>
+
       {leaveBlocks.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">No leave on record.</Typography>
+        <Typography variant="body2" color="text.secondary">No approved leave on record.</Typography>
       ) : (
         <Stack spacing={0.5}>
           {leaveBlocks.map((lb) => (
@@ -437,13 +505,116 @@ function LeavePreferencesCard({ onLeaveCreated }: {
                 {lb.guard_name} · {new Date(lb.start_date).toLocaleDateString()} – {new Date(lb.end_date).toLocaleDateString()}
                 {lb.reason && ` · ${lb.reason}`}
               </Typography>
-              <IconButton size="small" color="error" onClick={() => removeLeave(lb.id)}>
+              <IconButton size="small" color="error" onClick={() => removeLeave(lb.id)}
+                          aria-label={`Remove leave for ${lb.guard_name}`}>
                 <DeleteIcon fontSize="small" />
               </IconButton>
             </Box>
           ))}
         </Stack>
       )}
+    </GlassCard>
+  )
+}
+
+/**
+ * Posts whose guard went on leave after the roster was published.
+ *
+ * The shift keeps naming the absent guard until somebody is chosen — the live
+ * board already shows them as on leave rather than as a no-show, so nobody is
+ * being chased, and the post stays visible instead of quietly vanishing.
+ *
+ * Assigning is a person's decision. The list will not pick for you: who can
+ * actually take a shift at short notice is not something the roster knows.
+ */
+function CoverRequestsCard() {
+  const qc = useQueryClient()
+  const [picked, setPicked] = useState<Record<string, string>>({})
+
+  const { data: covers = [] } = useQuery({
+    queryKey: ['cover-requests'],
+    queryFn: () => getCoverRequests('open'),
+    refetchInterval: 60_000,
+  })
+  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+  const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['cover-requests'] })
+    qc.invalidateQueries({ queryKey: ['roster-coverage'] })
+  }
+
+  const { mutate: assign, isPending: assigning, error: assignError, variables: assigningFor } = useMutation({
+    mutationFn: ({ id, guardUserId }: { id: string; guardUserId: string }) =>
+      assignCover(id, { guard_user_id: guardUserId }),
+    onSuccess: invalidate,
+  })
+  const { mutate: dismiss } = useMutation({
+    mutationFn: (id: string) => dismissCover(id),
+    onSuccess: invalidate,
+  })
+
+  if (covers.length === 0) return null
+
+  // The API refuses a guard who is on leave or already rostered against an
+  // overlapping shift; surfacing its reason beats a silent no-op.
+  const errorMessage = (assignError as { response?: { data?: { detail?: string } } } | null)
+    ?.response?.data?.detail
+
+  return (
+    <GlassCard sx={{ p: 2, mt: 2, border: '1px solid rgba(255,69,96,0.4)' }}>
+      <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700, color: '#FF4560' }}>
+        {covers.length} shift{covers.length === 1 ? '' : 's'} need cover
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        Approved leave landed on these published shifts. Assign a replacement, or dismiss if the
+        site can run without one.
+      </Typography>
+
+      {errorMessage && <Alert severity="warning" sx={{ mb: 1.5 }}>{errorMessage}</Alert>}
+
+      <Stack spacing={1}>
+        {covers.map((c) => (
+          <Stack
+            key={c.id} direction="row" alignItems="center" spacing={1}
+            sx={{
+              px: 1.25, py: 1, borderRadius: '8px', flexWrap: 'wrap',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 180 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {c.site_name ?? 'Unassigned site'}
+                {c.shift_type ? ` · ${c.shift_type}` : ''}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {new Date(c.scheduled_start).toLocaleString()} — {c.absent_guard_name} on leave
+              </Typography>
+            </Box>
+            <Select
+              size="small" displayEmpty value={picked[c.id] ?? ''}
+              onChange={(e) => setPicked((p) => ({ ...p, [c.id]: e.target.value }))}
+              renderValue={(v) => guards.find((g) => g.id === v)?.full_name ?? 'Replacement…'}
+              sx={{ minWidth: 170 }}
+            >
+              {guards
+                .filter((g) => g.id !== c.absent_user_id)
+                .map((g) => <MenuItem key={g.id} value={g.id}>{g.full_name ?? g.email}</MenuItem>)}
+            </Select>
+            <Button
+              size="small" variant="contained"
+              disabled={!picked[c.id] || (assigning && assigningFor?.id === c.id)}
+              onClick={() => assign({ id: c.id, guardUserId: picked[c.id] })}
+            >
+              Assign
+            </Button>
+            <Button size="small" color="inherit" onClick={() => dismiss(c.id)}>
+              Not needed
+            </Button>
+          </Stack>
+        ))}
+      </Stack>
     </GlassCard>
   )
 }
@@ -700,7 +871,8 @@ export function RosterPage() {
         </Box>
       </GlassCard>
 
-      <LeavePreferencesCard onLeaveCreated={openEditShift} />
+      <CoverRequestsCard />
+      <GuardLeaveCard />
 
       <PatternDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
       <AutoScheduleDialog

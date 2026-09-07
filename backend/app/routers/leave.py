@@ -289,17 +289,18 @@ async def approve_leave_request(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Leave request not found or already reviewed")
 
-    await db.execute(
+    block = (await db.execute(
         text("""
             INSERT INTO guard_leave_blocks
                 (tenant_id, guard_user_id, start_date, end_date, reason, created_by_user_id, leave_request_id)
             VALUES (current_setting('app.current_tenant')::uuid, :gid, :sd, :ed, :reason, :uid, CAST(:rid AS uuid))
+            RETURNING id
         """),
         {
             "gid": row.guard_user_id, "sd": row.start_date, "ed": row.end_date,
             "reason": row.reason, "uid": token.user_id, "rid": request_id,
         },
-    )
+    )).first()
 
     affected = await db.execute(
         text("""
@@ -314,9 +315,42 @@ async def approve_leave_request(
     )
     affected_shifts = [dict(r._mapping) for r in affected]
 
+    # Write the work down rather than returning it and hoping.
+    #
+    # This list used to be handed to the UI, which printed "See Roster to
+    # reassign these shifts" and forgot it. A supervisor who did not act on
+    # that sentence there and then left a site short on a day nothing would
+    # remind them about. Now each clashing post becomes an open cover request
+    # that stays in the queue until somebody fills it or says it is not needed.
+    #
+    # The shift itself is untouched — it keeps naming the guard on leave until
+    # a replacement is chosen. That is deliberate: the live board already reads
+    # guard_leave_blocks and shows them as "Approved Leave" rather than as a
+    # no-show, so nobody is being chased, and the post is still visibly there
+    # to be filled instead of quietly disappearing off the roster.
+    for shift in affected_shifts:
+        await db.execute(
+            text("""
+                INSERT INTO roster_cover_requests
+                    (tenant_id, shift_id, absent_user_id, leave_request_id, leave_block_id)
+                VALUES (current_setting('app.current_tenant')::uuid,
+                        :sid, :gid, CAST(:rid AS uuid), :bid)
+                ON CONFLICT (shift_id) WHERE status = 'open' DO NOTHING
+            """),
+            {
+                "sid": shift["id"], "gid": row.guard_user_id,
+                "rid": request_id, "bid": block.id if block else None,
+            },
+        )
+
     await db.commit()
     await _publish_leave_event(request, token.tenant_id, request_id, "approved")
-    return {"id": request_id, "status": "approved", "affected_shifts": affected_shifts}
+    return {
+        "id": request_id,
+        "status": "approved",
+        "affected_shifts": affected_shifts,
+        "cover_requests_opened": len(affected_shifts),
+    }
 
 
 class LeaveReview(BaseModel):

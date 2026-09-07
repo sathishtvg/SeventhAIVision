@@ -156,3 +156,44 @@ export const getPreferences = (guardUserId: string) =>
 
 export const setPreferences = (guardUserId: string, data: { preferred_shift_type?: string | null; preferred_off_days?: number[] | null }) =>
   apiClient.put<ShiftPreferences>(`/api/v1/roster/preferences/${guardUserId}`, data).then((r) => r.data)
+
+// ── Cover requests ────────────────────────────────────────────────────────────
+//
+// Posts left uncovered when approved leave lands on a published shift. One row
+// per uncovered post, resolved by a supervisor assigning somebody or saying no
+// cover is needed — nothing fills these automatically.
+
+export interface CoverRequest {
+  id: string
+  shift_id: string
+  status: 'open' | 'filled' | 'dismissed'
+  note: string | null
+  created_at: string
+  resolved_at: string | null
+  absent_user_id: string
+  absent_guard_name: string | null
+  filled_with_user_id: string | null
+  filled_with_name: string | null
+  scheduled_start: string
+  scheduled_end: string
+  shift_type: string | null
+  site_id: string | null
+  site_name: string | null
+  /** Who the shift names right now — still the absent guard until covered. */
+  current_guard_user_id: string | null
+  current_guard_name: string | null
+  leave_start: string | null
+  leave_end: string | null
+  leave_reason: string | null
+}
+
+export const getCoverRequests = (statusFilter: 'open' | 'filled' | 'dismissed' | 'all' = 'open') =>
+  apiClient
+    .get<CoverRequest[]>('/api/v1/roster/cover-requests', { params: { status_filter: statusFilter } })
+    .then((r) => r.data)
+
+export const assignCover = (coverId: string, data: { guard_user_id: string; note?: string }) =>
+  apiClient.post(`/api/v1/roster/cover-requests/${coverId}/assign`, data).then((r) => r.data)
+
+export const dismissCover = (coverId: string, note?: string) =>
+  apiClient.post(`/api/v1/roster/cover-requests/${coverId}/dismiss`, { note }).then((r) => r.data)
