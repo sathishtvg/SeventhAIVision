@@ -201,7 +201,10 @@ function LiveEventsFeed() {
         site_name: evt.payload?.site_name,
         ts: Date.now(),
       }, ...prev].slice(0, 30))
-    } catch {}
+    } catch {
+      // A malformed socket frame is not worth failing the page over —
+      // the next one arrives in seconds.
+    }
   }, [lastMessage])
 
   return (

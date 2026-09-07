@@ -63,6 +63,25 @@ jobs:
             sleep 5
           done
 
+      # The suite runs against seventh_ai_vision_test, NOT the app database.
+      # docker/postgres/create-test-db.sh creates that database on first boot,
+      # but only creates it — grants and pg_partman, no schema. Nothing has
+      # ever migrated it: conftest.py assumes it is already at head, and the
+      # api container migrates the app database on startup, not this one.
+      #
+      # So every DB-touching test failed on "relation does not exist", which
+      # is why this job had not passed once in 37 runs. Locally it works only
+      # because somebody migrated the test database by hand at some point and
+      # the volume kept it.
+      #
+      # Appending _test to the container's own ALEMBIC_DATABASE_URL matches
+      # exactly how create-test-db.sh derives the name (${POSTGRES_DB}_test),
+      # and avoids restating the credentials here.
+      - name: Migrate the test database
+        run: |
+          docker compose -f docker/docker-compose.yml exec -T api sh -c \
+            'cd /app/backend && ALEMBIC_DATABASE_URL="${ALEMBIC_DATABASE_URL}_test" alembic upgrade head'
+
       - name: Run backend tests
         run: |
           docker compose -f docker/docker-compose.yml exec -T api \
