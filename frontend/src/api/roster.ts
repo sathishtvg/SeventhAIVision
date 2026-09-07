@@ -197,3 +197,70 @@ export const assignCover = (coverId: string, data: { guard_user_id: string; note
 
 export const dismissCover = (coverId: string, note?: string) =>
   apiClient.post(`/api/v1/roster/cover-requests/${coverId}/dismiss`, { note }).then((r) => r.data)
+
+// ── Shift definitions ─────────────────────────────────────────────────────────
+//
+// The named shifts a company runs, held once and pointed at, rather than
+// restated as a start time and a duration on every pattern.
+//
+// The API works in start/end because that is how people describe a shift, and
+// derives duration, end time and the midnight crossing server-side so both
+// halves cannot disagree about what "19:00 for 12 hours" means.
+
+export type ShiftKind = 'day' | 'night' | 'general' | 'split'
+
+export interface ShiftDefinition {
+  id: string
+  name: string
+  shift_type: ShiftKind
+  /** "HH:MM" */
+  start_time: string
+  /** "HH:MM", derived from start + duration. */
+  end_time: string
+  duration_minutes: number
+  duration_hours: number
+  /** True when the shift finishes on a later calendar day — the "+1" badge. */
+  crosses_midnight: boolean
+  /** Null means fall back to the site's grace, then the tenant default. */
+  grace_minutes: number | null
+  break_minutes: number
+  ot_eligible: boolean
+  colour: string | null
+  notes: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ShiftDefinitionInput {
+  name: string
+  shift_type: ShiftKind
+  start_time: string
+  end_time: string
+  grace_minutes?: number | null
+  break_minutes?: number
+  ot_eligible?: boolean
+  colour?: string | null
+  notes?: string | null
+}
+
+export const listShiftDefinitions = (includeInactive = false) =>
+  apiClient
+    .get<ShiftDefinition[]>('/api/v1/shifts/definitions', {
+      params: { include_inactive: includeInactive },
+    })
+    .then((r) => r.data)
+
+export const createShiftDefinition = (data: ShiftDefinitionInput) =>
+  apiClient.post<ShiftDefinition>('/api/v1/shifts/definitions', data).then((r) => r.data)
+
+export const updateShiftDefinition = (id: string, data: Partial<ShiftDefinitionInput> & { is_active?: boolean }) =>
+  apiClient.put<ShiftDefinition>(`/api/v1/shifts/definitions/${id}`, data).then((r) => r.data)
+
+/** Retires the shift if a pattern or roster already uses it; deletes it if not. */
+export const deleteShiftDefinition = (id: string) =>
+  apiClient
+    .delete<{ id: string; deleted?: boolean; retired?: boolean; in_use_by?: number }>(
+      `/api/v1/shifts/definitions/${id}`,
+    )
+    .then((r) => r.data)

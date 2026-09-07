@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -1037,6 +1038,284 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
             "panels_total":         len(alarm_panels_rows),
         },
     }
+
+
+# ── Shift definitions ───────────────────────────────────────────────────────
+#
+# The named shifts a company runs — Day Shift, Night Shift, and whatever else
+# — held once and pointed at, rather than restated as a start time and a
+# duration on every pattern.
+#
+# Stored as start + duration. The UI works in start and end because that is
+# how people describe a shift, but an end time cannot distinguish a zero-hour
+# shift from a 24-hour one, so the conversion happens here where the rule can
+# be stated once.
+
+SHIFT_TYPES = ("day", "night", "general", "split")
+
+
+class ShiftDefinitionBase(BaseModel):
+    name: str
+    shift_type: str = "day"
+    start_time: str            # "HH:MM"
+    end_time: str              # "HH:MM" — converted to a duration on the way in
+    grace_minutes: int | None = None
+    break_minutes: int = 0
+    ot_eligible: bool = False
+    colour: str | None = None
+    notes: str | None = None
+
+
+class ShiftDefinitionCreate(ShiftDefinitionBase):
+    pass
+
+
+class ShiftDefinitionUpdate(BaseModel):
+    name: str | None = None
+    shift_type: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    grace_minutes: int | None = None
+    break_minutes: int | None = None
+    ot_eligible: bool | None = None
+    colour: str | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+def _parse_hhmm(value: str, field: str) -> int:
+    """Minutes since midnight, or a 422 naming the field that was wrong."""
+    try:
+        hh, mm = value.strip().split(":")[:2]
+        h, m = int(hh), int(mm)
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError
+    except Exception:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"{field} must be a 24-hour time as HH:MM",
+        )
+    return h * 60 + m
+
+
+def _hhmm_to_time(value: str, field: str) -> dtime:
+    """asyncpg binds parameters by inferred type before any CAST in the SQL
+    runs, so a "07:00" string is rejected with "str object has no attribute
+    hour". It has to arrive as a real time object."""
+    minutes = _parse_hhmm(value, field)
+    return dtime(minutes // 60, minutes % 60)
+
+
+def _duration_from(start: str, end: str) -> int:
+    """Minutes from start to end, wrapping past midnight.
+
+    Equal times mean a full 24 hours, not zero. A zero-length shift is never
+    what anyone meant, and 24-hour cover shifts are real.
+    """
+    s = _parse_hhmm(start, "start_time")
+    e = _parse_hhmm(end, "end_time")
+    span = (e - s) % (24 * 60)
+    return span or 24 * 60
+
+
+def _shift_definition_row(row) -> dict:
+    """Add the fields the UI needs but the table should not store twice."""
+    d = dict(row._mapping)
+    start = d["start_time"]
+    total = start.hour * 60 + start.minute + d["duration_minutes"]
+    d["start_time"] = f"{start.hour:02d}:{start.minute:02d}"
+    d["end_time"] = f"{(total // 60) % 24:02d}:{total % 60:02d}"
+    # True when the shift finishes on a later calendar day — what the grid
+    # prints as a "+1" beside the end time.
+    d["crosses_midnight"] = total >= 24 * 60
+    d["duration_hours"] = round(d["duration_minutes"] / 60, 2)
+    return d
+
+
+@router.get("/definitions", dependencies=[Depends(require_permission("shift:read"))])
+async def list_shift_definitions(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    include_inactive: bool = False,
+):
+    where = "" if include_inactive else "WHERE is_active = TRUE"
+    result = await db.execute(
+        text(f"""
+            SELECT id, name, shift_type, start_time, duration_minutes, grace_minutes,
+                   break_minutes, ot_eligible, colour, notes, is_active,
+                   created_at, updated_at
+              FROM shift_definitions
+            {where}
+          ORDER BY is_active DESC, start_time, name
+        """)
+    )
+    return [_shift_definition_row(r) for r in result]
+
+
+@router.post("/definitions", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("shift:manage"))])
+async def create_shift_definition(
+    body: ShiftDefinitionCreate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    if body.shift_type not in SHIFT_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"shift_type must be one of {list(SHIFT_TYPES)}")
+    if not body.name.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "name is required")
+    duration = _duration_from(body.start_time, body.end_time)
+    if body.break_minutes >= duration:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "break_minutes must be shorter than the shift itself",
+        )
+
+    try:
+        row = (await db.execute(
+            text("""
+                INSERT INTO shift_definitions
+                    (tenant_id, name, shift_type, start_time, duration_minutes,
+                     grace_minutes, break_minutes, ot_eligible, colour, notes,
+                     created_by_user_id)
+                VALUES (current_setting('app.current_tenant')::uuid,
+                        :name, :stype, :start, :dur,
+                        :grace, :brk, :ot, :colour, :notes, CAST(:uid AS uuid))
+                RETURNING id, name, shift_type, start_time, duration_minutes,
+                          grace_minutes, break_minutes, ot_eligible, colour, notes,
+                          is_active, created_at, updated_at
+            """),
+            {
+                "name": body.name.strip(), "stype": body.shift_type,
+                "start": _hhmm_to_time(body.start_time, "start_time"), "dur": duration,
+                "grace": body.grace_minutes, "brk": body.break_minutes,
+                "ot": body.ot_eligible, "colour": body.colour,
+                "notes": body.notes, "uid": token.user_id,
+            },
+        )).first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"A shift called '{body.name.strip()}' already exists")
+    await db.commit()
+    return _shift_definition_row(row)
+
+
+@router.put("/definitions/{definition_id}",
+            dependencies=[Depends(require_permission("shift:manage"))])
+async def update_shift_definition(
+    definition_id: str,
+    body: ShiftDefinitionUpdate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    existing = (await db.execute(
+        text("SELECT start_time, duration_minutes FROM shift_definitions "
+             "WHERE id = CAST(:id AS uuid)"),
+        {"id": definition_id},
+    )).first()
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+
+    sets, params = [], {"id": definition_id}
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "name cannot be blank")
+        sets.append("name = :name"); params["name"] = body.name.strip()
+    if body.shift_type is not None:
+        if body.shift_type not in SHIFT_TYPES:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"shift_type must be one of {list(SHIFT_TYPES)}")
+        sets.append("shift_type = :stype"); params["stype"] = body.shift_type
+
+    # Times are recomputed together: changing only one end of a shift still
+    # changes its length, so the stored duration has to be derived from
+    # whichever half was not sent.
+    if body.start_time is not None or body.end_time is not None:
+        cur_start = f"{existing.start_time.hour:02d}:{existing.start_time.minute:02d}"
+        cur_total = existing.start_time.hour * 60 + existing.start_time.minute + existing.duration_minutes
+        cur_end = f"{(cur_total // 60) % 24:02d}:{cur_total % 60:02d}"
+        start = body.start_time or cur_start
+        end = body.end_time or cur_end
+        sets.append("start_time = :start"); params["start"] = _hhmm_to_time(start, "start_time")
+        sets.append("duration_minutes = :dur"); params["dur"] = _duration_from(start, end)
+
+    # grace_minutes keys off model_fields_set: null is a real value here,
+    # meaning "fall back to the site's grace", and is the only way to clear an
+    # override once set.
+    if "grace_minutes" in body.model_fields_set:
+        sets.append("grace_minutes = :grace"); params["grace"] = body.grace_minutes
+    if body.break_minutes is not None:
+        sets.append("break_minutes = :brk"); params["brk"] = body.break_minutes
+    if body.ot_eligible is not None:
+        sets.append("ot_eligible = :ot"); params["ot"] = body.ot_eligible
+    if "colour" in body.model_fields_set:
+        sets.append("colour = :colour"); params["colour"] = body.colour
+    if "notes" in body.model_fields_set:
+        sets.append("notes = :notes"); params["notes"] = body.notes
+    if body.is_active is not None:
+        sets.append("is_active = :active"); params["active"] = body.is_active
+
+    if not sets:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No fields to update")
+
+    try:
+        row = (await db.execute(
+            text(f"""
+                UPDATE shift_definitions SET {', '.join(sets)}, updated_at = now()
+                 WHERE id = CAST(:id AS uuid)
+                RETURNING id, name, shift_type, start_time, duration_minutes,
+                          grace_minutes, break_minutes, ot_eligible, colour, notes,
+                          is_active, created_at, updated_at
+            """),
+            params,
+        )).first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "A shift with that name already exists")
+    await db.commit()
+    return _shift_definition_row(row)
+
+
+@router.delete("/definitions/{definition_id}",
+               dependencies=[Depends(require_permission("shift:manage"))])
+async def delete_shift_definition(
+    definition_id: str,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Retire a shift, or delete it outright if nothing ever used it.
+
+    A definition already referenced by a pattern or a rostered shift is
+    deactivated rather than removed: deleting it would strip the name off
+    historical rosters and leave a report unable to say what shift someone
+    worked. One nobody has used yet is genuinely deleted, because a list of
+    retired mistakes helps no one.
+    """
+    in_use = (await db.execute(
+        text("""
+            SELECT (SELECT count(*) FROM shift_patterns WHERE shift_definition_id = CAST(:id AS uuid))
+                 + (SELECT count(*) FROM shifts WHERE shift_definition_id = CAST(:id AS uuid)) AS n
+        """),
+        {"id": definition_id},
+    )).scalar_one()
+
+    if in_use:
+        row = (await db.execute(
+            text("UPDATE shift_definitions SET is_active = FALSE, updated_at = now() "
+                 "WHERE id = CAST(:id AS uuid) RETURNING id"),
+            {"id": definition_id},
+        )).first()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+        await db.commit()
+        return {"id": definition_id, "retired": True, "in_use_by": int(in_use)}
+
+    row = (await db.execute(
+        text("DELETE FROM shift_definitions WHERE id = CAST(:id AS uuid) RETURNING id"),
+        {"id": definition_id},
+    )).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+    await db.commit()
+    return {"id": definition_id, "deleted": True}
 
 
 @router.put("/{shift_id}", dependencies=[Depends(require_permission("shift:manage"))])

@@ -27,6 +27,7 @@ import Users from '@/pages/Users'
 import Roles from '@/pages/Roles'
 import { SitesPage } from '@/pages/Sites'
 import { DutyAssignmentsPage } from '@/pages/DutyAssignments'
+import { ShiftsPage } from '@/pages/Shifts'
 import { LiveWallPage } from '@/pages/LiveWall'
 import { RecordingsPage } from '@/pages/Recordings'
 import { PlaybackPage } from '@/pages/Playback'
@@ -150,6 +151,7 @@ export default function App() {
         <Route path="sites" element={<SitesPage />} />
         <Route path="recordings" element={<RecordingsPage />} />
         <Route path="playback" element={<PlaybackPage />} />
+        <Route path="shifts" element={<ShiftsPage />} />
         <Route path="roster" element={<RosterPage />} />
         <Route path="duty-assignments" element={<DutyAssignmentsPage />} />
         <Route path="attendance" element={<AttendancePage />} />
