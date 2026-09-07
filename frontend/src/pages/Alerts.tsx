@@ -254,7 +254,7 @@ export default function Alerts() {
   const allIds = alerts?.items?.map((a: any) => a.id) ?? []
   const allSelected = allIds.length > 0 && allIds.every((id: string) => selectedIds.has(id))
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(allIds))
-  const toggleOne = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  const toggleOne = (id: string) => setSelectedIds(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s })
 
   // Filters moved off the page and into the rail. Status keeps 'all' as its
   // neutral value rather than '' — it defaults to 'open', so treating 'open'

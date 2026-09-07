@@ -102,7 +102,12 @@ export interface RosterBatch {
   draft_shifts: DraftShift[]
 }
 
-export const autoSchedule = (data: { site_id?: string; period_start: string; period_end: string }) =>
+export const autoSchedule = (data: {
+  site_id?: string
+  period_start: string
+  period_end: string
+  rules?: AutoScheduleRules
+}) =>
   apiClient.post<RosterBatch>('/api/v1/roster/auto-schedule', data).then((r) => r.data)
 
 export const getBatch = (id: string) =>
@@ -197,3 +202,183 @@ export const assignCover = (coverId: string, data: { guard_user_id: string; note
 
 export const dismissCover = (coverId: string, note?: string) =>
   apiClient.post(`/api/v1/roster/cover-requests/${coverId}/dismiss`, { note }).then((r) => r.data)
+
+// ── Shift definitions ─────────────────────────────────────────────────────────
+//
+// The named shifts a company runs, held once and pointed at, rather than
+// restated as a start time and a duration on every pattern.
+//
+// The API works in start/end because that is how people describe a shift, and
+// derives duration, end time and the midnight crossing server-side so both
+// halves cannot disagree about what "19:00 for 12 hours" means.
+
+export type ShiftKind = 'day' | 'night' | 'general' | 'split'
+
+export interface ShiftDefinition {
+  id: string
+  name: string
+  shift_type: ShiftKind
+  /** "HH:MM" */
+  start_time: string
+  /** "HH:MM", derived from start + duration. */
+  end_time: string
+  duration_minutes: number
+  duration_hours: number
+  /** True when the shift finishes on a later calendar day — the "+1" badge. */
+  crosses_midnight: boolean
+  /** Null means fall back to the site's grace, then the tenant default. */
+  grace_minutes: number | null
+  break_minutes: number
+  ot_eligible: boolean
+  colour: string | null
+  notes: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ShiftDefinitionInput {
+  name: string
+  shift_type: ShiftKind
+  start_time: string
+  end_time: string
+  grace_minutes?: number | null
+  break_minutes?: number
+  ot_eligible?: boolean
+  colour?: string | null
+  notes?: string | null
+}
+
+export const listShiftDefinitions = (includeInactive = false) =>
+  apiClient
+    .get<ShiftDefinition[]>('/api/v1/shifts/definitions', {
+      params: { include_inactive: includeInactive },
+    })
+    .then((r) => r.data)
+
+export const createShiftDefinition = (data: ShiftDefinitionInput) =>
+  apiClient.post<ShiftDefinition>('/api/v1/shifts/definitions', data).then((r) => r.data)
+
+export const updateShiftDefinition = (id: string, data: Partial<ShiftDefinitionInput> & { is_active?: boolean }) =>
+  apiClient.put<ShiftDefinition>(`/api/v1/shifts/definitions/${id}`, data).then((r) => r.data)
+
+/** Retires the shift if a pattern or roster already uses it; deletes it if not. */
+export const deleteShiftDefinition = (id: string) =>
+  apiClient
+    .delete<{ id: string; deleted?: boolean; retired?: boolean; in_use_by?: number }>(
+      `/api/v1/shifts/definitions/${id}`,
+    )
+    .then((r) => r.data)
+
+// ── Roster grid ───────────────────────────────────────────────────────────────
+
+export interface GridCell {
+  shift_id: string
+  site_id: string | null
+  site_name: string | null
+  shift_definition_id: string | null
+  /** Null for shifts created before shift definitions existed. */
+  shift_name: string | null
+  shift_type: string
+  colour: string | null
+  start: string
+  end: string
+  status: string
+}
+
+export interface GridEmployee {
+  guard_user_id: string
+  full_name: string
+  designation: string | null
+  employment_type: string | null
+  role_id: number
+  profile_photo_path: string | null
+  preferred_shift_type: 'day' | 'night' | null
+  /** Keyed by ISO date; a day can hold more than one shift. */
+  cells: Record<string, GridCell[]>
+  leave_days: string[]
+  site_names: string[]
+}
+
+export interface RosterGrid {
+  start_date: string
+  end_date: string
+  days: string[]
+  employees: GridEmployee[]
+  sites: { id: string; name: string; day_guards_required: number; night_guards_required: number }[]
+  stats: {
+    staff: number
+    day_shifts: number
+    night_shifts: number
+    days_off: number
+    required_posts: number
+    filled_posts: number
+    coverage_pct: number
+  }
+}
+
+export const getRosterGrid = (startDate: string, endDate: string, siteId?: string) =>
+  apiClient
+    .get<RosterGrid>('/api/v1/roster/grid', {
+      params: { start_date: startDate, end_date: endDate, site_id: siteId || undefined },
+    })
+    .then((r) => r.data)
+
+export const assignGridCell = (data: {
+  guard_user_id: string
+  site_id: string
+  shift_definition_id: string
+  on_date: string
+}) => apiClient.post('/api/v1/roster/grid/assign', data).then((r) => r.data)
+
+export const clearGridCell = (shiftId: string) =>
+  apiClient.delete(`/api/v1/roster/grid/assign/${shiftId}`).then((r) => r.data)
+
+export type DayPattern = 'all' | 'weekdays' | 'alternate'
+
+export interface BulkAssignResult {
+  shift_name: string
+  site_name: string
+  days_targeted: number
+  staff_targeted: number
+  created: number
+  skipped_on_leave: number
+  skipped_clash: number
+  per_guard: {
+    guard_user_id: string
+    full_name: string
+    created: number
+    skipped_on_leave: number
+    skipped_clash: number
+  }[]
+}
+
+/** Skips rather than fails: leave and existing shifts are expected collisions,
+ *  and the result says exactly who was skipped and why. */
+export const bulkAssignShifts = (data: {
+  shift_definition_id: string
+  site_id: string
+  start_date: string
+  end_date: string
+  day_pattern: DayPattern
+  guard_user_ids?: string[]
+}) => apiClient.post<BulkAssignResult>('/api/v1/roster/grid/bulk-assign', data).then((r) => r.data)
+
+// ── Auto-schedule rules ───────────────────────────────────────────────────────
+
+export type ShiftPatternMode = 'rotation' | 'day_only' | 'night_only'
+
+/** Every field optional. Omitted keeps the scheduler default; a null on a
+ *  numeric rule turns that rule OFF, which is not the same as zero. */
+export interface AutoScheduleRules {
+  shift_pattern?: ShiftPatternMode
+  fair_rotation?: boolean
+  min_rest_hours?: number | null
+  max_consecutive_days?: number | null
+  max_night_shifts_per_period?: number | null
+  max_off_days_per_period?: number | null
+  min_headcount?: number | null
+  honour_preferences?: boolean
+  respect_leave?: boolean
+  overwrite_existing?: boolean
+}

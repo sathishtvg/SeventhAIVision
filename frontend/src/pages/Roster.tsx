@@ -38,15 +38,17 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  autoSchedule, createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
+  createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
   assignCover, discardBatch, dismissCover, generateRoster, getBatch, getCoverRequests,
   getLeaveBlocks, getRosterCoverage,
   listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
-  type CoverageShift, type DraftShift, type RosterBatch,
+  type CoverageShift, type DraftShift,
 } from '@/api/roster'
 import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { approveLeaveRequest, listLeaveRequests, rejectLeaveRequest } from '@/api/leave'
+import { RosterGrid } from '@/components/roster/RosterGrid'
+import { AutoScheduleDialog } from '@/components/roster/AutoScheduleDialog'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -149,56 +151,6 @@ function PatternDialog({ open, onClose }: { open: boolean; onClose: () => void }
         <Button variant="contained" onClick={() => save()}
                 disabled={isPending || !siteId || !guardId || days.length === 0}>
           Create
-        </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
-function AutoScheduleDialog({ open, onClose, onGenerated }: {
-  open: boolean; onClose: () => void; onGenerated: (batch: RosterBatch) => void
-}) {
-  const [siteId, setSiteId] = useState('')
-  const [periodStart, setPeriodStart] = useState(() => new Date().toISOString().slice(0, 10))
-  const [periodEnd, setPeriodEnd] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() + 29); return d.toISOString().slice(0, 10)
-  })
-
-  const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(), enabled: open })
-
-  const { mutate: run, isPending, isError } = useMutation({
-    mutationFn: () => autoSchedule({ site_id: siteId || undefined, period_start: periodStart, period_end: periodEnd }),
-    onSuccess: (batch) => { onGenerated(batch); onClose() },
-  })
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>AI Auto-Schedule</DialogTitle>
-      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
-        <Typography variant="caption" color="text.secondary">
-          Generates a draft roster from your active patterns, respecting rest hours,
-          consecutive-day limits, leave, preferences, coverage minimums, and supervisor
-          presence. Review and publish before it takes effect.
-        </Typography>
-        <Select size="small" displayEmpty value={siteId} onChange={(e) => setSiteId(e.target.value)}
-                renderValue={(v) => sites.find((s: any) => s.id === v)?.name ?? 'All Sites'}>
-          <MenuItem value="">All Sites</MenuItem>
-          {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
-        </Select>
-        <Stack direction="row" spacing={1.5}>
-          <TextField label="From" type="date" size="small" value={periodStart}
-                     onChange={(e) => setPeriodStart(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }} />
-          <TextField label="To" type="date" size="small" value={periodEnd}
-                     onChange={(e) => setPeriodEnd(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }} />
-        </Stack>
-        {isError && (
-          <Typography variant="caption" color="error">Failed to generate — check the period and try again.</Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isPending}>Cancel</Button>
-        <Button variant="contained" onClick={() => run()} disabled={isPending || !periodStart || !periodEnd}>
-          {isPending ? 'Generating…' : 'Generate Draft'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -623,7 +575,7 @@ export function RosterPage() {
   const qc = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [genResult, setGenResult] = useState<number | null>(null)
-  const [viewMode, setViewMode] = useState<'site' | 'employee'>('site')
+  const [viewMode, setViewMode] = useState<'grid' | 'site' | 'employee'>('grid')
   const [autoScheduleOpen, setAutoScheduleOpen] = useState(false)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
   const [editShift, setEditShift] = useState<EditableShift | null>(null)
@@ -800,74 +752,77 @@ export function RosterPage() {
         <Box sx={{ p: 1.5 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-              Coverage — next 7 days
+              {viewMode === 'grid' ? 'Roster' : 'Coverage — next 7 days'}
             </Typography>
             <ToggleButtonGroup size="small" value={viewMode} exclusive
                                 onChange={(_, v) => v && setViewMode(v)}>
+              <ToggleButton value="grid">Month Grid</ToggleButton>
               <ToggleButton value="site">By Site</ToggleButton>
               <ToggleButton value="employee">By Employee</ToggleButton>
             </ToggleButtonGroup>
           </Stack>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>{viewMode === 'site' ? 'Site' : 'Employee'}</TableCell>
-                  {nextDates.map((d) => (
-                    <TableCell key={d.toDateString()} align="center">
-                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                        {DAY_LABELS[(d.getDay() + 6) % 7]} {d.getDate()}
-                      </Typography>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {activeGrid.size === 0 ? (
+          {viewMode === 'grid' ? <RosterGrid /> : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={8}>
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                        No upcoming shifts — generate the roster to populate coverage.
-                      </Typography>
-                    </TableCell>
+                    <TableCell>{viewMode === 'site' ? 'Site' : 'Employee'}</TableCell>
+                    {nextDates.map((d) => (
+                      <TableCell key={d.toDateString()} align="center">
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          {DAY_LABELS[(d.getDay() + 6) % 7]} {d.getDate()}
+                        </Typography>
+                      </TableCell>
+                    ))}
                   </TableRow>
-                ) : Array.from(activeGrid.entries()).map(([rowKey, dayMap]) => (
-                  <TableRow key={rowKey} hover>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{rowKey}</Typography>
-                    </TableCell>
-                    {nextDates.map((d) => {
-                      const shifts = dayMap.get(d.toDateString()) ?? []
-                      return (
-                        <TableCell key={d.toDateString()} align="center" sx={{ px: 0.5 }}>
-                          {shifts.length === 0 ? (
-                            <Typography variant="caption" color="error.main">—</Typography>
-                          ) : shifts.map((sh) => (
-                            <Tooltip key={sh.id}
-                                     title={`${viewMode === 'site' ? sh.guard_name ?? 'Guard' : sh.site_name ?? 'No site'} · ${fmtTime(sh.scheduled_start)}–${fmtTime(sh.scheduled_end)} · ${sh.status}${canEditShift ? ' · click to edit' : ''}`}>
-                              <Chip
-                                label={`${(viewMode === 'site' ? sh.guard_name : sh.site_name)?.split(' ')[0] ?? '?'} ${fmtTime(sh.scheduled_start)}`}
-                                size="small"
-                                color={sh.status === 'active' ? 'success' : 'default'}
-                                variant="outlined"
-                                clickable={canEditShift}
-                                onClick={canEditShift ? () => openEditShift({
-                                  id: sh.id, guard_user_id: sh.guard_user_id,
-                                  scheduled_start: sh.scheduled_start, scheduled_end: sh.scheduled_end,
-                                  site_name: sh.site_name,
-                                }) : undefined}
-                                sx={{ height: 18, fontSize: '0.6rem', m: 0.15, cursor: canEditShift ? 'pointer' : 'default' }}
-                              />
-                            </Tooltip>
-                          ))}
-                        </TableCell>
-                      )
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {activeGrid.size === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8}>
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                          No upcoming shifts — generate the roster to populate coverage.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : Array.from(activeGrid.entries()).map(([rowKey, dayMap]) => (
+                    <TableRow key={rowKey} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{rowKey}</Typography>
+                      </TableCell>
+                      {nextDates.map((d) => {
+                        const shifts = dayMap.get(d.toDateString()) ?? []
+                        return (
+                          <TableCell key={d.toDateString()} align="center" sx={{ px: 0.5 }}>
+                            {shifts.length === 0 ? (
+                              <Typography variant="caption" color="error.main">—</Typography>
+                            ) : shifts.map((sh) => (
+                              <Tooltip key={sh.id}
+                                       title={`${viewMode === 'site' ? sh.guard_name ?? 'Guard' : sh.site_name ?? 'No site'} · ${fmtTime(sh.scheduled_start)}–${fmtTime(sh.scheduled_end)} · ${sh.status}${canEditShift ? ' · click to edit' : ''}`}>
+                                <Chip
+                                  label={`${(viewMode === 'site' ? sh.guard_name : sh.site_name)?.split(' ')[0] ?? '?'} ${fmtTime(sh.scheduled_start)}`}
+                                  size="small"
+                                  color={sh.status === 'active' ? 'success' : 'default'}
+                                  variant="outlined"
+                                  clickable={canEditShift}
+                                  onClick={canEditShift ? () => openEditShift({
+                                    id: sh.id, guard_user_id: sh.guard_user_id,
+                                    scheduled_start: sh.scheduled_start, scheduled_end: sh.scheduled_end,
+                                    site_name: sh.site_name,
+                                  }) : undefined}
+                                  sx={{ height: 18, fontSize: '0.6rem', m: 0.15, cursor: canEditShift ? 'pointer' : 'default' }}
+                                />
+                              </Tooltip>
+                            ))}
+                          </TableCell>
+                        )
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </Box>
       </GlassCard>
 

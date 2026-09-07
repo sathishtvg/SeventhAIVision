@@ -41,7 +41,7 @@ function ChannelDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
   const mutation = useMutation({
     mutationFn: () => {
-      let config: Record<string, unknown> = {}
+      let config: Record<string, unknown>
       try { config = JSON.parse(configJson) } catch { throw new Error('Invalid JSON in config') }
       return createChannel({ name, channel_type: type, config })
     },

@@ -319,7 +319,7 @@ export default function Incidents() {
   const allIncidentIds = incidents?.items?.map((i: any) => i.id) ?? []
   const allSelected = allIncidentIds.length > 0 && allIncidentIds.every((id: string) => selectedIds.has(id))
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(allIncidentIds))
-  const toggleOne = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  const toggleOne = (id: string) => setSelectedIds(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s })
 
   // Same three groups as Alerts, same reasoning for the 'all' sentinel on
   // status: it defaults to 'open', so 'open' is not the neutral value.

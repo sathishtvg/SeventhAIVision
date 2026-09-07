@@ -10,6 +10,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import GroupsIcon from '@mui/icons-material/Groups'
+import ScheduleIcon from '@mui/icons-material/Schedule'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
@@ -161,6 +162,7 @@ const NAV_SECTIONS: {
     title: 'Guard Operations',
     items: [
       { label: 'Attendance',      path: '/attendance',  icon: <AccessTimeIcon fontSize="small" />,   permission: 'attendance:read' },
+      { label: 'Shifts',          path: '/shifts',      icon: <ScheduleIcon fontSize="small" />,     permission: 'shift:read' },
       { label: 'Roster',          path: '/roster',      icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
       { label: 'Duty Teams',      path: '/duty-assignments', icon: <GroupsIcon fontSize="small" />,  permission: 'shift:read' },
       { label: 'Guard Ops',       path: '/guard-ops',   icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
