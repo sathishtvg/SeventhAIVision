@@ -102,7 +102,12 @@ export interface RosterBatch {
   draft_shifts: DraftShift[]
 }
 
-export const autoSchedule = (data: { site_id?: string; period_start: string; period_end: string }) =>
+export const autoSchedule = (data: {
+  site_id?: string
+  period_start: string
+  period_end: string
+  rules?: AutoScheduleRules
+}) =>
   apiClient.post<RosterBatch>('/api/v1/roster/auto-schedule', data).then((r) => r.data)
 
 export const getBatch = (id: string) =>
@@ -358,3 +363,22 @@ export const bulkAssignShifts = (data: {
   day_pattern: DayPattern
   guard_user_ids?: string[]
 }) => apiClient.post<BulkAssignResult>('/api/v1/roster/grid/bulk-assign', data).then((r) => r.data)
+
+// ── Auto-schedule rules ───────────────────────────────────────────────────────
+
+export type ShiftPatternMode = 'rotation' | 'day_only' | 'night_only'
+
+/** Every field optional. Omitted keeps the scheduler default; a null on a
+ *  numeric rule turns that rule OFF, which is not the same as zero. */
+export interface AutoScheduleRules {
+  shift_pattern?: ShiftPatternMode
+  fair_rotation?: boolean
+  min_rest_hours?: number | null
+  max_consecutive_days?: number | null
+  max_night_shifts_per_period?: number | null
+  max_off_days_per_period?: number | null
+  min_headcount?: number | null
+  honour_preferences?: boolean
+  respect_leave?: boolean
+  overwrite_existing?: boolean
+}

@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,10 +49,35 @@ async def _publish_roster_event(request: Request, tenant_id: str, batch_id: str)
 
 # ── Auto-schedule draft/publish ───────────────────────────────────────────────
 
+class AutoScheduleRules(BaseModel):
+    """Per-run overrides. Every field optional; anything omitted keeps the
+    scheduler's default, so an old client sending only dates still works.
+
+    Unknown fields are REJECTED rather than ignored, which is not Pydantic's
+    default. A misspelled rule name would otherwise be dropped in silence and
+    the roster generated without it — a planner who typed max_night_shifts
+    instead of max_night_shifts_per_period would get an uncapped roster while
+    believing nights were limited, and nothing anywhere would say so.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    shift_pattern: str | None = None          # rotation | day_only | night_only
+    fair_rotation: bool | None = None
+    min_rest_hours: int | None = None
+    max_consecutive_days: int | None = None
+    max_night_shifts_per_period: int | None = None
+    max_off_days_per_period: int | None = None
+    min_headcount: int | None = None
+    honour_preferences: bool | None = None
+    respect_leave: bool | None = None
+    overwrite_existing: bool | None = None
+
+
 class AutoScheduleBody(BaseModel):
     site_id: str | None = None
     period_start: date
     period_end: date
+    rules: AutoScheduleRules | None = None
 
 
 @router.post("/auto-schedule", status_code=status.HTTP_201_CREATED,
@@ -67,7 +92,21 @@ async def auto_schedule(
     if (body.period_end - body.period_start).days > 62:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "period must not exceed 62 days")
 
-    batch_id = await generate_draft(db, token.user_id, body.site_id, body.period_start, body.period_end)
+    rules = None
+    if body.rules is not None:
+        # exclude_unset, not exclude_none: null is a meaningful value here —
+        # it turns a numeric rule OFF — and dropping it would silently restore
+        # the default the planner just cleared.
+        rules = body.rules.model_dump(exclude_unset=True)
+        mode = rules.get("shift_pattern")
+        if mode is not None and mode not in ("rotation", "day_only", "night_only"):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "shift_pattern must be rotation, day_only or night_only",
+            )
+    batch_id = await generate_draft(
+        db, token.user_id, body.site_id, body.period_start, body.period_end, rules,
+    )
     return await _get_batch_detail(db, batch_id)
 
 
@@ -145,6 +184,36 @@ async def publish_batch(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Roster batch not found")
     if batch_row.status != "draft":
         raise HTTPException(status.HTTP_409_CONFLICT, f"Batch is already {batch_row.status}")
+
+    # The draft recorded whether this run was meant to replace what is there.
+    # Honoured here rather than at generation, because a draft is a proposal —
+    # clearing a live roster when somebody generates one they might discard
+    # would be destructive at exactly the wrong moment.
+    batch_meta = (await db.execute(
+        text("SELECT site_id, period_start, period_end, rules_summary "
+             "FROM roster_batches WHERE id = CAST(:id AS uuid)"),
+        {"id": batch_id},
+    )).first()
+    summary = batch_meta.rules_summary or {}
+    if isinstance(summary, str):
+        summary = json.loads(summary)
+    overwrite = bool((summary.get("rules") or {}).get("overwrite_existing"))
+
+    if overwrite:
+        # Only shifts nobody has started. A guard who has checked in has an
+        # attendance record, and removing the shift under it would erase hours
+        # somebody worked — "replace the roster" never means that.
+        site_filter = "AND site_id = CAST(:sid AS uuid)" if batch_meta.site_id else ""
+        await db.execute(
+            text(f"""
+                DELETE FROM shifts
+                 WHERE status = 'scheduled'
+                   AND scheduled_start::date BETWEEN :ps AND :pe
+                   {site_filter}
+            """),
+            {"ps": batch_meta.period_start, "pe": batch_meta.period_end,
+             **({"sid": str(batch_meta.site_id)} if batch_meta.site_id else {})},
+        )
 
     filled_rows = (await db.execute(
         text("""

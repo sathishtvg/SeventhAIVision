@@ -33,6 +33,32 @@ _ROSTER_DEFAULTS = {
     "roster.min_rest_hours": 11,
 }
 
+# Rules a planner can set per run. Two of these used to live in tenant
+# settings and the rest were fixed in this file, which meant the only way to
+# schedule day-only cover for a week was to not use the scheduler.
+#
+# A None on a numeric rule means the rule is OFF, not zero — "no maximum" and
+# "a maximum of nothing" are opposite instructions, and a planner switching a
+# rule off should not silently get the strictest possible version of it.
+DEFAULT_RULES: dict = {
+    # rotation | day_only | night_only — which shift types to fill at all.
+    "shift_pattern": "rotation",
+    "fair_rotation": True,
+    "min_rest_hours": None,            # None -> the tenant setting
+    "max_consecutive_days": None,      # None -> the tenant setting
+    "max_night_shifts_per_period": None,
+    "max_off_days_per_period": None,
+    # Overrides the site's own day/night strength. None keeps per-site
+    # staffing, which is richer than one number for the whole estate.
+    "min_headcount": None,
+    "honour_preferences": True,
+    "respect_leave": True,
+    # Applied at PUBLISH, not here: the draft is a proposal, and clearing a
+    # live roster when somebody generates a draft they might discard would be
+    # destructive at the wrong moment.
+    "overwrite_existing": False,
+}
+
 
 def infer_shift_type(start_time: time) -> str:
     """Pure: 05:00-16:59 start -> day, else night. 'split' is never inferred
@@ -72,22 +98,35 @@ def score_candidate(
     preferences: dict[str, dict],
     history: dict[str, dict],
     day_index: int,
+    rules: dict | None = None,
 ) -> float:
-    """Pure: higher is better. Additive bonuses for rules 3, 4, 8."""
+    """Pure: higher is better. Additive bonuses for rules 3, 4, 8 and 10."""
+    rules = rules or DEFAULT_RULES
     score = 0.0
     h = history[guard_id]
     pref = preferences.get(guard_id, {})
 
     # Rule 3 — balance day/night: bonus proportional to how skewed this
     # guard already is toward the OPPOSITE of this slot's type.
-    total = h["day_count"] + h["night_count"]
-    if total > 0:
-        skew_source = h["day_count"] if slot_shift_type == "night" else h["night_count"]
-        score += (skew_source / total) * 2.0
+    if rules.get("fair_rotation", True):
+        total = h["day_count"] + h["night_count"]
+        if total > 0:
+            skew_source = h["day_count"] if slot_shift_type == "night" else h["night_count"]
+            score += (skew_source / total) * 2.0
 
     # Rule 4 — honor preferences
-    if pref.get("preferred_shift_type") == slot_shift_type:
+    if rules.get("honour_preferences", True) and pref.get("preferred_shift_type") == slot_shift_type:
         score += 3.0
+
+    # Rule 10 — somebody who has been idle past the allowed number of off days
+    # is the one who most needs work. Weighted above every other bonus so it
+    # actually decides, rather than being outvoted by a preference match.
+    max_off = rules.get("max_off_days_per_period")
+    if max_off is not None:
+        worked = h["day_count"] + h["night_count"]
+        off_so_far = (day_index + 1) - worked
+        if off_so_far > max_off:
+            score += 6.0 + (off_so_far - max_off)
 
     # Rule 8 — off-day stagger: bonus for guards who've gone longest since
     # their last assigned day within this batch (spreads rest days evenly).
@@ -113,11 +152,25 @@ async def generate_draft(
     site_id: str | None,
     period_start: date,
     period_end: date,
+    rules: dict | None = None,
 ) -> str:
     """Orchestrates the greedy assignment for the current tenant (GUC must
-    already be set). Returns the new roster_batches.id."""
-    max_consecutive = await _get_roster_setting(db, "roster.max_consecutive_days")
-    min_rest_hours = await _get_roster_setting(db, "roster.min_rest_hours")
+    already be set). Returns the new roster_batches.id.
+
+    `rules` overrides DEFAULT_RULES for this run only. Omitted, the behaviour
+    is exactly what it was before rules existed: the tenant's rest and
+    consecutive-day settings, every rule on, both shift types filled.
+    """
+    rules = {**DEFAULT_RULES, **(rules or {})}
+
+    # A per-run number wins over the tenant setting; the setting remains the
+    # default so an unconfigured run still behaves like the tenant expects.
+    max_consecutive = rules["max_consecutive_days"]
+    if max_consecutive is None:
+        max_consecutive = await _get_roster_setting(db, "roster.max_consecutive_days")
+    min_rest_hours = rules["min_rest_hours"]
+    if min_rest_hours is None:
+        min_rest_hours = await _get_roster_setting(db, "roster.min_rest_hours")
 
     site_clause = "AND p.site_id = CAST(:site_id AS uuid)" if site_id else ""
     patterns = [dict(r) for r in (await db.execute(
@@ -189,8 +242,21 @@ async def generate_draft(
             groups.setdefault(key, []).append(slot)
 
         for (site_id_str, shift_type), group_slots in groups.items():
-            required = (group_slots[0]["day_guards_required"] if shift_type == "day"
-                        else group_slots[0]["night_guards_required"])
+            # Day-only and night-only runs exist for a reason: covering a
+            # week of days while nights are handled by a standing roster is a
+            # normal request, and doing it by generating everything and
+            # deleting half is how a roster gets wrong.
+            mode = rules["shift_pattern"]
+            if mode == "day_only" and shift_type != "day":
+                continue
+            if mode == "night_only" and shift_type != "night":
+                continue
+
+            if rules["min_headcount"] is not None:
+                required = rules["min_headcount"]
+            else:
+                required = (group_slots[0]["day_guards_required"] if shift_type == "day"
+                            else group_slots[0]["night_guards_required"])
             required = max(int(required or 0), 0)
 
             team = duty_teams.get((site_id_str, shift_type), set())
@@ -210,7 +276,7 @@ async def generate_draft(
                     if gid in placed_in_group:
                         continue  # already holds a post of this type here today
                     h = history[gid]
-                    if is_guard_on_leave(gid, current_date, leave_blocks):
+                    if rules["respect_leave"] and is_guard_on_leave(gid, current_date, leave_blocks):
                         continue  # rule 5
                     if h["last_shift_end"] is not None:
                         rest_hours = (slot_start - h["last_shift_end"]).total_seconds() / 3600
@@ -218,6 +284,13 @@ async def generate_draft(
                             continue  # rule 1
                     if h["last_day_index_worked"] == day_index - 1 and h["consecutive_days"] >= max_consecutive:
                         continue  # rule 2
+                    # Rule 11 — night cap. A hard exclusion rather than a
+                    # scoring penalty: "no more than fifteen nights" is a
+                    # limit somebody agreed to, not a preference to weigh.
+                    night_cap = rules["max_night_shifts_per_period"]
+                    if (shift_type == "night" and night_cap is not None
+                            and h["night_count"] >= night_cap):
+                        continue
                     candidates.append(gid)
 
                 # Rule 9 — the site's own team first. Falling back to the wider
@@ -236,7 +309,8 @@ async def generate_draft(
 
                 chosen = None
                 if pool:
-                    chosen = max(pool, key=lambda gid: score_candidate(gid, shift_type, preferences, history, day_index))
+                    chosen = max(pool, key=lambda gid: score_candidate(
+                        gid, shift_type, preferences, history, day_index, rules))
 
                 if chosen is None:
                     # Which pool it would have come from stops being the useful
@@ -301,6 +375,12 @@ async def generate_draft(
         "missing_supervisor_days": missing_supervisor_days,
         "missing_manager_days": missing_manager_days,
         "off_team_fills": off_team_fills,
+        # The rules this batch was generated under, kept with the batch.
+        # Two drafts of the same period can differ entirely because the rules
+        # differed, and without this recorded there is no way to tell which
+        # one produced the roster somebody is looking at — or to reproduce it.
+        "rules": {**rules, "min_rest_hours": min_rest_hours,
+                  "max_consecutive_days": max_consecutive},
     }
 
     batch_row = (await db.execute(

@@ -38,16 +38,17 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  autoSchedule, createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
+  createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
   assignCover, discardBatch, dismissCover, generateRoster, getBatch, getCoverRequests,
   getLeaveBlocks, getRosterCoverage,
   listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
-  type CoverageShift, type DraftShift, type RosterBatch,
+  type CoverageShift, type DraftShift,
 } from '@/api/roster'
 import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { approveLeaveRequest, listLeaveRequests, rejectLeaveRequest } from '@/api/leave'
 import { RosterGrid } from '@/components/roster/RosterGrid'
+import { AutoScheduleDialog } from '@/components/roster/AutoScheduleDialog'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -150,56 +151,6 @@ function PatternDialog({ open, onClose }: { open: boolean; onClose: () => void }
         <Button variant="contained" onClick={() => save()}
                 disabled={isPending || !siteId || !guardId || days.length === 0}>
           Create
-        </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
-function AutoScheduleDialog({ open, onClose, onGenerated }: {
-  open: boolean; onClose: () => void; onGenerated: (batch: RosterBatch) => void
-}) {
-  const [siteId, setSiteId] = useState('')
-  const [periodStart, setPeriodStart] = useState(() => new Date().toISOString().slice(0, 10))
-  const [periodEnd, setPeriodEnd] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() + 29); return d.toISOString().slice(0, 10)
-  })
-
-  const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(), enabled: open })
-
-  const { mutate: run, isPending, isError } = useMutation({
-    mutationFn: () => autoSchedule({ site_id: siteId || undefined, period_start: periodStart, period_end: periodEnd }),
-    onSuccess: (batch) => { onGenerated(batch); onClose() },
-  })
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>AI Auto-Schedule</DialogTitle>
-      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
-        <Typography variant="caption" color="text.secondary">
-          Generates a draft roster from your active patterns, respecting rest hours,
-          consecutive-day limits, leave, preferences, coverage minimums, and supervisor
-          presence. Review and publish before it takes effect.
-        </Typography>
-        <Select size="small" displayEmpty value={siteId} onChange={(e) => setSiteId(e.target.value)}
-                renderValue={(v) => sites.find((s: any) => s.id === v)?.name ?? 'All Sites'}>
-          <MenuItem value="">All Sites</MenuItem>
-          {sites.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
-        </Select>
-        <Stack direction="row" spacing={1.5}>
-          <TextField label="From" type="date" size="small" value={periodStart}
-                     onChange={(e) => setPeriodStart(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }} />
-          <TextField label="To" type="date" size="small" value={periodEnd}
-                     onChange={(e) => setPeriodEnd(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: 1 }} />
-        </Stack>
-        {isError && (
-          <Typography variant="caption" color="error">Failed to generate — check the period and try again.</Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isPending}>Cancel</Button>
-        <Button variant="contained" onClick={() => run()} disabled={isPending || !periodStart || !periodEnd}>
-          {isPending ? 'Generating…' : 'Generate Draft'}
         </Button>
       </DialogActions>
     </Dialog>
