@@ -9,6 +9,7 @@ copy into `shifts`.
 """
 import json
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -867,3 +868,200 @@ async def clear_grid_cell(shift_id: str, db: AsyncSession = Depends(get_db_with_
     await db.execute(text("DELETE FROM shifts WHERE id = CAST(:id AS uuid)"), {"id": shift_id})
     await db.commit()
     return {"id": shift_id, "removed": True}
+
+
+# ── Bulk assign ─────────────────────────────────────────────────────────────
+
+DAY_PATTERNS = ("all", "weekdays", "alternate")
+
+
+class BulkAssign(BaseModel):
+    shift_definition_id: str
+    site_id: str
+    start_date: date
+    end_date: date
+    day_pattern: str = "all"
+    # None means everyone schedulable. A list narrows it, which is what the
+    # dialog sends once a planner has deselected somebody.
+    guard_user_ids: list[str] | None = None
+
+
+@router.post("/grid/bulk-assign", dependencies=[Depends(require_permission("shift:manage"))])
+async def bulk_assign(
+    body: BulkAssign,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Put one shift on many people across a date range.
+
+    SKIPS RATHER THAN FAILS. Applying a month of shifts to a whole team will
+    always collide with something — somebody has leave, somebody is already
+    rostered that night. Rejecting the batch for that would make the feature
+    useless precisely when it is most wanted, so every clash is skipped and
+    counted, and the response says exactly who and why.
+
+    Reads the whole picture once rather than validating per insert: a month
+    across a team is a few hundred candidate shifts, and three queries each
+    would be a thousand round trips for work that is one comparison.
+    """
+    if body.day_pattern not in DAY_PATTERNS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"day_pattern must be one of {list(DAY_PATTERNS)}")
+    if body.end_date < body.start_date:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "end_date must not be before start_date")
+    span = (body.end_date - body.start_date).days + 1
+    if span > GRID_MAX_DAYS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"Range is {span} days; at most {GRID_MAX_DAYS}")
+
+    definition = (await db.execute(
+        text("SELECT id, name, shift_type, start_time, duration_minutes "
+             "FROM shift_definitions WHERE id = CAST(:id AS uuid) AND is_active = TRUE"),
+        {"id": body.shift_definition_id},
+    )).first()
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+
+    site = (await db.execute(
+        text("SELECT id, name FROM sites WHERE id = CAST(:id AS uuid) AND is_active = TRUE"),
+        {"id": body.site_id},
+    )).first()
+    if site is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+
+    guard_filter = ""
+    params: dict = {"roles": list(GUARD_ROLE_IDS_FOR_GRID)}
+    if body.guard_user_ids is not None:
+        if not body.guard_user_ids:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "guard_user_ids was empty; omit it to mean everyone")
+        guard_filter = "AND u.id = ANY(CAST(:ids AS uuid[]))"
+        params["ids"] = body.guard_user_ids
+
+    guards = [dict(r) for r in (await db.execute(
+        text(f"""
+            SELECT u.id, u.full_name, u.email
+              FROM users u
+             WHERE u.is_active = TRUE AND u.role_id = ANY(:roles) {guard_filter}
+          ORDER BY u.full_name NULLS LAST, u.email
+        """),
+        params,
+    )).mappings().all()]
+    if not guards:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No schedulable staff matched")
+
+    guard_ids = [str(g["id"]) for g in guards]
+
+    tz_name = (await db.execute(
+        text("SELECT COALESCE(timezone, 'UTC') FROM tenants "
+             "WHERE id = current_setting('app.current_tenant')::uuid")
+    )).scalar_one()
+    tz = ZoneInfo(tz_name)
+
+    # Everything that could block an assignment, fetched once.
+    leave_rows = [dict(r) for r in (await db.execute(
+        text("SELECT guard_user_id, start_date, end_date FROM guard_leave_blocks "
+             "WHERE guard_user_id = ANY(CAST(:ids AS uuid[])) "
+             "AND start_date <= :end AND end_date >= :start"),
+        {"ids": guard_ids, "start": body.start_date, "end": body.end_date},
+    )).mappings().all()]
+    leave_by_guard: dict[str, list[tuple]] = {}
+    for lv in leave_rows:
+        leave_by_guard.setdefault(str(lv["guard_user_id"]), []).append(
+            (lv["start_date"], lv["end_date"])
+        )
+
+    # A margin either side of the window, because a night shift starting the
+    # evening before the range still overlaps its first morning.
+    existing = [dict(r) for r in (await db.execute(
+        text("""
+            SELECT guard_user_id, scheduled_start, scheduled_end
+              FROM shifts
+             WHERE guard_user_id = ANY(CAST(:ids AS uuid[]))
+               AND status IN ('scheduled', 'active')
+               AND scheduled_start < CAST(:end AS date) + INTERVAL '2 days'
+               AND scheduled_end   > CAST(:start AS date) - INTERVAL '2 days'
+        """),
+        {"ids": guard_ids, "start": body.start_date, "end": body.end_date},
+    )).mappings().all()]
+    busy: dict[str, list[tuple]] = {}
+    for sh in existing:
+        busy.setdefault(str(sh["guard_user_id"]), []).append(
+            (sh["scheduled_start"], sh["scheduled_end"])
+        )
+
+    dates: list[date] = []
+    for i in range(span):
+        d = body.start_date + timedelta(days=i)
+        if body.day_pattern == "weekdays" and d.weekday() >= 5:
+            continue
+        # Alternate days counts from the start of the range, not from the
+        # calendar, so "every other day" means what the planner just chose.
+        if body.day_pattern == "alternate" and i % 2:
+            continue
+        dates.append(d)
+
+    created = 0
+    skipped_leave = 0
+    skipped_clash = 0
+    per_guard: list[dict] = []
+
+    for g in guards:
+        gid = str(g["id"])
+        g_created = g_leave = g_clash = 0
+        for d in dates:
+            if any(s <= d <= e for s, e in leave_by_guard.get(gid, [])):
+                g_leave += 1
+                continue
+
+            starts_at = datetime.combine(d, definition.start_time, tzinfo=tz)
+            ends_at = starts_at + timedelta(minutes=definition.duration_minutes)
+
+            # Compared against shifts created earlier in this same run as well
+            # as pre-existing ones, or a run covering two shifts a day would
+            # happily double-book somebody against itself.
+            if any(s < ends_at and e > starts_at for s, e in busy.get(gid, [])):
+                g_clash += 1
+                continue
+
+            await db.execute(
+                text("""
+                    INSERT INTO shifts
+                        (tenant_id, guard_user_id, site_id, scheduled_start, scheduled_end,
+                         shift_type, shift_definition_id, status, created_by_user_id)
+                    VALUES (current_setting('app.current_tenant')::uuid,
+                            CAST(:gid AS uuid), CAST(:sid AS uuid), :ss, :se,
+                            :stype, CAST(:def AS uuid), 'scheduled', CAST(:uid AS uuid))
+                """),
+                {
+                    "gid": gid, "sid": body.site_id, "ss": starts_at, "se": ends_at,
+                    "stype": definition.shift_type,
+                    "def": body.shift_definition_id, "uid": token.user_id,
+                },
+            )
+            busy.setdefault(gid, []).append((starts_at, ends_at))
+            g_created += 1
+
+        created += g_created
+        skipped_leave += g_leave
+        skipped_clash += g_clash
+        per_guard.append({
+            "guard_user_id": gid,
+            "full_name": g["full_name"] or g["email"],
+            "created": g_created,
+            "skipped_on_leave": g_leave,
+            "skipped_clash": g_clash,
+        })
+
+    await db.commit()
+    return {
+        "shift_name": definition.name,
+        "site_name": site.name,
+        "days_targeted": len(dates),
+        "staff_targeted": len(guards),
+        "created": created,
+        "skipped_on_leave": skipped_leave,
+        "skipped_clash": skipped_clash,
+        "per_guard": per_guard,
+    }

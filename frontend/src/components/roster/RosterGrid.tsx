@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import {
   Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, MenuItem, Select, Skeleton, Tooltip, Typography,
+  IconButton, MenuItem, Select, Skeleton, TextField, ToggleButton,
+  ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import LibraryAddIcon from '@mui/icons-material/LibraryAdd'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
-  assignGridCell, clearGridCell, getRosterGrid, listShiftDefinitions,
-  type GridCell, type GridEmployee, type ShiftDefinition,
+  assignGridCell, bulkAssignShifts, clearGridCell, getRosterGrid, listShiftDefinitions,
+  type BulkAssignResult, type DayPattern, type GridCell, type GridEmployee,
+  type ShiftDefinition,
 } from '@/api/roster'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
@@ -205,6 +208,198 @@ function CellDialog({ open, employee, day, existing, definitions, sites, onClose
   )
 }
 
+
+// ── Bulk assign ──────────────────────────────────────────────────────────────
+
+const DAY_PATTERNS: { value: DayPattern; label: string; hint: string }[] = [
+  { value: 'all', label: 'All days', hint: 'Every day in the range' },
+  { value: 'weekdays', label: 'Weekdays only', hint: 'Monday to Friday' },
+  { value: 'alternate', label: 'Alternate days', hint: 'Every other day from the start date' },
+]
+
+function BulkAssignDialog({ open, definitions, sites, defaultStart, defaultEnd, onClose }: {
+  open: boolean
+  definitions: ShiftDefinition[]
+  sites: { id: string; name: string }[]
+  defaultStart: string
+  defaultEnd: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [definitionId, setDefinitionId] = useState('')
+  const [siteId, setSiteId] = useState('')
+  const [from, setFrom] = useState(defaultStart)
+  const [to, setTo] = useState(defaultEnd)
+  const [pattern, setPattern] = useState<DayPattern>('all')
+  const [result, setResult] = useState<BulkAssignResult | null>(null)
+
+  const { mutate: apply, isPending, error, reset } = useMutation({
+    mutationFn: () => bulkAssignShifts({
+      shift_definition_id: definitionId,
+      site_id: siteId,
+      start_date: from,
+      end_date: to,
+      day_pattern: pattern,
+    }),
+    onSuccess: (res) => {
+      setResult(res)
+      qc.invalidateQueries({ queryKey: ['roster-grid'] })
+    },
+  })
+
+  const message = (error as { response?: { data?: { detail?: string } } } | null)
+    ?.response?.data?.detail
+
+  const close = () => { reset(); setResult(null); onClose() }
+  const skipped = result ? result.skipped_on_leave + result.skipped_clash : 0
+
+  return (
+    <Dialog open={open} onClose={close} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ pb: 0.5 }}>
+        Bulk assign
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          Apply one shift to all staff at once
+        </Typography>
+      </DialogTitle>
+
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1.5 }}>
+        {message && <Alert severity="warning">{message}</Alert>}
+
+        {result ? (
+          /* The outcome is the point of this dialog: a planner needs to know
+             what actually landed before they trust the grid behind it. */
+          <Box>
+            <Alert severity={result.created ? 'success' : 'info'} sx={{ mb: 1.5 }}>
+              {result.created} shift{result.created === 1 ? '' : 's'} added
+              {skipped > 0 && `, ${skipped} skipped`}
+            </Alert>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              {result.shift_name} at {result.site_name} · {result.days_targeted} day
+              {result.days_targeted === 1 ? '' : 's'} × {result.staff_targeted} staff
+            </Typography>
+            <Stack spacing={0.5}>
+              {result.per_guard.map((g) => (
+                <Stack key={g.guard_user_id} direction="row" alignItems="center" spacing={1}
+                       sx={{ px: 1, py: 0.5, borderRadius: '6px', background: 'rgba(255,255,255,0.03)' }}>
+                  <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontSize: '0.8rem' }} noWrap>
+                    {g.full_name}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: g.created ? '#00E396' : 'text.disabled' }}>
+                    +{g.created}
+                  </Typography>
+                  {g.skipped_on_leave > 0 && (
+                    <Tooltip title="Skipped: on approved leave">
+                      <Typography variant="caption" sx={{ color: LEAVE_COLOUR }}>
+                        {g.skipped_on_leave} leave
+                      </Typography>
+                    </Tooltip>
+                  )}
+                  {g.skipped_clash > 0 && (
+                    <Tooltip title="Skipped: already rostered on an overlapping shift">
+                      <Typography variant="caption" sx={{ color: '#F5A524' }}>
+                        {g.skipped_clash} busy
+                      </Typography>
+                    </Tooltip>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        ) : (
+          <>
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                SHIFT
+              </Typography>
+              <Select
+                size="small" fullWidth displayEmpty value={definitionId}
+                onChange={(e) => setDefinitionId(e.target.value)}
+                renderValue={(v) => {
+                  const d = definitions.find((x) => x.id === v)
+                  return d ? `${d.name} (${d.start_time}–${d.end_time})` : 'Choose a shift…'
+                }}
+              >
+                {definitions.map((d) => (
+                  <MenuItem key={d.id} value={d.id}>
+                    {d.name} ({d.start_time}–{d.end_time}{d.crosses_midnight ? ' +1' : ''})
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                SITE
+              </Typography>
+              <Select
+                size="small" fullWidth displayEmpty value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                renderValue={(v) => sites.find((s) => s.id === v)?.name ?? 'Choose a site…'}
+              >
+                {sites.map((s) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+              </Select>
+            </Box>
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                DATE RANGE
+              </Typography>
+              <Stack direction="row" spacing={1.5}>
+                <TextField
+                  type="date" size="small" value={from} onChange={(e) => setFrom(e.target.value)}
+                  sx={{ flex: 1 }} slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <TextField
+                  type="date" size="small" value={to} onChange={(e) => setTo(e.target.value)}
+                  sx={{ flex: 1 }} slotProps={{ inputLabel: { shrink: true } }}
+                />
+              </Stack>
+            </Box>
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                DAY PATTERN
+              </Typography>
+              <ToggleButtonGroup
+                size="small" exclusive value={pattern} fullWidth
+                onChange={(_, v) => v && setPattern(v)}
+              >
+                {DAY_PATTERNS.map((p) => (
+                  <ToggleButton key={p.value} value={p.value} sx={{ fontSize: '0.7rem', py: 0.6 }}>
+                    {p.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
+                {DAY_PATTERNS.find((p) => p.value === pattern)?.hint}
+              </Typography>
+            </Box>
+
+            {/* Said before the click, not after: a planner about to apply a
+                month to a whole team should know the collisions are handled. */}
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              Anyone on approved leave, or already rostered on an overlapping shift,
+              is skipped — the rest still apply.
+            </Alert>
+          </>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={close}>{result ? 'Done' : 'Cancel'}</Button>
+        {!result && (
+          <Button
+            variant="contained" onClick={() => apply()}
+            disabled={isPending || !definitionId || !siteId || !from || !to}
+          >
+            {isPending ? 'Applying…' : 'Apply to all staff'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  )
+}
+
 // ── The grid ─────────────────────────────────────────────────────────────────
 
 export function RosterGrid() {
@@ -212,6 +407,7 @@ export function RosterGrid() {
   const [anchor, setAnchor] = useState(() => new Date())
   const [siteFilter, setSiteFilter] = useState('')
   const [cell, setCell] = useState<{ employee: GridEmployee; day: string } | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
 
   const { start, end } = useMemo(() => monthBounds(anchor), [anchor])
 
@@ -259,6 +455,17 @@ export function RosterGrid() {
                     onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}>
           <ChevronRightIcon />
         </IconButton>
+
+        <Box sx={{ flex: 1 }} />
+
+        {canManage && (
+          <Button
+            size="small" variant="outlined" startIcon={<LibraryAddIcon sx={{ fontSize: 16 }} />}
+            onClick={() => setBulkOpen(true)} disabled={definitions.length === 0}
+          >
+            Bulk Assign
+          </Button>
+        )}
       </Stack>
 
       {/* ── Stats ────────────────────────────────────────────────── */}
@@ -439,6 +646,15 @@ export function RosterGrid() {
           </Typography>
         )}
       </Stack>
+
+      <BulkAssignDialog
+        open={bulkOpen}
+        definitions={definitions}
+        sites={(allSites as { id: string; name: string }[]).map((s) => ({ id: s.id, name: s.name }))}
+        defaultStart={start}
+        defaultEnd={end}
+        onClose={() => setBulkOpen(false)}
+      />
 
       <CellDialog
         open={cell !== null}

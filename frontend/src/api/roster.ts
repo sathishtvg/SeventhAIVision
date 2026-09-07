@@ -328,3 +328,33 @@ export const assignGridCell = (data: {
 
 export const clearGridCell = (shiftId: string) =>
   apiClient.delete(`/api/v1/roster/grid/assign/${shiftId}`).then((r) => r.data)
+
+export type DayPattern = 'all' | 'weekdays' | 'alternate'
+
+export interface BulkAssignResult {
+  shift_name: string
+  site_name: string
+  days_targeted: number
+  staff_targeted: number
+  created: number
+  skipped_on_leave: number
+  skipped_clash: number
+  per_guard: {
+    guard_user_id: string
+    full_name: string
+    created: number
+    skipped_on_leave: number
+    skipped_clash: number
+  }[]
+}
+
+/** Skips rather than fails: leave and existing shifts are expected collisions,
+ *  and the result says exactly who was skipped and why. */
+export const bulkAssignShifts = (data: {
+  shift_definition_id: string
+  site_id: string
+  start_date: string
+  end_date: string
+  day_pattern: DayPattern
+  guard_user_ids?: string[]
+}) => apiClient.post<BulkAssignResult>('/api/v1/roster/grid/bulk-assign', data).then((r) => r.data)
