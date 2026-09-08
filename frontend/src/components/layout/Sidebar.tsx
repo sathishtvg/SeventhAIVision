@@ -41,6 +41,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2'
 import BuildIcon from '@mui/icons-material/Build'
 import InventoryIcon from '@mui/icons-material/Inventory'
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
+import PersonOffIcon from '@mui/icons-material/PersonOff'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import MapIcon from '@mui/icons-material/Map'
 import HomeWorkIcon from '@mui/icons-material/HomeWork'
@@ -182,6 +183,7 @@ const NAV_SECTIONS: {
       { label: 'Defect Log',       path: '/defects',     icon: <BuildIcon fontSize="small" />,        permission: 'defect:read' },
       { label: 'Equipment',        path: '/equipment',   icon: <InventoryIcon fontSize="small" />,    permission: 'equipment:read' },
       { label: 'Handovers',        path: '/handovers',   icon: <SwapHorizIcon fontSize="small" />,    permission: 'handover:read' },
+      { label: 'Man Down',         path: '/man-down',    icon: <PersonOffIcon fontSize="small" />,    permission: 'mandown:read' },
     ],
   },
   {

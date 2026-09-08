@@ -63,6 +63,7 @@ from app.routers import (
     iot,
     leave,
     licenses,
+    mandown,
     lost_found,
     notifications,
     nvr,
@@ -332,6 +333,7 @@ app.include_router(lost_found.router)
 app.include_router(defects.router)
 app.include_router(equipment.router)
 app.include_router(handover.router)
+app.include_router(mandown.router)
 app.include_router(dob.router)
 app.include_router(dispatch.router)
 app.include_router(dispatch.sla_router)
