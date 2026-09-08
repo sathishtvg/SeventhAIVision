@@ -28,6 +28,8 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'PostOrders',    label: 'SOP',                description: 'Standard operating procedures for your sites', icon: 'reader-outline',       color: colors.error },
   { screen: 'KeyRegister',   label: 'Key Register',       description: 'Issue and receive keys, and see what is out', icon: 'key-outline',              color: colors.warning },
   { screen: 'LostFound',     label: 'Lost & Found',       description: 'Book in found property and release it to its owner', icon: 'briefcase-outline',        color: colors.info },
+  { screen: 'DefectLog',     label: 'Defect Log',         description: 'Report faults you find on site, with a photo', icon: 'construct-outline',        color: colors.warning },
+  { screen: 'MyKit',         label: 'My Kit',             description: 'Equipment and uniform signed out to you', icon: 'shirt-outline',            color: colors.secondary },
   { screen: 'Training',      label: 'My Training',        description: 'SOP courses and quizzes',            icon: 'school-outline',           color: colors.primary },
   { screen: 'Visitors',      label: 'Visitor Management', description: 'Check in/out and manage visitors',   icon: 'people-outline',           color: colors.info },
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary },

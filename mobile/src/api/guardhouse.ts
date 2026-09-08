@@ -146,3 +146,96 @@ export const uploadLostFoundPhoto = (id: string, uri: string) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then((r) => r.data)
 }
+
+// ── Facility defects ─────────────────────────────────────────────────────────
+//
+// The one register where mobile is not a convenience: a guard finds the blown
+// light while standing in the stairwell, and a photo taken there is worth more
+// than a description typed at a desk an hour later.
+
+export const DEFECT_CATEGORIES = [
+  'lighting', 'plumbing', 'electrical', 'lift', 'door_access', 'cctv',
+  'fire_safety', 'structural', 'cleanliness', 'landscaping', 'other',
+] as const
+
+export const DEFECT_SEVERITIES = ['low', 'medium', 'high', 'safety_hazard'] as const
+
+export interface Defect {
+  id: string
+  site_id: string
+  site_name: string
+  category: string
+  location: string | null
+  description: string
+  severity: string
+  status: string
+  reported_at: string
+  reported_by_name: string | null
+  has_photo: boolean
+  referred_to: string | null
+  reference_no: string | null
+  resolved_at: string | null
+  resolution_notes: string | null
+  days_open: number
+}
+
+export const listDefects = (params: {
+  site_id?: string
+  active_only?: boolean
+} = {}) => apiClient.get<Defect[]>('/api/v1/defects', { params }).then((r) => r.data)
+
+export const reportDefect = (data: {
+  site_id: string
+  description: string
+  category?: string
+  location?: string | null
+  severity?: string
+}) => apiClient.post<Defect>('/api/v1/defects', data).then((r) => r.data)
+
+export const uploadDefectPhoto = (id: string, uri: string) => {
+  const form = new FormData()
+  const name = uri.split('/').pop() || 'defect.jpg'
+  const type = name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
+  form.append('photo', { uri, name, type } as unknown as Blob)
+  return apiClient.post(`/api/v1/defects/${id}/photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then((r) => r.data)
+}
+
+// ── What this officer is holding ─────────────────────────────────────────────
+
+export interface HeldByUser {
+  user: { id: string; full_name: string | null; email: string; employee_code: string | null }
+  equipment: {
+    id: string
+    item_id: string
+    asset_code: string
+    name: string
+    category: string
+    serial_number: string | null
+    issued_at: string
+    expected_return_at: string | null
+    purpose: string | null
+    is_overdue: boolean
+  }[]
+  uniform: {
+    id: string
+    item_type: string
+    size: string | null
+    quantity: number
+    returned_quantity: number
+    outstanding_quantity: number
+    issued_at: string
+    deposit_amount: number | null
+    notes: string | null
+  }[]
+  summary: {
+    equipment_out: number
+    equipment_overdue: number
+    uniform_pieces_out: number
+    deposit_held: number
+  }
+}
+
+export const getHeldByUser = (userId: string) =>
+  apiClient.get<HeldByUser>(`/api/v1/equipment/assigned/${userId}`).then((r) => r.data)

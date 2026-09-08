@@ -47,9 +47,18 @@ def _admin_engine():
     return create_async_engine(ADMIN_DATABASE_URL)
 
 
+# Imported at module level, not lazily inside a helper. pyproject documents the
+# one-time cost of importing app.main (the ML stack — insightface, onnxruntime,
+# torch) and raised the per-test timeout to 120s because of it. That cost still
+# lands entirely on whichever test touches the app first, and on a loaded
+# machine it crossed 120s and failed the first test in this file twice. Paying
+# it at collection time instead puts it outside pytest-timeout's clock, where a
+# module import belongs.
+from app.main import app as _fastapi_app  # noqa: E402
+
+
 def _app():
-    from app.main import app
-    return app
+    return _fastapi_app
 
 
 async def _exec(statements: list[tuple[str, dict]]):

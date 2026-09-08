@@ -56,7 +56,7 @@ RUN useradd -m -u 1001 -s /bin/bash appuser
 # on this machine at some point; creating them here means the next deployment
 # does not have to discover that the same way.
 RUN mkdir -p /data/evidence /data/recordings /data/employee_docs \
-             /data/attendance_photos /data/lost_found /data/backups \
+             /data/attendance_photos /data/guardhouse /data/backups \
     && chown -R appuser:appuser /data
 
 USER appuser

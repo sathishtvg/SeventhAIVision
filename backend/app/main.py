@@ -35,6 +35,7 @@ from app.routers import (
     cameras,
     command_centre,
     emergency,
+    equipment,
     alarms,
     access_control,
     barriers,
@@ -48,6 +49,7 @@ from app.routers import (
     detections,
     device_protocols,
     dispatch,
+    defects,
     dob,
     evidence,
     exports,
@@ -326,6 +328,8 @@ app.include_router(patrols.router)
 app.include_router(post_orders.router)
 app.include_router(keyreg.router)
 app.include_router(lost_found.router)
+app.include_router(defects.router)
+app.include_router(equipment.router)
 app.include_router(dob.router)
 app.include_router(dispatch.router)
 app.include_router(dispatch.sla_router)

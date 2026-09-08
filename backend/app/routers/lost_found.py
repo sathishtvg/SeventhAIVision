@@ -453,15 +453,15 @@ async def upload_photo(
                             "Photo must be a JPEG or PNG")
     image_bytes = await read_upload_limited(photo, MAX_IMAGE_UPLOAD_BYTES)
 
-    relative_path = f"{token.tenant_id}/{item_id}{suffix}"
-    dest = Path(settings.LOST_FOUND_PHOTOS_ROOT) / relative_path
+    relative_path = f"{token.tenant_id}/lost_found/{item_id}{suffix}"
+    dest = Path(settings.GUARDHOUSE_PHOTOS_ROOT) / relative_path
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(image_bytes)
 
     # Replacing a JPEG with a PNG leaves the old file behind; remove it so the
     # only image on disk is the one the row points at.
     if existing.photo_path and existing.photo_path != relative_path:
-        old = Path(settings.LOST_FOUND_PHOTOS_ROOT) / existing.photo_path
+        old = Path(settings.GUARDHOUSE_PHOTOS_ROOT) / existing.photo_path
         old.unlink(missing_ok=True)
 
     await db.execute(
@@ -482,7 +482,7 @@ async def get_photo(
     existing = await _load_item(db, item_id, allowed_sites)
     if not existing.photo_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No photo for this item")
-    file_path = Path(settings.LOST_FOUND_PHOTOS_ROOT) / existing.photo_path
+    file_path = Path(settings.GUARDHOUSE_PHOTOS_ROOT) / existing.photo_path
     if not file_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo file not found on disk")
     media = "image/png" if file_path.suffix == ".png" else "image/jpeg"

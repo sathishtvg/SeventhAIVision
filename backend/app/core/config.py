@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     EVIDENCE_ROOT: str = "/data/evidence"
     EMPLOYEE_DOCS_ROOT: str = "/data/employee_docs"
     ATTENDANCE_PHOTOS_ROOT: str = "/data/attendance_photos"
-    LOST_FOUND_PHOTOS_ROOT: str = "/data/lost_found"
+    GUARDHOUSE_PHOTOS_ROOT: str = "/data/guardhouse"
 
     # Object storage — "local" writes to EVIDENCE_ROOT on disk (Phase 1 default);
     # "s3" uploads to an S3-compatible store (MinIO in Docker, any S3-compat in prod).
