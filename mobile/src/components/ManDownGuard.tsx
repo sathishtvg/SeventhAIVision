@@ -24,7 +24,6 @@ import { Ionicons } from '@expo/vector-icons'
 
 import {
   cancelManDown, escalateManDown, getManDownSettings, raiseManDown,
-  type ManDownSettings,
 } from '@/api/mandown'
 import { useManDown, type ManDownTrigger } from '@/hooks/useManDown'
 import { useAuthStore } from '@/store/auth'
@@ -59,14 +58,13 @@ export function ManDownGuard() {
   const token = useAuthStore((s) => s.accessToken)
   const watched = Boolean(token) && WATCHED_ROLES.has(roleId)
 
-  const { data } = useQuery({
+  const { data: settings } = useQuery({
     queryKey: ['man-down-settings'],
     queryFn: () => getManDownSettings(),
     enabled: watched,
     // The thresholds change rarely; asking on every screen would be noise.
     staleTime: 10 * 60 * 1000,
   })
-  const settings: ManDownSettings | null = data ?? null
 
   const [eventId, setEventId] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)

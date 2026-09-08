@@ -49,14 +49,10 @@ export function KeyRegisterScreen() {
     queryFn: () => getOutstandingKeys(),
   })
 
-  // useQuery resolves to `any` in this app's typings, so the annotation goes
-  // on the local rather than the hook — otherwise every field access here is
-  // unchecked and a renamed API field would only surface at runtime.
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data: keys = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['keys'],
     queryFn: () => listKeys(),
   })
-  const keys: SiteKey[] = data ?? []
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['keys'] })

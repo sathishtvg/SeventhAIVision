@@ -192,3 +192,64 @@ async def test_archive_old_audit_partitions_detaches_and_exports(admin_session, 
         await admin_session.execute(text(f"DROP TABLE {partition_name}"))
     await admin_session.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
     await admin_session.commit()
+
+
+# ─── The audit archiver's connection requirements ────────────────────────────
+#
+# These pin WHY archive_old_audit_partitions needs a privileged session. The
+# test above has always passed it an admin_session, so it passed while
+# production — which handed it the ordinary app session — aborted the whole
+# nightly cycle on the first partition read. Both facts below were verified
+# against the running stack before being written down.
+
+@pytest.mark.asyncio
+async def test_app_session_cannot_detach_a_partition(admin_session, db_session):
+    """DETACH PARTITION needs ownership of audit_logs, which svc_app lacks.
+
+    This alone means the archive job could never have completed on the app
+    connection, whatever else was true about row-level security.
+    """
+    partition = (
+        await admin_session.execute(
+            text("SELECT partition_tablename FROM public.show_partitions('public.audit_logs') LIMIT 1")
+        )
+    ).scalar()
+    assert partition, "no audit partitions exist to test against"
+
+    with pytest.raises(Exception) as exc:
+        await db_session.execute(
+            text(f"ALTER TABLE public.audit_logs DETACH PARTITION {partition}")
+        )
+    assert "must be owner" in str(exc.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_a_committed_set_local_poisons_the_pooled_connection(db_session):
+    """The second reason, and the one that actually produced the nightly error.
+
+    A transaction-scoped set_config does not vanish at commit — it reverts to
+    the session value, which for a GUC never set at session level is the EMPTY
+    STRING rather than NULL. Every RLS policy then casts ''::uuid and raises.
+    A connection where the GUC was never set is fine, because current_setting
+    returns NULL and NULL::uuid is legal, which is exactly why this was
+    invisible in isolation and only appeared after purge_expired_evidence had
+    run on the same pooled connection.
+    """
+    before = (
+        await db_session.execute(text("SELECT current_setting('app.current_tenant', true)"))
+    ).scalar()
+    assert before is None, "this test needs a connection whose tenant GUC was never set"
+
+    await db_session.execute(
+        text("SELECT set_config('app.current_tenant', :tid, true)"),
+        {"tid": str(uuid.uuid4())},
+    )
+    await db_session.commit()
+
+    after = (
+        await db_session.execute(text("SELECT current_setting('app.current_tenant', true)"))
+    ).scalar()
+    assert after == "", (
+        "SET LOCAL should leave the GUC as an empty string after commit; if this "
+        "changed, the archive job may no longer need its own connection"
+    )

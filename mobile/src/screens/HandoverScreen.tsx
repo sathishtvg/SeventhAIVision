@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 import {
   acceptHandover, disputeHandover, getHandover, listHandovers,
-  updateHandoverChecks, type Handover, type HandoverDetail,
+  updateHandoverChecks,
 } from '@/api/guardhouse'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
@@ -60,19 +60,16 @@ export function HandoverScreen() {
   const [disputeReason, setDisputeReason] = useState('')
   const [disputing, setDisputing] = useState(false)
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data: handovers = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['handovers'],
     queryFn: () => listHandovers({ open_only: true }),
   })
-  // useQuery is `any` in this app's typings; see KeyRegisterScreen.
-  const handovers: Handover[] = data ?? []
 
-  const { data: detailData } = useQuery({
+  const { data: detail } = useQuery({
     queryKey: ['handover', openId],
     queryFn: () => getHandover(openId!),
     enabled: Boolean(openId),
   })
-  const detail: HandoverDetail | null = detailData ?? null
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['handovers'] })

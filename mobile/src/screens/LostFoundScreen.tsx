@@ -61,12 +61,10 @@ export function LostFoundScreen() {
   const [claimContact, setClaimContact] = useState('')
   const [claimIdLast4, setClaimIdLast4] = useState('')
 
-  // See KeyRegisterScreen: useQuery is `any` here, so the type goes on the local.
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data: items = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['lost-found', tab],
     queryFn: () => listLostFound(tab ? { status_filter: tab } : {}),
   })
-  const items: LostFoundItem[] = data ?? []
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['lost-found'] })
 

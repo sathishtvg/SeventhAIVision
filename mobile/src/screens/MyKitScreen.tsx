@@ -37,13 +37,11 @@ type Row =
 export function MyKitScreen() {
   const userId = useAuthStore((s) => s.user?.id)
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data: held, isLoading, isError, refetch } = useQuery({
     queryKey: ['my-kit', userId],
     queryFn: () => getHeldByUser(userId!),
     enabled: Boolean(userId),
   })
-  // useQuery is `any` in this app's typings; see KeyRegisterScreen.
-  const held: HeldByUser | null = data ?? null
 
   if (isLoading || !userId) {
     return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
