@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, time as dtime, timedelta, timezone
+from datetime import date as dtdate, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -1316,6 +1316,123 @@ async def delete_shift_definition(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
     await db.commit()
     return {"id": definition_id, "deleted": True}
+
+
+# ── Public holiday calendar ─────────────────────────────────────────────────
+#
+# The dates payroll owes a premium against, and the roster paints differently.
+#
+# Deliberately not seeded from a hardcoded list. Singapore's gazetted holidays
+# move each year — several follow lunar and Islamic calendars, and their dates
+# are confirmed by MOM annually — so a table baked into a migration would look
+# authoritative and be wrong the moment it aged. Entered or imported by someone
+# who has checked the gazette is the only version that stays correct.
+
+
+class HolidayCreate(BaseModel):
+    holiday_date: dtdate
+    name: str
+    is_gazetted: bool = True
+    notes: str | None = None
+
+
+class HolidayBulk(BaseModel):
+    holidays: list[HolidayCreate]
+
+
+@router.get("/holidays", dependencies=[Depends(require_permission("shift:read"))])
+async def list_holidays(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    year: int | None = None,
+):
+    """Read is on shift:read, not holiday:manage — the roster, the scheduler
+    and anyone looking at a payslip all need to know which days these are."""
+    where = "WHERE EXTRACT(YEAR FROM holiday_date) = :yr" if year else ""
+    result = await db.execute(
+        text(f"""
+            SELECT id, holiday_date, name, is_gazetted, notes, created_at
+              FROM public_holidays {where}
+          ORDER BY holiday_date
+        """),
+        {"yr": year} if year else {},
+    )
+    return [dict(r._mapping) for r in result]
+
+
+@router.post("/holidays", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("holiday:manage"))])
+async def create_holiday(
+    body: HolidayCreate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    if not body.name.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "name is required")
+    try:
+        row = (await db.execute(
+            text("""
+                INSERT INTO public_holidays (tenant_id, holiday_date, name, is_gazetted, notes)
+                VALUES (current_setting('app.current_tenant')::uuid, :d, :name, :gaz, :notes)
+                RETURNING id, holiday_date, name, is_gazetted, notes, created_at
+            """),
+            {"d": body.holiday_date, "name": body.name.strip(),
+             "gaz": body.is_gazetted, "notes": body.notes},
+        )).first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"{body.holiday_date} is already in the calendar")
+    await db.commit()
+    return dict(row._mapping)
+
+
+@router.post("/holidays/bulk", dependencies=[Depends(require_permission("holiday:manage"))])
+async def bulk_create_holidays(
+    body: HolidayBulk,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Load a year in one go.
+
+    Skips dates already present rather than failing the batch: a year is
+    normally entered once and then corrected when a date is gazetted late, and
+    re-submitting the corrected list should add the one that changed rather
+    than being refused for the eleven that did not.
+    """
+    if not body.holidays:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "holidays was empty")
+
+    added, skipped = 0, 0
+    for h in body.holidays:
+        if not h.name.strip():
+            continue
+        result = await db.execute(
+            text("""
+                INSERT INTO public_holidays (tenant_id, holiday_date, name, is_gazetted, notes)
+                VALUES (current_setting('app.current_tenant')::uuid, :d, :name, :gaz, :notes)
+                ON CONFLICT (tenant_id, holiday_date) DO NOTHING
+                RETURNING id
+            """),
+            {"d": h.holiday_date, "name": h.name.strip(),
+             "gaz": h.is_gazetted, "notes": h.notes},
+        )
+        if result.first() is not None:
+            added += 1
+        else:
+            skipped += 1
+    await db.commit()
+    return {"added": added, "skipped_existing": skipped}
+
+
+@router.delete("/holidays/{holiday_id}",
+               dependencies=[Depends(require_permission("holiday:manage"))])
+async def delete_holiday(holiday_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    result = await db.execute(
+        text("DELETE FROM public_holidays WHERE id = CAST(:id AS uuid) RETURNING id"),
+        {"id": holiday_id},
+    )
+    if result.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Holiday not found")
+    await db.commit()
+    return {"id": holiday_id, "deleted": True}
 
 
 @router.put("/{shift_id}", dependencies=[Depends(require_permission("shift:manage"))])

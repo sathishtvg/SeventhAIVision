@@ -128,6 +128,41 @@ async def create_payroll_run(
         )).first()
         unpaid_leave_days = Decimal(str(unpaid_row.days or 0))
 
+        # Gazetted holidays this guard actually worked. Counted from
+        # completed shifts joined to the calendar rather than from the calendar
+        # alone: a holiday nobody was rostered on carries no premium, and a
+        # guard on leave that day did not work it.
+        ph_row = (await db.execute(
+            text("""
+                SELECT COUNT(DISTINCT sh.actual_start::date) AS days
+                  FROM shifts sh
+                  JOIN public_holidays ph
+                    ON ph.holiday_date = sh.actual_start::date
+                   AND ph.is_gazetted = TRUE
+                 WHERE sh.guard_user_id = :gid AND sh.status = 'completed'
+                   AND sh.actual_end IS NOT NULL
+                   AND sh.actual_start::date >= :ps AND sh.actual_start::date <= :pe
+            """),
+            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+        )).first()
+        public_holiday_days = Decimal(str(ph_row.days or 0))
+
+        # Allowances come from the shift definition each shift was rostered
+        # against, so a guard paid for standing nights is paid per night stood
+        # rather than by a flat monthly figure somebody has to remember to set.
+        allowance_row = (await db.execute(
+            text("""
+                SELECT COALESCE(SUM(d.allowance_amount), 0) AS total
+                  FROM shifts sh
+                  JOIN shift_definitions d ON d.id = sh.shift_definition_id
+                 WHERE sh.guard_user_id = :gid AND sh.status = 'completed'
+                   AND sh.actual_end IS NOT NULL
+                   AND sh.actual_start::date >= :ps AND sh.actual_start::date <= :pe
+            """),
+            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+        )).first()
+        allowance_pay = Decimal(str(allowance_row.total or 0))
+
         age = compute_age(g.date_of_birth, body.period_end) if g.date_of_birth else 30
         calc = compute_payslip(
             regular_hours, ot_hours, days_worked,
@@ -135,25 +170,41 @@ async def create_payroll_run(
             Decimal(str(g.daily_rate)) if g.daily_rate is not None else None,
             Decimal(str(g.monthly_salary)) if g.monthly_salary is not None else None,
             age, g.work_pass_type,
+            public_holiday_days=public_holiday_days,
+            allowance_pay=allowance_pay,
         )
+
+        # Surfaced on the run, not blocked: refusing to pay hours somebody has
+        # already worked would be the wrong correction, but a month over the
+        # Employment Act limit needs an MOM exemption and somebody has to know.
+        if calc["ot_hours_over_statutory_cap"] > 0:
+            warnings.append(
+                f"{g.full_name or g.id} exceeded the 72-hour monthly overtime limit by "
+                f"{calc['ot_hours_over_statutory_cap']:.1f}h — this requires an MOM exemption"
+            )
 
         row = (await db.execute(
             text("""
                 INSERT INTO payslips (
                     tenant_id, payroll_run_id, guard_user_id, regular_hours, overtime_hours, days_worked,
-                    base_pay, overtime_pay, gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days
+                    base_pay, overtime_pay, gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days,
+                    public_holiday_days, public_holiday_pay, allowance_pay
                 ) VALUES (
                     current_setting('app.current_tenant')::uuid, :run_id, :gid, :reg, :ot, :days,
-                    :base, :otpay, :gross, :cpfe, :cpfr, :net, :unpaid
+                    :base, :otpay, :gross, :cpfe, :cpfr, :net, :unpaid,
+                    :phdays, :phpay, :allow
                 )
                 RETURNING id, guard_user_id, regular_hours, overtime_hours, days_worked, base_pay, overtime_pay,
-                          gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days
+                          gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days,
+                          public_holiday_days, public_holiday_pay, allowance_pay
             """),
             {
                 "run_id": run_id, "gid": g.id, "reg": regular_hours, "ot": ot_hours, "days": days_worked,
                 "base": calc["base_pay"], "otpay": calc["overtime_pay"], "gross": calc["gross_pay"],
                 "cpfe": calc["cpf_employee"], "cpfr": calc["cpf_employer"], "net": calc["net_pay"],
                 "unpaid": unpaid_leave_days,
+                "phdays": public_holiday_days, "phpay": calc["public_holiday_pay"],
+                "allow": calc["allowance_pay"],
             },
         )).first()
         payslips.append(dict(row._mapping))
