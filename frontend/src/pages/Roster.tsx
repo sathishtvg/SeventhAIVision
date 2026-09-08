@@ -830,11 +830,15 @@ export function RosterPage() {
       <GuardLeaveCard />
 
       <PatternDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
-      <AutoScheduleDialog
-        open={autoScheduleOpen}
-        onClose={() => setAutoScheduleOpen(false)}
-        onGenerated={(batch) => setActiveBatchId(batch.id)}
-      />
+      {/* Rendered only while open, so its date defaults are recomputed each
+          time rather than frozen at page load. */}
+      {autoScheduleOpen && (
+        <AutoScheduleDialog
+          open
+          onClose={() => setAutoScheduleOpen(false)}
+          onGenerated={(batch) => setActiveBatchId(batch.id)}
+        />
+      )}
       <EditShiftDialog
         shift={editShift}
         extraNote={editExtraNote}
