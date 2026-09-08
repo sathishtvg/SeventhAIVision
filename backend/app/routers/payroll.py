@@ -37,6 +37,12 @@ router = APIRouter(prefix="/api/v1/payroll", tags=["guard-ops"])
 
 _GUARD_ONLY_ROLES = {3, 4, 5}
 _PAYROLL_GUARD_ROLES = (3, 4, 5, 8)
+GUARD_ROLE_IDS_FOR_GRID = _PAYROLL_GUARD_ROLES  # timesheets cover the same people
+
+# Off by default. A hard gate switched on during an upgrade would break the
+# next run for every tenant, none of whom have a timesheet yet — so the gap
+# is reported from the first run and enforced only when somebody asks.
+REQUIRE_APPROVED_TIMESHEETS_KEY = 'payroll.require_approved_timesheets'
 
 
 def _check_reportlab():
@@ -74,6 +80,15 @@ async def create_payroll_run(
 ):
     if body.period_end < body.period_start:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "period_end must not be before period_start")
+
+    # Read once per run, not per guard: whether hours must be approved is a
+    # property of the run, and re-reading it mid-loop would let a setting
+    # changed during a long run pay half the team under each rule.
+    setting = (await db.execute(
+        text("SELECT setting_value FROM tenant_settings WHERE setting_key = :k"),
+        {"k": REQUIRE_APPROVED_TIMESHEETS_KEY},
+    )).first()
+    require_timesheets = bool(setting[0]) if setting is not None else False
 
     run_row = (await db.execute(
         text("""
@@ -128,6 +143,62 @@ async def create_payroll_run(
         )).first()
         unpaid_leave_days = Decimal(str(unpaid_row.days or 0))
 
+        # Gazetted holidays this guard actually worked. Counted from
+        # completed shifts joined to the calendar rather than from the calendar
+        # alone: a holiday nobody was rostered on carries no premium, and a
+        # guard on leave that day did not work it.
+        ph_row = (await db.execute(
+            text("""
+                SELECT COUNT(DISTINCT sh.actual_start::date) AS days
+                  FROM shifts sh
+                  JOIN public_holidays ph
+                    ON ph.holiday_date = sh.actual_start::date
+                   AND ph.is_gazetted = TRUE
+                 WHERE sh.guard_user_id = :gid AND sh.status = 'completed'
+                   AND sh.actual_end IS NOT NULL
+                   AND sh.actual_start::date >= :ps AND sh.actual_start::date <= :pe
+            """),
+            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+        )).first()
+        public_holiday_days = Decimal(str(ph_row.days or 0))
+
+        # Allowances come from the shift definition each shift was rostered
+        # against, so a guard paid for standing nights is paid per night stood
+        # rather than by a flat monthly figure somebody has to remember to set.
+        allowance_row = (await db.execute(
+            text("""
+                SELECT COALESCE(SUM(d.allowance_amount), 0) AS total
+                  FROM shifts sh
+                  JOIN shift_definitions d ON d.id = sh.shift_definition_id
+                 WHERE sh.guard_user_id = :gid AND sh.status = 'completed'
+                   AND sh.actual_end IS NOT NULL
+                   AND sh.actual_start::date >= :ps AND sh.actual_start::date <= :pe
+            """),
+            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+        )).first()
+        allowance_pay = Decimal(str(allowance_row.total or 0))
+
+        # The human check between a scan and a payslip.
+        timesheet = (await db.execute(
+            text("""
+                SELECT id, status FROM timesheets
+                 WHERE guard_user_id = :gid AND period_start = :ps AND period_end = :pe
+            """),
+            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+        )).first()
+        approved = timesheet is not None and timesheet.status == "approved"
+
+        if not approved:
+            state = timesheet.status if timesheet else "no timesheet"
+            if require_timesheets:
+                warnings.append(
+                    f"{g.full_name or g.id} skipped — hours are not approved ({state})"
+                )
+                continue
+            warnings.append(
+                f"{g.full_name or g.id} paid from unapproved hours ({state})"
+            )
+
         age = compute_age(g.date_of_birth, body.period_end) if g.date_of_birth else 30
         calc = compute_payslip(
             regular_hours, ot_hours, days_worked,
@@ -135,25 +206,42 @@ async def create_payroll_run(
             Decimal(str(g.daily_rate)) if g.daily_rate is not None else None,
             Decimal(str(g.monthly_salary)) if g.monthly_salary is not None else None,
             age, g.work_pass_type,
+            public_holiday_days=public_holiday_days,
+            allowance_pay=allowance_pay,
         )
+
+        # Surfaced on the run, not blocked: refusing to pay hours somebody has
+        # already worked would be the wrong correction, but a month over the
+        # Employment Act limit needs an MOM exemption and somebody has to know.
+        if calc["ot_hours_over_statutory_cap"] > 0:
+            warnings.append(
+                f"{g.full_name or g.id} exceeded the 72-hour monthly overtime limit by "
+                f"{calc['ot_hours_over_statutory_cap']:.1f}h — this requires an MOM exemption"
+            )
 
         row = (await db.execute(
             text("""
                 INSERT INTO payslips (
                     tenant_id, payroll_run_id, guard_user_id, regular_hours, overtime_hours, days_worked,
-                    base_pay, overtime_pay, gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days
+                    base_pay, overtime_pay, gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days,
+                    public_holiday_days, public_holiday_pay, allowance_pay, timesheet_id
                 ) VALUES (
                     current_setting('app.current_tenant')::uuid, :run_id, :gid, :reg, :ot, :days,
-                    :base, :otpay, :gross, :cpfe, :cpfr, :net, :unpaid
+                    :base, :otpay, :gross, :cpfe, :cpfr, :net, :unpaid,
+                    :phdays, :phpay, :allow, CAST(:ts AS uuid)
                 )
                 RETURNING id, guard_user_id, regular_hours, overtime_hours, days_worked, base_pay, overtime_pay,
-                          gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days
+                          gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days,
+                          public_holiday_days, public_holiday_pay, allowance_pay
             """),
             {
                 "run_id": run_id, "gid": g.id, "reg": regular_hours, "ot": ot_hours, "days": days_worked,
                 "base": calc["base_pay"], "otpay": calc["overtime_pay"], "gross": calc["gross_pay"],
                 "cpfe": calc["cpf_employee"], "cpfr": calc["cpf_employer"], "net": calc["net_pay"],
                 "unpaid": unpaid_leave_days,
+                "phdays": public_holiday_days, "phpay": calc["public_holiday_pay"],
+                "allow": calc["allowance_pay"],
+                "ts": str(timesheet.id) if timesheet else None,
             },
         )).first()
         payslips.append(dict(row._mapping))
@@ -395,3 +483,246 @@ async def get_ir8a_pdf(year: int, token: str = Query(..., description="JWT acces
         buf, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="ir8a_{year}.pdf"'},
     )
+
+
+# ── Timesheets ──────────────────────────────────────────────────────────────
+#
+# The human check between a check-in scan and a payslip. A run reads
+# shifts.actual_start/actual_end and turns them into money; these establish
+# that somebody looked at a period's hours as a whole and found them right.
+
+
+class TimesheetGenerate(BaseModel):
+    period_start: date
+    period_end: date
+    # None means everyone with hours in the period.
+    guard_user_ids: list[str] | None = None
+
+
+class TimesheetReview(BaseModel):
+    review_notes: str | None = None
+
+
+_TIMESHEET_HOURS_SQL = """
+    SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (actual_end - actual_start)) / 3600.0), 0) AS total_hours,
+           COALESCE(SUM(overtime_minutes), 0) / 60.0 AS ot_hours,
+           COUNT(DISTINCT actual_start::date) AS days_worked,
+           COUNT(*) AS shift_count
+      FROM shifts
+     WHERE guard_user_id = :gid AND status = 'completed' AND actual_end IS NOT NULL
+       AND actual_start::date >= :ps AND actual_start::date <= :pe
+"""
+
+
+@router.post("/timesheets/generate", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("timesheet:manage"))])
+async def generate_timesheets(
+    body: TimesheetGenerate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Build a draft timesheet per guard for a period, from the shifts as they
+    stand right now.
+
+    Re-running REFRESHES drafts and leaves reviewed ones alone. Corrections
+    arrive after a period closes and before payroll runs, so regenerating has
+    to pick them up — but silently rewriting something a supervisor already
+    approved would make the approval meaningless, so those are skipped and
+    counted.
+    """
+    if body.period_end < body.period_start:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "period_end must not be before period_start")
+
+    guard_filter = ""
+    params: dict = {"roles": list(GUARD_ROLE_IDS_FOR_GRID)}
+    if body.guard_user_ids:
+        guard_filter = "AND u.id = ANY(CAST(:ids AS uuid[]))"
+        params["ids"] = body.guard_user_ids
+
+    guards = [dict(r) for r in (await db.execute(
+        text(f"""
+            SELECT u.id, u.full_name, u.email, u.employee_code
+              FROM users u
+             WHERE u.is_active = TRUE AND u.role_id = ANY(:roles) {guard_filter}
+          ORDER BY u.full_name NULLS LAST, u.email
+        """),
+        params,
+    )).mappings().all()]
+
+    created = refreshed = locked = 0
+    rows = []
+    for g in guards:
+        h = (await db.execute(
+            text(_TIMESHEET_HOURS_SQL),
+            {"gid": str(g["id"]), "ps": body.period_start, "pe": body.period_end},
+        )).first()
+
+        total = Decimal(str(h.total_hours or 0))
+        ot = Decimal(str(h.ot_hours or 0))
+        regular = max(total - ot, Decimal("0"))
+
+        # Somebody with no completed shifts has nothing to approve. Creating an
+        # empty timesheet for them would fill the review queue with rows that
+        # say nothing and train people to approve without looking.
+        if h.shift_count == 0:
+            continue
+
+        existing = (await db.execute(
+            text("SELECT id, status FROM timesheets "
+                 "WHERE guard_user_id = CAST(:gid AS uuid) "
+                 "AND period_start = :ps AND period_end = :pe"),
+            {"gid": str(g["id"]), "ps": body.period_start, "pe": body.period_end},
+        )).first()
+
+        if existing and existing.status in ("approved", "rejected"):
+            locked += 1
+            continue
+
+        row = (await db.execute(
+            text("""
+                INSERT INTO timesheets
+                    (tenant_id, guard_user_id, period_start, period_end,
+                     regular_hours, overtime_hours, days_worked, shift_count)
+                VALUES (current_setting('app.current_tenant')::uuid,
+                        CAST(:gid AS uuid), :ps, :pe, :reg, :ot, :days, :cnt)
+                ON CONFLICT (guard_user_id, period_start, period_end) DO UPDATE
+                    SET regular_hours = EXCLUDED.regular_hours,
+                        overtime_hours = EXCLUDED.overtime_hours,
+                        days_worked = EXCLUDED.days_worked,
+                        shift_count = EXCLUDED.shift_count,
+                        updated_at = now()
+                RETURNING id, guard_user_id, period_start, period_end,
+                          regular_hours, overtime_hours, days_worked, shift_count, status
+            """),
+            {"gid": str(g["id"]), "ps": body.period_start, "pe": body.period_end,
+             "reg": regular, "ot": ot, "days": h.days_worked, "cnt": h.shift_count},
+        )).first()
+
+        if existing:
+            refreshed += 1
+        else:
+            created += 1
+        rows.append({**dict(row._mapping),
+                     "full_name": g["full_name"] or g["email"],
+                     "employee_code": g["employee_code"]})
+
+    await db.commit()
+    return {
+        "created": created,
+        "refreshed": refreshed,
+        "left_alone_already_reviewed": locked,
+        "timesheets": rows,
+    }
+
+
+@router.get("/timesheets", dependencies=[Depends(require_permission("timesheet:read"))])
+async def list_timesheets(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    period_start: date | None = None,
+    period_end: date | None = None,
+    status_filter: str | None = None,
+):
+    where, params = [], {}
+    if period_start:
+        where.append("t.period_start >= :ps"); params["ps"] = period_start
+    if period_end:
+        where.append("t.period_end <= :pe"); params["pe"] = period_end
+    if status_filter:
+        if status_filter not in ("draft", "submitted", "approved", "rejected"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown status")
+        where.append("t.status = :st"); params["st"] = status_filter
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+
+    result = await db.execute(
+        text(f"""
+            SELECT t.id, t.guard_user_id, t.period_start, t.period_end,
+                   t.regular_hours, t.overtime_hours, t.days_worked, t.shift_count,
+                   t.status, t.submitted_at, t.reviewed_at, t.review_notes,
+                   u.full_name, u.employee_code,
+                   reviewer.full_name AS reviewed_by_name
+              FROM timesheets t
+              JOIN users u ON u.id = t.guard_user_id
+         LEFT JOIN users reviewer ON reviewer.id = t.reviewed_by_user_id
+            {clause}
+          ORDER BY t.period_start DESC, u.full_name
+        """),
+        params,
+    )
+    return [dict(r._mapping) for r in result]
+
+
+async def _move_timesheet(db, timesheet_id, new_status, user_id, notes, allowed_from):
+    row = (await db.execute(
+        text("SELECT status FROM timesheets WHERE id = CAST(:id AS uuid)"),
+        {"id": timesheet_id},
+    )).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Timesheet not found")
+    if row.status not in allowed_from:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"A {row.status} timesheet cannot be {new_status}",
+        )
+
+    stamp = ("submitted_by_user_id = CAST(:uid AS uuid), submitted_at = now()"
+             if new_status == "submitted"
+             else "reviewed_by_user_id = CAST(:uid AS uuid), reviewed_at = now()")
+    result = await db.execute(
+        text(f"""
+            UPDATE timesheets
+               SET status = :st, {stamp},
+                   review_notes = COALESCE(:notes, review_notes), updated_at = now()
+             WHERE id = CAST(:id AS uuid)
+            RETURNING id, guard_user_id, period_start, period_end, status,
+                      regular_hours, overtime_hours, days_worked
+        """),
+        {"st": new_status, "uid": user_id, "notes": notes, "id": timesheet_id},
+    )
+    await db.commit()
+    return dict(result.first()._mapping)
+
+
+@router.post("/timesheets/{timesheet_id}/submit",
+             dependencies=[Depends(require_permission("timesheet:manage"))])
+async def submit_timesheet(
+    timesheet_id: str,
+    body: TimesheetReview,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    return await _move_timesheet(db, timesheet_id, "submitted", token.user_id,
+                                 body.review_notes, ("draft", "rejected"))
+
+
+@router.post("/timesheets/{timesheet_id}/approve",
+             dependencies=[Depends(require_permission("timesheet:manage"))])
+async def approve_timesheet(
+    timesheet_id: str,
+    body: TimesheetReview,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Approving a draft directly is allowed. A small agency where the person
+    checking the hours is the person signing them off should not have to click
+    submit and then approve to satisfy a workflow nobody else participates in.
+    """
+    return await _move_timesheet(db, timesheet_id, "approved", token.user_id,
+                                 body.review_notes, ("draft", "submitted"))
+
+
+@router.post("/timesheets/{timesheet_id}/reject",
+             dependencies=[Depends(require_permission("timesheet:manage"))])
+async def reject_timesheet(
+    timesheet_id: str,
+    body: TimesheetReview,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    if not (body.review_notes or "").strip():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "A reason is required when rejecting — somebody has to act on this",
+        )
+    return await _move_timesheet(db, timesheet_id, "rejected", token.user_id,
+                                 body.review_notes, ("draft", "submitted"))

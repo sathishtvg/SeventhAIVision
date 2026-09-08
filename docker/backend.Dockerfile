@@ -48,6 +48,17 @@ EXPOSE 8000 8001
 
 # Non-root user — CIS Docker Benchmark 4.1 (Gap 30)
 RUN useradd -m -u 1001 -s /bin/bash appuser
+
+# The data mount points, owned by appuser. Docker seeds a fresh named volume
+# from the image path it covers, ownership included — so a directory that
+# does not exist in the image comes up root-owned and the container, which is
+# no longer root, cannot write to it. Every one of these was chowned by hand
+# on this machine at some point; creating them here means the next deployment
+# does not have to discover that the same way.
+RUN mkdir -p /data/evidence /data/recordings /data/employee_docs \
+             /data/attendance_photos /data/guardhouse /data/backups \
+    && chown -R appuser:appuser /data
+
 USER appuser
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

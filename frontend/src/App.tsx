@@ -40,6 +40,12 @@ import { LeavePage } from '@/pages/Leave'
 import { PayrollPage } from '@/pages/Payroll'
 import { InvoicingPage } from '@/pages/Invoicing'
 import { PostOrdersPage } from '@/pages/PostOrders'
+import { KeyRegisterPage } from '@/pages/KeyRegister'
+import { LostFoundPage } from '@/pages/LostFound'
+import { DefectLogPage } from '@/pages/DefectLog'
+import { EquipmentRegisterPage } from '@/pages/EquipmentRegister'
+import { HandoversPage } from '@/pages/Handovers'
+import { ManDownPage } from '@/pages/ManDown'
 import GuardOps from '@/pages/GuardOps'
 import VmsOnsite from '@/pages/VmsOnsite'
 import Reports from '@/pages/Reports'
@@ -162,6 +168,12 @@ export default function App() {
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="invoicing" element={<InvoicingPage />} />
         <Route path="post-orders" element={<PostOrdersPage />} />
+        <Route path="key-register" element={<KeyRegisterPage />} />
+        <Route path="lost-found" element={<LostFoundPage />} />
+        <Route path="defects" element={<DefectLogPage />} />
+        <Route path="equipment" element={<EquipmentRegisterPage />} />
+        <Route path="handovers" element={<HandoversPage />} />
+        <Route path="man-down" element={<ManDownPage />} />
         <Route path="detections" element={<Detections />} />
         <Route path="watchlists" element={<Watchlists />} />
         <Route path="zones" element={<Zones />} />

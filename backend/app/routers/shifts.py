@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, time as dtime, timedelta, timezone
+from datetime import date as dtdate, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -22,6 +22,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
 from app.services.alarm_shift import arm_site_panels, disarm_site_panels
 from app.services.geofence import is_within_site
+from app.services.handover import gather_site_position, snapshot_checklist
 from app.services.liveness import check_liveness_sync
 from app.services.violations import VIOLATION_POINTS, create_violation
 
@@ -824,6 +825,11 @@ async def generate_handover(
         {"sid": shift_id},
     )).first()
 
+    # What the site owes right now — keys out, property held, kit signed out,
+    # defects still live. Gathered by the same code the acceptance screen uses,
+    # so the numbers written here and the numbers read there cannot diverge.
+    position = await gather_site_position(db, site_id)
+
     summary = {
         "shift_id": shift_id,
         "open_incidents": open_incidents,
@@ -832,6 +838,7 @@ async def generate_handover(
         "patrol_routes_total": patrol_stats.routes_total if patrol_stats else 0,
         "checkpoints_scanned": patrol_stats.checkpoints_scanned if patrol_stats else 0,
         "checkpoints_total": patrol_stats.checkpoints_total if patrol_stats else 0,
+        **position,
         "outgoing_notes": outgoing_notes,
     }
 
@@ -841,10 +848,13 @@ async def generate_handover(
             "(tenant_id, shift_id, outgoing_guard_id, incoming_guard_id, "
             " open_incidents_count, open_alerts_count, "
             " patrol_routes_completed, patrol_routes_total, "
-            " checkpoints_scanned, checkpoints_total, outgoing_notes, summary_json) "
+            " checkpoints_scanned, checkpoints_total, outgoing_notes, summary_json, "
+            " keys_outstanding, keys_overdue, lost_found_held, "
+            " open_defects_count, equipment_out_count) "
             "VALUES (current_setting('app.current_tenant')::uuid, :sid, :og, "
-            "        :ig, :oi, :oa, :prc, :prt, :cs, :ct, :notes, CAST(:summary AS json)) "
-            "RETURNING id, created_at"
+            "        :ig, :oi, :oa, :prc, :prt, :cs, :ct, :notes, CAST(:summary AS json), "
+            "        :keys_out, :keys_late, :lf, :defects, :kit) "
+            "RETURNING id, created_at, status"
         ),
         {
             "sid": shift_id, "og": token.user_id,
@@ -852,11 +862,28 @@ async def generate_handover(
             "prc": summary["patrol_routes_completed"], "prt": summary["patrol_routes_total"],
             "cs": summary["checkpoints_scanned"], "ct": summary["checkpoints_total"],
             "notes": outgoing_notes, "summary": json.dumps(summary),
+            "keys_out": position["keys_outstanding"],
+            "keys_late": position["keys_overdue"],
+            "lf": position["lost_found_held"],
+            "defects": position["open_defects_count"],
+            "kit": position["equipment_out_count"],
         },
     )
     row = result.first()
+
+    # Copy the site's checklist onto this handover. Copied rather than
+    # referenced, so editing the template next month cannot rewrite what
+    # somebody signed last month.
+    checks_created = await snapshot_checklist(db, str(row.id), site_id, position)
+
     await db.commit()
-    return {**summary, "id": str(row.id), "created_at": row.created_at.isoformat()}
+    return {
+        **summary,
+        "id": str(row.id),
+        "created_at": row.created_at.isoformat(),
+        "status": row.status,
+        "checklist_items": checks_created,
+    }
 
 
 @router.get("/{shift_id}/handover", dependencies=[Depends(require_permission("handover:read"))])
@@ -1007,6 +1034,27 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
         {"current_shift_id": shift_id, **( {"site_id": str(site_id)} if site_id else {} )},
     )).first()
 
+    # ── Keys still out at this site ─────────────────────────────────────────
+    site_filter_bk = "AND k.site_id = CAST(:site_id AS uuid)" if site_id else ""
+    outstanding_keys_rows = (await db.execute(
+        text(f"""
+            SELECT k.key_code, k.label, k.cabinet_position,
+                   t.issued_at, t.expected_return_at,
+                   COALESCE(hu.full_name, t.issued_to_name) AS held_by_name,
+                   t.issued_to_company AS held_by_company,
+                   (t.expected_return_at IS NOT NULL AND t.expected_return_at < now())
+                       AS is_overdue
+            FROM key_transactions t
+            JOIN site_keys k ON k.id = t.key_id
+            LEFT JOIN users hu ON hu.id = t.issued_to_user_id
+            WHERE t.returned_at IS NULL
+            {site_filter_bk}
+            ORDER BY t.expected_return_at NULLS LAST, t.issued_at
+            LIMIT 50
+        """),
+        {"site_id": str(site_id)} if site_id else {},
+    )).mappings().all()
+
     # ── Alarm panel status at this site ─────────────────────────────────────
     site_filter_ap = "AND ap.site_id = CAST(:site_id AS uuid)" if site_id else ""
     alarm_panels_rows = (await db.execute(
@@ -1028,6 +1076,7 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
         "pending_deliveries":  [dict(r) for r in pending_deliveries],
         "previous_handover":   dict(prev_handover_row._mapping) if prev_handover_row else None,
         "alarm_panels":        [dict(r) for r in alarm_panels_rows],
+        "outstanding_keys":    [dict(r) for r in outstanding_keys_rows],
         "summary": {
             "work_permits_count":   len(work_permits),
             "visitors_count":       len(expected_visitors),
@@ -1036,6 +1085,8 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
             "has_previous_handover": prev_handover_row is not None,
             "panels_armed":         sum(1 for r in alarm_panels_rows if r["arm_state"] != "disarmed"),
             "panels_total":         len(alarm_panels_rows),
+            "keys_outstanding":     len(outstanding_keys_rows),
+            "keys_overdue":         sum(1 for r in outstanding_keys_rows if r["is_overdue"]),
         },
     }
 
@@ -1316,6 +1367,123 @@ async def delete_shift_definition(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
     await db.commit()
     return {"id": definition_id, "deleted": True}
+
+
+# ── Public holiday calendar ─────────────────────────────────────────────────
+#
+# The dates payroll owes a premium against, and the roster paints differently.
+#
+# Deliberately not seeded from a hardcoded list. Singapore's gazetted holidays
+# move each year — several follow lunar and Islamic calendars, and their dates
+# are confirmed by MOM annually — so a table baked into a migration would look
+# authoritative and be wrong the moment it aged. Entered or imported by someone
+# who has checked the gazette is the only version that stays correct.
+
+
+class HolidayCreate(BaseModel):
+    holiday_date: dtdate
+    name: str
+    is_gazetted: bool = True
+    notes: str | None = None
+
+
+class HolidayBulk(BaseModel):
+    holidays: list[HolidayCreate]
+
+
+@router.get("/holidays", dependencies=[Depends(require_permission("shift:read"))])
+async def list_holidays(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    year: int | None = None,
+):
+    """Read is on shift:read, not holiday:manage — the roster, the scheduler
+    and anyone looking at a payslip all need to know which days these are."""
+    where = "WHERE EXTRACT(YEAR FROM holiday_date) = :yr" if year else ""
+    result = await db.execute(
+        text(f"""
+            SELECT id, holiday_date, name, is_gazetted, notes, created_at
+              FROM public_holidays {where}
+          ORDER BY holiday_date
+        """),
+        {"yr": year} if year else {},
+    )
+    return [dict(r._mapping) for r in result]
+
+
+@router.post("/holidays", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("holiday:manage"))])
+async def create_holiday(
+    body: HolidayCreate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    if not body.name.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "name is required")
+    try:
+        row = (await db.execute(
+            text("""
+                INSERT INTO public_holidays (tenant_id, holiday_date, name, is_gazetted, notes)
+                VALUES (current_setting('app.current_tenant')::uuid, :d, :name, :gaz, :notes)
+                RETURNING id, holiday_date, name, is_gazetted, notes, created_at
+            """),
+            {"d": body.holiday_date, "name": body.name.strip(),
+             "gaz": body.is_gazetted, "notes": body.notes},
+        )).first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"{body.holiday_date} is already in the calendar")
+    await db.commit()
+    return dict(row._mapping)
+
+
+@router.post("/holidays/bulk", dependencies=[Depends(require_permission("holiday:manage"))])
+async def bulk_create_holidays(
+    body: HolidayBulk,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Load a year in one go.
+
+    Skips dates already present rather than failing the batch: a year is
+    normally entered once and then corrected when a date is gazetted late, and
+    re-submitting the corrected list should add the one that changed rather
+    than being refused for the eleven that did not.
+    """
+    if not body.holidays:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "holidays was empty")
+
+    added, skipped = 0, 0
+    for h in body.holidays:
+        if not h.name.strip():
+            continue
+        result = await db.execute(
+            text("""
+                INSERT INTO public_holidays (tenant_id, holiday_date, name, is_gazetted, notes)
+                VALUES (current_setting('app.current_tenant')::uuid, :d, :name, :gaz, :notes)
+                ON CONFLICT (tenant_id, holiday_date) DO NOTHING
+                RETURNING id
+            """),
+            {"d": h.holiday_date, "name": h.name.strip(),
+             "gaz": h.is_gazetted, "notes": h.notes},
+        )
+        if result.first() is not None:
+            added += 1
+        else:
+            skipped += 1
+    await db.commit()
+    return {"added": added, "skipped_existing": skipped}
+
+
+@router.delete("/holidays/{holiday_id}",
+               dependencies=[Depends(require_permission("holiday:manage"))])
+async def delete_holiday(holiday_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    result = await db.execute(
+        text("DELETE FROM public_holidays WHERE id = CAST(:id AS uuid) RETURNING id"),
+        {"id": holiday_id},
+    )
+    if result.first() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Holiday not found")
+    await db.commit()
+    return {"id": holiday_id, "deleted": True}
 
 
 @router.put("/{shift_id}", dependencies=[Depends(require_permission("shift:manage"))])

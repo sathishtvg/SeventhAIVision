@@ -524,6 +524,46 @@ async def check_no_show_shifts(db: AsyncSession, redis: Redis) -> int:
     return total
 
 
+async def escalate_pending_man_down(db: AsyncSession, redis: Redis) -> int:
+    """Escalate man-down events whose countdown ran out without an answer.
+
+    The phone calls /escalate itself when its own timer fires. This exists for
+    when it cannot: a handset that shattered on impact, ran flat, or lost
+    signal is the case man-down is FOR, so escalation cannot depend on the
+    device that may be broken.
+
+    Tenant-scoped the same way every other sweep is, because man_down_events is
+    under RLS and a cross-tenant read would return nothing at all.
+    """
+    from app.services.mandown import sweep_pending
+
+    tenants = (await db.execute(
+        text("SELECT id FROM tenants WHERE is_active = TRUE")
+    )).scalars().all()
+
+    escalated = 0
+    for tenant_id in tenants:
+        try:
+            await db.execute(
+                text("SELECT set_config('app.current_tenant', :tid, true)"),
+                {"tid": str(tenant_id)},
+            )
+            n = await sweep_pending(db, redis)
+            if n:
+                await db.commit()
+                escalated += n
+                logger.warning(
+                    "escalate_pending_man_down: escalated %d event(s) for tenant %s "
+                    "with no response from the handset", n, tenant_id,
+                )
+            else:
+                await db.rollback()
+        except Exception:
+            await db.rollback()
+            logger.exception("escalate_pending_man_down failed for tenant %s", tenant_id)
+    return escalated
+
+
 async def check_camera_offline_alerts(db: AsyncSession, redis: Redis) -> int:
     """Finds cameras whose last_frame_at is stale, marks them offline, and fires
     a tenant_events pub/sub notification once per cooldown window using the
@@ -1215,6 +1255,18 @@ async def main() -> None:
                 except Exception:
                     logger.exception("check_no_show_shifts failed")
                 last_no_show = now
+
+            # Man down: every iteration, not on a slower cadence. A guard is
+            # on the floor and the countdown they were shown has already
+            # elapsed — a minute is the tightest this loop offers and every
+            # further minute is one nobody is coming.
+            try:
+                async with AsyncSessionLocal() as db:
+                    # The job logs each tenant's escalations with the tenant id;
+                    # a second line here would say the same thing less usefully.
+                    await escalate_pending_man_down(db, redis)
+            except Exception:
+                logger.exception("escalate_pending_man_down failed")
 
             await asyncio.sleep(60)  # check every minute which jobs are due
     finally:
