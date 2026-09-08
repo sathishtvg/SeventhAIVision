@@ -48,6 +48,7 @@ export const PAGE_LABELS = {
   leave: { title: 'Leave', subtitle: 'Requests, approvals and remaining balances per guard' },
   training: { title: 'Guard Training & Certifications', subtitle: 'Courses, quizzes and certification expiry for your officers' },
   compliance: { title: 'Guard Tour Compliance', subtitle: 'Whether patrols are actually being walked, per route and per guard' },
+  handovers: { title: 'Handovers', subtitle: 'What each shift handed over, and whether the incoming guard agreed with it' },
   defects: { title: 'Defect Log', subtitle: 'Faults your officers found on site, who they were referred to, and whether they were fixed' },
   equipment: { title: 'Equipment & Uniform', subtitle: 'Company kit signed out to officers, and the uniform they still hold' },
   'key-register': { title: 'Key Register', subtitle: 'The key cabinet at each site, and what is currently signed out of it' },

@@ -54,6 +54,7 @@ from app.routers import (
     evidence,
     exports,
     gps,
+    handover,
     i18n,
     incidents,
     keyreg,
@@ -330,6 +331,7 @@ app.include_router(keyreg.router)
 app.include_router(lost_found.router)
 app.include_router(defects.router)
 app.include_router(equipment.router)
+app.include_router(handover.router)
 app.include_router(dob.router)
 app.include_router(dispatch.router)
 app.include_router(dispatch.sla_router)

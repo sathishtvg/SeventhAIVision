@@ -47,6 +47,7 @@ import { KeyRegisterScreen }           from '@/screens/KeyRegisterScreen'
 import { LostFoundScreen }             from '@/screens/LostFoundScreen'
 import { DefectLogScreen }            from '@/screens/DefectLogScreen'
 import { MyKitScreen }                from '@/screens/MyKitScreen'
+import { HandoverScreen }             from '@/screens/HandoverScreen'
 import { MyScheduleScreen }            from '@/screens/MyScheduleScreen'
 import { ActionCenterScreen }          from '@/screens/ActionCenterScreen'
 import { AttendanceScreen }            from '@/screens/AttendanceScreen'
@@ -108,6 +109,7 @@ export type MoreStackParamList = {
   LostFound:     undefined
   DefectLog:     undefined
   MyKit:         undefined
+  Handover:      undefined
   MySchedule:    undefined
   ActionCenter:  undefined
   Attendance:    undefined
@@ -197,6 +199,7 @@ function MoreNavigator() {
       <MoreStack.Screen name="LostFound"     component={LostFoundScreen}            options={{ title: 'Lost & Found' }} />
       <MoreStack.Screen name="DefectLog"     component={DefectLogScreen}            options={{ title: 'Defect Log' }} />
       <MoreStack.Screen name="MyKit"         component={MyKitScreen}                options={{ title: 'My Kit' }} />
+      <MoreStack.Screen name="Handover"      component={HandoverScreen}             options={{ title: 'Handovers' }} />
       <MoreStack.Screen name="Visitors"      component={VisitorsScreen}             options={{ title: 'Visitor Management' }} />
       <MoreStack.Screen name="Dispatch"      component={DispatchScreen}             options={{ title: 'Dispatch' }} />
       <MoreStack.Screen name="Detections"    component={DetectionsScreen}           options={{ title: 'AI Detections' }} />

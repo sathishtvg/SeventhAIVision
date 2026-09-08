@@ -30,6 +30,7 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'LostFound',     label: 'Lost & Found',       description: 'Book in found property and release it to its owner', icon: 'briefcase-outline',        color: colors.info },
   { screen: 'DefectLog',     label: 'Defect Log',         description: 'Report faults you find on site, with a photo', icon: 'construct-outline',        color: colors.warning },
   { screen: 'MyKit',         label: 'My Kit',             description: 'Equipment and uniform signed out to you', icon: 'shirt-outline',            color: colors.secondary },
+  { screen: 'Handover',      label: 'Handovers',          description: 'Accept or dispute what the last shift handed over', icon: 'swap-horizontal-outline',  color: colors.primary },
   { screen: 'Training',      label: 'My Training',        description: 'SOP courses and quizzes',            icon: 'school-outline',           color: colors.primary },
   { screen: 'Visitors',      label: 'Visitor Management', description: 'Check in/out and manage visitors',   icon: 'people-outline',           color: colors.info },
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary },

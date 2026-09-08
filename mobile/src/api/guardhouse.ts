@@ -239,3 +239,71 @@ export interface HeldByUser {
 
 export const getHeldByUser = (userId: string) =>
   apiClient.get<HeldByUser>(`/api/v1/equipment/assigned/${userId}`).then((r) => r.data)
+
+// ── Handovers ────────────────────────────────────────────────────────────────
+//
+// Accepting is the incoming guard's own act, done at the gate at 07:00 on the
+// phone in their hand. A web page they will reach an hour later is not where
+// this happens.
+
+export interface HandoverCheck {
+  id: string
+  item_id: string | null
+  label: string
+  requires_count: boolean
+  is_required: boolean
+  sort_order: number
+  checked: boolean
+  counted_value: number | null
+  expected_value: number | null
+  notes: string | null
+  mismatch: boolean
+}
+
+export interface Handover {
+  id: string
+  shift_id: string
+  status: 'submitted' | 'accepted' | 'disputed' | 'resolved'
+  created_at: string
+  site_id: string | null
+  site_name: string | null
+  keys_outstanding: number
+  keys_overdue: number
+  lost_found_held: number
+  open_defects_count: number
+  equipment_out_count: number
+  open_incidents_count: number
+  outgoing_notes: string | null
+  incoming_notes: string | null
+  dispute_reason: string | null
+  accepted_at: string | null
+  outgoing_guard_name: string | null
+  accepted_by_name: string | null
+}
+
+export interface HandoverDetail extends Handover {
+  checks: HandoverCheck[]
+  mismatches: number
+  unchecked_required: number
+}
+
+export const listHandovers = (params: { open_only?: boolean } = {}) =>
+  apiClient.get<Handover[]>('/api/v1/handovers', { params }).then((r) => r.data)
+
+export const getHandover = (id: string) =>
+  apiClient.get<HandoverDetail>(`/api/v1/handovers/${id}`).then((r) => r.data)
+
+export const updateHandoverChecks = (
+  id: string,
+  checks: { id: string; checked: boolean; counted_value?: number | null }[],
+) => apiClient.put(`/api/v1/handovers/${id}/checks`, { checks }).then((r) => r.data)
+
+export const acceptHandover = (id: string, incomingNotes?: string | null) =>
+  apiClient
+    .post(`/api/v1/handovers/${id}/accept`, { incoming_notes: incomingNotes || null })
+    .then((r) => r.data)
+
+export const disputeHandover = (id: string, reason: string) =>
+  apiClient
+    .post(`/api/v1/handovers/${id}/dispute`, { dispute_reason: reason })
+    .then((r) => r.data)

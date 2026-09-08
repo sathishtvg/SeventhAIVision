@@ -22,6 +22,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
 from app.services.alarm_shift import arm_site_panels, disarm_site_panels
 from app.services.geofence import is_within_site
+from app.services.handover import gather_site_position, snapshot_checklist
 from app.services.liveness import check_liveness_sync
 from app.services.violations import VIOLATION_POINTS, create_violation
 
@@ -824,34 +825,10 @@ async def generate_handover(
         {"sid": shift_id},
     )).first()
 
-    # Keys still out and property still held at this site. A shift ending
-    # with keys unaccounted for is the single most common guardhouse dispute,
-    # and the outgoing guard is the last person who can still answer for it.
-    site_filter_k = "AND k.site_id = :site_id" if site_id else ""
-    key_row = (await db.execute(
-        text(f"""
-            SELECT COUNT(*)::int AS out_count,
-                   COUNT(*) FILTER (
-                       WHERE t.expected_return_at IS NOT NULL
-                         AND t.expected_return_at < now()
-                   )::int AS overdue_count
-            FROM key_transactions t
-            JOIN site_keys k ON k.id = t.key_id
-            WHERE t.returned_at IS NULL
-            {site_filter_k}
-        """),
-        {"site_id": str(site_id)} if site_id else {},
-    )).first()
-
-    site_filter_lf = "AND i.site_id = :site_id" if site_id else ""
-    lost_found_held = (await db.execute(
-        text(f"""
-            SELECT COUNT(*)::int FROM lost_found_items i
-            WHERE i.status = 'held'
-            {site_filter_lf}
-        """),
-        {"site_id": str(site_id)} if site_id else {},
-    )).scalar()
+    # What the site owes right now — keys out, property held, kit signed out,
+    # defects still live. Gathered by the same code the acceptance screen uses,
+    # so the numbers written here and the numbers read there cannot diverge.
+    position = await gather_site_position(db, site_id)
 
     summary = {
         "shift_id": shift_id,
@@ -861,9 +838,7 @@ async def generate_handover(
         "patrol_routes_total": patrol_stats.routes_total if patrol_stats else 0,
         "checkpoints_scanned": patrol_stats.checkpoints_scanned if patrol_stats else 0,
         "checkpoints_total": patrol_stats.checkpoints_total if patrol_stats else 0,
-        "keys_outstanding": key_row.out_count if key_row else 0,
-        "keys_overdue": key_row.overdue_count if key_row else 0,
-        "lost_found_held": lost_found_held or 0,
+        **position,
         "outgoing_notes": outgoing_notes,
     }
 
@@ -873,10 +848,13 @@ async def generate_handover(
             "(tenant_id, shift_id, outgoing_guard_id, incoming_guard_id, "
             " open_incidents_count, open_alerts_count, "
             " patrol_routes_completed, patrol_routes_total, "
-            " checkpoints_scanned, checkpoints_total, outgoing_notes, summary_json) "
+            " checkpoints_scanned, checkpoints_total, outgoing_notes, summary_json, "
+            " keys_outstanding, keys_overdue, lost_found_held, "
+            " open_defects_count, equipment_out_count) "
             "VALUES (current_setting('app.current_tenant')::uuid, :sid, :og, "
-            "        :ig, :oi, :oa, :prc, :prt, :cs, :ct, :notes, CAST(:summary AS json)) "
-            "RETURNING id, created_at"
+            "        :ig, :oi, :oa, :prc, :prt, :cs, :ct, :notes, CAST(:summary AS json), "
+            "        :keys_out, :keys_late, :lf, :defects, :kit) "
+            "RETURNING id, created_at, status"
         ),
         {
             "sid": shift_id, "og": token.user_id,
@@ -884,11 +862,28 @@ async def generate_handover(
             "prc": summary["patrol_routes_completed"], "prt": summary["patrol_routes_total"],
             "cs": summary["checkpoints_scanned"], "ct": summary["checkpoints_total"],
             "notes": outgoing_notes, "summary": json.dumps(summary),
+            "keys_out": position["keys_outstanding"],
+            "keys_late": position["keys_overdue"],
+            "lf": position["lost_found_held"],
+            "defects": position["open_defects_count"],
+            "kit": position["equipment_out_count"],
         },
     )
     row = result.first()
+
+    # Copy the site's checklist onto this handover. Copied rather than
+    # referenced, so editing the template next month cannot rewrite what
+    # somebody signed last month.
+    checks_created = await snapshot_checklist(db, str(row.id), site_id, position)
+
     await db.commit()
-    return {**summary, "id": str(row.id), "created_at": row.created_at.isoformat()}
+    return {
+        **summary,
+        "id": str(row.id),
+        "created_at": row.created_at.isoformat(),
+        "status": row.status,
+        "checklist_items": checks_created,
+    }
 
 
 @router.get("/{shift_id}/handover", dependencies=[Depends(require_permission("handover:read"))])
