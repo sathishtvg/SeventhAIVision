@@ -72,3 +72,9 @@ testpaths = ["tests"]
 # failed on timeout while identical later tests passed — measured, not assumed.
 # 120s still catches a genuinely hung test without failing on import warm-up.
 timeout = 120
+# Registered so `-m repo_tree` is selectable and an unknown-mark warning cannot
+# appear. Applied by tests/_repo.py to every suite that inspects repository-root
+# infrastructure rather than application behaviour.
+markers = [
+    "repo_tree: validates repo-root infrastructure files; needs the working tree",
+]

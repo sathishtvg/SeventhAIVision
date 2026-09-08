@@ -107,23 +107,30 @@ jobs:
       # ran nowhere at all, and a stale migration head sat failing for two
       # months unseen. A runner HAS the tree, so mounting the checkout over
       # /app is all they need.
+      # Every suite carrying requires_repo_tree, selected by the marker rather
+      # than a hand-written list — that list had drifted to seven of the
+      # twenty-one that exist, so fourteen suites (Helm, OpenTelemetry, SLO,
+      # Trivy, SOPS, SBOM, OpenAPI lint, GPU config, chaos, feature flags,
+      # load-test config, compliance docs, API deprecation) ran nowhere at all.
+      #
+      # DATABASE_URL and REDIS_URL are passed explicitly. Without them conftest
+      # falls back to localhost, which inside this one-off container is nothing,
+      # and every test errors in session setup before it runs.
       - name: Run repo-inspection suites (skipped inside the api image)
         run: |
           API_IMAGE=$(docker compose -f docker/docker-compose.yml images -q api)
           API_CID=$(docker compose -f docker/docker-compose.yml ps -q api)
           NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$API_CID")
+          DB_URL=$(docker compose -f docker/docker-compose.yml exec -T api printenv DATABASE_URL)
           docker run --rm --network "$NET" \
             -v "${{ github.workspace }}:/app" -w /app \
+            -e DATABASE_URL="${DB_URL}_test" \
+            -e REDIS_URL="redis://redis:6379/0" \
             --entrypoint python "$API_IMAGE" \
             -m pytest -q -p no:cacheprovider --timeout=300 \
+            -m requires_repo_tree \
             --junitxml=/app/repo-test-results.xml \
-            backend/tests/test_secret_scanning.py \
-            backend/tests/test_container_hardening.py \
-            backend/tests/test_dependency_policy.py \
-            backend/tests/test_logging_policy.py \
-            backend/tests/test_migration_safety.py \
-            backend/tests/test_backup.py \
-            backend/tests/test_pip_audit.py
+            backend/tests/
 
       - name: Upload repo-inspection results
         if: always()

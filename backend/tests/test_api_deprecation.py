@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import types
+from unittest import mock
 import yaml
 import pytest
 from pathlib import Path
@@ -42,36 +43,60 @@ def _load_policy() -> dict:
         return yaml.safe_load(f)
 
 
+def _starlette_stub() -> dict:
+    """The smallest starlette the deprecation middleware needs to import."""
+    starlette = types.ModuleType("starlette")
+    starlette.middleware = types.ModuleType("starlette.middleware")
+    starlette.middleware.base = types.ModuleType("starlette.middleware.base")
+
+    class _FakeBase:
+        def __init__(self, app, **_):
+            self.app = app
+
+        async def dispatch(self, request, call_next):  # pragma: no cover
+            return await call_next(request)
+
+    starlette.middleware.base.BaseHTTPMiddleware = _FakeBase
+    starlette.requests = types.ModuleType("starlette.requests")
+    starlette.requests.Request = object
+    starlette.responses = types.ModuleType("starlette.responses")
+    starlette.responses.Response = object
+    return {
+        "starlette": starlette,
+        "starlette.middleware": starlette.middleware,
+        "starlette.middleware.base": starlette.middleware.base,
+        "starlette.requests": starlette.requests,
+        "starlette.responses": starlette.responses,
+    }
+
+
 def _import_middleware():
-    """Dynamically import the deprecation middleware module."""
+    """Dynamically import the deprecation middleware module.
+
+    THE STUB IS A LAST RESORT, AND IT IS ALWAYS UNWOUND. This used to write
+    fake starlette modules into sys.modules permanently, guarded only by
+    `if "starlette" not in sys.modules`. This file sorts first among the
+    repo-inspection suites, so that guard almost never held: the fake went in
+    and stayed, and every later test that wanted the real library got the stub
+    instead — `from starlette import status` failing with "unknown location"
+    took out 23 tests in test_compliance_docs and test_openapi_lint, both of
+    which pass in isolation.
+
+    It stayed hidden because this whole cluster skips inside the api image,
+    which has no repo tree to inspect. It fires wherever the tree exists.
+
+    So: use the real starlette when it is installed, which in this image it
+    always is, and scope the stub with patch.dict when it is not.
+    """
     spec = importlib.util.spec_from_file_location("deprecation", _MW_PATH)
     mod = importlib.util.module_from_spec(spec)
-    # Stub starlette so import works without the full web stack
-    if "starlette" not in sys.modules:
-        starlette = types.ModuleType("starlette")
-        starlette.middleware = types.ModuleType("starlette.middleware")
-        starlette.middleware.base = types.ModuleType("starlette.middleware.base")
 
-        class _FakeBase:
-            def __init__(self, app, **_):
-                self.app = app
+    if importlib.util.find_spec("starlette") is not None:
+        spec.loader.exec_module(mod)
+        return mod
 
-            async def dispatch(self, request, call_next):  # pragma: no cover
-                return await call_next(request)
-
-        starlette.middleware.base.BaseHTTPMiddleware = _FakeBase
-        starlette.requests = types.ModuleType("starlette.requests")
-        starlette.requests.Request = object
-        starlette.responses = types.ModuleType("starlette.responses")
-        starlette.responses.Response = object
-        sys.modules.update({
-            "starlette": starlette,
-            "starlette.middleware": starlette.middleware,
-            "starlette.middleware.base": starlette.middleware.base,
-            "starlette.requests": starlette.requests,
-            "starlette.responses": starlette.responses,
-        })
-    spec.loader.exec_module(mod)
+    with mock.patch.dict(sys.modules, _starlette_stub()):
+        spec.loader.exec_module(mod)
     return mod
 
 
