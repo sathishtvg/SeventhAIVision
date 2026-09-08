@@ -48,6 +48,8 @@ export const PAGE_LABELS = {
   leave: { title: 'Leave', subtitle: 'Requests, approvals and remaining balances per guard' },
   training: { title: 'Guard Training & Certifications', subtitle: 'Courses, quizzes and certification expiry for your officers' },
   compliance: { title: 'Guard Tour Compliance', subtitle: 'Whether patrols are actually being walked, per route and per guard' },
+  'key-register': { title: 'Key Register', subtitle: 'The key cabinet at each site, and what is currently signed out of it' },
+  'lost-found': { title: 'Lost & Found', subtitle: 'Property handed in at the guardhouse — where it is stored, and who took it away' },
   'post-orders': { title: 'SOP', subtitle: 'Standard operating procedures — the site-specific standing instructions guards follow on duty' },
 
   // ── People & money ────────────────────────────────────────────────────

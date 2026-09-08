@@ -36,6 +36,8 @@ import ApartmentIcon from '@mui/icons-material/Apartment'
 import LiveTvIcon from '@mui/icons-material/LiveTv'
 import VideoFileIcon from '@mui/icons-material/VideoFile'
 import SecurityIcon from '@mui/icons-material/Security'
+import VpnKeyIcon from '@mui/icons-material/VpnKey'
+import Inventory2Icon from '@mui/icons-material/Inventory2'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import MapIcon from '@mui/icons-material/Map'
 import HomeWorkIcon from '@mui/icons-material/HomeWork'
@@ -172,6 +174,8 @@ const NAV_SECTIONS: {
       { label: 'Payroll',         path: '/payroll',     icon: <PaymentsIcon fontSize="small" />,     permission: 'payroll:read' },
       { label: 'Guard Training',  path: '/training',    icon: <SchoolIcon fontSize="small" />,       permission: 'training:read' },
       { label: 'SOP',              path: '/post-orders', icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'Key Register',     path: '/key-register', icon: <VpnKeyIcon fontSize="small" />,      permission: 'keyreg:read' },
+      { label: 'Lost & Found',     path: '/lost-found',  icon: <Inventory2Icon fontSize="small" />,  permission: 'lostfound:read' },
     ],
   },
   {

@@ -43,6 +43,8 @@ import { EmergencyScreen }             from '@/screens/EmergencyScreen'
 import { MyRecordScreen }              from '@/screens/MyRecordScreen'
 import { TrainingScreen }              from '@/screens/TrainingScreen'
 import { PostOrdersScreen }            from '@/screens/PostOrdersScreen'
+import { KeyRegisterScreen }           from '@/screens/KeyRegisterScreen'
+import { LostFoundScreen }             from '@/screens/LostFoundScreen'
 import { MyScheduleScreen }            from '@/screens/MyScheduleScreen'
 import { ActionCenterScreen }          from '@/screens/ActionCenterScreen'
 import { AttendanceScreen }            from '@/screens/AttendanceScreen'
@@ -100,6 +102,8 @@ export type MoreStackParamList = {
   MyRecord:      undefined
   Training:      undefined
   PostOrders:    undefined
+  KeyRegister:   undefined
+  LostFound:     undefined
   MySchedule:    undefined
   ActionCenter:  undefined
   Attendance:    undefined
@@ -185,6 +189,8 @@ function MoreNavigator() {
       <MoreStack.Screen name="MySchedule"    component={MyScheduleScreen}           options={{ title: 'My Schedule' }} />
       <MoreStack.Screen name="Training"      component={TrainingScreen}             options={{ title: 'My Training' }} />
       <MoreStack.Screen name="PostOrders"    component={PostOrdersScreen}           options={{ title: 'SOP' }} />
+      <MoreStack.Screen name="KeyRegister"   component={KeyRegisterScreen}          options={{ title: 'Key Register' }} />
+      <MoreStack.Screen name="LostFound"     component={LostFoundScreen}            options={{ title: 'Lost & Found' }} />
       <MoreStack.Screen name="Visitors"      component={VisitorsScreen}             options={{ title: 'Visitor Management' }} />
       <MoreStack.Screen name="Dispatch"      component={DispatchScreen}             options={{ title: 'Dispatch' }} />
       <MoreStack.Screen name="Detections"    component={DetectionsScreen}           options={{ title: 'AI Detections' }} />

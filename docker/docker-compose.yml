@@ -9,6 +9,7 @@ x-app-env: &app-env
   RECORDINGS_ROOT: /data/recordings
   EMPLOYEE_DOCS_ROOT: /data/employee_docs
   ATTENDANCE_PHOTOS_ROOT: /data/attendance_photos
+  LOST_FOUND_PHOTOS_ROOT: /data/lost_found
   LPR_CONFIDENCE_THRESHOLD: "${LPR_CONFIDENCE_THRESHOLD:-0.55}"
   FACE_MATCH_THRESHOLD: "${FACE_MATCH_THRESHOLD:-0.6}"
   INTRUSION_BREACH_COOLDOWN_SECONDS: "${INTRUSION_BREACH_COOLDOWN_SECONDS:-60}"
@@ -107,6 +108,7 @@ services:
       - recordings_data:/data/recordings
       - employee_docs_data:/data/employee_docs
       - attendance_photos_data:/data/attendance_photos
+      - lost_found_data:/data/lost_found
       - models_data:/root/.insightface  # persist insightface model cache (buffalo_l ~330 MB)
       - backups_data:/data/backups
     ports: ["8000:8000"]
@@ -391,6 +393,7 @@ volumes:
   recordings_data: {}
   employee_docs_data: {}
   attendance_photos_data: {}
+  lost_found_data: {}
   model_cache: {}
   models_data: {}
   audit_archive: {}

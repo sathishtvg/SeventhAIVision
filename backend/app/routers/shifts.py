@@ -824,6 +824,35 @@ async def generate_handover(
         {"sid": shift_id},
     )).first()
 
+    # Keys still out and property still held at this site. A shift ending
+    # with keys unaccounted for is the single most common guardhouse dispute,
+    # and the outgoing guard is the last person who can still answer for it.
+    site_filter_k = "AND k.site_id = :site_id" if site_id else ""
+    key_row = (await db.execute(
+        text(f"""
+            SELECT COUNT(*)::int AS out_count,
+                   COUNT(*) FILTER (
+                       WHERE t.expected_return_at IS NOT NULL
+                         AND t.expected_return_at < now()
+                   )::int AS overdue_count
+            FROM key_transactions t
+            JOIN site_keys k ON k.id = t.key_id
+            WHERE t.returned_at IS NULL
+            {site_filter_k}
+        """),
+        {"site_id": str(site_id)} if site_id else {},
+    )).first()
+
+    site_filter_lf = "AND i.site_id = :site_id" if site_id else ""
+    lost_found_held = (await db.execute(
+        text(f"""
+            SELECT COUNT(*)::int FROM lost_found_items i
+            WHERE i.status = 'held'
+            {site_filter_lf}
+        """),
+        {"site_id": str(site_id)} if site_id else {},
+    )).scalar()
+
     summary = {
         "shift_id": shift_id,
         "open_incidents": open_incidents,
@@ -832,6 +861,9 @@ async def generate_handover(
         "patrol_routes_total": patrol_stats.routes_total if patrol_stats else 0,
         "checkpoints_scanned": patrol_stats.checkpoints_scanned if patrol_stats else 0,
         "checkpoints_total": patrol_stats.checkpoints_total if patrol_stats else 0,
+        "keys_outstanding": key_row.out_count if key_row else 0,
+        "keys_overdue": key_row.overdue_count if key_row else 0,
+        "lost_found_held": lost_found_held or 0,
         "outgoing_notes": outgoing_notes,
     }
 
@@ -1007,6 +1039,27 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
         {"current_shift_id": shift_id, **( {"site_id": str(site_id)} if site_id else {} )},
     )).first()
 
+    # ── Keys still out at this site ─────────────────────────────────────────
+    site_filter_bk = "AND k.site_id = CAST(:site_id AS uuid)" if site_id else ""
+    outstanding_keys_rows = (await db.execute(
+        text(f"""
+            SELECT k.key_code, k.label, k.cabinet_position,
+                   t.issued_at, t.expected_return_at,
+                   COALESCE(hu.full_name, t.issued_to_name) AS held_by_name,
+                   t.issued_to_company AS held_by_company,
+                   (t.expected_return_at IS NOT NULL AND t.expected_return_at < now())
+                       AS is_overdue
+            FROM key_transactions t
+            JOIN site_keys k ON k.id = t.key_id
+            LEFT JOIN users hu ON hu.id = t.issued_to_user_id
+            WHERE t.returned_at IS NULL
+            {site_filter_bk}
+            ORDER BY t.expected_return_at NULLS LAST, t.issued_at
+            LIMIT 50
+        """),
+        {"site_id": str(site_id)} if site_id else {},
+    )).mappings().all()
+
     # ── Alarm panel status at this site ─────────────────────────────────────
     site_filter_ap = "AND ap.site_id = CAST(:site_id AS uuid)" if site_id else ""
     alarm_panels_rows = (await db.execute(
@@ -1028,6 +1081,7 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
         "pending_deliveries":  [dict(r) for r in pending_deliveries],
         "previous_handover":   dict(prev_handover_row._mapping) if prev_handover_row else None,
         "alarm_panels":        [dict(r) for r in alarm_panels_rows],
+        "outstanding_keys":    [dict(r) for r in outstanding_keys_rows],
         "summary": {
             "work_permits_count":   len(work_permits),
             "visitors_count":       len(expected_visitors),
@@ -1036,6 +1090,8 @@ async def get_shift_briefing(shift_id: str, db: AsyncSession = Depends(get_db_wi
             "has_previous_handover": prev_handover_row is not None,
             "panels_armed":         sum(1 for r in alarm_panels_rows if r["arm_state"] != "disarmed"),
             "panels_total":         len(alarm_panels_rows),
+            "keys_outstanding":     len(outstanding_keys_rows),
+            "keys_overdue":         sum(1 for r in outstanding_keys_rows if r["is_overdue"]),
         },
     }
 

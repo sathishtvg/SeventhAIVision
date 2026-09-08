@@ -40,6 +40,8 @@ import { LeavePage } from '@/pages/Leave'
 import { PayrollPage } from '@/pages/Payroll'
 import { InvoicingPage } from '@/pages/Invoicing'
 import { PostOrdersPage } from '@/pages/PostOrders'
+import { KeyRegisterPage } from '@/pages/KeyRegister'
+import { LostFoundPage } from '@/pages/LostFound'
 import GuardOps from '@/pages/GuardOps'
 import VmsOnsite from '@/pages/VmsOnsite'
 import Reports from '@/pages/Reports'
@@ -162,6 +164,8 @@ export default function App() {
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="invoicing" element={<InvoicingPage />} />
         <Route path="post-orders" element={<PostOrdersPage />} />
+        <Route path="key-register" element={<KeyRegisterPage />} />
+        <Route path="lost-found" element={<LostFoundPage />} />
         <Route path="detections" element={<Detections />} />
         <Route path="watchlists" element={<Watchlists />} />
         <Route path="zones" element={<Zones />} />

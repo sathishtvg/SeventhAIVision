@@ -14,6 +14,12 @@ interface CheckInPhotoModalProps {
   onConfirm: (photoUri: string) => void
   confirming?: boolean
   errorMessage?: string | null
+  /** Front by default, because check-in is a selfie. The lost & found
+   *  register photographs an object on the counter, which needs the rear
+   *  camera — same capture, preview and confirm flow otherwise. */
+  facing?: 'front' | 'back'
+  /** Overrides the permission prompt, which names check-in by default. */
+  permissionPrompt?: string
 }
 
 /** Front-camera selfie capture for check-in/out — mirrors the QR-scanner
@@ -21,6 +27,7 @@ interface CheckInPhotoModalProps {
  * instead of scanning a barcode. Capture → preview → confirm/retake. */
 export function CheckInPhotoModal({
   visible, title, onClose, onConfirm, confirming, errorMessage,
+  facing = 'front', permissionPrompt,
 }: CheckInPhotoModalProps) {
   const [permission, requestPermission] = useCameraPermissions()
   const cameraRef = useRef<CameraView>(null)
@@ -66,10 +73,12 @@ export function CheckInPhotoModal({
           {capturedUri ? (
             <Image source={{ uri: capturedUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
           ) : permission?.granted ? (
-            <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="front" />
+            <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing={facing} />
           ) : (
             <View style={styles.center}>
-              <Text style={styles.permText}>Camera permission required for check-in selfie</Text>
+              <Text style={styles.permText}>
+                {permissionPrompt || 'Camera permission required for check-in selfie'}
+              </Text>
               <Pressable style={styles.btn} onPress={requestPermission}>
                 <Text style={styles.btnText}>Grant Permission</Text>
               </Pressable>

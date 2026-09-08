@@ -26,6 +26,8 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'Attendance',    label: 'Live Attendance',    description: 'Who is on duty and who is missing',  icon: 'people-circle-outline',    color: colors.success },
   { screen: 'MySchedule',    label: 'My Schedule',        description: 'Your upcoming and recent shifts',    icon: 'calendar-outline',         color: colors.secondary },
   { screen: 'PostOrders',    label: 'SOP',                description: 'Standard operating procedures for your sites', icon: 'reader-outline',       color: colors.error },
+  { screen: 'KeyRegister',   label: 'Key Register',       description: 'Issue and receive keys, and see what is out', icon: 'key-outline',              color: colors.warning },
+  { screen: 'LostFound',     label: 'Lost & Found',       description: 'Book in found property and release it to its owner', icon: 'briefcase-outline',        color: colors.info },
   { screen: 'Training',      label: 'My Training',        description: 'SOP courses and quizzes',            icon: 'school-outline',           color: colors.primary },
   { screen: 'Visitors',      label: 'Visitor Management', description: 'Check in/out and manage visitors',   icon: 'people-outline',           color: colors.info },
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary },
