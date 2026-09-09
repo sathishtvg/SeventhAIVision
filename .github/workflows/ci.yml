@@ -122,15 +122,40 @@ jobs:
           API_CID=$(docker compose -f docker/docker-compose.yml ps -q api)
           NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$API_CID")
           DB_URL=$(docker compose -f docker/docker-compose.yml exec -T api printenv DATABASE_URL)
+          set +e
           docker run --rm --network "$NET" \
             -v "${{ github.workspace }}:/app" -w /app \
             -e DATABASE_URL="${DB_URL}_test" \
             -e REDIS_URL="redis://redis:6379/0" \
             --entrypoint python "$API_IMAGE" \
-            -m pytest -q -p no:cacheprovider --timeout=300 \
-            -m requires_repo_tree \
+            -m pytest -p no:cacheprovider --timeout=300 \
+            -m repo_tree \
             --junitxml=/app/repo-test-results.xml \
             backend/tests/
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            # The exit code alone has never been enough to diagnose this job.
+            # 5 means "no tests were collected", which wants a completely
+            # different fix from "tests failed" — so say which, and show what
+            # pytest actually saw.
+            if [ "$code" -eq 5 ]; then
+              echo "::error::repo-inspection collected NO tests (pytest exit 5)."\
+                   " The -m repo_tree selection matched nothing on this runner."
+            else
+              echo "::error::repo-inspection failed with pytest exit $code"
+            fi
+            echo "::group::what pytest saw"
+            docker run --rm --network "$NET" \
+              -v "${{ github.workspace }}:/app" -w /app \
+              -e DATABASE_URL="${DB_URL}_test" \
+              -e REDIS_URL="redis://redis:6379/0" \
+              --entrypoint python "$API_IMAGE" \
+              -m pytest -m repo_tree backend/tests/ --collect-only -q 2>&1 \
+              | tail -25 | while IFS= read -r line; do echo "::error::$line"; done
+            echo "::endgroup::"
+            exit "$code"
+          fi
 
       - name: Upload repo-inspection results
         if: always()
