@@ -49,6 +49,12 @@ async def get_raw_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
 
 
+#: What a read-only support session may do. OPTIONS is included because
+#: browsers send it before a request the session may well be allowed to
+#: make, and refusing the preflight fails the wrong thing.
+_READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
 async def get_db_with_tenant(
     request: Request,
     token: TokenPayload = Depends(get_token_payload),
@@ -81,7 +87,7 @@ async def get_db_with_tenant(
         if token.support_session_id:
             live = (await session.execute(
                 text("""
-                    SELECT 1 FROM tenant_support_sessions
+                    SELECT access_level FROM tenant_support_sessions
                      WHERE id = CAST(:sid AS uuid)
                        AND platform_user_id = CAST(:uid AS uuid)
                        AND tenant_id = CAST(:tid AS uuid)
@@ -96,6 +102,17 @@ async def get_db_with_tenant(
                     status.HTTP_403_FORBIDDEN,
                     "This support session has ended or expired. Open a new one "
                     "to continue.",
+                )
+            # Read-only is the default, and it is enforced against the session
+            # ROW rather than a claim in the token — so downgrading a live
+            # session bites on its next request instead of whenever the token
+            # would otherwise have expired.
+            if (live.access_level == "read_only"
+                    and request.method not in _READ_ONLY_METHODS):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "This is a read-only support session. Open one with "
+                    "elevated access if the customer needs something changed.",
                 )
 
         # IP allowlist enforcement via SECURITY DEFINER function (bypasses RLS

@@ -22,6 +22,9 @@ export interface ActiveSupportSession {
   tenantId: string
   tenantName: string
   expiresAt: string
+  /** Shown in the banner. An operator who thinks they can edit and cannot is
+   *  confused; one who thinks they cannot and can is dangerous. */
+  accessLevel: 'read_only' | 'elevated'
 }
 
 interface AuthState {

@@ -50,6 +50,10 @@ export default function SupportSessions() {
   const [tenantId, setTenantId] = useState('')
   const [reason, setReason] = useState('')
   const [minutes, setMinutes] = useState(30)
+  // Read-only is preselected deliberately: most support is looking, and
+  // the safe option should be the one you get by not thinking about it.
+  const [accessLevel, setAccessLevel] =
+    useState<'read_only' | 'elevated'>('read_only')
   const [error, setError] = useState('')
 
   const { data: sessions, isLoading } = useQuery({
@@ -62,14 +66,18 @@ export default function SupportSessions() {
     queryClient.invalidateQueries({ queryKey: ['support-sessions'] })
 
   const openSession = useMutation({
-    mutationFn: () => openSupportSession({ tenant_id: tenantId, reason, minutes }),
+    mutationFn: () =>
+      openSupportSession({ tenant_id: tenantId, reason, minutes,
+                           access_level: accessLevel }),
     onSuccess: async (s) => {
       setOpen(false)
       setReason('')
       setTenantId('')
+      setAccessLevel('read_only')
       setError('')
       await enterSupportSession(
-        { id: s.id, tenantId: s.tenant_id, tenantName: s.tenant_name, expiresAt: s.expires_at },
+        { id: s.id, tenantId: s.tenant_id, tenantName: s.tenant_name,
+          expiresAt: s.expires_at, accessLevel: s.access_level },
         s.access_token,
       )
       invalidate()
@@ -123,6 +131,7 @@ export default function SupportSessions() {
                 <TableRow>
                   <TableCell>Tenant</TableCell>
                   <TableCell>Opened by</TableCell>
+                  <TableCell>Access</TableCell>
                   <TableCell>Reason</TableCell>
                   <TableCell>Started</TableCell>
                   <TableCell>Ends</TableCell>
@@ -137,6 +146,17 @@ export default function SupportSessions() {
                       <Typography variant="caption" color="text.secondary">
                         {s.platform_user_email ?? s.platform_user_id}
                       </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={s.access_level === 'elevated' ? 'elevated' : 'read only'}
+                        variant={s.access_level === 'elevated' ? 'filled' : 'outlined'}
+                        sx={{ height: 19, fontSize: '0.62rem',
+                              ...(s.access_level === 'elevated'
+                                ? { bgcolor: 'rgba(255,176,32,0.2)', color: '#FFB020' }
+                                : {}) }}
+                      />
                     </TableCell>
                     <TableCell sx={{ maxWidth: 320 }}>
                       <Tooltip title={s.reason}>
@@ -212,6 +232,24 @@ export default function SupportSessions() {
                   : 'The customer will read this. A ticket number and a symptom is enough.'
               }
             />
+
+            <FormControl size="small" fullWidth>
+              <InputLabel>Access</InputLabel>
+              <Select
+                value={accessLevel} label="Access"
+                onChange={(e) => setAccessLevel(e.target.value as 'read_only' | 'elevated')}
+              >
+                <MenuItem value="read_only">Read only — look, change nothing</MenuItem>
+                <MenuItem value="elevated">Elevated — the customer's own Admin</MenuItem>
+              </Select>
+            </FormControl>
+
+            {accessLevel === 'elevated' && (
+              <Alert severity="warning">
+                Anything you change will be the customer's data, changed by you.
+                Only take this if the ticket needs something altered.
+              </Alert>
+            )}
 
             <FormControl size="small" fullWidth>
               <InputLabel>Length</InputLabel>

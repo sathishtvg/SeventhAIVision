@@ -39,6 +39,10 @@ class SupportSessionCreate(BaseModel):
     # justify is a log, not a control. The table enforces non-blank as well.
     reason: str = Field(min_length=10, max_length=500)
     minutes: int = Field(default=30, ge=5, le=SUPPORT_TOKEN_MAX_MINUTES)
+    #: Read-only unless somebody deliberately says otherwise. Most support is
+    #: looking, and an operator who only needs to read should not be one
+    #: mis-click from editing a customer's roster.
+    access_level: str = Field(default="read_only", pattern="^(read_only|elevated)$")
 
 
 async def _set_tenant(db: AsyncSession, tenant_id: str) -> None:
@@ -89,16 +93,22 @@ async def open_support_session(
     await db.execute(
         text(
             "INSERT INTO tenant_support_sessions "
-            "  (id, platform_user_id, platform_tenant_id, tenant_id, reason, expires_at) "
+            "  (id, platform_user_id, platform_tenant_id, tenant_id, reason, "
+            "   expires_at, access_level) "
             "VALUES (CAST(:id AS uuid), CAST(:uid AS uuid), CAST(:ptid AS uuid), "
-            "        CAST(:tid AS uuid), :reason, :exp)"
+            "        CAST(:tid AS uuid), :reason, :exp, :access)"
         ),
         {"id": session_id, "uid": token.user_id, "ptid": token.tenant_id,
-         "tid": body.tenant_id, "reason": body.reason.strip(), "exp": expires_at},
+         "tid": body.tenant_id, "reason": body.reason.strip(), "exp": expires_at,
+         "access": body.access_level},
     )
 
+    # access_level is in the audit detail because a customer reading their own
+    # log should be able to tell "they looked" from "they could have changed
+    # anything", which is the whole point of having two levels.
     detail = {"session_id": session_id, "tenant": target.name,
-              "reason": body.reason.strip(), "minutes": body.minutes}
+              "reason": body.reason.strip(), "minutes": body.minutes,
+              "access_level": body.access_level}
     ip = request.client.host if request.client else None
 
     # The platform's own record...
@@ -131,6 +141,7 @@ async def open_support_session(
         "tenant_id": body.tenant_id,
         "tenant_name": target.name,
         "expires_at": expires_at.isoformat(),
+        "access_level": body.access_level,
         "access_token": create_support_token(
             token.user_id, body.tenant_id, session_id, body.minutes,
         ),
@@ -147,6 +158,7 @@ async def list_support_sessions(db: AsyncSession = Depends(get_db_with_tenant)):
     """
     rows = (await db.execute(text(
         "SELECT s.id, s.tenant_id, t.name AS tenant_name, s.reason, "
+        "       s.access_level, "
         "       s.started_at, s.expires_at, s.ended_at, "
         "       s.platform_user_id, u.email AS platform_user_email, "
         "       (s.ended_at IS NULL AND s.expires_at > now()) AS is_live "

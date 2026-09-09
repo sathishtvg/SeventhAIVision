@@ -9,6 +9,8 @@ export interface SupportSession {
   tenant_id: string
   tenant_name: string
   reason: string
+  /** read_only allows GET only. elevated is the customer's own Admin. */
+  access_level: 'read_only' | 'elevated'
   started_at: string
   expires_at: string
   ended_at: string | null
@@ -22,6 +24,7 @@ export interface OpenedSupportSession {
   tenant_id: string
   tenant_name: string
   expires_at: string
+  access_level: 'read_only' | 'elevated'
   /** Scoped to the target tenant for the life of the session, and refused the
    *  moment the session ends — the server re-checks on every request. */
   access_token: string
@@ -34,6 +37,7 @@ export const openSupportSession = (data: {
   tenant_id: string
   reason: string
   minutes: number
+  access_level: 'read_only' | 'elevated'
 }) =>
   apiClient.post<OpenedSupportSession>('/api/v1/support-sessions', data).then((r) => r.data)
 

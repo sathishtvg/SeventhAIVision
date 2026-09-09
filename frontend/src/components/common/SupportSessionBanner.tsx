@@ -69,7 +69,20 @@ export function SupportSessionBanner() {
       >
         <SupportAgentIcon fontSize="small" sx={{ color: '#ff6b6b' }} />
         <Typography variant="body2" sx={{ color: '#ff9a9a', fontWeight: 600 }}>
-          Support session — you are viewing {session.tenantName}
+          Support session — you are{' '}
+          {session.accessLevel === 'elevated' ? 'working in' : 'viewing'}{' '}
+          {session.tenantName}
+        </Typography>
+        {/* An operator who thinks they can edit and cannot is confused; one who
+            thinks they cannot and can is dangerous. So it says which. */}
+        <Typography
+          variant="caption"
+          sx={{ px: 0.8, py: 0.1, borderRadius: 0.5, fontWeight: 700,
+                color: session.accessLevel === 'elevated' ? '#FFB020' : '#ff9a9a',
+                bgcolor: session.accessLevel === 'elevated'
+                  ? 'rgba(255,176,32,0.18)' : 'rgba(255,255,255,0.08)' }}
+        >
+          {session.accessLevel === 'elevated' ? 'ELEVATED' : 'READ ONLY'}
         </Typography>
         <Typography variant="caption" sx={{ color: '#ff9a9a', opacity: 0.85 }}>
           {left === 'expired' ? 'expired' : `ends in ${left}`}

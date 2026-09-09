@@ -302,3 +302,109 @@ async def test_a_session_token_cannot_be_used_by_another_user():
     forged = create_support_token(str(other_user), str(target_id), opened["id"], 30)
     async with await _client(forged) as c:
         assert (await c.get("/api/v1/users")).status_code == 403
+
+
+# ─── D. Read-only by default (§27, migration 0107) ───────────────────────────
+#
+# A session used to hand over the customer's Admin permissions outright. That
+# is right for the rare ticket needing something changed and far more than the
+# common one needs, which is somebody asking why a screen is empty. Read-only
+# is the default now, and elevated has to be asked for.
+
+@pytest.mark.asyncio
+async def test_a_session_is_read_only_unless_asked_otherwise():
+    """The default matters more than the option: a code path that has not
+    thought about this gets the safe level, not the convenient one."""
+    _, _, token = await _seed_tenant(SUPER_ADMIN)
+    target_id, _, _ = await _seed_tenant(ADMIN)
+    opened = (await _open_session(token, target_id)).json()
+    assert opened["access_level"] == "read_only"
+
+
+@pytest.mark.asyncio
+async def test_read_only_can_look():
+    _, _, token = await _seed_tenant(SUPER_ADMIN)
+    target_id, _, _ = await _seed_tenant(ADMIN)
+    opened = (await _open_session(token, target_id)).json()
+    async with await _client(opened["access_token"]) as c:
+        assert (await c.get("/api/v1/users")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_read_only_cannot_touch():
+    """The point. An operator who only needs to read a customer's screen should
+    not be one mis-click from editing their roster."""
+    _, _, token = await _seed_tenant(SUPER_ADMIN)
+    target_id, _, _ = await _seed_tenant(ADMIN)
+    opened = (await _open_session(token, target_id)).json()
+
+    async with await _client(opened["access_token"]) as c:
+        created = await c.post("/api/v1/users", json={
+            "email": "should-not-exist@test.local",
+            "password": "Secret123!", "role_id": GUARD,
+        })
+        deleted = await c.delete(f"/api/v1/users/{uuid.uuid4()}")
+
+    assert created.status_code == 403
+    assert "read-only" in created.json()["detail"].lower()
+    assert deleted.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_elevated_can_touch_when_it_is_asked_for():
+    _, _, token = await _seed_tenant(SUPER_ADMIN)
+    target_id, _, _ = await _seed_tenant(ADMIN)
+    async with await _client(token) as c:
+        r = await c.post("/api/v1/support-sessions", json={
+            "tenant_id": str(target_id),
+            "reason": "Ticket 5501 - correcting a duplicated site record",
+            "access_level": "elevated",
+        })
+    assert r.status_code == 201
+    assert r.json()["access_level"] == "elevated"
+
+    async with await _client(r.json()["access_token"]) as c:
+        created = await c.post("/api/v1/users", json={
+            "email": f"elevated-{uuid.uuid4().hex[:8]}@test.local",
+            "password": "Secret123!", "role_id": GUARD,
+        })
+    assert created.status_code == 201, created.text
+
+
+@pytest.mark.asyncio
+async def test_downgrading_a_live_session_bites_immediately():
+    """Enforced against the session row, not a claim in the token — so it takes
+    effect on the next request rather than whenever the token expires."""
+    _, _, token = await _seed_tenant(SUPER_ADMIN)
+    target_id, _, _ = await _seed_tenant(ADMIN)
+    async with await _client(token) as c:
+        opened = (await c.post("/api/v1/support-sessions", json={
+            "tenant_id": str(target_id),
+            "reason": "Ticket 5502 - elevated to start with",
+            "access_level": "elevated",
+        })).json()
+
+    await _sql("UPDATE tenant_support_sessions SET access_level = 'read_only' "
+               " WHERE id = CAST(:sid AS uuid)", {"sid": opened["id"]})
+
+    async with await _client(opened["access_token"]) as c:
+        r = await c.post("/api/v1/users", json={
+            "email": f"after-{uuid.uuid4().hex[:8]}@test.local",
+            "password": "Secret123!", "role_id": GUARD,
+        })
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_the_customers_audit_entry_says_which_level():
+    """A customer reading their own log should be able to tell "they looked"
+    from "they could have changed anything"."""
+    _, _, token = await _seed_tenant(SUPER_ADMIN)
+    target_id, _, _ = await _seed_tenant(ADMIN)
+    await _open_session(token, target_id)
+
+    rows = await _sql(
+        "SELECT detail FROM audit_logs "
+        " WHERE tenant_id = :tid AND action = 'support_session.opened'",
+        {"tid": target_id})
+    assert rows[0][0]["access_level"] == "read_only"
