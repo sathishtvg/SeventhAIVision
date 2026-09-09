@@ -19,9 +19,15 @@ frontend/dist/
 desktop/dist/
 desktop/release/
 
-# Generated reports / scan output
+# Generated reports / scan output. The directories are tracked (via .gitkeep)
+# because test_trivy.py asserts they exist; the reports written into them are
+# not. A directory cannot be re-included once its parent is excluded, hence the
+# un-exclude / re-exclude pairs rather than a single negation.
 reports/*
 !reports/.gitkeep
+!reports/trivy/
+reports/trivy/*
+!reports/trivy/.gitkeep
 
 # Leftover nested-repo metadata (moved aside during git init, not source)
 mobile/.git.bak-nested-repo/
