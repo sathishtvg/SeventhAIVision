@@ -1202,6 +1202,18 @@ async def run_once(redis: Redis | None = None) -> None:
     except Exception:
         logger.exception("subscription lifecycle failed (non-fatal)")
 
+    # Usage rollup and tenant health (§20-24): snapshot each customer, roll
+    # the month up, and score them. Runs after the lifecycle so a subscription
+    # that expired tonight is reflected in tonight's health score rather than
+    # tomorrow's.
+    try:
+        from app.services import usage_rollup
+        async with AsyncSessionLocal() as db:
+            counts = await usage_rollup.run(db)
+        logger.info("usage rollup: %s", counts)
+    except Exception:
+        logger.exception("usage rollup failed (non-fatal)")
+
     # Roster auto-generation (Gap 86): expand recurring shift patterns into
     # concrete shifts for the next 7 days across all tenants.
     try:

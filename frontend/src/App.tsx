@@ -29,6 +29,7 @@ import TenantUsage from '@/pages/TenantUsage'
 import ErrorCentre from '@/pages/ErrorCentre'
 import PlatformBilling from '@/pages/PlatformBilling'
 import PlatformInvoices from '@/pages/PlatformInvoices'
+import PlatformAnalytics from '@/pages/PlatformAnalytics'
 import Users from '@/pages/Users'
 import Roles from '@/pages/Roles'
 import { SitesPage } from '@/pages/Sites'
@@ -197,6 +198,7 @@ export default function App() {
         <Route path="platform/errors" element={<ErrorCentre />} />
         <Route path="platform/billing" element={<PlatformBilling />} />
         <Route path="platform/invoices" element={<PlatformInvoices />} />
+        <Route path="platform/analytics" element={<PlatformAnalytics />} />
         <Route path="users" element={<Users />} />
         <Route path="roles" element={<Roles />} />
         <Route path="guard-ops" element={<GuardOps />} />

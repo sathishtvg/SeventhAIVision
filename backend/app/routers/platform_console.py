@@ -376,3 +376,77 @@ async def update_setting(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such setting")
     await db.commit()
     return dict(row)
+
+
+# ── Analytics (§20-§24) ──────────────────────────────────────────────────────
+
+@router.get("/analytics/growth", dependencies=[_READ])
+async def growth(
+    db: AsyncSession = Depends(get_raw_db),
+    days: int = Query(default=90, ge=7, le=730),
+):
+    """The platform day by day: customers, users, cameras, AI events, storage.
+
+    Read from the daily snapshots rather than computed live, because the whole
+    point is the direction. Counting now tells you there are 128 tenants; it
+    cannot tell you whether that is good news.
+
+    Counts are summed ACROSS tenants per day and events are summed too, but
+    they mean different things: a hundred cameras on Tuesday and a hundred on
+    Wednesday is a hundred cameras, whereas a hundred detections each day is
+    two hundred detections.
+    """
+    rows = (await db.execute(text("""
+        SELECT day,
+               count(*)                     AS tenants,
+               sum(users)                   AS users,
+               sum(sites)                   AS sites,
+               sum(cameras)                 AS cameras,
+               sum(ai_events)               AS ai_events,
+               sum(storage_bytes)           AS storage_bytes
+          FROM platform_usage_daily
+         WHERE day >= CURRENT_DATE - make_interval(days => :days)
+      GROUP BY day
+      ORDER BY day
+    """), {"days": days})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/analytics/adoption", dependencies=[_READ])
+async def adoption(db: AsyncSession = Depends(get_raw_db)):
+    """Which modules customers actually switched on (§22).
+
+    The question behind it is a product one: a module nobody adopted is either
+    priced wrong, hard to find, or not worth building further.
+    """
+    rows = (await db.execute(
+        text("SELECT * FROM platform_module_adoption()")
+    )).mappings().all()
+    total = (await db.execute(
+        text("SELECT count(*) FROM tenants WHERE NOT is_platform")
+    )).scalar() or 0
+    return {
+        "customers": total,
+        "modules": [
+            {**dict(r),
+             "adoption_percent": round(100 * (r["tenants"] or 0) / total, 1)
+                                 if total else 0}
+            for r in rows
+        ],
+    }
+
+
+@router.get("/analytics/health", dependencies=[_READ])
+async def tenant_health(db: AsyncSession = Depends(get_raw_db)):
+    """Every customer's health score, worst first (§23).
+
+    Worst first because this list is a work queue, not a leaderboard — the
+    customer at 38% is the one somebody should telephone this week.
+    """
+    rows = (await db.execute(text("""
+        SELECT h.*, t.name AS tenant_name, t.slug, t.status AS tenant_status
+          FROM tenant_health h
+          JOIN tenants t ON t.id = h.tenant_id AND NOT t.is_platform
+      ORDER BY h.score
+    """))).mappings().all()
+    return [dict(r) for r in rows]

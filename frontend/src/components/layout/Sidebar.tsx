@@ -162,6 +162,7 @@ const PLATFORM_NAV_SECTIONS: {
       { label: 'Dashboard',     path: '/platform',          icon: <DashboardIcon fontSize="small" />, permission: 'platform:read' },
       { label: 'Tenants',       path: '/tenants',           icon: <BusinessIcon fontSize="small" />,  permission: 'tenant:manage' },
       { label: 'Tenant Usage',  path: '/platform/tenants',  icon: <AssessmentIcon fontSize="small" />, permission: 'platform:read' },
+      { label: 'Growth',        path: '/platform/analytics', icon: <BarChartIcon fontSize="small" />,  permission: 'platform:read' },
     ],
   },
   {

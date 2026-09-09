@@ -176,3 +176,57 @@ export interface PlatformHealth {
 
 export const getPlatformHealth = () =>
   apiClient.get<PlatformHealth>('/api/v1/platform/health').then((r) => r.data)
+
+// ── Analytics (§20–§24) ─────────────────────────────────────────────────────
+//
+// Read from the nightly snapshots, not computed live: the point of every one
+// of these is the direction, and counting now cannot tell you that.
+
+export interface GrowthPoint {
+  day: string
+  tenants: number
+  users: number
+  sites: number
+  cameras: number
+  ai_events: number
+  storage_bytes: number
+}
+
+export interface ModuleAdoption {
+  customers: number
+  modules: {
+    code: string
+    name: string
+    billing_type: string
+    unit_price: string
+    tenants: number
+    cameras: number
+    adoption_percent: number
+  }[]
+}
+
+export interface TenantHealth {
+  tenant_id: string
+  tenant_name: string
+  slug: string
+  tenant_status: string
+  score: number
+  login_score: number
+  usage_score: number
+  billing_score: number
+  adoption_score: number
+  detail: Record<string, unknown> | null
+  computed_at: string
+}
+
+export const getPlatformGrowth = (days = 90) =>
+  apiClient.get<GrowthPoint[]>('/api/v1/platform/analytics/growth',
+                               { params: { days } }).then((r) => r.data)
+
+export const getModuleAdoption = () =>
+  apiClient.get<ModuleAdoption>('/api/v1/platform/analytics/adoption')
+    .then((r) => r.data)
+
+export const getTenantHealth = () =>
+  apiClient.get<TenantHealth[]>('/api/v1/platform/analytics/health')
+    .then((r) => r.data)
