@@ -1,0 +1,10 @@
+Tracked so this directory exists in a fresh checkout.
+
+scripts/security-scan writes Trivy's JSON reports here, and
+backend/tests/test_trivy.py asserts the directory exists — that is a
+structural check on the repo, not on whether a scan has been run. The
+reports themselves stay ignored; see .gitignore.
+
+Without this the directory only existed on machines where somebody had
+already run a scan, so those two tests passed locally and failed the
+first time CI ever ran them.

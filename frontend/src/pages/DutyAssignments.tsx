@@ -15,7 +15,8 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
-  addDutyAssignment, getDutyAssignments, getDutyOverview, removeDutyAssignment,
+  addDutyAssignment, getDutyAssignments, getDutyOverview, getDutyPostings,
+  removeDutyAssignment,
   type DutyAssignment, type DutyOverviewRow,
 } from '@/api/sites'
 import { getUsers } from '@/api/users'
@@ -24,6 +25,16 @@ import { PageHeader } from '@/components/common/PageHeader'
 
 /** Same set the roster auto-scheduler treats as schedulable. */
 const GUARD_ROLES = new Set([3, 4, 5, 8])
+
+/** Roles that cover sites rather than standing a post, so they may hold duty
+ *  postings at several. Everyone else stands exactly one — enforced in the
+ *  database by migration 0101, mirrored here so the picker does not offer
+ *  somebody the server will refuse. */
+const ROAMING_ROLES = new Set([1, 2, 3, 8])
+
+function mayHoldSeveralPostings(user: { role_id: number; is_standby?: boolean }) {
+  return ROAMING_ROLES.has(user.role_id) || Boolean(user.is_standby)
+}
 
 const SHIFTS = [
   { key: 'day' as const, label: 'Day duty', icon: <LightModeIcon sx={{ fontSize: 15 }} />, color: '#F5A524' },
@@ -111,11 +122,13 @@ function SiteTile({ row, onOpen }: { row: DutyOverviewRow; onOpen: () => void })
 
 // ── Team editor ──────────────────────────────────────────────────────────────
 
-function TeamColumn({ siteId, shift, rows, guards }: {
+function TeamColumn({ siteId, shift, rows, guards, postedElsewhere }: {
   siteId: string
   shift: typeof SHIFTS[number]
   rows: DutyAssignment[]
-  guards: { id: string; full_name: string | null; email: string }[]
+  guards: { id: string; full_name: string | null; email: string; role_id: number; is_standby?: boolean }[]
+  /** guard id -> where they already stand, for everyone who may hold only one. */
+  postedElsewhere: Map<string, string>
 }) {
   const qc = useQueryClient()
   const [picked, setPicked] = useState<{ id: string; label: string } | null>(null)
@@ -123,12 +136,20 @@ function TeamColumn({ siteId, shift, rows, guards }: {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['duty-assignments', siteId] })
     qc.invalidateQueries({ queryKey: ['duty-overview'] })
+    qc.invalidateQueries({ queryKey: ['duty-postings'] })
   }
+
+  const [error, setError] = useState('')
 
   const add = useMutation({
     mutationFn: (guardUserId: string) =>
       addDutyAssignment(siteId, { guard_user_id: guardUserId, shift_type: shift.key }),
-    onSuccess: () => { setPicked(null); invalidate() },
+    onSuccess: () => { setPicked(null); setError(''); invalidate() },
+    // The filter below hides anyone already posted, but two supervisors
+    // editing at once can still race past it. The server's message names the
+    // site they are standing, so show it rather than failing silently.
+    onError: (e: { response?: { data?: { detail?: string } } }) =>
+      setError(e.response?.data?.detail || 'Could not add this guard to the team'),
   })
 
   const remove = useMutation({
@@ -137,8 +158,14 @@ function TeamColumn({ siteId, shift, rows, guards }: {
   })
 
   const onTeam = new Set(rows.map((r) => r.guard_user_id))
+  // Anyone already standing a post somewhere is not available for a second
+  // one. Supervisors, managers and standby officers are, because covering
+  // several sites is the job.
+  const unavailable = guards.filter(
+    (g) => !onTeam.has(g.id) && !mayHoldSeveralPostings(g) && postedElsewhere.has(g.id),
+  )
   const options = guards
-    .filter((g) => !onTeam.has(g.id))
+    .filter((g) => !onTeam.has(g.id) && !unavailable.some((u) => u.id === g.id))
     .map((g) => ({ id: g.id, label: g.full_name || g.email }))
 
   return (
@@ -177,6 +204,15 @@ function TeamColumn({ siteId, shift, rows, guards }: {
                   {r.designation || 'Security Officer'}
                 </Typography>
               </Box>
+              {r.is_standby && (
+                <Tooltip title="Relief officer — may stand a post at several sites">
+                  <Chip
+                    size="small" label="standby"
+                    sx={{ height: 17, fontSize: '0.58rem',
+                          bgcolor: 'rgba(108,99,255,0.18)', color: '#6C63FF' }}
+                  />
+                </Tooltip>
+              )}
               {against && (
                 <Tooltip title={`Prefers ${r.preferred_shift_type} shifts`}>
                   <Chip
@@ -198,6 +234,8 @@ function TeamColumn({ siteId, shift, rows, guards }: {
         })}
       </Stack>
 
+      {error && <Alert severity="warning" sx={{ mb: 1 }}>{error}</Alert>}
+
       <Stack direction="row" spacing={1}>
         <Autocomplete
           size="small" sx={{ flex: 1 }} options={options} value={picked}
@@ -208,11 +246,19 @@ function TeamColumn({ siteId, shift, rows, guards }: {
         <Button
           variant="outlined" size="small" startIcon={<AddIcon />}
           disabled={!picked || add.isPending}
-          onClick={() => picked && add.mutate(picked.id)}
+          onClick={() => { setError(''); if (picked) add.mutate(picked.id) }}
         >
           Add
         </Button>
       </Stack>
+
+      {unavailable.length > 0 && (
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'text.disabled', fontSize: '0.63rem' }}>
+          {unavailable.length} {unavailable.length === 1 ? 'officer is' : 'officers are'} not
+          listed — already standing a post elsewhere. A guard holds one; mark them standby
+          on their profile if they relieve across sites.
+        </Typography>
+      )}
     </Box>
   )
 }
@@ -226,11 +272,25 @@ function SiteTeamDialog({ row, onClose }: { row: DutyOverviewRow | null; onClose
   const { data: users = [] } = useQuery({
     queryKey: ['users'], queryFn: getUsers, enabled: Boolean(row),
   })
+  const { data: postings = [] } = useQuery({
+    queryKey: ['duty-postings'], queryFn: getDutyPostings, enabled: Boolean(row),
+  })
 
   if (!row) return null
   // getUsers is already typed; the annotation was noise that also tripped
   // no-explicit-any, which is an error in this config.
   const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
+
+  // Where each constrained officer already stands. Postings at THIS site are
+  // excluded: moving somebody between this site's day and night teams is a
+  // normal edit, and the row they are leaving is about to be removed.
+  const postedElsewhere = new Map<string, string>()
+  for (const posting of postings) {
+    if (posting.site_id === row.site_id) continue
+    if (!postedElsewhere.has(posting.guard_user_id)) {
+      postedElsewhere.set(posting.guard_user_id, `${posting.site_name} (${posting.shift_type})`)
+    }
+  }
 
   return (
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
@@ -251,6 +311,7 @@ function SiteTeamDialog({ row, onClose }: { row: DutyOverviewRow | null; onClose
             {SHIFTS.map((shift) => (
               <TeamColumn
                 key={shift.key} siteId={row.site_id} shift={shift} guards={guards}
+                postedElsewhere={postedElsewhere}
                 rows={rows.filter((r) => r.shift_type === shift.key)}
               />
             ))}

@@ -69,6 +69,14 @@ os.environ.setdefault("ADMIN_TEST_DATABASE_URL", _admin_url())
 _redis_host = "redis" if _db_host != "localhost" else "localhost"
 os.environ.setdefault("REDIS_URL", f"redis://{_redis_host}:6379/0")
 
+# The continuous-recording supervisor opens real RTSP streams. In a test suite
+# the only cameras are the fake ones other tests seeded, and cv2.VideoCapture
+# blocks for 30 seconds per unreachable URL inside a C call that cancellation
+# cannot interrupt — which hung TestClient's shutdown until pytest-timeout
+# killed the test. Nothing exercises the supervisor through the lifespan;
+# test_continuous_recording calls its functions directly.
+os.environ.setdefault("CONTINUOUS_RECORDING_ENABLED", "0")
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

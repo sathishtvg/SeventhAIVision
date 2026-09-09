@@ -32,6 +32,10 @@ export interface UserUpdateData {
   hourly_rate?: number
   daily_rate?: number
   monthly_salary?: number
+  /** Relief officer. Exempt from "a guard stands one post" (migration 0101),
+   *  so they may sit on several sites' duty teams. The roster still schedules
+   *  them at one site at a time. */
+  is_standby?: boolean
 }
 
 export const updateUser = (userId: string, data: UserUpdateData) =>

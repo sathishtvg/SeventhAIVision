@@ -3,8 +3,10 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
@@ -323,6 +325,7 @@ async def list_duty_assignments(
         text("""
             SELECT a.id, a.guard_user_id, a.shift_type, a.notes, a.created_at,
                    u.full_name, u.email, u.phone, u.designation, u.employment_type,
+                   u.role_id, u.is_standby,
                    p.preferred_shift_type
               FROM site_duty_assignments a
               JOIN users u ON u.id = a.guard_user_id
@@ -341,6 +344,7 @@ async def add_duty_assignment(
     site_id: str,
     body: DutyAssignmentCreate,
     db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
     allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
 ):
     await _require_site(db, site_id, allowed_sites)
@@ -357,17 +361,50 @@ async def add_duty_assignment(
     # relief officer at once would both pass a check and one would 500 on the
     # unique constraint. Re-adding someone already on the team is a no-op that
     # updates the note, which is what the operator meant.
-    result = await db.execute(
-        text("""
-            INSERT INTO site_duty_assignments (tenant_id, site_id, guard_user_id, shift_type, notes)
-            VALUES (current_setting('app.current_tenant')::uuid,
-                    CAST(:sid AS uuid), CAST(:uid AS uuid), :stype, :notes)
-            ON CONFLICT (site_id, guard_user_id, shift_type) DO UPDATE
-                SET notes = EXCLUDED.notes, updated_at = now()
-            RETURNING id, guard_user_id, shift_type, notes, created_at
-        """),
-        {"sid": site_id, "uid": body.guard_user_id, "stype": body.shift_type, "notes": body.notes},
-    )
+    try:
+        result = await db.execute(
+            text("""
+                INSERT INTO site_duty_assignments (tenant_id, site_id, guard_user_id, shift_type, notes)
+                VALUES (current_setting('app.current_tenant')::uuid,
+                        CAST(:sid AS uuid), CAST(:uid AS uuid), :stype, :notes)
+                ON CONFLICT (site_id, guard_user_id, shift_type) DO UPDATE
+                    SET notes = EXCLUDED.notes, updated_at = now()
+                RETURNING id, guard_user_id, shift_type, notes, created_at
+            """),
+            {"sid": site_id, "uid": body.guard_user_id, "stype": body.shift_type,
+             "notes": body.notes},
+        )
+    except IntegrityError as exc:
+        # enforce_single_duty_posting (migration 0101). A guard stands one
+        # twelve-hour post; supervisors, managers and standby officers are
+        # exempt. Say where they already are, because "already posted" without
+        # a site is a message that sends somebody hunting through four pages.
+        await db.rollback()
+        # The rollback took app.current_tenant with it — SET LOCAL is scoped to
+        # the transaction — so re-establish it before asking anything else.
+        await db.execute(
+            text("SELECT set_config('app.current_tenant', :tid, true)"),
+            {"tid": token.tenant_id},
+        )
+        held = (await db.execute(
+            text("""
+                SELECT s.name AS site_name, a.shift_type
+                  FROM site_duty_assignments a
+                  JOIN sites s ON s.id = a.site_id
+                 WHERE a.guard_user_id = CAST(:uid AS uuid)
+                 LIMIT 1
+            """),
+            {"uid": body.guard_user_id},
+        )).first()
+        where = (f" — they are on {held.site_name}'s {held.shift_type} team"
+                 if held else "")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This guard already holds a duty posting{where}. A guard stands one "
+            "post, so remove the other one first — or mark them standby if they "
+            "relieve across sites.",
+        ) from exc
+
     row = result.first()
     await db.commit()
     return dict(row._mapping)
@@ -394,6 +431,40 @@ async def remove_duty_assignment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found")
     await db.commit()
     return {"id": assignment_id, "removed": True}
+
+
+@router.get("/duty-assignments/postings", dependencies=[Depends(require_permission("shift:read"))])
+async def duty_postings(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Every duty posting, tenant-wide: who stands where, on which shift.
+
+    The team dialog needs this to stop offering an officer who already stands
+    a post at another site. It could ask each site in turn, but that is one
+    request per site to answer a question about one guard — and the whole
+    table is a few rows per site, so the honest shape is to return it.
+
+    Carries role_id and is_standby so the page can tell who is exempt from
+    "a guard stands one post" without a second lookup.
+    """
+    params: dict = {}
+    scope = site_scope_clause(allowed_sites, "a.site_id", params)
+    where = f"WHERE {scope}" if scope else ""
+    result = await db.execute(
+        text(f"""
+            SELECT a.guard_user_id, a.site_id, a.shift_type,
+                   s.name AS site_name,
+                   u.role_id, u.is_standby
+              FROM site_duty_assignments a
+              JOIN sites s ON s.id = a.site_id
+              JOIN users u ON u.id = a.guard_user_id
+            {where}
+          ORDER BY s.name, a.shift_type
+        """),
+        params,
+    )
+    return [dict(r) for r in result.mappings()]
 
 
 @router.get("/duty-assignments/overview", dependencies=[Depends(require_permission("shift:read"))])

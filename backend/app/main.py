@@ -102,6 +102,51 @@ from app.routers import (
 logger = logging.getLogger(__name__)
 
 
+async def _close_orphaned_recordings() -> None:
+    """Mark recordings abandoned by a previous process as failed.
+
+    _active_recordings lives in one process's memory, so anything still marked
+    'recording' at boot was owned by a process that is gone — it is 'failed',
+    not "in progress".
+
+    PER TENANT, NECESSARILY. `recordings` has FORCE ROW LEVEL SECURITY, so a
+    session without app.current_tenant matches zero rows and a single UPDATE
+    silently affects nothing — which is exactly what an earlier version did at
+    every startup, while orphans accumulated.
+
+    An orphan is not cosmetic: the playback timeline matches segments on
+    COALESCE(ended_at, now()) > day_start, so one un-ended row shows as a ghost
+    segment on every day from its start date onward, forever.
+
+    Runs as a background task. Failures are logged, never raised: a maintenance
+    sweep must not be the reason a container refuses to start.
+    """
+    from app.db.session import AsyncSessionLocal
+    from sqlalchemy import text as _text
+
+    try:
+        async with AsyncSessionLocal() as _db:
+            tenant_ids = [r[0] for r in (await _db.execute(_text("SELECT id FROM tenants"))).fetchall()]
+            closed = 0
+            for _tid in tenant_ids:
+                await _db.execute(
+                    _text("SELECT set_config('app.current_tenant', :tid, true)"),
+                    {"tid": str(_tid)},
+                )
+                result = await _db.execute(_text(
+                    "UPDATE recordings SET status = 'failed', ended_at = COALESCE(ended_at, now()) "
+                    "WHERE status = 'recording' RETURNING id"
+                ))
+                closed += len(result.fetchall())
+            await _db.commit()
+        if closed:
+            logger.info("closed %d orphaned recording(s) from a previous run", closed)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("orphaned-recording sweep failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail fast, before touching Postgres/Redis, if this is a production
@@ -123,24 +168,19 @@ async def lifespan(app: FastAPI):
     # An orphan is not cosmetic: the playback timeline matches segments on
     # COALESCE(ended_at, now()) > day_start, so one un-ended row appears as a
     # ghost segment on every day from its start date onward, forever.
-    from app.db.session import AsyncSessionLocal
-    from sqlalchemy import text as _text
-    async with AsyncSessionLocal() as _db:
-        tenant_ids = [r[0] for r in (await _db.execute(_text("SELECT id FROM tenants"))).fetchall()]
-        closed = 0
-        for _tid in tenant_ids:
-            await _db.execute(
-                _text("SELECT set_config('app.current_tenant', :tid, true)"),
-                {"tid": str(_tid)},
-            )
-            result = await _db.execute(_text(
-                "UPDATE recordings SET status = 'failed', ended_at = COALESCE(ended_at, now()) "
-                "WHERE status = 'recording' RETURNING id"
-            ))
-            closed += len(result.fetchall())
-        await _db.commit()
-    if closed:
-        logger.info("startup: closed %d orphaned recording(s) from a previous run", closed)
+    # NOT AWAITED. The sweep is O(tenants) — one set_config and one UPDATE each,
+    # measured at ~11ms per tenant — so it is 11s of boot at a thousand tenants
+    # and 23s at two thousand. Nothing in the boot path depends on it: the rows
+    # it fixes were abandoned by a process that is already gone, so they are
+    # stale rather than contended, and no handler reads them expecting the sweep
+    # to have finished.
+    #
+    # Blocking on it cost a deploy several seconds of downtime per restart, and
+    # it was the last two CI failures: test_realtime builds its own
+    # TestClient(app), which runs this lifespan, and by then the suite has
+    # seeded thousands of tenants — pytest-timeout killed both WebSocket tests
+    # at 120s while the loop ground through them.
+    orphan_task = asyncio.create_task(_close_orphaned_recordings())
 
     # Main client: health_check_interval keeps pooled connections alive for
     # regular commands (SET, GET, PUBLISH, SMEMBERS, etc.)
@@ -160,6 +200,10 @@ async def lifespan(app: FastAPI):
         recording_task = asyncio.create_task(continuous_recording_supervisor())
 
     yield
+    # A short-lived sweep, but on a fast restart it may still be running.
+    orphan_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await orphan_task
     listener_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await listener_task
