@@ -26,7 +26,24 @@ from app.core.security import create_access_token
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
+def _platform_headers(tenant_id: uuid.UUID) -> dict:
+    """Billing is the vendor's, not the customer's (migration 0103).
+
+    billing:read and billing:manage used to sit on Admin (2), Supervisor (3)
+    and Manager (8) — the customer's own roles — so a security company could
+    read and change its subscription to Seventh AI while Seventh AI could see
+    none of it. The Stripe tables are keyed by tenant_id: they describe what
+    each customer OWES, which is the vendor's side of the relationship.
+
+    These tests therefore authenticate as the platform owner now. The tenant_id
+    still scopes the request, because a bill is always about one customer.
+    """
+    token = create_access_token(str(uuid.uuid4()), str(tenant_id), role_id=1)
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _admin_headers(tenant_id: uuid.UUID) -> dict:
+    """A tenant's own administrator — who may no longer touch billing."""
     token = create_access_token(str(uuid.uuid4()), str(tenant_id), role_id=2)
     return {"Authorization": f"Bearer {token}"}
 
@@ -163,7 +180,7 @@ async def test_get_subscription_requires_billing_read(app_client: AsyncClient, b
 async def test_get_subscription_no_subscription_404(app_client: AsyncClient, b_tenant):
     """Admin with no subscription → 404."""
     resp = await app_client.get(
-        "/api/v1/billing/subscription", headers=_admin_headers(b_tenant)
+        "/api/v1/billing/subscription", headers=_platform_headers(b_tenant)
     )
     assert resp.status_code == 404
 
@@ -174,7 +191,7 @@ async def test_get_subscription_no_subscription_404(app_client: AsyncClient, b_t
 async def test_list_invoices_empty(app_client: AsyncClient, b_tenant):
     """No invoices for a fresh tenant → empty list."""
     resp = await app_client.get(
-        "/api/v1/billing/invoices", headers=_admin_headers(b_tenant)
+        "/api/v1/billing/invoices", headers=_platform_headers(b_tenant)
     )
     assert resp.status_code == 200
     assert resp.json() == []
@@ -245,7 +262,7 @@ async def test_create_checkout_session_invalid_plan_404(app_client: AsyncClient,
     """Non-existent plan_id → 404."""
     resp = await app_client.post(
         "/api/v1/billing/checkout",
-        headers=_admin_headers(b_tenant),
+        headers=_platform_headers(b_tenant),
         json={
             "plan_id": str(uuid.uuid4()),
             "success_url": "https://example.com/success",
@@ -266,7 +283,7 @@ async def test_create_checkout_session_success(
 
     resp = await app_client.post(
         "/api/v1/billing/checkout",
-        headers=_admin_headers(b_tenant),
+        headers=_platform_headers(b_tenant),
         json={
             "plan_id": billing_plan_with_price,
             "success_url": "https://example.com/success",
@@ -299,7 +316,7 @@ async def test_create_portal_no_customer_404(app_client: AsyncClient, b_tenant, 
     """Admin with no billing_customer row → 404."""
     resp = await app_client.post(
         "/api/v1/billing/portal",
-        headers=_admin_headers(b_tenant),
+        headers=_platform_headers(b_tenant),
         json={"return_url": "https://example.com/billing"},
     )
     assert resp.status_code == 404
@@ -326,7 +343,7 @@ async def test_create_portal_session_success(
 
     resp = await app_client.post(
         "/api/v1/billing/portal",
-        headers=_admin_headers(b_tenant),
+        headers=_platform_headers(b_tenant),
         json={"return_url": "https://example.com/billing"},
     )
     assert resp.status_code == 200
@@ -600,3 +617,28 @@ async def test_webhook_invoice_payment_failed_updates_past_due(
     )).first()
     assert sub_row is not None
     assert sub_row[0] == "past_due"
+
+
+# ── Billing is the vendor's side of the relationship (migration 0103) ─────────
+
+@pytest.mark.asyncio
+async def test_a_tenant_admin_cannot_read_its_own_billing(app_client: AsyncClient, b_tenant):
+    """The change that 0103 makes, stated as a test.
+
+    A security company reading — or worse, changing — its own subscription to
+    Seventh AI was the customer holding the vendor's ledger. Admin, Supervisor
+    and Manager all held billing:read and billing:manage; none of them do now.
+    """
+    r = await app_client.get("/api/v1/billing/subscription",
+                             headers=_admin_headers(b_tenant))
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_admin_cannot_start_a_checkout(app_client: AsyncClient, b_tenant):
+    """Including the paying half. Self-serve upgrade is the vendor's decision
+    to offer, not the customer's to take."""
+    r = await app_client.post("/api/v1/billing/checkout",
+                              json={"plan_id": str(uuid.uuid4())},
+                              headers=_admin_headers(b_tenant))
+    assert r.status_code == 403

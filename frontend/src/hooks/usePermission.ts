@@ -114,6 +114,7 @@ const ALL_PERMISSIONS = [
   'webhook:manage',
   'webhook:read',
   'support:manage',
+  'platform:read',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -128,6 +129,13 @@ const PLATFORM_PERMISSIONS = [
   'license:manage',
   'audit:read',
   'support:manage',
+  // Moved off Admin/Supervisor/Manager in 0103. The Stripe tables are keyed by
+  // tenant_id — they describe what each customer owes the vendor, which is the
+  // vendor's business, not the customer's.
+  'billing:read',
+  'billing:manage',
+  // Cross-tenant platform figures: usage, adoption, errors.
+  'platform:read',
 ]
 
 const ROLE_PERMISSIONS: Record<number, string[]> = {
@@ -138,10 +146,12 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
   1: PLATFORM_PERMISSIONS,
   // admin — everything except cross-tenant super-admin powers (role:manage is
   // granted to admin as of migration 0057 so they can manage custom roles)
-  2: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage'].includes(p)),
+  2: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage',
+     'platform:read', 'billing:read', 'billing:manage'].includes(p)),
   // manager (migration 0063) — same grant set as admin; mirrors the DB seed
   // that clones role 2's role_permissions rows for role 8.
-  8: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage'].includes(p)),
+  8: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage',
+     'platform:read', 'billing:read', 'billing:manage'].includes(p)),
   3: [ // supervisor
     'alert_rule:read',
     'camera:read', 'camera:update',

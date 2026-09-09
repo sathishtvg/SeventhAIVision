@@ -46,8 +46,14 @@ ADMIN_DATABASE_URL = os.environ.get(
 
 SUPER_ADMIN, ADMIN, GUARD = 1, 2, 5
 
-#: The platform operator's whole job — mirrors migration 0102.
-PLATFORM_PERMISSIONS = {"tenant:manage", "license:manage", "audit:read", "support:manage"}
+#: The platform operator's whole job — mirrors migrations 0102 and 0103.
+#: Billing moved here in 0103: the Stripe tables are keyed by tenant_id, which
+#: is to say they describe what each CUSTOMER owes the vendor, and that is the
+#: vendor's business. It was previously held by Admin, Supervisor and Manager.
+PLATFORM_PERMISSIONS = {
+    "tenant:manage", "license:manage", "audit:read", "support:manage",
+    "billing:read", "billing:manage", "platform:read",
+}
 
 
 def _admin_engine():
