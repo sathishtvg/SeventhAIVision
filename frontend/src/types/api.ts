@@ -50,6 +50,10 @@ export interface User {
   /** Permanent photo shown before a guard checks in. */
   profile_photo_path?: string | null
   monthly_salary: number | null
+  /** Relief officer: exempt from "a guard stands one post" (migration 0101),
+   *  so they may sit on several sites' duty teams. The roster still schedules
+   *  them at one site at a time. */
+  is_standby: boolean
   // List-only fields (GET /users grid round) — present only in the list
   // response, not GET /users/{id} or POST /users.
   site_names?: string[]

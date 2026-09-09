@@ -36,6 +36,41 @@ DEFAULT_RETENTION_DAYS = int(os.environ.get("RECORDING_RETENTION_DAYS", "7"))
 _PURGE_EVERY_TICKS = max(1, 3600 // max(SUPERVISOR_INTERVAL, 1))  # ~hourly
 
 
+async def _set_tenant(session: AsyncSession, tenant_id: str) -> None:
+    """Scope this session's next transaction to one tenant, for RLS."""
+    await session.execute(
+        text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id}
+    )
+
+
+async def _commit_keeping_tenant(session: AsyncSession,
+                                 tenant_id: str | None = None) -> None:
+    """Commit, then put app.current_tenant back.
+
+    set_config(..., is_local => true) is SET LOCAL: it is scoped to the
+    transaction. Committing therefore un-scopes the session, and the next
+    statement runs with app.current_tenant = '' — which every RLS policy here
+    casts to uuid, so Postgres answers
+
+        invalid input syntax for type uuid: ""
+
+    and the tick dies. A session where the GUC was never set is fine
+    (current_setting returns NULL, and NULL::uuid is legal), so this only
+    bites after a commit — which made it invisible in isolation and fatal in
+    a loop.
+
+    Pass tenant_id when the caller knows it; otherwise it is read back off the
+    connection before the commit takes it away.
+    """
+    if tenant_id is None:
+        tenant_id = (await session.execute(
+            text("SELECT current_setting('app.current_tenant', true)")
+        )).scalar()
+    await session.commit()
+    if tenant_id:
+        await _set_tenant(session, tenant_id)
+
+
 def needs_rotation(started_at: datetime, now: datetime,
                    segment_minutes: int = SEGMENT_MINUTES) -> bool:
     """Pure: has this active segment exceeded its length?"""
@@ -145,16 +180,7 @@ async def purge_expired_recordings(
         )
         purged += 1
     if purged:
-        # Commit clears the transaction-local GUC — capture and restore it so
-        # callers can keep using this session for RLS-scoped work.
-        tid = (await session.execute(
-            text("SELECT current_setting('app.current_tenant', true)")
-        )).scalar()
-        await session.commit()
-        if tid:
-            await session.execute(
-                text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tid}
-            )
+        await _commit_keeping_tenant(session)
     return purged
 
 
@@ -198,7 +224,10 @@ async def _start_segment(session: AsyncSession, tenant_id: str, stream: dict) ->
             "fp": rel_path,
         },
     )
-    await session.commit()
+    # Keeps the tenant GUC — supervisor_tick calls this once per stream, and a
+    # plain commit would leave every camera after the first inserting under an
+    # empty app.current_tenant.
+    await _commit_keeping_tenant(session, tenant_id)
 
     rtsp_url = _build_auth_url(stream["url"], stream.get("auth_config") or {})
     stop_event = asyncio.Event()
@@ -210,12 +239,31 @@ async def _start_segment(session: AsyncSession, tenant_id: str, stream: dict) ->
     logger.info("continuous_recording: started segment %s stream=%s", recording_id, stream["stream_id"])
 
 
-async def _rotate_segment(recording_id: str) -> None:
+async def _rotate_segment(session: AsyncSession, recording_id: str) -> None:
     """Signal an active segment to close; the next tick starts its successor."""
     from app.routers.streams import _active_recordings
 
     entry = _active_recordings.get(recording_id)
     if entry is None:
+        # Nothing is capturing this row. _active_recordings is one process's
+        # memory, so the task behind it died or belonged to a process that is
+        # gone — the row is an orphan, and leaving it 'recording' retires the
+        # camera: find_streams_needing_recording skips any stream that has one,
+        # so no successor is ever started. _close_orphaned_recordings applies
+        # this same rule, but only at boot, which is too late for a camera that
+        # goes quiet mid-run.
+        await session.execute(
+            text("UPDATE recordings SET status = 'failed', "
+                 "       ended_at = COALESCE(ended_at, now()) "
+                 " WHERE id = CAST(:id AS uuid) AND status = 'recording'"),
+            {"id": str(recording_id)},
+        )
+        await _commit_keeping_tenant(session)
+        logger.warning(
+            "continuous_recording: recording %s had no capture task; "
+            "closed it as failed so the stream can start a new segment",
+            recording_id,
+        )
         return
     task, stop_event = entry
     stop_event.set()
@@ -241,13 +289,24 @@ async def supervisor_tick(session_factory, tick_count: int) -> None:
         tid = str(tenant_id)
         try:
             async with session_factory() as session:
-                await session.execute(
-                    text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tid}
-                )
+                await _set_tenant(session, tid)
                 for rec_id in await find_recordings_to_rotate(session):
-                    await _rotate_segment(rec_id)
+                    await _rotate_segment(session, rec_id)
                 for stream in await find_streams_needing_recording(session):
-                    await _start_segment(session, tid, stream)
+                    try:
+                        await _start_segment(session, tid, stream)
+                    except Exception as exc:
+                        # An unreachable camera, a revoked credential, a row
+                        # RLS refuses — none of them is a reason for the other
+                        # cameras on this site to stop recording. The failed
+                        # statement leaves the transaction aborted, so roll
+                        # back and re-scope before the next stream.
+                        logger.error(
+                            "continuous_recording: tenant=%s stream=%s could not start: %s",
+                            tid, stream.get("stream_id"), exc,
+                        )
+                        await session.rollback()
+                        await _set_tenant(session, tid)
                 if tick_count % _PURGE_EVERY_TICKS == 0:
                     days = await get_retention_days(session)
                     purged = await purge_expired_recordings(session, recordings_root, days)

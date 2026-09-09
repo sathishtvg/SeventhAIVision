@@ -254,8 +254,14 @@ async def update_user(
 
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     updates["id"] = user_id
+    # Returns the whole user, not the four fields this once did. A PUT that
+    # answers with less than it was given cannot be trusted to confirm the
+    # write: setting is_standby returned is_standby: null, which reads as
+    # "not set" and is indistinguishable from a silent failure. Same column
+    # list as GET, so the two agree.
     result = await db.execute(
-        text(f"UPDATE users SET {set_clause}, updated_at = now() WHERE id = :id RETURNING id, role_id, full_name, is_active"),
+        text(f"UPDATE users SET {set_clause}, updated_at = now() "
+             f"WHERE id = :id RETURNING {_USER_SELECT_COLUMNS}"),
         updates,
     )
     row = result.first()

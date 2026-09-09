@@ -440,3 +440,193 @@ async def test_crec_play_completed_recording_streams_mp4():
     finally:
         if os.path.exists(full):
             os.remove(full)
+
+
+# ─── F. The tenant GUC across commits ─────────────────────────────────────────
+#
+# set_config(..., is_local => true) is SET LOCAL: scoped to the transaction.
+# supervisor_tick sets it once per tenant and then calls _start_segment once
+# per stream — and _start_segment commits. So the first camera's commit
+# un-scoped the session, the second camera's INSERT ran with
+# app.current_tenant = '', the RLS WITH CHECK cast '' to uuid, and Postgres
+# refused with `invalid input syntax for type uuid: ""`. That exception
+# unwound past the rotate loop and the hourly purge too. Nothing recorded.
+#
+# A session where the GUC was never set is fine — current_setting(..., true)
+# returns NULL and NULL::uuid is legal — so this is only reachable after a
+# commit, which is why no single-shot test caught it. These tests commit and
+# then keep using the session, which is the shape that breaks.
+
+async def _stub_capture(monkeypatch):
+    """Replace the cv2 capture loop. _start_segment launches _recording_task
+    against the stream URL; here that is an unreachable TEST-NET-3 address and
+    ffmpeg blocks 30s per attempt inside a C call cancellation cannot reach."""
+    from app.routers import streams as streams_mod
+
+    started: list[str] = []
+
+    async def _fake_recording_task(recording_id, *args, **kwargs):
+        started.append(str(recording_id))
+
+    monkeypatch.setattr(streams_mod, "_recording_task", _fake_recording_task)
+    return started
+
+
+def _stream_row(camera_id, stream_id, site_id=None):
+    return {"camera_id": camera_id, "stream_id": stream_id, "site_id": site_id,
+            "url": SAFE_RTSP, "auth_config": {}}
+
+
+@pytest.mark.asyncio
+async def test_start_segment_leaves_the_session_tenant_scoped(monkeypatch):
+    """After _start_segment commits, the session can still read under RLS.
+
+    This is the whole bug in one assertion: before the fix the SELECT below
+    raised `invalid input syntax for type uuid: ""`."""
+    from app.services.continuous_recording import _start_segment
+
+    await _stub_capture(monkeypatch)
+    tenant_id, _, _ = await _seed_tenant_and_token()
+    camera_id, stream_id = await _seed_camera_and_stream(tenant_id, continuous=True)
+
+    engine, session = await _app_session(tenant_id)
+    try:
+        await _start_segment(session, str(tenant_id),
+                             _stream_row(camera_id, stream_id))
+        # The commit inside _start_segment must not have taken the GUC with it.
+        scope = (await session.execute(
+            text("SELECT current_setting('app.current_tenant', true)")
+        )).scalar()
+        assert scope == str(tenant_id)
+        count = (await session.execute(text("SELECT count(*) FROM recordings"))).scalar()
+        assert count == 1
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_every_stream_in_a_tick_records_not_just_the_first(monkeypatch):
+    """Two cameras on one tenant both get a segment.
+
+    supervisor_tick's inner loop verbatim. Before the fix the first INSERT
+    succeeded and the second died on the empty GUC — a site with four cameras
+    recorded one of them."""
+    from app.services.continuous_recording import _start_segment
+
+    started = await _stub_capture(monkeypatch)
+    tenant_id, _, _ = await _seed_tenant_and_token()
+    cam_a, stream_a = await _seed_camera_and_stream(tenant_id, continuous=True)
+    cam_b, stream_b = await _seed_camera_and_stream(tenant_id, continuous=True)
+
+    engine, session = await _app_session(tenant_id)
+    try:
+        for cam, stream in ((cam_a, stream_a), (cam_b, stream_b)):
+            await _start_segment(session, str(tenant_id), _stream_row(cam, stream))
+
+        rows = (await session.execute(
+            text("SELECT stream_id, status FROM recordings ORDER BY started_at")
+        )).all()
+        assert len(rows) == 2, f"only {len(rows)} of 2 cameras recorded"
+        assert {str(r[0]) for r in rows} == {str(stream_a), str(stream_b)}
+        assert all(r[1] == "recording" for r in rows)
+        assert len(started) == 2
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_purge_leaves_the_session_tenant_scoped():
+    """purge_expired_recordings commits too, and the tick keeps using the
+    session afterwards on the next loop iteration."""
+    from app.services.continuous_recording import purge_expired_recordings
+
+    tenant_id, _, _ = await _seed_tenant_and_token()
+    camera_id, stream_id = await _seed_camera_and_stream(tenant_id)
+    await _seed_recording(tenant_id, camera_id, stream_id,
+                          status="completed", started_offset_minutes=60 * 24 * 90)
+
+    engine, session = await _app_session(tenant_id)
+    try:
+        purged = await purge_expired_recordings(session, "/tmp/nonexistent-root", 7)
+        assert purged == 1
+        scope = (await session.execute(
+            text("SELECT current_setting('app.current_tenant', true)")
+        )).scalar()
+        assert scope == str(tenant_id)
+        assert (await session.execute(text("SELECT count(*) FROM recordings"))).scalar() == 0
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_insert_does_not_poison_the_rest_of_the_tick(monkeypatch):
+    """One camera failing must not cost the others their recording.
+
+    supervisor_tick now rolls back and re-scopes after a failed stream. Here
+    the failure is a stream whose camera belongs to another tenant, which RLS
+    refuses — the same class of error, without needing an unreachable host."""
+    from app.services.continuous_recording import _set_tenant, _start_segment
+
+    await _stub_capture(monkeypatch)
+    tenant_id, _, _ = await _seed_tenant_and_token()
+    other_id, _, _ = await _seed_tenant_and_token()
+    foreign_cam, foreign_stream = await _seed_camera_and_stream(other_id, continuous=True)
+    good_cam, good_stream = await _seed_camera_and_stream(tenant_id, continuous=True)
+
+    engine, session = await _app_session(tenant_id)
+    try:
+        with pytest.raises(Exception):
+            await _start_segment(session, str(other_id),
+                                 _stream_row(foreign_cam, foreign_stream))
+        # What the tick's except branch does.
+        await session.rollback()
+        await _set_tenant(session, str(tenant_id))
+
+        await _start_segment(session, str(tenant_id),
+                             _stream_row(good_cam, good_stream))
+        rows = (await session.execute(text("SELECT stream_id FROM recordings"))).all()
+        assert [str(r[0]) for r in rows] == [str(good_stream)]
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rotating_a_recording_with_no_capture_task_closes_it():
+    """An orphan row is closed as failed, not skipped.
+
+    _active_recordings is one process's memory. A row whose task is gone stays
+    'recording' forever if rotation just returns — and
+    find_streams_needing_recording excludes any stream that has one, so that
+    camera never records again. Found live: one of three cameras had been
+    silently retired for over an hour."""
+    from app.services.continuous_recording import (
+        _rotate_segment, find_streams_needing_recording,
+    )
+
+    tenant_id, _, _ = await _seed_tenant_and_token()
+    camera_id, stream_id = await _seed_camera_and_stream(tenant_id, continuous=True)
+    rec_id = await _seed_recording(tenant_id, camera_id, stream_id,
+                                   status="recording", started_offset_minutes=60)
+
+    engine, session = await _app_session(tenant_id)
+    try:
+        # Nothing registered this id, which is exactly the orphan case.
+        await _rotate_segment(session, str(rec_id))
+
+        row = (await session.execute(
+            text("SELECT status, ended_at FROM recordings WHERE id = CAST(:id AS uuid)"),
+            {"id": str(rec_id)},
+        )).first()
+        assert row.status == "failed"
+        assert row.ended_at is not None, "an un-ended row is a ghost segment on every day since"
+
+        # And the stream is offered again, which is the point.
+        needing = await find_streams_needing_recording(session)
+        assert str(stream_id) in {str(s["stream_id"]) for s in needing}
+    finally:
+        await session.close()
+        await engine.dispose()

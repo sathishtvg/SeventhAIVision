@@ -33,6 +33,8 @@ import {
   Tabs,
   Tab,
   InputAdornment,
+  Switch,
+  FormControlLabel,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
@@ -76,6 +78,12 @@ const ROLE_LABELS: Record<number, string> = {
   7: 'Client',
   8: 'Manager',
 }
+
+/** The roles that physically stand a post, and so may hold exactly one duty
+ *  posting — enforced in the database by migration 0101's trigger. Everyone
+ *  else covers several sites by design, which is what makes the standby flag
+ *  meaningless for them. */
+const POST_STANDING_ROLES = new Set([4, 5])
 
 interface UserFormDialogProps {
   open: boolean
@@ -240,6 +248,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
   const [designation, setDesignation] = useState('')
   const [department, setDepartment] = useState('')
   const [dateJoined, setDateJoined] = useState('')
+  const [standby, setStandby] = useState(false)
 
   // Work Pass tab
   const [workPassType, setWorkPassType] = useState('')
@@ -280,6 +289,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
     setDesignation(u?.designation ?? '')
     setDepartment(u?.department ?? '')
     setDateJoined(u?.date_joined ?? '')
+    setStandby(Boolean(u?.is_standby))
     setWorkPassType(u?.work_pass_type ?? '')
     setWorkPassExpiry(u?.work_pass_expiry ?? '')
     setBankName(u?.bank_name ?? '')
@@ -383,6 +393,10 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
           designation: designation || undefined,
           department: department || undefined,
           date_joined: dateJoined || undefined,
+          // Sent as a real boolean, not `|| undefined` — turning standby OFF
+          // is the whole point of the switch, and an omitted field would make
+          // that unsaveable.
+          is_standby: standby,
           work_pass_type: (workPassType || undefined) as any,
           work_pass_expiry: workPassExpiry || undefined,
           bank_name: bankName || undefined,
@@ -460,6 +474,32 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
               label="Date Joined" type="date" value={dateJoined} onChange={(e) => setDateJoined(e.target.value)}
               size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
             />
+
+            {/* A guard stands one twelve-hour post, so the database refuses to
+                put one on two sites' duty teams (migration 0101). Relief
+                officers are the exception, and this is where that exception is
+                granted — the refusal message on the Duty Teams page points
+                here by name. Supervisors and managers are exempt already, so
+                for them the switch would be a lie. */}
+            <FormControl size="small" fullWidth>
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small" checked={standby}
+                    disabled={!POST_STANDING_ROLES.has(roleId)}
+                    onChange={(e) => setStandby(e.target.checked)}
+                  />
+                }
+                label="Standby / relief officer"
+                sx={{ ml: 0 }}
+              />
+              <FormHelperText sx={{ ml: 0 }}>
+                {POST_STANDING_ROLES.has(roleId)
+                  ? 'Lets this officer sit on more than one site’s duty team. Leave it off for a guard who stands one post — the roster still puts a standby officer at one site at a time.'
+                  : 'Supervisors, managers and admins already cover several sites, so this only applies to operators and security guards.'}
+              </FormHelperText>
+            </FormControl>
+
             {/* Feeds the roster auto-scheduler directly: a guard whose
                 preference matches a post scores higher for it, so setting this
                 here shapes every roster generated afterwards. It is a
@@ -1039,11 +1079,21 @@ export default function Users() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {user.employment_type ? (
-                          <Chip label={EMPLOYMENT_TYPE_LABELS[user.employment_type] ?? user.employment_type} size="small" variant="outlined" />
-                        ) : (
-                          <Typography variant="caption" color="text.disabled">—</Typography>
-                        )}
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                          {user.employment_type ? (
+                            <Chip label={EMPLOYMENT_TYPE_LABELS[user.employment_type] ?? user.employment_type} size="small" variant="outlined" />
+                          ) : (
+                            <Typography variant="caption" color="text.disabled">—</Typography>
+                          )}
+                          {user.is_standby && (
+                            <Tooltip title="Relief officer — may sit on several sites’ duty teams">
+                              <Chip
+                                label="standby" size="small"
+                                sx={{ bgcolor: 'rgba(108,99,255,0.18)', color: '#6C63FF' }}
+                              />
+                            </Tooltip>
+                          )}
+                        </Stack>
                       </TableCell>
                       <TableCell>
                         {pay.isSet ? (
@@ -1094,7 +1144,10 @@ export default function Users() {
                         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
                           <PermissionGuard permission="user:update">
                             <Tooltip title="Edit">
-                              <IconButton size="small" onClick={() => { setEditUser(user); setDialogOpen(true) }}>
+                              <IconButton
+                                size="small" aria-label="Edit user"
+                                onClick={() => { setEditUser(user); setDialogOpen(true) }}
+                              >
                                 <EditIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
