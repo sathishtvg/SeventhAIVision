@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Alert, Box, Chip, Skeleton, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Typography,
+  TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import BusinessIcon from '@mui/icons-material/Business'
@@ -32,8 +32,18 @@ import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import {
-  getPlatformDashboard, getPlatformRevenue, getTenantUsage,
+  getPlatformDashboard, getPlatformHealth, getPlatformRevenue, getTenantUsage,
 } from '@/api/platform'
+
+/** Four states, not two. `unknown` is amber rather than green because a check
+ *  that could not run tells you nothing, and showing nothing as healthy is how
+ *  a dashboard earns trust it does not deserve. */
+const HEALTH_COLOUR: Record<string, string> = {
+  ok: '#00D9C0',
+  degraded: '#FFB020',
+  down: '#FF4560',
+  unknown: '#8B85FF',
+}
 
 const STATUS_COLOUR: Record<string, string> = {
   active: '#00D9C0',
@@ -94,6 +104,13 @@ export default function PlatformDashboard() {
   const { data: tenants } = useQuery({
     queryKey: ['platform-tenants'],
     queryFn: getTenantUsage,
+  })
+  const { data: health } = useQuery({
+    queryKey: ['platform-health'],
+    queryFn: getPlatformHealth,
+    // Health is the one figure on this page that goes stale in seconds rather
+    // than hours.
+    refetchInterval: 30_000,
   })
 
   // The customers worth looking at first are the biggest ones, and "biggest"
@@ -178,6 +195,44 @@ export default function PlatformDashboard() {
             </Alert>
           )}
         </>
+      )}
+
+      {health && (
+        <GlassCard sx={{ p: 2, mb: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+            <Box sx={{ width: 9, height: 9, borderRadius: '50%',
+                       bgcolor: HEALTH_COLOUR[health.status] }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              Platform health — {health.status}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {health.critical} down · {health.degraded} degraded · {health.unknown} unknown
+            </Typography>
+          </Stack>
+          <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
+            {health.services.map((s) => (
+              <Tooltip key={s.service} title={s.detail}>
+                <Box
+                  sx={{ px: 1.2, py: 0.6, borderRadius: 1, minWidth: 150,
+                        border: `1px solid ${HEALTH_COLOUR[s.status]}44`,
+                        bgcolor: `${HEALTH_COLOUR[s.status]}12` }}
+                >
+                  <Stack direction="row" spacing={0.8} alignItems="center">
+                    <Box sx={{ width: 7, height: 7, borderRadius: '50%',
+                               bgcolor: HEALTH_COLOUR[s.status] }} />
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                      {s.service}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary"
+                              sx={{ display: 'block', fontSize: '0.62rem' }}>
+                    {s.detail}
+                  </Typography>
+                </Box>
+              </Tooltip>
+            ))}
+          </Stack>
+        </GlassCard>
       )}
 
       <GlassCard sx={{ p: 0 }}>

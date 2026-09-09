@@ -158,3 +158,21 @@ export const updatePlatformError = (
   errorId: string,
   data: { status: 'open' | 'acknowledged' | 'resolved'; resolution?: string },
 ) => apiClient.put(`/api/v1/platform/errors/${errorId}`, data).then((r) => r.data)
+
+/** Measured, not reported. `unknown` means a probe could not run, and is never
+ *  shown as healthy — a green light produced by a check that failed is worse
+ *  than no light at all. */
+export interface PlatformHealth {
+  status: 'ok' | 'degraded' | 'down' | 'unknown'
+  critical: number
+  degraded: number
+  unknown: number
+  services: {
+    service: string
+    status: 'ok' | 'degraded' | 'down' | 'unknown'
+    detail: string
+  }[]
+}
+
+export const getPlatformHealth = () =>
+  apiClient.get<PlatformHealth>('/api/v1/platform/health').then((r) => r.data)

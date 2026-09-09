@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_raw_db
+from app.services import platform_health as platform_health_service
 
 router = APIRouter(prefix="/api/v1/platform", tags=["platform"])
 
@@ -271,3 +272,16 @@ async def update_error_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Error not found")
     await db.commit()
     return dict(row)
+
+# ── Platform health (§4, §18) ────────────────────────────────────────────────
+
+@router.get("/health", dependencies=[_READ])
+async def platform_health(db: AsyncSession = Depends(get_raw_db)):
+    """Is the platform itself working?
+
+    Measured, not reported: every figure comes from asking the thing itself,
+    and anything that cannot be asked comes back `unknown` rather than as a
+    reassuring green. A dashboard that shows healthy because a check failed to
+    run is worse than no dashboard, because it is believed.
+    """
+    return await platform_health_service.collect(db)
