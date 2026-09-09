@@ -285,3 +285,94 @@ async def platform_health(db: AsyncSession = Depends(get_raw_db)):
     run is worse than no dashboard, because it is believed.
     """
     return await platform_health_service.collect(db)
+
+
+# ── Notifications and policy (§15, §17) ──────────────────────────────────────
+
+@router.get("/notifications", dependencies=[_READ])
+async def list_notifications(
+    db: AsyncSession = Depends(get_raw_db),
+    include_acknowledged: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """Business events needing a decision.
+
+    Not platform_errors, which is things that broke. A trial ending and a
+    database falling over want different people at different times, and mixing
+    them buries one in the other.
+    """
+    where = "" if include_acknowledged else "WHERE n.acknowledged_at IS NULL"
+    rows = (await db.execute(text(f"""
+        SELECT n.*, t.name AS tenant_name
+          FROM platform_notifications n
+     LEFT JOIN tenants t ON t.id = n.tenant_id
+        {where}
+      ORDER BY CASE n.severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1
+                               ELSE 2 END,
+               n.last_seen_at DESC
+         LIMIT :limit
+    """), {"limit": limit})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/notifications/{notification_id}/acknowledge", dependencies=[_READ])
+async def acknowledge_notification(
+    notification_id: str,
+    db: AsyncSession = Depends(get_raw_db),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Mark one dealt with.
+
+    The same thing recurring afterwards raises a fresh notice rather than being
+    swallowed — deduplication only applies while one is still open.
+    """
+    row = (await db.execute(text("""
+        UPDATE platform_notifications
+           SET acknowledged_at = now(), acknowledged_by = CAST(:uid AS uuid)
+         WHERE id = CAST(:id AS uuid) AND acknowledged_at IS NULL
+     RETURNING id, kind, acknowledged_at
+    """), {"id": notification_id, "uid": token.user_id})).mappings().first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "No open notification with that id")
+    await db.commit()
+    return dict(row)
+
+
+@router.get("/settings", dependencies=[_READ])
+async def list_settings(db: AsyncSession = Depends(get_raw_db)):
+    """Vendor policy. Every number the lifecycle acts on is here rather than in
+    code, because they are commercial decisions that should change without a
+    deploy."""
+    rows = (await db.execute(text(
+        "SELECT key, value, description, updated_at FROM platform_settings "
+        " ORDER BY key"))).mappings().all()
+    return [dict(r) for r in rows]
+
+
+class SettingUpdate(BaseModel):
+    value: str
+
+
+@router.put("/settings/{key}", dependencies=[_READ])
+async def update_setting(
+    key: str,
+    body: SettingUpdate,
+    db: AsyncSession = Depends(get_raw_db),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Change one policy value.
+
+    updated_by is recorded because one of these switches off a customer's
+    access, and "who decided that" should have an answer.
+    """
+    row = (await db.execute(text("""
+        UPDATE platform_settings
+           SET value = :value, updated_at = now(), updated_by = CAST(:uid AS uuid)
+         WHERE key = :key
+     RETURNING key, value, description, updated_at
+    """), {"key": key, "value": body.value, "uid": token.user_id})).mappings().first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such setting")
+    await db.commit()
+    return dict(row)

@@ -1189,6 +1189,19 @@ async def run_once(redis: Redis | None = None) -> None:
     except Exception:
         logger.exception("run_database_backup failed (non-fatal, maintenance continues)")
 
+    # Subscription lifecycle (§15): move trials, renewals, grace and expiry
+    # along, and raise the notices that go with them. Non-fatal like everything
+    # else here — a billing job must never be the reason partition maintenance
+    # did not run.
+    try:
+        from app.services import subscription_lifecycle
+        async with AsyncSessionLocal() as db:
+            counts = await subscription_lifecycle.evaluate(db)
+        if any(counts.values()):
+            logger.info("subscription lifecycle: %s", counts)
+    except Exception:
+        logger.exception("subscription lifecycle failed (non-fatal)")
+
     # Roster auto-generation (Gap 86): expand recurring shift patterns into
     # concrete shifts for the next 7 days across all tenants.
     try:
