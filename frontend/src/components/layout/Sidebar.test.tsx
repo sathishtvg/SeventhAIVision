@@ -143,6 +143,17 @@ describe('Sidebar', () => {
     expect(screen.getByText('Support Sessions')).toBeInTheDocument()
   })
 
+  it('the platform owner gets the billing section', () => {
+    // Billing moved off Admin, Supervisor and Manager in migration 0103: the
+    // Stripe tables describe what each CUSTOMER owes, which is the vendor's
+    // side of the relationship.
+    mockPlatformOwner()
+    render(<Sidebar />)
+    expandAllSections()
+    expect(screen.getByText('Plans & Pricing')).toBeInTheDocument()
+    expect(screen.getByText('Invoices')).toBeInTheDocument()
+  })
+
   it('the platform owner is not given the customer operational pages', () => {
     // A camera going offline at a guarded warehouse is that company's
     // emergency and none of the vendor's.
@@ -161,6 +172,7 @@ describe('Sidebar', () => {
     expandAllSections()
     expect(screen.queryByText('Tenant Usage')).not.toBeInTheDocument()
     expect(screen.queryByText('Error Centre')).not.toBeInTheDocument()
+    expect(screen.queryByText('Plans & Pricing')).not.toBeInTheDocument()
   })
 
   // The grouping itself, pinned. These two are what the permission tests above

@@ -14,11 +14,11 @@
  * Every figure excludes Seventh AI's own tenant, in SQL rather than here —
  * counting yourself as a customer is how a dashboard starts lying.
  */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Alert, Box, Chip, Skeleton, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Tooltip, Typography,
+  Alert, Box, Button, Chip, Skeleton, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import BusinessIcon from '@mui/icons-material/Business'
@@ -34,6 +34,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import {
   getPlatformDashboard, getPlatformHealth, getPlatformRevenue, getTenantUsage,
 } from '@/api/platform'
+import { acknowledgeNotification, getNotifications } from '@/api/platformBilling'
 
 /** Four states, not two. `unknown` is amber rather than green because a check
  *  that could not run tells you nothing, and showing nothing as healthy is how
@@ -92,6 +93,7 @@ function Kpi({ icon, label, value, sub, tone }: {
 
 export default function PlatformDashboard() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const { data: kpi, isLoading } = useQuery({
     queryKey: ['platform-dashboard'],
@@ -105,6 +107,18 @@ export default function PlatformDashboard() {
     queryKey: ['platform-tenants'],
     queryFn: getTenantUsage,
   })
+  // Business events needing a decision — a trial ending, an invoice overdue,
+  // a licence lapsing. Separate from health, which is things that broke.
+  const { data: notifications } = useQuery({
+    queryKey: ['platform-notifications'],
+    queryFn: () => getNotifications(),
+  })
+  const acknowledge = useMutation({
+    mutationFn: acknowledgeNotification,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['platform-notifications'] }),
+  })
+
   const { data: health } = useQuery({
     queryKey: ['platform-health'],
     queryFn: getPlatformHealth,
@@ -195,6 +209,42 @@ export default function PlatformDashboard() {
             </Alert>
           )}
         </>
+      )}
+
+      {notifications && notifications.length > 0 && (
+        <GlassCard sx={{ p: 2, mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+            Needs a decision
+          </Typography>
+          <Stack spacing={0.75}>
+            {notifications.slice(0, 6).map((n) => (
+              <Stack
+                key={n.id} direction="row" spacing={1} alignItems="center"
+                sx={{ p: 1, borderRadius: 1,
+                      bgcolor: `${HEALTH_COLOUR[n.severity === 'critical' ? 'down'
+                                 : n.severity === 'warning' ? 'degraded' : 'unknown']}12` }}
+              >
+                <Box sx={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                           bgcolor: HEALTH_COLOUR[n.severity === 'critical' ? 'down'
+                                    : n.severity === 'warning' ? 'degraded' : 'unknown'] }} />
+                <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
+                  {n.title}
+                </Typography>
+                {n.occurrences > 1 && (
+                  <Tooltip title="Times this has been seen since it was first raised">
+                    <Typography variant="caption" color="text.disabled">
+                      ×{n.occurrences}
+                    </Typography>
+                  </Tooltip>
+                )}
+                <Button size="small" disabled={acknowledge.isPending}
+                        onClick={() => acknowledge.mutate(n.id)}>
+                  Done
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+        </GlassCard>
       )}
 
       {health && (

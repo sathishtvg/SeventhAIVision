@@ -165,6 +165,13 @@ const PLATFORM_NAV_SECTIONS: {
     ],
   },
   {
+    title: 'Billing',
+    items: [
+      { label: 'Plans & Pricing', path: '/platform/billing',  icon: <PaymentsIcon fontSize="small" />,     permission: 'billing:read' },
+      { label: 'Invoices',        path: '/platform/invoices', icon: <ReceiptLongIcon fontSize="small" />,  permission: 'billing:read' },
+    ],
+  },
+  {
     title: 'Platform',
     items: [
       { label: 'Error Centre',  path: '/platform/errors',   icon: <ReportProblemIcon fontSize="small" />, permission: 'platform:read' },
