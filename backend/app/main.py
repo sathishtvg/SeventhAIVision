@@ -86,6 +86,7 @@ from app.routers import (
     sso,
     streams,
     system,
+    platform_billing,
     platform_console,
     support_sessions,
     tenants,
@@ -367,6 +368,7 @@ app.include_router(exports.router)
 app.include_router(tenants.router)
 app.include_router(support_sessions.router)
 app.include_router(platform_console.router)
+app.include_router(platform_billing.router)
 app.include_router(sites.router)
 app.include_router(licenses.router)
 app.include_router(platform_licenses.router)
