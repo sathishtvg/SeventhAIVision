@@ -204,13 +204,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("135", "DATABASE TABLES"), ("544", "API ENDPOINTS"), ("72", "SERVICES"),
-        ("58", "WEB PAGES"), ("40", "MOBILE SCREENS"), ("11", "AI MODULES"),
+        ("149", "DATABASE TABLES"), ("620", "API ENDPOINTS"), ("78", "ROUTERS"),
+        ("65", "WEB PAGES"), ("45", "MOBILE SCREENS"), ("11", "AI MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("122", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("91", "MIGRATIONS"),
-        ("157", "TEST SUITES"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("142", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("101", "MIGRATIONS"),
+        ("3,467", "TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 12 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -228,7 +228,7 @@ story += [
         "customer needs no cameras, and a camera-only customer needs no roster "
         "— but the value is in the join.", S["body"]),
     Spacer(1, 8 * mm),
-    Paragraph("Generated 7 September 2026", S["foot"]),
+    Paragraph("Generated 9 September 2026", S["foot"]),
     NextPageTemplate("body"),
     PageBreak(),
 ]
@@ -247,7 +247,7 @@ story.append(module(
         "policy, not a WHERE clause a developer can forget.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 122 permission codes.",
+        "per tenant, across 142 permission codes.",
         "<b>Platform-admin protection.</b> A tenant administrator cannot read, "
         "edit, deactivate or reset the credentials of a platform admin sharing "
         "their tenant.",
@@ -345,6 +345,9 @@ story.append(module(
         "set on the guard's own record and honoured by the scheduler.",
         "<b>Draft rosters</b> reviewed and edited before publishing, with warnings "
         "for unfilled posts, coverage shortfalls and missing supervisors.",
+        "<b>Schedules a whole calendar month in one action</b>, or any range up to "
+        "62 days, with the rules configured per run rather than read out of the "
+        "source.",
         "<b>Cover requests.</b> When approved leave lands on a published shift, "
         "the uncovered post joins a queue that stays open until a supervisor "
         "assigns a replacement or records that none is needed. The system refuses "
@@ -385,10 +388,52 @@ story.append(module(
         "<b>SOS panic button</b> — writes a critical occurrence entry, raises an "
         "incident, and pushes a real-time alert to every supervisor watching.",
         "<b>Body-worn cameras</b> — assignment, recordings and events.",
+        "<b>Man down.</b> The guard's phone watches its accelerometer and raises "
+        "an alert when they stop moving, or are knocked and then lie still. A "
+        "countdown they can cancel avoids a phone left on a desk waking the "
+        "control room — but the deadline is held on the server, so a handset that "
+        "shattered on impact, ran flat or lost signal still gets help sent. Off by "
+        "default; the thresholds are a tenant setting.",
     ]))
 
 story.append(module(
-    "08", "Visitor management (VMS)",
+    "08", "The guardhouse registers",
+    "The books kept on paper at almost every site — the ones a client audit "
+    "asks to see first, and the ones nobody can report on.",
+    [
+        "<b>Key register.</b> A cabinet per site, and a log of who took which key, "
+        "when, and whether it came back. Built so the useful question — what is "
+        "still out right now — is answered directly, and the database refuses to "
+        "let one key be issued twice. Keys go to contractors and tenants as often "
+        "as to staff, so a holder can be a named person without an account.",
+        "<b>Lost and found.</b> What was handed in, where it is stored, and who "
+        "took it away. Only the last few characters of a claimant's identity "
+        "document are ever stored — the check that matters is against the card in "
+        "their hand. Property held past the retention period is reported, because "
+        "an item kept indefinitely is a PDPA problem accruing quietly.",
+        "<b>Facility defect log.</b> The blown stairwell light, the leak in the car "
+        "park. The status ladder stops where a security company's control does: "
+        "the record carries who it was referred to and the building's own ticket "
+        "number, so chasing it is possible. Safety hazards and anything open past "
+        "a fortnight are surfaced separately.",
+        "<b>Equipment register.</b> Radios, torches, batons and body cameras "
+        "signed out to a named officer. The condition it comes back in writes "
+        "through to the item, so the next officer is not issued a broken torch.",
+        "<b>Uniform register.</b> Issued by quantity and size, with partial "
+        "returns — a guard who resigns hands back three of four shirts — and the "
+        "deposit held against the kit.",
+        "<b>One question answers both:</b> what is this officer holding? The "
+        "screen a supervisor opens on somebody's last day.",
+        "<b>Structured shift handover.</b> Two signatures, not one person's note. "
+        "The outgoing guard completes a checklist configured per site; the "
+        "incoming guard accepts it or DISPUTES it. A counted item is measured "
+        "against the register, so eleven keys against a handover claiming twelve "
+        "is visible rather than signed for. Every handover carries the keys still "
+        "out, property held, kit signed out and defects open.",
+    ]))
+
+story.append(module(
+    "09", "Visitor management (VMS)",
     "The gatehouse: every visitor, not just the ones in vehicles.",
     [
         "<b>All visit types</b> — walk-in, delivery, drop-off and pick-up — "
@@ -409,7 +454,7 @@ story.append(module(
     ]))
 
 story.append(module(
-    "09", "Physical security and IoT",
+    "10", "Physical security and IoT",
     "The hardware around the guard.",
     [
         "<b>Access control</b> — doors, credentials, rules and an event log.",
@@ -423,7 +468,7 @@ story.append(module(
     ]))
 
 story.append(module(
-    "10", "HR, leave, training and payroll",
+    "11", "HR, leave, training and payroll",
     "The workforce behind the roster.",
     [
         "<b>Employee records</b> — NRIC/FIN, date of birth, nationality, work "
@@ -439,13 +484,24 @@ story.append(module(
         "<b>Payroll</b> — CPF by age band with the S$7,400 Ordinary Wage ceiling, "
         "work-pass eligibility, overtime at 1.5x, and monthly, daily or hourly "
         "pay bases.",
+        "<b>Timesheet approval.</b> A human between a check-in scan and a payslip. "
+        "Hours are snapshotted when submitted, so an approval stays a signature on "
+        "a fixed document rather than on one that keeps changing underneath. "
+        "Payroll always reports which guards have no approved timesheet, and can "
+        "be set to refuse to pay them.",
+        "<b>Public holidays and shift allowances.</b> A gazetted holiday calendar "
+        "per tenant, holiday pay, and named allowances attached to a shift type.",
+        "<b>Overtime cap.</b> Hours beyond the 72-hour monthly statutory limit are "
+        "flagged on the run rather than paid silently.",
+        "<b>PWM grade</b> on the officer record, across the seven-grade ladder.",
+        "<b>PLRD licence number and expiry</b> tracked per officer.",
         "<b>Payslip PDFs</b> and an <b>IR8A</b> annual summary and PDF.",
         "<i>Documented limitations:</i> graduated first- and second-year PR CPF "
         "rates and the Additional Wage ceiling are not implemented.",
     ]))
 
 story.append(module(
-    "11", "Commercial",
+    "12", "Commercial",
     "Getting paid for the hours actually worked.",
     [
         "<b>Client management</b> with contacts and billing addresses.",
@@ -459,7 +515,7 @@ story.append(module(
     ]))
 
 story.append(module(
-    "12", "Compliance, evidence and reporting",
+    "13", "Compliance, evidence and reporting",
     "The record that survives an audit.",
     [
         "<b>Evidence management</b> with a chain-of-custody access log recording "
@@ -524,6 +580,11 @@ story += bullets([
     "<b>CPF</b> calculated by age band against the S$7,400 Ordinary Wage ceiling, "
     "with eligibility determined by work pass type.",
     "<b>IR8A</b> annual reporting.",
+    "<b>PWM grades</b> across the seven-grade Progressive Wage Model ladder, and "
+    "<b>PLRD licence</b> number and expiry per officer.",
+    "<b>Gazetted public holidays</b> with holiday pay, and the 72-hour monthly "
+    "overtime cap flagged on every payroll run.",
+    "<b>SGD invoicing</b> with purchase-order and payment-terms fields.",
     "<b>Work pass tracking</b> with expiry warnings.",
     "<b>PDPA</b> consent and data subject request handling.",
     "<b>Asia/Singapore</b> as the tenant timezone, applied to every rendered date.",
@@ -535,10 +596,10 @@ story.append(Spacer(1, 14))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "Compiled from the Seventh AI Vision source repository — 91 database "
-    "migrations, 72 API routers, 544 endpoints, 30 backend services and 98 "
-    "client screens. Capability counts reflect what is implemented and running, "
-    "not what is planned.", S["foot"]))
+    "Compiled from the Seventh AI Vision source repository — 101 database "
+    "migrations, 78 API routers, 620 endpoints, 32 backend services and 110 "
+    "client screens, covered by 3,467 automated tests. Capability counts reflect "
+    "what is implemented and running, not what is planned.", S["foot"]))
 
 doc.build(story)
 print("WROTE", OUT)
