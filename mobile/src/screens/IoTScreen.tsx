@@ -183,16 +183,29 @@ export function IoTScreen() {
           <Text style={styles.emptyText}>No {tab}</Text>
         </View>
       ) : (
-        <FlatList
-          data={tab === 'devices' ? devices : readings}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) =>
-            tab === 'devices' ? <DeviceRow item={item as IoTDevice} /> : <ReadingRow item={item as IoTReading} />
-          }
-          ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        />
+        // One list per tab, not one list fed a union. The single FlatList
+        // this replaced needed `item as IoTDevice` / `item as IoTReading`
+        // casts that TypeScript could not check, and it carried its scroll
+        // position and recycled item views between two unrelated shapes.
+        tab === 'devices' ? (
+          <FlatList
+            data={devices}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <DeviceRow item={item} />}
+            ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          />
+        ) : (
+          <FlatList
+            data={readings}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <ReadingRow item={item} />}
+            ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          />
+        )
       )}
     </View>
   )

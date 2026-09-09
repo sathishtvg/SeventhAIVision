@@ -74,15 +74,12 @@ export function DefectLogScreen() {
   const [location, setLocation] = useState('')
   const [severity, setSeverity] = useState<string>('medium')
 
-  const { data: sitesData } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
-  const sites: { id: string; name: string }[] = sitesData ?? []
+  const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data: defects = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['defects', activeOnly],
     queryFn: () => listDefects({ active_only: activeOnly }),
   })
-  // useQuery is `any` in this app's typings; see KeyRegisterScreen.
-  const defects: Defect[] = data ?? []
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['defects'] })
 

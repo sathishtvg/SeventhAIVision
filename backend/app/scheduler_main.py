@@ -10,12 +10,14 @@ import asyncio
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from redis.asyncio import Redis
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.backup import run_database_backup
 from app.core.config import settings
@@ -115,12 +117,72 @@ async def purge_expired_evidence(db: AsyncSession) -> int:
     return total_deleted
 
 
+@asynccontextmanager
+async def admin_session():
+    """A superuser session on its own engine, for maintenance the app user cannot do.
+
+    Two separate reasons the archive job needs this, both verified rather than
+    assumed:
+
+    OWNERSHIP. `ALTER TABLE audit_logs DETACH PARTITION` requires ownership of
+    audit_logs, which belongs to postgres. As svc_app it fails with "must be
+    owner of table audit_logs", so this job could never have completed on the
+    app connection whatever else was true.
+
+    A CLEAN CONNECTION. purge_expired_evidence runs immediately before, and per
+    tenant does set_config('app.current_tenant', tid, true) then commits. A
+    transaction-scoped set_config does not vanish at commit — it reverts to the
+    session value, which for a custom GUC never set at session level is the
+    EMPTY STRING. The next job to draw that pooled connection and touch an RLS
+    table hits ''::uuid and raises `invalid input syntax for type uuid: ""`.
+    (A connection where the GUC was never set is fine: current_setting returns
+    NULL, and NULL::uuid is legal.) This is the same hazard
+    dependencies/tenant.py documents for the API request path.
+
+    A dedicated engine sidesteps both. It is disposed on exit rather than
+    pooled, because one nightly job does not need a connection pool held open
+    all day.
+
+    Yields None when the credentials are absent, so a deployment that has not
+    configured them skips the job with a clear message instead of failing the
+    whole nightly cycle.
+    """
+    user = os.environ.get("POSTGRES_USER")
+    password = os.environ.get("PGPASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+    if not user or not password:
+        yield None
+        return
+
+    host = os.environ.get("POSTGRES_HOST", "postgres")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    database = os.environ.get("POSTGRES_DB", "seventh_ai_vision")
+    url = f"postgresql+asyncpg://{user}:{quote_plus(password)}@{host}:{port}/{database}"
+
+    admin_engine = create_async_engine(url, pool_pre_ping=True)
+    factory = async_sessionmaker(admin_engine, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with factory() as session:
+            yield session
+    finally:
+        await admin_engine.dispose()
+
+
 async def archive_old_audit_partitions(db: AsyncSession) -> list[str]:
     """Audit partitions are DETACHED + exported to JSON Lines, never DROPPED:
     "immutable audit trails" is the original scope's compliance requirement,
     not a Phase 1 nice-to-have. AUDIT_RETENTION_YEARS is a single global
     cutoff — Phase 1's tenant_settings key set has no per-tenant audit
-    retention key."""
+    retention key.
+
+    REQUIRES A SUPERUSER SESSION — pass one from admin_session(). DETACH
+    PARTITION needs ownership of audit_logs, and the app session additionally
+    arrives carrying an empty app.current_tenant left by the per-tenant job
+    that runs before it, which makes every partition read raise on ''::uuid.
+    run_once handed it the app session until this was fixed, so the whole daily
+    cycle aborted here every night and audit_logs was never trimmed.
+    test_scheduler.py always passed an admin_session, which is why the test
+    passed while production failed.
+    """
     now = datetime.now(timezone.utc)
     cutoff = now.replace(year=now.year - settings.AUDIT_RETENTION_YEARS)
     ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -1104,10 +1166,22 @@ async def run_once(redis: Redis | None = None) -> None:
         deleted = await purge_expired_evidence(db)
         logger.info("purge_expired_evidence: deleted %d expired evidence rows/files", deleted)
 
-    async with AsyncSessionLocal() as db:
-        archived = await archive_old_audit_partitions(db)
-        if archived:
-            logger.info("archive_old_audit_partitions: archived %d partitions", len(archived))
+    async with admin_session() as db:
+        if db is None:
+            logger.warning(
+                "archive_old_audit_partitions skipped: no POSTGRES_USER/PGPASSWORD. "
+                "DETACH PARTITION needs ownership of audit_logs, so without a "
+                "superuser connection nothing can be archived and audit_logs will "
+                "keep growing."
+            )
+        else:
+            try:
+                archived = await archive_old_audit_partitions(db)
+                if archived:
+                    logger.info("archive_old_audit_partitions: archived %d partitions",
+                                len(archived))
+            except Exception:
+                logger.exception("archive_old_audit_partitions failed")
 
     try:
         result = await run_database_backup()

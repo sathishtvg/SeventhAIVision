@@ -71,6 +71,28 @@ function RuleRow({ label, hint, enabled, onToggle, value, onValue, unit, min, ma
   )
 }
 
+/** Local date parts, never toISOString(). toISOString converts to UTC, so in
+ *  Singapore (UTC+8) any time before 08:00 gives yesterday — which is how this
+ *  dialog used to propose a period starting the day before you asked. */
+function isoDay(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** First and last day of the calendar month `offset` months from now. */
+function monthRange(offset = 0) {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() + offset, 1)
+  const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0)
+  return { start: isoDay(start), end: isoDay(end) }
+}
+
+function daysBetween(startIso: string, endIso: string) {
+  const start = new Date(`${startIso}T00:00:00`)
+  const end = new Date(`${endIso}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+  return Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+}
+
 const HOW_IT_WORKS = [
   ['Set a shift preference on the guard', 'Each guard’s profile records whether they prefer day or night. The scheduler treats it as a strong preference, not a restriction.'],
   ['Configure the rules here', 'Hard rules — rest, consecutive days, the night cap — are never broken. Soft rules are balanced against each other.'],
@@ -86,10 +108,12 @@ export function AutoScheduleDialog({ open, onClose, onGenerated }: {
 }) {
   const [tab, setTab] = useState(0)
   const [siteId, setSiteId] = useState('')
-  const [periodStart, setPeriodStart] = useState(() => new Date().toISOString().slice(0, 10))
-  const [periodEnd, setPeriodEnd] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() + 29); return d.toISOString().slice(0, 10)
-  })
+  // Roster.tsx renders this only while it is open, so these initialisers run
+  // fresh on every open. That matters: the dialog used to stay mounted and
+  // compute its default period once when the page first rendered, so a tab
+  // left open overnight still proposed yesterday's month.
+  const [periodStart, setPeriodStart] = useState(() => monthRange().start)
+  const [periodEnd, setPeriodEnd] = useState(() => monthRange().end)
 
   const [mode, setMode] = useState<ShiftPatternMode>('rotation')
   const [fairRotation, setFairRotation] = useState(true)
@@ -252,6 +276,24 @@ export function AutoScheduleDialog({ open, onClose, onGenerated }: {
                   onChange={(e) => setPeriodEnd(e.target.value)}
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
+              </Stack>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                {([['This month', 0], ['Next month', 1]] as const).map(([label, offset]) => (
+                  <Button
+                    key={label} size="small" variant="outlined"
+                    onClick={() => {
+                      const { start, end } = monthRange(offset)
+                      setPeriodStart(start)
+                      setPeriodEnd(end)
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+                <Box sx={{ flex: 1 }} />
+                <Typography variant="caption" color="text.secondary">
+                  {daysBetween(periodStart, periodEnd)} days
+                </Typography>
               </Stack>
             </Box>
 

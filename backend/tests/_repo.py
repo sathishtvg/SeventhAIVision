@@ -48,11 +48,21 @@ HAS_REPO_TREE: bool = _found is not None
 # tries to read them.
 REPO_ROOT: Path = _found if _found is not None else Path("/__no_repo_tree__")
 
-requires_repo_tree = pytest.mark.skipif(
-    not HAS_REPO_TREE,
-    reason=(
-        "repository tree not available — the api image ships only backend/. "
-        "This suite validates repo-root infrastructure files; run it from a "
-        "working tree or a CI checkout."
+# Two marks, applied together as `pytestmark = requires_repo_tree`.
+#
+# The skipif is what keeps the container quiet. `repo_tree` exists so CI can
+# SELECT these suites with `-m repo_tree` instead of naming files by hand — the
+# hand-written list in the workflow had drifted to seven of the twenty-one that
+# carry this, so fourteen suites ran nowhere at all. Selecting by mark means a
+# suite added later is picked up with no edit to the workflow.
+requires_repo_tree = [
+    pytest.mark.repo_tree,
+    pytest.mark.skipif(
+        not HAS_REPO_TREE,
+        reason=(
+            "repository tree not available — the api image ships only backend/. "
+            "This suite validates repo-root infrastructure files; run it from a "
+            "working tree or a CI checkout."
+        ),
     ),
-)
+]

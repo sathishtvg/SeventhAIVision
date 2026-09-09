@@ -19,6 +19,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -316,12 +317,24 @@ async def test_crec_purge_keeps_recent_recording(tmp_path):
 
 # ─── D. Timeline endpoint ─────────────────────────────────────────────────────
 
+# The tenants table defaults timezone to 'Asia/Singapore' and _seed_tenant_and_token
+# does not override it, so that is the timezone /recordings/timeline resolves a
+# date in. Computing "today" in UTC instead made these tests fail for the eight
+# hours a day when UTC-today is already tomorrow in Singapore.
+TENANT_TZ = ZoneInfo("Asia/Singapore")
+
+
+def _tenant_today() -> str:
+    """Today as the tenant sees it — the date the timeline endpoint expects."""
+    return datetime.now(TENANT_TZ).strftime("%Y-%m-%d")
+
+
 @pytest.mark.asyncio
 async def test_crec_timeline_empty_day():
     """Timeline for a camera with no footage returns empty segments + alerts."""
     tenant_id, _, token = await _seed_tenant_and_token()
     camera_id, _ = await _seed_camera_and_stream(tenant_id)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = _tenant_today()
     async with await _authed(token) as c:
         r = await c.get(f"/api/v1/recordings/timeline?camera_id={camera_id}&date={today}")
     assert r.status_code == 200
@@ -349,7 +362,7 @@ async def test_crec_timeline_returns_segments_and_alert_markers():
         )
         await s.commit()
     await engine.dispose()
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = _tenant_today()
     async with await _authed(token) as c:
         r = await c.get(f"/api/v1/recordings/timeline?camera_id={camera_id}&date={today}")
     body = r.json()
@@ -364,7 +377,7 @@ async def test_crec_timeline_other_day_excluded():
     camera_id, stream_id = await _seed_camera_and_stream(tenant_id)
     await _seed_recording(tenant_id, camera_id, stream_id, status="completed",
                           started_offset_minutes=60 * 26)  # started 26h ago, 15min long
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = _tenant_today()
     async with await _authed(token) as c:
         r = await c.get(f"/api/v1/recordings/timeline?camera_id={camera_id}&date={today}")
     assert r.json()["segments"] == []

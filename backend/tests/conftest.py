@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+from urllib.parse import quote_plus
 
 # Derive the DB host from the app's DATABASE_URL so tests work both inside
 # Docker (where Postgres is at 'postgres:5432') and on the host machine
@@ -9,14 +10,59 @@ _app_db_url = os.environ.get("DATABASE_URL", "")
 _m = re.search(r"@([^:/]+):", _app_db_url)
 _db_host = _m.group(1) if _m else "localhost"
 
+
+def _test_url_from_app_url(app_url: str) -> str | None:
+    """The app's own connection string, pointed at <database>_test.
+
+    NEVER rebuild this from literal credentials. compose derives DATABASE_URL
+    from POSTGRES_APP_USER/POSTGRES_APP_PASSWORD, and .env.example sets that
+    password to `change_me_dev_only_too`. conftest used to hardcode
+    `change_me_dev_only`, so in CI — which copies .env.example — every
+    database-touching test failed setup with
+
+        asyncpg.exceptions.InvalidPasswordError:
+            password authentication failed for user "svc_app"
+
+    That was 1990 tests, on every run, for as long as this job has existed. It
+    passed locally only where a hand-written docker/.env happened to match the
+    hardcode. Reading the credentials rather than restating them is the whole
+    fix.
+    """
+    if not app_url:
+        return None
+    base, _, database = app_url.rpartition("/")
+    if not base or not database:
+        return None
+    # A URL may carry ?options=...; keep them on the rebuilt string.
+    name, sep, query = database.partition("?")
+    if name.endswith("_test"):
+        return app_url
+    return f"{base}/{name}_test{sep}{query}"
+
+
+def _admin_url() -> str:
+    """The superuser connection, likewise read from the environment."""
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    password = os.environ.get("POSTGRES_PASSWORD", "change_me_dev_only")
+    database = os.environ.get("POSTGRES_DB", "seventh_ai_vision")
+    return (f"postgresql+asyncpg://{user}:{quote_plus(password)}"
+            f"@{_db_host}:5432/{database}_test")
+
+
 # Must run before any `app.*` module is imported (including by other test files
 # pytest collects): app.core.config.Settings() reads DATABASE_URL at import time,
 # and conftest.py is always imported before the test modules in its directory.
 TEST_DATABASE_URL = os.environ.setdefault(
     "TEST_DATABASE_URL",
-    f"postgresql+asyncpg://svc_app:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
+    _test_url_from_app_url(_app_db_url)
+    or f"postgresql+asyncpg://svc_app:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+# Exported, not just used here: ~40 test modules read ADMIN_TEST_DATABASE_URL
+# with their own hardcoded fallback. Setting it once means they inherit a URL
+# derived from the environment instead, and the same credential drift cannot
+# reappear one file at a time.
+os.environ.setdefault("ADMIN_TEST_DATABASE_URL", _admin_url())
 # .env has REDIS_URL=redis://redis:6379/0 (Docker internal hostname). Tests run
 # on the host where Redis is exposed at localhost:6379, so override it here before
 # any app module (slowapi limiter, redis_pubsub_listener) imports settings.
@@ -87,7 +133,7 @@ async def _purge_tenants_created_by_this_run():
     """
     admin_url = os.environ.get(
         "ADMIN_TEST_DATABASE_URL",
-        f"postgresql+asyncpg://postgres:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
+        _admin_url(),
     )
     engine = create_async_engine(admin_url)
     started_at = None
@@ -173,7 +219,7 @@ async def admin_session():
     see this committed data."""
     admin_url = os.environ.get(
         "ADMIN_TEST_DATABASE_URL",
-        f"postgresql+asyncpg://postgres:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
+        _admin_url(),
     )
     engine = create_async_engine(admin_url)
     try:
@@ -224,7 +270,7 @@ async def auth_client():
 
     admin_url = os.environ.get(
         "ADMIN_TEST_DATABASE_URL",
-        f"postgresql+asyncpg://postgres:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
+        _admin_url(),
     )
     seed_engine = create_async_engine(admin_url)
     seed_factory = async_sessionmaker(seed_engine, expire_on_commit=False, class_=AsyncSession)
