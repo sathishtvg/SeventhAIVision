@@ -69,6 +69,35 @@ async def get_db_with_tenant(
             {"tenant_id": token.tenant_id},
         )
 
+        # A support token names a tenant its holder does not belong to, which
+        # only a live support session authorises. Re-checked on EVERY request
+        # rather than trusted from the token, so "end session" revokes access
+        # now instead of whenever the hour happens to run out — a token that
+        # outlives its authorisation is the whole failure mode this guards.
+        #
+        # The session row must also still agree with the token about which
+        # tenant it opened, so a token cannot be replayed against a session
+        # that was opened for somewhere else.
+        if token.support_session_id:
+            live = (await session.execute(
+                text("""
+                    SELECT 1 FROM tenant_support_sessions
+                     WHERE id = CAST(:sid AS uuid)
+                       AND platform_user_id = CAST(:uid AS uuid)
+                       AND tenant_id = CAST(:tid AS uuid)
+                       AND ended_at IS NULL
+                       AND expires_at > now()
+                """),
+                {"sid": token.support_session_id, "uid": token.user_id,
+                 "tid": token.tenant_id},
+            )).first()
+            if live is None:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "This support session has ended or expired. Open a new one "
+                    "to continue.",
+                )
+
         # IP allowlist enforcement via SECURITY DEFINER function (bypasses RLS
         # for the lookup itself, which is safe — we already know the tenant).
         cidrs = (await session.execute(

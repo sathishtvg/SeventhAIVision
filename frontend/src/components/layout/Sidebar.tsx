@@ -30,6 +30,7 @@ import ShieldIcon from '@mui/icons-material/Shield'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import BusinessIcon from '@mui/icons-material/Business'
+import SupportAgentIcon from '@mui/icons-material/SupportAgent'
 import DownloadIcon from '@mui/icons-material/Download'
 import LogoutIcon from '@mui/icons-material/Logout'
 import ApartmentIcon from '@mui/icons-material/Apartment'
@@ -234,6 +235,10 @@ const NAV_SECTIONS: {
       // menu an operator reads every day. Their routes are untouched and are
       // now reached from Settings → Advanced, so nothing became unreachable.
       { label: 'Tenants',          path: '/tenants',          icon: <BusinessIcon fontSize="small" />,     permission: 'tenant:manage' },
+      // The only route through which a platform operator reaches a customer's
+      // operational data at all, now that Super Admin holds four permissions
+      // and none of them are the customer's business (migration 0102).
+      { label: 'Support Sessions', path: '/support-sessions', icon: <SupportAgentIcon fontSize="small" />, permission: 'support:manage' },
     ],
   },
 ]

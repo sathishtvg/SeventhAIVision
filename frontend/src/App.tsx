@@ -23,6 +23,7 @@ import Export from '@/pages/Export'
 import Notifications from '@/pages/Notifications'
 import Settings from '@/pages/Settings'
 import Tenants from '@/pages/Tenants'
+import SupportSessions from '@/pages/SupportSessions'
 import Users from '@/pages/Users'
 import Roles from '@/pages/Roles'
 import { SitesPage } from '@/pages/Sites'
@@ -184,6 +185,7 @@ export default function App() {
         <Route path="notifications" element={<Notifications />} />
         <Route path="settings" element={<Settings />} />
         <Route path="tenants" element={<Tenants />} />
+        <Route path="support-sessions" element={<SupportSessions />} />
         <Route path="users" element={<Users />} />
         <Route path="roles" element={<Roles />} />
         <Route path="guard-ops" element={<GuardOps />} />

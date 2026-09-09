@@ -85,6 +85,7 @@ from app.routers import (
     sso,
     streams,
     system,
+    support_sessions,
     tenants,
     training,
     two_fa,
@@ -359,6 +360,7 @@ app.include_router(system.router)
 app.include_router(notifications.router)
 app.include_router(exports.router)
 app.include_router(tenants.router)
+app.include_router(support_sessions.router)
 app.include_router(sites.router)
 app.include_router(licenses.router)
 app.include_router(platform_licenses.router)

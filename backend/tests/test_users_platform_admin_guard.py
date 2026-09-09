@@ -178,19 +178,30 @@ async def test_pag_admin_cannot_read_platform_admin_subresources():
 
 @pytest.mark.asyncio
 async def test_pag_platform_admin_still_sees_and_edits_itself():
-    """The guard must not fire on the role it protects, or it is a lockout."""
+    """The guard must not fire on the role it protects, or it is a lockout.
+
+    Through /users/me now, not /users/{id}. Migration 0102 cut Super Admin to
+    the four permissions that are the platform's own job, and user:read and
+    user:update are not among them — they are permissions to act on OTHER
+    people, and a platform operator has no business in a customer's staff list.
+
+    Reading and editing YOURSELF is a different thing, and it is what
+    /users/me is for. This test failing is what showed that the endpoint had to
+    exist: without it, narrowing the role would have left a Super Admin unable
+    to change its own password.
+    """
     env = await _seed_tenant_with_platform_admin()
     async with await _authed(env["platform_token"]) as c:
+        fetched = await c.get("/api/v1/users/me")
+        renamed = await c.put("/api/v1/users/me", json={"full_name": "Renamed By Self"})
+        # The management routes stay shut, which is the point of 0102.
         listing = await c.get("/api/v1/users")
-        fetched = await c.get(f"/api/v1/users/{env['platform_id']}")
-        renamed = await c.put(f"/api/v1/users/{env['platform_id']}",
-                              json={"full_name": "Renamed By Self"})
 
-    assert listing.status_code == 200
-    assert str(env["platform_id"]) in [u["id"] for u in listing.json()]
     assert fetched.status_code == 200
+    assert fetched.json()["id"] == str(env["platform_id"])
     assert renamed.status_code == 200
     assert renamed.json()["full_name"] == "Renamed By Self"
+    assert listing.status_code == 403
 
 
 @pytest.mark.asyncio

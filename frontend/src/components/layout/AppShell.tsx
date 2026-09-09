@@ -4,6 +4,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import { Sidebar } from './Sidebar'
 import { VisitorEntryDialog } from '@/components/common/VisitorEntryDialog'
+import { SupportSessionBanner } from '@/components/common/SupportSessionBanner'
 import { TopBar } from './TopBar'
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents'
 import { useNativePickerOnClick } from '@/hooks/useNativePickerOnClick'
@@ -160,6 +161,10 @@ export function AppShell() {
             </Tooltip>
           </Box>
         )}
+        {/* Outside the scrolling box below on purpose: a warning that says you
+            are standing in a customer's tenant is worthless if it can be
+            scrolled off the top and forgotten. */}
+        <SupportSessionBanner />
         <Box
           key={location.pathname}
           className="page-enter"

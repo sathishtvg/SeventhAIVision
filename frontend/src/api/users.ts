@@ -109,3 +109,27 @@ export const uploadProfilePhoto = (userId: string, file: File) => {
     })
     .then((r) => r.data)
 }
+
+// ── Your own account ────────────────────────────────────────────────────────
+//
+// Everything above needs user:read or user:update, which are permissions to act
+// on OTHER people. Six of the eight built-in roles hold neither, so these two
+// are the only way most of the workforce can change their own password.
+
+export interface SelfUpdateData {
+  full_name?: string
+  phone?: string
+  address?: string
+  emergency_contact_name?: string
+  emergency_contact_phone?: string
+  locale?: string
+  /** Requires current_password. Deliberately not settable on its own. */
+  new_password?: string
+  current_password?: string
+}
+
+export const getMyAccount = () =>
+  apiClient.get<User>('/api/v1/users/me').then((r) => r.data)
+
+export const updateMyAccount = (data: SelfUpdateData) =>
+  apiClient.put<User>('/api/v1/users/me', data).then((r) => r.data)

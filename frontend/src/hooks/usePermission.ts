@@ -113,16 +113,35 @@ const ALL_PERMISSIONS = [
   'sso:manage',
   'webhook:manage',
   'webhook:read',
+  'support:manage',
+]
+
+/** The platform operator's whole job (migration 0102). Super Admin used to hold
+ *  all 142 permissions against Admin's 140, which made it a tenant
+ *  administrator with two extra switches rather than a role of its own — and
+ *  put a customer's rosters, payroll and employment records in front of
+ *  somebody whose work never needs them. Reading a tenant's data is now a
+ *  support session: deliberate, time-boxed and written into that customer's
+ *  own audit log. */
+const PLATFORM_PERMISSIONS = [
+  'tenant:manage',
+  'license:manage',
+  'audit:read',
+  'support:manage',
 ]
 
 const ROLE_PERMISSIONS: Record<number, string[]> = {
-  1: ALL_PERMISSIONS, // super_admin — everything
+  // super_admin — the platform, and nothing of the customer's. Mirrors the DB;
+  // this matrix is only the fallback while /me/permissions is in flight, and a
+  // fallback that disagreed would flash the whole operational nav on every
+  // page load before removing it again.
+  1: PLATFORM_PERMISSIONS,
   // admin — everything except cross-tenant super-admin powers (role:manage is
   // granted to admin as of migration 0057 so they can manage custom roles)
-  2: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage'].includes(p)),
+  2: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage'].includes(p)),
   // manager (migration 0063) — same grant set as admin; mirrors the DB seed
   // that clones role 2's role_permissions rows for role 8.
-  8: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage'].includes(p)),
+  8: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage'].includes(p)),
   3: [ // supervisor
     'alert_rule:read',
     'camera:read', 'camera:update',

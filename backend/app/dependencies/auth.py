@@ -16,6 +16,11 @@ class TokenPayload:
     tenant_id: str
     role_id: int
     via_api_key: bool = field(default=False)
+    #: Set only on a platform support token, where tenant_id is NOT the user's
+    #: own tenant. Its presence is what tells get_db_with_tenant to re-check
+    #: that the authorising session is still live before scoping the session
+    #: to that tenant.
+    support_session_id: str | None = field(default=None)
 
 
 async def get_token_payload(
@@ -62,4 +67,5 @@ async def get_token_payload(
         user_id=payload["sub"],
         tenant_id=payload["tenant_id"],
         role_id=payload["role_id"],
+        support_session_id=payload.get("support_session_id"),
     )

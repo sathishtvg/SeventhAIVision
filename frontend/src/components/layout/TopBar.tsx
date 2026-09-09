@@ -3,6 +3,7 @@ import {
   AppBar, Badge, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, IconButton, List, ListItem, ListItemSecondaryAction, ListItemText,
   MenuItem, Select, Toolbar, Tooltip, Typography, useTheme,
+  Alert, Divider, TextField,
 } from '@mui/material'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
@@ -16,6 +17,7 @@ import VolumeOffIcon from '@mui/icons-material/VolumeOff'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PRODUCT_NAME } from '@/lib/brand'
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
+import { getMyAccount, updateMyAccount } from '@/api/users'
 import { useAuthStore } from '@/store/auth'
 import { useNotificationStore } from '@/store/notifications'
 import { useAlertSoundStore } from '@/store/alertSound'
@@ -41,6 +43,56 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
     enabled: open,
   })
 
+  // Every route on the users router except these two needs user:read or
+  // user:update — permissions to act on OTHER people. Six of the eight roles
+  // hold neither, so this dialog is the only place most of the workforce can
+  // change their own password.
+  const { data: me } = useQuery({
+    queryKey: ['my-account'],
+    queryFn: getMyAccount,
+    enabled: open,
+  })
+
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (!open || !me) return
+    setFullName(me.full_name ?? '')
+    setPhone(me.phone ?? '')
+    setCurrentPassword('')
+    setNewPassword('')
+    setSaveError('')
+    setSaved(false)
+  }, [open, me])
+
+  const { mutate: saveMe, isPending: savingMe } = useMutation({
+    mutationFn: () => updateMyAccount({
+      full_name: fullName || undefined,
+      phone: phone || undefined,
+      // Only sent together — the API refuses a new password without the old one,
+      // so a borrowed session cannot silently lock the owner out.
+      ...(newPassword
+        ? { new_password: newPassword, current_password: currentPassword }
+        : {}),
+    }),
+    onSuccess: () => {
+      setSaved(true)
+      setSaveError('')
+      setCurrentPassword('')
+      setNewPassword('')
+      queryClient.invalidateQueries({ queryKey: ['my-account'] })
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setSaved(false)
+      setSaveError(e.response?.data?.detail || 'Could not save your changes')
+    },
+  })
+
   const { mutate: revokeOne, isPending: revokingOne } = useMutation({
     mutationFn: revokeMySession,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-sessions'] }),
@@ -63,6 +115,49 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
       </DialogTitle>
 
       <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <AccountCircleIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+          <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.68rem' }}>
+            My Details
+          </Typography>
+        </Box>
+
+        {saveError && <Alert severity="warning" sx={{ mb: 1.5 }}>{saveError}</Alert>}
+        {saved && <Alert severity="success" sx={{ mb: 1.5 }}>Saved.</Alert>}
+
+        <Box sx={{ display: 'grid', gap: 1.5, mb: 1.5 }}>
+          <TextField
+            label="Full name" value={fullName} size="small" fullWidth
+            onChange={(e) => setFullName(e.target.value)}
+          />
+          <TextField
+            label="Phone" value={phone} size="small" fullWidth
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <TextField
+            label="Current password" type="password" value={currentPassword}
+            size="small" fullWidth autoComplete="current-password"
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+          <TextField
+            label="New password" type="password" value={newPassword}
+            size="small" fullWidth autoComplete="new-password"
+            onChange={(e) => setNewPassword(e.target.value)}
+            helperText="Leave both password fields empty to change only your details."
+          />
+          <Box>
+            <Button
+              size="small" variant="contained"
+              disabled={savingMe || (Boolean(newPassword) && !currentPassword)}
+              onClick={() => saveMe()}
+            >
+              Save my details
+            </Button>
+          </Box>
+        </Box>
+
+        <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <DevicesIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
           <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.68rem' }}>
