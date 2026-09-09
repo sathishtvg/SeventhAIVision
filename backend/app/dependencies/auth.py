@@ -1,7 +1,7 @@
 import hashlib
 from dataclasses import dataclass, field
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import text
 
@@ -24,6 +24,7 @@ class TokenPayload:
 
 
 async def get_token_payload(
+    request: Request,
     bearer_token: str | None = Depends(oauth2_scheme),
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
 ) -> TokenPayload:
@@ -49,12 +50,14 @@ async def get_token_payload(
                 await db.commit()
         if row is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired API key")
-        return TokenPayload(
+        payload_obj = TokenPayload(
             user_id=str(row.key_id),        # key UUID as synthetic user_id
             tenant_id=str(row.key_tenant_id),
             role_id=2,                      # admin-equivalent access within the tenant
             via_api_key=True,
         )
+        request.state.token_payload = payload_obj
+        return payload_obj
 
     # ── JWT Bearer path ───────────────────────────────────────────────────────
     if not bearer_token:
@@ -63,9 +66,11 @@ async def get_token_payload(
         payload = decode_access_token(bearer_token)
     except InvalidTokenError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc)) from exc
-    return TokenPayload(
+    payload_obj = TokenPayload(
         user_id=payload["sub"],
         tenant_id=payload["tenant_id"],
         role_id=payload["role_id"],
         support_session_id=payload.get("support_session_id"),
     )
+    request.state.token_payload = payload_obj
+    return payload_obj

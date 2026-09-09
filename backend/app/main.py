@@ -12,6 +12,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.middleware.error_capture import ErrorCaptureMiddleware
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.metrics import PrometheusMiddleware
@@ -85,6 +86,7 @@ from app.routers import (
     sso,
     streams,
     system,
+    platform_console,
     support_sessions,
     tenants,
     training,
@@ -313,6 +315,9 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Outermost of the three, so it sees failures raised anywhere inside — a
+# handler, a dependency, or the rate limiter itself.
+app.add_middleware(ErrorCaptureMiddleware)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(PrometheusMiddleware)
 app.add_middleware(
@@ -361,6 +366,7 @@ app.include_router(notifications.router)
 app.include_router(exports.router)
 app.include_router(tenants.router)
 app.include_router(support_sessions.router)
+app.include_router(platform_console.router)
 app.include_router(sites.router)
 app.include_router(licenses.router)
 app.include_router(platform_licenses.router)
