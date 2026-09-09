@@ -87,6 +87,12 @@ export interface DutyAssignment {
   /** The guard's own stated preference, so the page can show where a posting
    *  disagrees with it. Not an error — worth seeing, though. */
   preferred_shift_type: 'day' | 'night' | null
+  /** Why this person may appear on more than one site's team: supervisors and
+   *  managers cover several sites, and standby officers relieve across them.
+   *  Everyone else stands exactly one post — enforced in the database by
+   *  migration 0101. */
+  role_id: number
+  is_standby: boolean
 }
 
 export interface DutyOverviewRow {
@@ -100,6 +106,20 @@ export interface DutyOverviewRow {
 
 export const getDutyOverview = () =>
   apiClient.get<DutyOverviewRow[]>('/api/v1/sites/duty-assignments/overview').then((r) => r.data)
+
+/** Every duty posting tenant-wide — who stands where. The team dialog uses it
+ *  to avoid offering an officer who already holds a post at another site. */
+export interface DutyPosting {
+  guard_user_id: string
+  site_id: string
+  site_name: string
+  shift_type: 'day' | 'night'
+  role_id: number
+  is_standby: boolean
+}
+
+export const getDutyPostings = () =>
+  apiClient.get<DutyPosting[]>('/api/v1/sites/duty-assignments/postings').then((r) => r.data)
 
 export const getDutyAssignments = (siteId: string) =>
   apiClient.get<DutyAssignment[]>(`/api/v1/sites/${siteId}/duty-assignments`).then((r) => r.data)

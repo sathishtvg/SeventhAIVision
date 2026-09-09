@@ -19,6 +19,10 @@ frontend/dist/
 desktop/dist/
 desktop/release/
 
+# JUnit XML the CI test steps write into the workspace. Never source.
+test-results.xml
+repo-test-results.xml
+
 # Generated reports / scan output. The directories are tracked (via .gitkeep)
 # because test_trivy.py asserts they exist; the reports written into them are
 # not. A directory cannot be re-included once its parent is excluded, hence the

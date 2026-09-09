@@ -32,6 +32,10 @@ _EMPLOYEE_FIELDS = (
     "emergency_contact_name", "emergency_contact_phone",
     "hourly_rate", "daily_rate", "monthly_salary",
     "profile_photo_path",
+    # Relief officer: exempt from "a guard stands one post" (migration 0101),
+    # so they may hold duty postings at several sites. The roster still puts
+    # them at one site at a time.
+    "is_standby",
 )
 
 
@@ -66,6 +70,7 @@ class UserUpdate(BaseModel):
     hourly_rate: float | None = None
     daily_rate: float | None = None
     monthly_salary: float | None = None
+    is_standby: bool | None = None
 
 
 def _row_to_dict(row) -> dict:
