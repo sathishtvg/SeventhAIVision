@@ -234,6 +234,87 @@ story += [
 ]
 
 # ── Modules ─────────────────────────────────────────────────────────────────
+# ── At a glance ─────────────────────────────────────────────────────────────
+#
+# One page for the person who signs, ahead of the inventory written for the
+# person who evaluates. Outcomes rather than features: the modules are listed
+# one line each so the breadth is visible without reading to page ten.
+story += [
+    Paragraph("At a glance", S["h1"]),
+    rule(thickness=2),
+    Spacer(1, 8),
+    Paragraph(
+        "A security agency runs on four or five systems that do not talk to "
+        "each other: a spreadsheet roster, a messaging group for incidents, a "
+        "paper occurrence book at every guardhouse, a payroll spreadsheet, and a "
+        "filing cabinet for whatever a client asks about later. This is one "
+        "system that replaces all of them.", S["body"]),
+    Spacer(1, 6),
+
+    Paragraph("What changes", S["h2"]),
+]
+story.append(data_table(
+    ["", "Today", "With Seventh AI Vision"],
+    [
+        ["Client asks for proof of a patrol",
+         "Phone calls, a photo of a page",
+         "On screen in seconds — or the client checks their own login"],
+        ["A key is unaccounted for",
+         "Nobody knows until it is needed",
+         "Shown at every handover, with who took it and when"],
+        ["Leave approved on a live roster",
+         "Someone remembers, or nobody does",
+         "The uncovered post queues until it is filled"],
+        ["Month-end payroll",
+         "Hours retyped from timesheets",
+         "From real check-ins, supervisor-approved first"],
+        ["A lone officer collapses",
+         "Nothing, until somebody notices",
+         "Man-down alerts the control room with their last position"],
+        ["Invoicing a client",
+         "Estimated from the contract",
+         "From the hours actually worked at their site"],
+    ],
+    widths=[46 * mm, 48 * mm, 76 * mm]))
+story += [
+    Spacer(1, 8),
+    Paragraph("The platform in thirteen lines", S["h2"]),
+]
+story += bullets([
+    "<b>Identity and access</b> — 8 roles, 142 permissions, SSO, 2FA, audit log, "
+    "per-tenant branding, four languages.",
+    "<b>Video surveillance</b> — cameras, live wall, recording, playback, "
+    "privacy zones, NVR, site map.",
+    "<b>AI analytics</b> — eleven detection modules, licensed individually.",
+    "<b>Alerts and incidents</b> — triage, dispatch, escalation.",
+    "<b>Roster</b> — a whole month auto-scheduled against nine rules, reviewed "
+    "as a draft before it goes live.",
+    "<b>Attendance</b> — face check-in with liveness, geofenced, eight live states.",
+    "<b>Guard operations</b> — patrol scanning, occurrence book, SOP sign-off, "
+    "panic button, man down.",
+    "<b>Guardhouse registers</b> — keys, lost &amp; found, defects, equipment, "
+    "uniform, and a handover two people sign.",
+    "<b>Visitor management</b> — pre-registration, passes, contractors, deliveries.",
+    "<b>Physical security and IoT</b> — access control, alarms, barriers, parking.",
+    "<b>HR and payroll</b> — leave, training, timesheets, CPF, overtime, public "
+    "holidays, PWM grades, IR8A.",
+    "<b>Commercial</b> — invoices from real hours, and a client portal.",
+    "<b>Compliance</b> — chain of custody, PDPA, retention, scheduled reports.",
+])
+story += [
+    Spacer(1, 8),
+    Paragraph("Built for Singapore, not adapted to it", S["h2"]),
+    Paragraph(
+        "PLRD licence expiry per officer. PWM grades across the seven-grade "
+        "ladder. CPF by age band against the Ordinary Wage ceiling. Gazetted "
+        "public holidays and holiday pay. The 72-hour monthly overtime cap "
+        "flagged on every run. IR8A. PDPA consent and data subject requests. An "
+        "append-only occurrence book built against the Private Security Industry "
+        "Act. SGD invoicing. English, Chinese, Malay and Tamil. Runs hosted or "
+        "on your own servers.", S["body"]),
+    PageBreak(),
+]
+
 story.append(Paragraph("Platform capabilities", S["h1"]))
 story.append(rule(thickness=2))
 story.append(Spacer(1, 8))
