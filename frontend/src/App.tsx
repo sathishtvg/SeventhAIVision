@@ -24,6 +24,9 @@ import Notifications from '@/pages/Notifications'
 import Settings from '@/pages/Settings'
 import Tenants from '@/pages/Tenants'
 import SupportSessions from '@/pages/SupportSessions'
+import PlatformDashboard from '@/pages/PlatformDashboard'
+import TenantUsage from '@/pages/TenantUsage'
+import ErrorCentre from '@/pages/ErrorCentre'
 import Users from '@/pages/Users'
 import Roles from '@/pages/Roles'
 import { SitesPage } from '@/pages/Sites'
@@ -186,6 +189,10 @@ export default function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="tenants" element={<Tenants />} />
         <Route path="support-sessions" element={<SupportSessions />} />
+        <Route path="platform" element={<PlatformDashboard />} />
+        <Route path="platform/tenants" element={<TenantUsage />} />
+        <Route path="platform/tenants/:tenantId" element={<TenantUsage />} />
+        <Route path="platform/errors" element={<ErrorCentre />} />
         <Route path="users" element={<Users />} />
         <Route path="roles" element={<Roles />} />
         <Route path="guard-ops" element={<GuardOps />} />
