@@ -11,25 +11,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY shared/ /app/shared/
-RUN pip install --no-cache-dir -e /app/shared
-
-# Each heavy ML dependency gets its own layer so a build interruption only
-# costs that one package's download, not every package after it too —
-# these are large (torch, paddlepaddle especially) and slow on a typical
-# connection.
+# ── Dependencies first, source last ──────────────────────────────────────────
+#
+# COPY shared/ used to sit ABOVE these installs, which meant every edit to a
+# shared module invalidated the torch, insightface and paddlepaddle layers and
+# turned a one-file change into a multi-gigabyte redownload. Nobody rebuilds
+# under those conditions, so the image drifted: on 2026-09-10 it was still
+# carrying a shared/ from before alert_rules.py existed, and both the face and
+# PPE workers crash-looped on ModuleNotFoundError.
+#
+# Each heavy ML dependency still gets its own layer so a build interruption
+# only costs that one package's download, not every package after it too.
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir ultralytics shapely
 RUN pip install --no-cache-dir onnxruntime insightface
 RUN pip install --no-cache-dir paddlepaddle paddleocr
+# Lightweight non-ML deps that the --no-deps install below would skip.
+RUN pip install --no-cache-dir redis "psycopg[binary]" "pydantic>=2.6,<3" prometheus-client opencv-python-headless
 
-COPY ai-worker/ /app/ai-worker/
 # Pre-download YOLOv8s weights at build time so a fresh container never
 # fetches from the internet mid-test (cold-start model download takes >15s
 # and would cause section_intrusion to time out on a first-ever stack start).
+# Needs ultralytics only, so it belongs above the source copies.
 RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt')"
-# Install lightweight non-ML deps that --no-deps below would skip.
-RUN pip install --no-cache-dir redis "psycopg[binary]" "pydantic>=2.6,<3" prometheus-client opencv-python-headless
+
+# Source last: editing either tree now rebuilds seconds of layers, not hours.
+COPY shared/ /app/shared/
+RUN pip install --no-cache-dir -e /app/shared
+
+COPY ai-worker/ /app/ai-worker/
 RUN pip install --no-cache-dir --no-deps -e /app/ai-worker
 
 WORKDIR /app/ai-worker
