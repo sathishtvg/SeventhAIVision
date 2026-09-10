@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -5,6 +6,8 @@ import bcrypt
 from jose import JWTError, jwt
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidTokenError(Exception):
@@ -16,7 +19,36 @@ def hash_password(plain_password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    """Answer the question asked -- does this password match -- and never raise.
+
+    bcrypt.checkpw raises ValueError("Invalid salt") when the STORED value is
+    not a well-formed hash, rather than returning False. Uncaught, that escapes
+    the login path as a 500, and the sign-in page renders every failure as
+    "Invalid credentials" -- so a corrupt row looks exactly like a typo. It also
+    never reaches the failed-attempt counter, so the account reads as healthy in
+    the database while nobody on earth can sign into it.
+
+    A malformed hash means no password can match, so False is the honest answer
+    and the caller's 401 is the right response. It is logged at ERROR because it
+    is an operational fault rather than a failed login -- returning False in
+    silence would hide the corruption just as well as the 500 did. Neither the
+    password nor the hash is logged; the length is enough to recognise a
+    truncated hash (a bcrypt hash is always 60 characters).
+    """
+    if not hashed_password:
+        logger.error("Password verification attempted against an empty stored hash")
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        )
+    except ValueError:
+        logger.error(
+            "Stored password hash is malformed (length %d, expected 60). No login "
+            "can succeed against this account until its password is reset.",
+            len(hashed_password),
+        )
+        return False
 
 
 def create_access_token(user_id: str, tenant_id: str, role_id: int) -> str:
