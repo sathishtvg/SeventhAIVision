@@ -236,7 +236,11 @@ export default function TenantUsage() {
         size="small" fullWidth value={search} sx={{ mb: 2, maxWidth: 380 }}
         placeholder="Search tenant name or slug"
         onChange={(e) => setSearch(e.target.value)}
-        InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1 }} /> }}
+        // slotProps, not InputProps: MUI v9 removed the latter. The build
+        // would have limped along and the adornment simply not rendered.
+        slotProps={{
+          input: { startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1 }} /> },
+        }}
       />
 
       <GlassCard sx={{ p: 0 }}>
