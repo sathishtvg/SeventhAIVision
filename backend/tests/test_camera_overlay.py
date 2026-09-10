@@ -54,8 +54,9 @@ async def _seed_tenant_and_token(role_id: int = 2):
             {"id": tenant_id, "name": f"Overlay Test {slug}", "slug": slug},
         )
         await s.execute(
-            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                 "VALUES (:id, :tid, :role, :email, 'hashed', 'Overlay Tester')"),
+            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                 "                   full_name, totp_enabled) "
+                 "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Overlay Tester', CAST(:role AS smallint) = 1)"),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"ovl-{user_id.hex[:8]}@test.local"},
         )
@@ -71,8 +72,9 @@ async def _seed_extra_user(tenant_id: uuid.UUID, role_id: int):
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as s:
         await s.execute(
-            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-                 "VALUES (:id, :tid, :role, :email, 'hashed')"),
+            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                 "                   totp_enabled) "
+                 "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', CAST(:role AS smallint) = 1)"),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"ovl-{user_id.hex[:8]}@test.local"},
         )

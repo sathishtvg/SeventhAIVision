@@ -181,7 +181,7 @@ class TestBNvrCredentials:
     async def test_list_connections_does_not_expose_password(self, auth_client):
         await auth_client.post("/api/v1/nvr/connections", json={
             "name": f"list-test-{uuid.uuid4()}", "host": "10.0.0.3", "port": 80,
-            "username": "admin", "password": "s3cr3t", "adapter_type": "generic",
+            "username": "admin", "password": "orbit-lantern-quay-42", "adapter_type": "generic",
         })
         resp = await auth_client.get("/api/v1/nvr/connections")
         assert resp.status_code == 200
@@ -193,7 +193,7 @@ class TestBNvrCredentials:
     async def test_get_connection_does_not_expose_password(self, auth_client):
         resp = await auth_client.post("/api/v1/nvr/connections", json={
             "name": f"get-test-{uuid.uuid4()}", "host": "10.0.0.4", "port": 80,
-            "username": "admin", "password": "s3cr3t", "adapter_type": "generic",
+            "username": "admin", "password": "orbit-lantern-quay-42", "adapter_type": "generic",
         })
         conn_id = resp.json()["id"]
         resp2 = await auth_client.get(f"/api/v1/nvr/connections/{conn_id}")

@@ -49,6 +49,12 @@ async def get_raw_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
 
 
+#: What a read-only support session may do. OPTIONS is included because
+#: browsers send it before a request the session may well be allowed to
+#: make, and refusing the preflight fails the wrong thing.
+_READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
 async def get_db_with_tenant(
     request: Request,
     token: TokenPayload = Depends(get_token_payload),
@@ -68,6 +74,46 @@ async def get_db_with_tenant(
             text("SELECT set_config('app.current_tenant', :tenant_id, true)"),
             {"tenant_id": token.tenant_id},
         )
+
+        # A support token names a tenant its holder does not belong to, which
+        # only a live support session authorises. Re-checked on EVERY request
+        # rather than trusted from the token, so "end session" revokes access
+        # now instead of whenever the hour happens to run out — a token that
+        # outlives its authorisation is the whole failure mode this guards.
+        #
+        # The session row must also still agree with the token about which
+        # tenant it opened, so a token cannot be replayed against a session
+        # that was opened for somewhere else.
+        if token.support_session_id:
+            live = (await session.execute(
+                text("""
+                    SELECT access_level FROM tenant_support_sessions
+                     WHERE id = CAST(:sid AS uuid)
+                       AND platform_user_id = CAST(:uid AS uuid)
+                       AND tenant_id = CAST(:tid AS uuid)
+                       AND ended_at IS NULL
+                       AND expires_at > now()
+                """),
+                {"sid": token.support_session_id, "uid": token.user_id,
+                 "tid": token.tenant_id},
+            )).first()
+            if live is None:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "This support session has ended or expired. Open a new one "
+                    "to continue.",
+                )
+            # Read-only is the default, and it is enforced against the session
+            # ROW rather than a claim in the token — so downgrading a live
+            # session bites on its next request instead of whenever the token
+            # would otherwise have expired.
+            if (live.access_level == "read_only"
+                    and request.method not in _READ_ONLY_METHODS):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "This is a read-only support session. Open one with "
+                    "elevated access if the customer needs something changed.",
+                )
 
         # IP allowlist enforcement via SECURITY DEFINER function (bypasses RLS
         # for the lookup itself, which is safe — we already know the tenant).

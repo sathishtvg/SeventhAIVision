@@ -7,6 +7,8 @@ from uuid import UUID
 import pyotp
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
+import json
+
 from sqlalchemy import text
 
 from app.core.config import settings
@@ -74,6 +76,50 @@ def _decode_2fa_challenge_token(token: str) -> dict:
     if payload.get("type") != "2fa_challenge":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid challenge token type")
     return payload
+
+
+PLATFORM_ADMIN_ROLE_ID = 1
+
+
+async def _note_platform_login_location(db, user_id: str, client_ip: str,
+                                        tenant_name: str) -> None:
+    """Record the address, and say so the first time it is seen.
+
+    The record and the "is this new" answer come from one statement, because
+    a SELECT followed by an INSERT would let two simultaneous logins both
+    report the address as new.
+    """
+    enabled = (await db.execute(text(
+        "SELECT value FROM platform_settings "
+        " WHERE key = 'security.alert_on_new_platform_login_ip'"
+    ))).scalar()
+    if enabled is not None and str(enabled).strip().lower() not in ("true", "1", "yes"):
+        return
+
+    is_new = (await db.execute(
+        text("SELECT platform_record_login_location(CAST(:uid AS uuid), :ip)"),
+        {"uid": user_id, "ip": client_ip},
+    )).scalar()
+    if not is_new:
+        return
+
+    await db.execute(text("""
+        INSERT INTO platform_notifications
+            (id, kind, severity, subject, title, detail)
+        VALUES (gen_random_uuid(), 'platform_login_new_location', 'warning',
+                :subject, :title, CAST(:detail AS jsonb))
+        ON CONFLICT (kind,
+                     COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid),
+                     COALESCE(subject, ''))
+        WHERE acknowledged_at IS NULL
+        DO UPDATE SET last_seen_at = now(),
+                      occurrences  = platform_notifications.occurrences + 1
+    """), {
+        "subject": f"{user_id}:{client_ip}",
+        "title": f"Platform owner signed in from a new address ({client_ip})",
+        "detail": json.dumps({"user_id": user_id, "ip": client_ip,
+                              "tenant": tenant_name}),
+    })
 
 
 async def authenticate_and_issue_tokens(
@@ -230,6 +276,19 @@ async def authenticate_and_issue_tokens(
             timezone=tenant_row.timezone or "Asia/Singapore",
             branding=tenant_row.branding or {},
         )
+
+        # A platform owner signing in from somewhere new (§28).
+        #
+        # Recorded and notified, never blocked: a vendor travelling is far more
+        # likely than a vendor compromised, and a security control that stops
+        # the owner working gets switched off within a week. Wrapped because a
+        # notification failing must not fail the login it is describing.
+        if user_row.role_id == PLATFORM_ADMIN_ROLE_ID and client_ip:
+            try:
+                await _note_platform_login_location(
+                    db, str(user_row.id), client_ip, tenant_row.name)
+            except Exception:
+                logger.warning("platform login location check failed", exc_info=True)
 
         await db.commit()
 

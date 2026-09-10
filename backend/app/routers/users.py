@@ -10,7 +10,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import InvalidTokenError, decode_access_token, hash_password
+from app.core.security import (
+    InvalidTokenError, decode_access_token, hash_password, verify_password,
+)
+from app.services import password_policy
 from app.core.uploads import MAX_DOCUMENT_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
@@ -188,9 +191,126 @@ async def _assert_assignable_role(db: AsyncSession, role_id: int) -> None:
                             "Invalid role_id for this tenant")
 
 
+
+# ── Your own account ─────────────────────────────────────────────────────────
+#
+# Every route below this point is a management route: it needs user:read or
+# user:update, which are permissions to act on OTHER people. Six of the eight
+# built-in roles hold neither, so until these two endpoints existed a Security
+# Guard could not change their own password from inside the app, and neither
+# could an Operator, a Viewer or a Client. Only Admin and Manager could, and
+# only because they can edit everyone.
+#
+# Narrowing Super Admin to the platform (migration 0102) made that visible by
+# taking the last accidental route away from the one role a test covered. The
+# gap was always there.
+#
+# WHAT A PERSON MAY CHANGE ABOUT THEMSELVES is deliberately short: how to
+# reach them, what to call them, and their password. Their role, whether they
+# are active, their pay, their standby flag and their work-pass details are
+# decisions their employer makes ABOUT them, not decisions they make. Those
+# stay on the management routes.
+#
+# DECLARED BEFORE /{user_id}. FastAPI matches in order, so with these below it
+# "me" would be parsed as a user id and 422 on the uuid cast.
+
+
+class SelfUpdate(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    locale: str | None = None
+    new_password: str | None = None
+    #: Required to set new_password. A borrowed session should not be able to
+    #: lock the real owner out of their own account silently.
+    current_password: str | None = None
+
+
+SELF_EDITABLE = (
+    "full_name", "phone", "address",
+    "emergency_contact_name", "emergency_contact_phone", "locale",
+)
+
+
+@router.get("/me")
+async def get_my_account(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """The caller's own row. No user:read — reading yourself is not reading
+    other people, and requiring the management permission is what locked most
+    of the roles out."""
+    row = (await db.execute(
+        text(f"SELECT {_USER_SELECT_COLUMNS} FROM users WHERE id = :id"),
+        {"id": token.user_id},
+    )).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return dict(row._mapping)
+
+
+@router.put("/me")
+async def update_my_account(
+    body: SelfUpdate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Change your own contact details, or your own password."""
+    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items()
+               if k in SELF_EDITABLE}
+
+    if body.new_password:
+        if not body.current_password:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Enter your current password to set a new one",
+            )
+        current = (await db.execute(
+            text("SELECT hashed_password FROM users WHERE id = :id"),
+            {"id": token.user_id},
+        )).first()
+        if current is None or not verify_password(
+            body.current_password, current.hashed_password
+        ):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "That is not your current password"
+            )
+        # Checked here rather than only in the browser: a policy the client
+        # enforces is a policy anybody with curl does not have to meet.
+        try:
+            password_policy.validate(body.new_password, role_id=token.role_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+            ) from exc
+        updates["hashed_password"] = hash_password(body.new_password)
+
+    if not updates:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No fields to update")
+
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = token.user_id
+    row = (await db.execute(
+        text(f"UPDATE users SET {set_clause}, updated_at = now() "
+             f" WHERE id = :id RETURNING {_USER_SELECT_COLUMNS}"),
+        updates,
+    )).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    await db.commit()
+    return dict(row._mapping)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("user:create"))])
 async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db_with_tenant)):
     await _assert_assignable_role(db, body.role_id)
+    try:
+        password_policy.validate(body.password, role_id=body.role_id,
+                                 email=body.email)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     new_id = uuid.uuid4()
     try:
         result = await db.execute(

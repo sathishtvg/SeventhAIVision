@@ -62,8 +62,10 @@ async def _seed_tenant_and_token(role_id: int = 1):
         )
         await s.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-                "VALUES (:id, :tid, :role, :email, :pw)"
+                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                "                   totp_enabled) "
+                "VALUES (:id, :tid, CAST(:role AS smallint), :email, :pw, "
+                "        CAST(:role AS smallint) = 1)"
             ),
             {
                 "id": user_id,

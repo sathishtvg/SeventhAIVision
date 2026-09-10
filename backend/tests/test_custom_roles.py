@@ -60,8 +60,9 @@ async def _seed_tenant_and_token(role_id: int = 2):
             {"id": tenant_id, "name": f"Roles Test {slug}", "slug": slug},
         )
         await s.execute(
-            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                 "VALUES (:id, :tid, :role, :email, 'hashed', 'Roles Tester')"),
+            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                 "                   full_name, totp_enabled) "
+                 "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Roles Tester', CAST(:role AS smallint) = 1)"),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"rol-{user_id.hex[:8]}@test.local"},
         )
@@ -222,7 +223,7 @@ async def test_rol_custom_role_enforced_end_to_end():
         # Create a user holding the custom role
         ur = await c.post("/api/v1/users", json={
             "email": f"rol-{uuid.uuid4().hex[:8]}@test.local",
-            "password": "pw12345", "role_id": role["id"], "full_name": "Custom User"})
+            "password": "orbit-lantern-quay-42", "role_id": role["id"], "full_name": "Custom User"})
         assert ur.status_code == 201, ur.text
         new_user_id = ur.json()["id"]
     user_token = _make_token(new_user_id, tenant_id, role["id"])
@@ -245,7 +246,7 @@ async def test_rol_delete_role_in_use_409():
         role = await _create_role(c, "Held Role", ["camera:read"])
         await c.post("/api/v1/users", json={
             "email": f"rol-{uuid.uuid4().hex[:8]}@test.local",
-            "password": "pw12345", "role_id": role["id"]})
+            "password": "orbit-lantern-quay-42", "role_id": role["id"]})
         r = await c.delete(f"/api/v1/roles/{role['id']}")
     assert r.status_code == 409
 
@@ -277,5 +278,5 @@ async def test_rol_cannot_assign_other_tenants_custom_role():
     async with await _authed(tok_b) as c:
         r = await c.post("/api/v1/users", json={
             "email": f"rol-{uuid.uuid4().hex[:8]}@test.local",
-            "password": "pw12345", "role_id": role_a["id"]})
+            "password": "orbit-lantern-quay-42", "role_id": role_a["id"]})
     assert r.status_code == 422

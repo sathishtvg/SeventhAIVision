@@ -30,6 +30,7 @@ import ShieldIcon from '@mui/icons-material/Shield'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import BusinessIcon from '@mui/icons-material/Business'
+import SupportAgentIcon from '@mui/icons-material/SupportAgent'
 import DownloadIcon from '@mui/icons-material/Download'
 import LogoutIcon from '@mui/icons-material/Logout'
 import ApartmentIcon from '@mui/icons-material/Apartment'
@@ -136,6 +137,56 @@ const ROLE_LABELS: Record<number, string> = {
  * Ordering inside each group is by how often it is opened, not alphabetically:
  * the thing you reach for hourly sits above the thing you touch monthly.
  */
+/**
+ * The platform owner's navigation, which is not the tenant's with things
+ * removed — it is a different application.
+ *
+ * A Super Admin runs the Seventh AI Vision BUSINESS: customers, subscriptions,
+ * licensing, platform health. A tenant's sidebar is built around a shift: the
+ * live wall, the alert queue, the patrol round. Filtering one to make the
+ * other leaves headings like "Monitoring" over a single item and reads as an
+ * application that has lost most of itself, which is what it looked like
+ * before this existed.
+ *
+ * Only routes that exist are listed. The rest of §25 — services, AI workers,
+ * storage, API usage, integrations, backups — has no page yet, and a menu
+ * entry that goes nowhere is worse than an absent one.
+ */
+const PLATFORM_NAV_SECTIONS: {
+  title: string
+  items: { label: string; path: string; icon: React.ReactNode; permission: string | null }[]
+}[] = [
+  {
+    title: 'Business',
+    items: [
+      { label: 'Dashboard',     path: '/platform',          icon: <DashboardIcon fontSize="small" />, permission: 'platform:read' },
+      { label: 'Tenants',       path: '/tenants',           icon: <BusinessIcon fontSize="small" />,  permission: 'tenant:manage' },
+      { label: 'Tenant Usage',  path: '/platform/tenants',  icon: <AssessmentIcon fontSize="small" />, permission: 'platform:read' },
+      { label: 'Growth',        path: '/platform/analytics', icon: <BarChartIcon fontSize="small" />,  permission: 'platform:read' },
+    ],
+  },
+  {
+    title: 'Billing',
+    items: [
+      { label: 'Plans & Pricing', path: '/platform/billing',  icon: <PaymentsIcon fontSize="small" />,     permission: 'billing:read' },
+      { label: 'Invoices',        path: '/platform/invoices', icon: <ReceiptLongIcon fontSize="small" />,  permission: 'billing:read' },
+    ],
+  },
+  {
+    title: 'Platform',
+    items: [
+      { label: 'Error Centre',  path: '/platform/errors',   icon: <ReportProblemIcon fontSize="small" />, permission: 'platform:read' },
+    ],
+  },
+  {
+    title: 'Security',
+    items: [
+      { label: 'Support Sessions', path: '/support-sessions', icon: <SupportAgentIcon fontSize="small" />, permission: 'support:manage' },
+      { label: 'Audit Logs',       path: '/audit',            icon: <HistoryIcon fontSize="small" />,      permission: 'audit:read' },
+    ],
+  },
+]
+
 const NAV_SECTIONS: {
   title: string
   items: { label: string; path: string; icon: React.ReactNode; permission: string | null }[]
@@ -143,9 +194,14 @@ const NAV_SECTIONS: {
   {
     title: 'Monitoring',
     items: [
-      { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon fontSize="small" />,     permission: null },
+      // Was permission: null, which is why it appeared for the platform
+      // owner too. It is a tenant's operational queue — incidents, patrols,
+      // alerts awaiting someone — and none of that is the vendor's work.
+      { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon fontSize="small" />,     permission: 'alert:read' },
       { label: 'Command Centre', path: '/command-centre', icon: <MonitorIcon fontSize="small" />,   permission: 'alert:read' },
-      { label: 'Dashboard',      path: '/',            icon: <DashboardIcon fontSize="small" />,    permission: null },
+      // The operational dashboard. The platform owner has one of their own
+      // at /platform, which answers a completely different question.
+      { label: 'Dashboard',      path: '/',            icon: <DashboardIcon fontSize="small" />,    permission: 'alert:read' },
       { label: 'Alerts',         path: '/alerts',      icon: <NotificationsIcon fontSize="small" />, permission: 'alert:read' },
       { label: 'Incidents',      path: '/incidents',   icon: <ReportProblemIcon fontSize="small" />, permission: 'incident:read' },
       { label: 'Live Wall',      path: '/live',        icon: <LiveTvIcon fontSize="small" />,       permission: 'camera:read' },
@@ -234,6 +290,10 @@ const NAV_SECTIONS: {
       // menu an operator reads every day. Their routes are untouched and are
       // now reached from Settings → Advanced, so nothing became unreachable.
       { label: 'Tenants',          path: '/tenants',          icon: <BusinessIcon fontSize="small" />,     permission: 'tenant:manage' },
+      // The only route through which a platform operator reaches a customer's
+      // operational data at all, now that Super Admin holds four permissions
+      // and none of them are the customer's business (migration 0102).
+      { label: 'Support Sessions', path: '/support-sessions', icon: <SupportAgentIcon fontSize="small" />, permission: 'support:manage' },
     ],
   },
 ]
@@ -476,7 +536,9 @@ export function Sidebar() {
       fetchedPermissions ??
       (user?.roleId != null ? getPermissionsForRole(user.roleId) : []),
     )
-    return NAV_SECTIONS
+    // The platform owner gets a different application, not a filtered one.
+    const sections = granted.has('platform:read') ? PLATFORM_NAV_SECTIONS : NAV_SECTIONS
+    return sections
       .map((section) => ({
         ...section,
         items: section.items.filter((i) => i.permission === null || granted.has(i.permission)),

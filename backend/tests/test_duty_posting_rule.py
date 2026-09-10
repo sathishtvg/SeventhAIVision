@@ -70,8 +70,9 @@ async def _seed_tenant(role_id: int = 2):
     await _exec([
         ("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)",
          {"id": tenant_id, "name": f"Duty Test {slug}", "slug": slug}),
-        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-         "VALUES (:id, :tid, :role, :email, 'hashed', 'DP Admin')",
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+         "                   full_name, totp_enabled) "
+         "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'DP Admin', CAST(:role AS smallint) = 1)",
          {"id": user_id, "tid": tenant_id, "role": role_id,
           "email": f"dp-{user_id.hex[:8]}@test.local"}),
     ])
@@ -84,7 +85,7 @@ async def _seed_user(tenant_id, role_id: int, name: str = "DP Guard",
     await _exec([
         ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
          " full_name, is_standby) "
-         "VALUES (:id, :tid, :role, :email, 'hashed', :name, :standby)",
+         "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', :name, :standby)",
          {"id": user_id, "tid": tenant_id, "role": role_id, "name": name,
           "email": f"dp-{user_id.hex[:8]}@test.local", "standby": is_standby}),
     ])

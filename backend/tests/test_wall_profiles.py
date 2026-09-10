@@ -63,8 +63,9 @@ async def _seed_tenant_and_token(role_id: int = 2):
         )
         await s.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                "VALUES (:id, :tid, :role, :email, 'hashed', 'Profile Tester')"
+                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                "                   full_name, totp_enabled) "
+                "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Profile Tester', CAST(:role AS smallint) = 1)"
             ),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"wpr-{user_id.hex[:8]}@test.local"},
@@ -84,8 +85,9 @@ async def _seed_extra_user(tenant_id: uuid.UUID, role_id: int):
     async with factory() as s:
         await s.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                "VALUES (:id, :tid, :role, :email, 'hashed', 'Second Profile User')"
+                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                "                   full_name, totp_enabled) "
+                "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Second Profile User', CAST(:role AS smallint) = 1)"
             ),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"wpr-{user_id.hex[:8]}@test.local"},

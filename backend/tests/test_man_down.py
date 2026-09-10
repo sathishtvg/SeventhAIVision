@@ -71,8 +71,9 @@ async def _seed_tenant(role_id: int = 2):
     await _exec([
         ("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)",
          {"id": tenant_id, "name": f"ManDown Test {slug}", "slug": slug}),
-        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-         "VALUES (:id, :tid, :role, :email, 'hashed', 'MD Tester')",
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+         "                   full_name, totp_enabled) "
+         "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'MD Tester', CAST(:role AS smallint) = 1)",
          {"id": user_id, "tid": tenant_id, "role": role_id,
           "email": f"md-{user_id.hex[:8]}@test.local"}),
     ])
@@ -84,8 +85,9 @@ async def _seed_user(tenant_id, role_id: int, name: str = "MD Guard"):
 
     user_id = uuid.uuid4()
     await _exec([
-        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-         "VALUES (:id, :tid, :role, :email, 'hashed', :name)",
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+         "                   full_name, totp_enabled) "
+         "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', :name, CAST(:role AS smallint) = 1)",
          {"id": user_id, "tid": tenant_id, "role": role_id, "name": name,
           "email": f"md-{user_id.hex[:8]}@test.local"}),
     ])
@@ -404,7 +406,14 @@ async def test_the_server_escalates_when_the_phone_never_calls_back():
     finally:
         await session.close()
         await engine.dispose()
-    assert escalated == 1
+
+    # At least one, not exactly one. This session is a superuser one, so RLS
+    # does not confine the sweep to this tenant and it escalates whatever else
+    # is due across the database. `== 1` only ever held because the loop used
+    # to die on its second escalation — the commit inside raise_guard_sos took
+    # the tenant GUC with it. What this test is actually about is the event it
+    # raised, and that is asserted below.
+    assert escalated >= 1
 
     async with await _authed(token) as c:
         body = (await c.get(f"/api/v1/man-down/{event['id']}")).json()
