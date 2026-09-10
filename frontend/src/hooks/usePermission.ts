@@ -136,6 +136,10 @@ const PLATFORM_PERMISSIONS = [
   'billing:manage',
   // Cross-tenant platform figures: usage, adoption, errors.
   'platform:read',
+  // Not platform powers but the way out of one: the MFA requirement withholds
+  // everything above until the owner enrols, and enrolling needs these.
+  '2fa:manage',
+  '2fa:policy',
 ]
 
 const ROLE_PERMISSIONS: Record<number, string[]> = {

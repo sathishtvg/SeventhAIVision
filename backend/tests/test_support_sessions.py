@@ -53,6 +53,10 @@ SUPER_ADMIN, ADMIN, GUARD = 1, 2, 5
 PLATFORM_PERMISSIONS = {
     "tenant:manage", "license:manage", "audit:read", "support:manage",
     "billing:read", "billing:manage", "platform:read",
+    # 0114. Not a platform power but the way OUT of one: the MFA requirement
+    # withholds everything above until the owner enrols, and without these
+    # two GET /2fa/setup answers 403 and the requirement is a lockout.
+    "2fa:manage", "2fa:policy",
 }
 
 
@@ -72,8 +76,9 @@ async def _seed_tenant(role_id: int = SUPER_ADMIN):
             {"id": tenant_id, "name": f"Support Test {slug}", "slug": slug},
         )
         await s.execute(
-            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                 "VALUES (:id, :tid, :role, :email, 'hashed', 'Support Tester')"),
+            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                 "                   full_name, totp_enabled) "
+                 "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Support Tester', CAST(:role AS smallint) = 1)"),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"supp-{user_id.hex[:8]}@test.local"},
         )
@@ -341,7 +346,7 @@ async def test_read_only_cannot_touch():
     async with await _client(opened["access_token"]) as c:
         created = await c.post("/api/v1/users", json={
             "email": "should-not-exist@test.local",
-            "password": "Secret123!", "role_id": GUARD,
+            "password": "orbit-lantern-quay-42", "role_id": GUARD,
         })
         deleted = await c.delete(f"/api/v1/users/{uuid.uuid4()}")
 
@@ -366,7 +371,7 @@ async def test_elevated_can_touch_when_it_is_asked_for():
     async with await _client(r.json()["access_token"]) as c:
         created = await c.post("/api/v1/users", json={
             "email": f"elevated-{uuid.uuid4().hex[:8]}@test.local",
-            "password": "Secret123!", "role_id": GUARD,
+            "password": "orbit-lantern-quay-42", "role_id": GUARD,
         })
     assert created.status_code == 201, created.text
 
@@ -390,7 +395,7 @@ async def test_downgrading_a_live_session_bites_immediately():
     async with await _client(opened["access_token"]) as c:
         r = await c.post("/api/v1/users", json={
             "email": f"after-{uuid.uuid4().hex[:8]}@test.local",
-            "password": "Secret123!", "role_id": GUARD,
+            "password": "orbit-lantern-quay-42", "role_id": GUARD,
         })
     assert r.status_code == 403
 

@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.security import (
     InvalidTokenError, decode_access_token, hash_password, verify_password,
 )
+from app.services import password_policy
 from app.core.uploads import MAX_DOCUMENT_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
@@ -276,6 +277,14 @@ async def update_my_account(
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, "That is not your current password"
             )
+        # Checked here rather than only in the browser: a policy the client
+        # enforces is a policy anybody with curl does not have to meet.
+        try:
+            password_policy.validate(body.new_password, role_id=token.role_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+            ) from exc
         updates["hashed_password"] = hash_password(body.new_password)
 
     if not updates:
@@ -297,6 +306,11 @@ async def update_my_account(
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("user:create"))])
 async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db_with_tenant)):
     await _assert_assignable_role(db, body.role_id)
+    try:
+        password_policy.validate(body.password, role_id=body.role_id,
+                                 email=body.email)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     new_id = uuid.uuid4()
     try:
         result = await db.execute(

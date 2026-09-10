@@ -61,8 +61,10 @@ async def _seed_user(role_id: int):
             {"id": tenant_id, "name": f"Self Test {slug}", "slug": slug},
         )
         await s.execute(
-            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                 "VALUES (:id, :tid, :role, :email, :pw, 'Self Tester')"),
+            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                 "                   full_name, totp_enabled) "
+                 "VALUES (:id, :tid, CAST(:role AS smallint), :email, :pw, "
+                 "        'Self Tester', CAST(:role AS smallint) = 1)"),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"self-{user_id.hex[:8]}@test.local",
              "pw": hash_password(KNOWN_PASSWORD)},

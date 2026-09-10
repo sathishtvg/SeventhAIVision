@@ -81,7 +81,7 @@ async def _seed_customer(users: int = 3, sites: int = 2, cameras: int = 4):
             await s.execute(
                 text("INSERT INTO users (id, tenant_id, role_id, email, "
                      "                   hashed_password, full_name) "
-                     "VALUES (:id, :tid, :role, :email, 'hashed', 'Counted')"),
+                     "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Counted')"),
                 {"id": uuid.uuid4(), "tid": tenant_id, "role": GUARD,
                  "email": f"p{i}-{tenant_id.hex[:8]}@test.local"},
             )
@@ -118,8 +118,9 @@ async def _token(role_id: int) -> str:
             {"id": tenant_id, "n": f"Token {slug}", "slug": slug},
         )
         await s.execute(
-            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-                 "VALUES (:id, :tid, :role, :email, 'hashed')"),
+            text("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                 "                   totp_enabled) "
+                 "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', CAST(:role AS smallint) = 1)"),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"tok-{user_id.hex[:8]}@test.local"},
         )

@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.security import decode_access_token, hash_password, InvalidTokenError
 
 
-async def _seed_tenant_and_user(admin_session, email="alice@example.com", password="correct-password", role_id=2):
+async def _seed_tenant_and_user(admin_session, email="alice@example.com", password="orbit-lantern-quay-42", role_id=2):
     tenant_id = uuid.uuid4()
     slug = f"tenant-{tenant_id.hex[:8]}"
     await admin_session.execute(
@@ -19,8 +19,10 @@ async def _seed_tenant_and_user(admin_session, email="alice@example.com", passwo
     user_id = uuid.uuid4()
     await admin_session.execute(
         text(
-            "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-            "VALUES (:id, :tid, :rid, :email, :pw)"
+            "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+            "                   totp_enabled) "
+            "VALUES (:id, :tid, CAST(:rid AS smallint), :email, :pw, "
+            "        CAST(:rid AS smallint) = 1)"
         ),
         {"id": user_id, "tid": tenant_id, "rid": role_id, "email": email, "pw": hash_password(password)},
     )
@@ -34,7 +36,7 @@ async def test_login_valid_credentials(app_client, admin_session):
 
     resp = await app_client.post(
         "/api/v1/auth/login",
-        json={"tenant_slug": slug, "email": "alice@example.com", "password": "correct-password"},
+        json={"tenant_slug": slug, "email": "alice@example.com", "password": "orbit-lantern-quay-42"},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -65,7 +67,7 @@ async def test_access_token_claims(app_client, admin_session):
 
     resp = await app_client.post(
         "/api/v1/auth/login",
-        json={"tenant_slug": slug, "email": "alice@example.com", "password": "correct-password"},
+        json={"tenant_slug": slug, "email": "alice@example.com", "password": "orbit-lantern-quay-42"},
     )
     access_token = resp.json()["access_token"]
     payload = decode_access_token(access_token)
@@ -99,7 +101,7 @@ async def test_refresh_rotates_token(app_client, admin_session):
 
     login_resp = await app_client.post(
         "/api/v1/auth/login",
-        json={"tenant_slug": slug, "email": "alice@example.com", "password": "correct-password"},
+        json={"tenant_slug": slug, "email": "alice@example.com", "password": "orbit-lantern-quay-42"},
     )
     old_refresh = login_resp.json()["refresh_token"]
 

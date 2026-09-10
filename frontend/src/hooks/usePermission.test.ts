@@ -29,7 +29,8 @@ describe('usePermission', () => {
   it('super_admin (roleId=1) runs the platform', () => {
     setUser(1)
     for (const code of ['tenant:manage', 'license:manage', 'audit:read', 'support:manage',
-                        'billing:read', 'billing:manage', 'platform:read']) {
+                        'billing:read', 'billing:manage', 'platform:read',
+                        '2fa:manage']) {
       const { result } = renderHook(() => usePermission(code))
       expect(result.current, code).toBe(true)
     }

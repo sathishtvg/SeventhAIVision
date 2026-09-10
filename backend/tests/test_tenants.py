@@ -68,8 +68,9 @@ async def _seed_super_admin_and_token():
         )
         await s.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-                "VALUES (:id, :tid, 1, :email, :pw)"
+                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                "                   totp_enabled) "
+                "VALUES (:id, :tid, 1, :email, :pw, TRUE)"
             ),
             {
                 "id": user_id,

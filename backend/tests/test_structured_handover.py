@@ -68,8 +68,9 @@ async def _seed_tenant(role_id: int = 2):
     await _exec([
         ("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)",
          {"id": tenant_id, "name": f"Handover Test {slug}", "slug": slug}),
-        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-         "VALUES (:id, :tid, :role, :email, 'hashed', 'HO Tester')",
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+         "                   full_name, totp_enabled) "
+         "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'HO Tester', CAST(:role AS smallint) = 1)",
          {"id": user_id, "tid": tenant_id, "role": role_id,
           "email": f"ho-{user_id.hex[:8]}@test.local"}),
     ])
@@ -81,8 +82,9 @@ async def _seed_user(tenant_id, role_id: int, name: str = "HO Guard"):
 
     user_id = uuid.uuid4()
     await _exec([
-        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-         "VALUES (:id, :tid, :role, :email, 'hashed', :name)",
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+         "                   full_name, totp_enabled) "
+         "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', :name, CAST(:role AS smallint) = 1)",
          {"id": user_id, "tid": tenant_id, "role": role_id, "name": name,
           "email": f"ho-{user_id.hex[:8]}@test.local"}),
     ])

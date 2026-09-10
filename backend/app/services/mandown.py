@@ -139,9 +139,30 @@ async def sweep_pending(db: AsyncSession, redis) -> int:
         """),
     )).mappings().all()
 
+    # The tenant GUC has to be put back after every escalation.
+    #
+    # raise_guard_sos commits — it must, because the occurrence-book entry is
+    # the record that has to survive whatever happens next. set_config(...,
+    # is_local => true) is SET LOCAL, so that commit takes the tenant scope
+    # with it, and the NEXT escalation in this loop inserts with
+    # app.current_tenant = '' and dies casting '' to uuid.
+    #
+    # Which means: two guards down at the same site, the first escalates and
+    # the second silently does not. For a man-down feature that is the worst
+    # possible failure, and it is invisible — the sweep logs one success and
+    # one exception nobody reads.
+    tenant = (await db.execute(
+        text("SELECT current_setting('app.current_tenant', true)")
+    )).scalar()
+
     escalated = 0
     for row in due:
         result = await escalate_event(db, redis, row, by_server=True)
         if result["escalated"]:
             escalated += 1
+        if tenant:
+            await db.execute(
+                text("SELECT set_config('app.current_tenant', :tid, true)"),
+                {"tid": tenant},
+            )
     return escalated

@@ -62,8 +62,9 @@ async def _seed_tenant_and_token(role_id: int = 2):
         )
         await s.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                "VALUES (:id, :tid, :role, :email, 'hashed', 'Usr Tester')"
+                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                "                   full_name, totp_enabled) "
+                "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', 'Usr Tester', CAST(:role AS smallint) = 1)"
             ),
             {"id": user_id, "tid": tenant_id, "role": role_id,
              "email": f"usr-{user_id.hex[:8]}@test.local"},
@@ -84,7 +85,7 @@ async def _create_user(c: AsyncClient) -> dict:
     email = f"user-{uuid.uuid4().hex[:8]}@example.com"
     r = await c.post("/api/v1/users", json={
         "email": email,
-        "password": "Secret123!",
+        "password": "orbit-lantern-quay-42",
         "role_id": 4,
         "full_name": "Test Operator",
     })
@@ -118,7 +119,7 @@ async def test_usr_create_user_returns_201_and_fields():
     async with await _authed(token) as c:
         r = await c.post("/api/v1/users", json={
             "email": email,
-            "password": "Pass123!",
+            "password": "orbit-lantern-quay-42",
             "role_id": 5,
             "full_name": "Guard Smith",
         })
@@ -189,8 +190,11 @@ async def test_usr_create_duplicate_email_returns_409():
     _, _, token = await _seed_tenant_and_token()
     email = f"dup-{uuid.uuid4().hex[:8]}@example.com"
     async with await _authed(token) as c:
-        await c.post("/api/v1/users", json={"email": email, "password": "P", "role_id": 4})
-        r = await c.post("/api/v1/users", json={"email": email, "password": "P", "role_id": 4})
+        # A real password: this test is about the duplicate email, and "P" now
+        # fails the policy before the second request ever gets to be a duplicate.
+        pw = "orbit-lantern-quay-42"
+        await c.post("/api/v1/users", json={"email": email, "password": pw, "role_id": 4})
+        r = await c.post("/api/v1/users", json={"email": email, "password": pw, "role_id": 4})
     assert r.status_code == 409
 
 

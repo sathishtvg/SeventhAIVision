@@ -69,8 +69,9 @@ async def _token(role_id: int) -> str:
     await _sql("INSERT INTO tenants (id, name, slug) VALUES (:id, 'Bill', :slug)",
                {"id": tenant_id, "slug": f"bill-{tenant_id.hex[:10]}"})
     await _sql(
-        "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-        "VALUES (:id, :tid, :role, :email, 'hashed')",
+        "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+        "                   totp_enabled) "
+        "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', CAST(:role AS smallint) = 1)",
         {"id": user_id, "tid": tenant_id, "role": role_id,
          "email": f"bill-{user_id.hex[:8]}@test.local"})
     return create_access_token(str(user_id), str(tenant_id), role_id)
@@ -94,8 +95,9 @@ async def _customer_on_a_plan(cameras: int = 10, sites: int = 2, users: int = 5)
                {"id": tenant_id, "slug": f"billed-{tenant_id.hex[:10]}"})
     for i in range(users):
         await _sql(
-            "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-            "VALUES (:id, :tid, :role, :email, 'hashed')",
+            "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+            "                   totp_enabled) "
+            "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', CAST(:role AS smallint) = 1)",
             {"id": uuid.uuid4(), "tid": tenant_id, "role": GUARD,
              "email": f"u{i}-{tenant_id.hex[:8]}@test.local"})
     site_ids = []

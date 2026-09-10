@@ -33,7 +33,7 @@ async def test_user_crud_round_trip(app_client, admin_session):
     # Create
     create_resp = await app_client.post(
         "/api/v1/users",
-        json={"email": f"op@{tenant_id.hex[:8]}.test", "password": "oppass", "role_id": 4, "full_name": "Operator"},
+        json={"email": f"op@{tenant_id.hex[:8]}.test", "password": "orbit-lantern-quay-42", "role_id": 4, "full_name": "Operator"},
         headers=headers,
     )
     assert create_resp.status_code == 201

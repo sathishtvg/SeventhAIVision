@@ -68,8 +68,9 @@ async def _seed_tenant_with_platform_admin():
         ):
             await s.execute(
                 text(
-                    "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                    "VALUES (:id, :tid, :role, :email, 'hashed', :name)"
+                    "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+                    "                   full_name, totp_enabled) "
+                    "VALUES (:id, :tid, CAST(:role AS smallint), :email, 'hashed', :name, CAST(:role AS smallint) = 1)"
                 ),
                 {"id": uid, "tid": tenant_id, "role": role, "name": label,
                  "email": f"{label.split()[0].lower()}-{uid.hex[:8]}@test.local"},
@@ -211,7 +212,7 @@ async def test_pag_admin_can_still_manage_ordinary_users():
     async with await _authed(env["admin_token"]) as c:
         created = await c.post("/api/v1/users", json={
             "email": f"ordinary-{uuid.uuid4().hex[:8]}@example.com",
-            "password": "Secret123!",
+            "password": "orbit-lantern-quay-42",
             "role_id": 4,
             "full_name": "Ordinary Operator",
         })

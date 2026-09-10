@@ -15,8 +15,10 @@ async def _seed_user_with_role(admin_session, role_id: int) -> tuple[uuid.UUID, 
     user_id = uuid.uuid4()
     await admin_session.execute(
         text(
-            "INSERT INTO users (id, tenant_id, role_id, email, hashed_password) "
-            "VALUES (:id, :tid, :rid, :email, :pw)"
+            "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+            "                   totp_enabled) "
+            "VALUES (:id, :tid, CAST(:rid AS smallint), :email, :pw, "
+            "        CAST(:rid AS smallint) = 1)"
         ),
         {"id": user_id, "tid": tenant_id, "rid": role_id, "email": f"{user_id}@example.com", "pw": hash_password("x")},
     )

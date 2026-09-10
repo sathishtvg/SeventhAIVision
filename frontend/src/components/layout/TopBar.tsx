@@ -10,6 +10,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import DevicesIcon from '@mui/icons-material/Devices'
+import SecurityIcon from '@mui/icons-material/Security'
 import LogoutIcon from '@mui/icons-material/Logout'
 import LanguageIcon from '@mui/icons-material/Language'
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
@@ -18,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PRODUCT_NAME } from '@/lib/brand'
 import { getMySessions, revokeMySession, revokeAllMySessions } from '@/api/sessions'
 import { getMyAccount, updateMyAccount } from '@/api/users'
+import { enable2FA, get2FAStatus, setup2FA } from '@/api/guards'
 import { useAuthStore } from '@/store/auth'
 import { useNotificationStore } from '@/store/notifications'
 import { useAlertSoundStore } from '@/store/alertSound'
@@ -53,12 +55,43 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
     enabled: open,
   })
 
+  const { data: twoFactor } = useQuery({
+    queryKey: ['2fa-status'],
+    queryFn: get2FAStatus,
+    enabled: open,
+  })
+
+  const startTotp = useMutation({
+    mutationFn: setup2FA,
+    onSuccess: (data) => { setTotpSetup(data); setTotpError('') },
+    onError: (e: { response?: { data?: { detail?: string } } }) =>
+      setTotpError(e.response?.data?.detail || 'Could not start setup'),
+  })
+
+  const confirmTotp = useMutation({
+    mutationFn: () => enable2FA(totpCode),
+    onSuccess: () => {
+      setTotpSetup(null); setTotpCode(''); setTotpError('')
+      queryClient.invalidateQueries({ queryKey: ['2fa-status'] })
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) =>
+      setTotpError(e.response?.data?.detail || 'That code was not accepted'),
+  })
+
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saved, setSaved] = useState(false)
+
+  // Two-factor. The API for this has existed all along with nothing calling
+  // it, so a Super Admin required to enrol had no way to — the requirement
+  // pointed at a door that was not there.
+  const [totpSetup, setTotpSetup] = useState<
+    { secret: string; qr_code_uri: string; manual_entry_key: string } | null>(null)
+  const [totpCode, setTotpCode] = useState('')
+  const [totpError, setTotpError] = useState('')
 
   useEffect(() => {
     if (!open || !me) return
@@ -155,6 +188,70 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
             </Button>
           </Box>
         </Box>
+
+        <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <SecurityIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+          <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.68rem' }}>
+            Two-Factor Authentication
+          </Typography>
+          {twoFactor?.enabled && (
+            <Chip label="on" size="small"
+                  sx={{ height: 17, fontSize: '0.58rem',
+                        bgcolor: 'rgba(0,217,192,0.18)', color: '#00D9C0' }} />
+          )}
+        </Box>
+
+        {totpError && <Alert severity="warning" sx={{ mb: 1.5 }}>{totpError}</Alert>}
+
+        {twoFactor?.enabled ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Your account is protected by an authenticator app.
+          </Typography>
+        ) : totpSetup ? (
+          <Box sx={{ mb: 1.5 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Scan this with Google Authenticator or Authy, then enter the code
+              it shows.
+            </Typography>
+            <Box
+              component="img" src={totpSetup.qr_code_uri} alt="Two-factor QR code"
+              sx={{ width: 168, height: 168, borderRadius: 1, bgcolor: '#fff', p: 1 }}
+            />
+            {/* Some authenticators cannot scan, and a QR code with no typed
+                fallback is a dead end on a desktop without a camera. */}
+            <Typography variant="caption" color="text.secondary"
+                        sx={{ display: 'block', mt: 0.5, fontFamily: 'monospace' }}>
+              Or enter this key: {totpSetup.manual_entry_key}
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+              <TextField
+                label="6-digit code" size="small" value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                slotProps={{ htmlInput: { maxLength: 6, inputMode: 'numeric' } }}
+              />
+              <Button
+                variant="contained" size="small"
+                disabled={totpCode.length !== 6 || confirmTotp.isPending}
+                onClick={() => confirmTotp.mutate()}
+              >
+                Turn on
+              </Button>
+            </Stack>
+          </Box>
+        ) : (
+          <Box sx={{ mb: 1.5 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Add a second step to signing in. Required for the platform owner —
+              that account can reach every tenant.
+            </Typography>
+            <Button size="small" variant="outlined" disabled={startTotp.isPending}
+                    onClick={() => startTotp.mutate()}>
+              Set up two-factor
+            </Button>
+          </Box>
+        )}
 
         <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
 

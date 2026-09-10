@@ -129,7 +129,7 @@ class TestBHikvision:
         with patch("app.services.nvr_service.httpx.AsyncClient", mock_cls):
             r = await auth_client.post("/api/v1/nvr/hikvision/probe", json={
                 "host": "192.168.1.64", "port": 80,
-                "username": "admin", "password": "Admin123",
+                "username": "admin", "password": "orbit-lantern-quay-42",
             })
         assert r.status_code == 200
         info = r.json()["device_info"]
@@ -141,7 +141,7 @@ class TestBHikvision:
         with patch("app.services.nvr_service.httpx.AsyncClient", mock_cls):
             r = await auth_client.post("/api/v1/nvr/hikvision/probe", json={
                 "host": "192.168.1.64", "port": 80,
-                "username": "admin", "password": "Admin123",
+                "username": "admin", "password": "orbit-lantern-quay-42",
             })
         assert r.status_code == 200
         channels = r.json()["channels"]
@@ -205,7 +205,7 @@ class TestBHikvision:
         with patch("app.services.nvr_service.httpx.AsyncClient", mock_cls):
             r = await auth_client.post("/api/v1/nvr/hikvision/probe", json={
                 "host": "192.168.1.64", "port": 80,
-                "username": "admin", "password": "Admin123",
+                "username": "admin", "password": "orbit-lantern-quay-42",
             })
         assert r.status_code == 502
 
@@ -218,7 +218,7 @@ class TestCDahua:
         with patch("app.services.nvr_service.httpx.AsyncClient", mock_cls):
             r = await auth_client.post("/api/v1/nvr/dahua/probe", json={
                 "host": "192.168.1.108", "port": 80,
-                "username": "admin", "password": "Admin123",
+                "username": "admin", "password": "orbit-lantern-quay-42",
             })
         assert r.status_code == 200
         info = r.json()["device_info"]
@@ -230,7 +230,7 @@ class TestCDahua:
         with patch("app.services.nvr_service.httpx.AsyncClient", mock_cls):
             r = await auth_client.post("/api/v1/nvr/dahua/probe", json={
                 "host": "192.168.1.108", "port": 80,
-                "username": "admin", "password": "Admin123",
+                "username": "admin", "password": "orbit-lantern-quay-42",
             })
         assert r.status_code == 200
         channels = r.json()["channels"]
@@ -293,7 +293,7 @@ _CONN_PAYLOAD = {
     "host": "192.168.1.200",
     "port": 80,
     "username": "admin",
-    "password": "Admin123",
+    "password": "orbit-lantern-quay-42",
     "adapter_type": "hikvision",
 }
 
