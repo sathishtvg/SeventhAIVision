@@ -193,3 +193,82 @@ import), run via `docker exec docker-api-1 python -m pytest`.
 screens, two report formats, a scheduler and an email queue. It will be delivered
 across multiple working sessions, phase by phase, each verified before the next.
 Anything reported as done will have been run.
+
+---
+
+## 13. Addendum — five things the first pass missed
+
+Re-examined 2026-09-11 before starting Phase 2. Each verified against the
+running system, not assumed.
+
+### 13.1 Evidence retention would destroy patrol evidence (critical)
+
+`scheduler_main.purge_expired_evidence()` deletes rows from `evidence` once they
+pass that tenant's `evidence.retention_days` setting — **file first, then row**.
+
+If patrol snapshots are written into `evidence` like any other media, they will
+be purged on that schedule. §42 requires a completed patrol's evidence to remain
+valid indefinitely, and a PDF report whose images have been deleted is worse than
+no report: it still renders, and the missing frame looks like a capture failure
+rather than a retention policy.
+
+**Decision:** patrol snapshots must be exempt from retention purging. Options, in
+preference order:
+
+1. Store them under `EVIDENCE_ROOT` but in `virtual_patrol_session_cameras`, not
+   the `evidence` table — the purge only walks `evidence`.
+2. Add a `retain_indefinitely` flag to `evidence` and teach the purge to honour
+   it (touches an existing, working subsystem — avoid unless option 1 fails).
+
+Option 1 is chosen: it reuses the storage root and the authorized-download
+pattern without modifying a live retention job.
+
+### 13.2 Virtual Patrolling should be a billable module
+
+`billing_modules` holds 19 modules (`patrol`, `vms`, `lpr`, `face`, `guard`,
+`reports`…). The `patrol` module is the **physical** patrol feature.
+
+Virtual Patrolling is a distinct sellable capability, and the Super Admin pricing
+engine built in migrations 0109–0111 prices per module. Shipping it without a
+module means it can never be charged for.
+
+**Decision:** seed a `virtual_patrol` module in `billing_modules` as part of the
+Phase 2 migration.
+
+**Caveat:** `tenant_module_licenses` is currently **billing metadata with no
+runtime enforcement** — there is no `require_module()` dependency anywhere. So
+the module makes the feature sellable; it does not gate access. Building a
+licence gate is a separate decision that would affect all 19 existing modules and
+is out of scope here.
+
+### 13.3 Sites have no timezone
+
+`sites` has no timezone or tz column. §6 requires schedules to run in a
+configured timezone, so the timezone lives on
+`virtual_patrol_schedules.timezone` with no site-level default to inherit.
+
+Default to `Asia/Singapore` (every customer is a Singapore security agency), and
+store it explicitly rather than reading the server clock — a scheduler that
+assumes the host timezone breaks the moment the stack is deployed anywhere else,
+and silently shifts every patrol by an hour at DST if a customer ever runs
+outside SGT.
+
+### 13.4 The realtime architecture does exist — correction
+
+The first pass reported WebSockets as unverified. They exist:
+`backend/app/realtime/connection_manager.py` and
+`backend/app/realtime/router.py`. §36 events hook in there. **Do not introduce a
+second realtime mechanism.**
+
+### 13.5 licensing.py is not module licensing
+
+`services/licensing.py` is Ed25519 **licence-key verification** for on-premise /
+Windows installations (`verify_licence`, `check_binding`). It is unrelated to
+per-tenant module entitlements and must not be conflated with them.
+
+### Not a gap, but decided
+
+**Execution stays on web, not mobile.** Physical patrols are mobile because the
+guard is walking. A virtual patrol officer is at a monitoring station looking at
+camera feeds, so the execution screen belongs in the web app. The mobile app is
+not in scope for this module.
