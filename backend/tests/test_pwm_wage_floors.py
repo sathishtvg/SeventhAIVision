@@ -12,6 +12,7 @@ Sections:
   C — The floor resolves as of the PERIOD, not today (2 tests)
   D — A tenant may raise its own bar, never lower the law (3 tests)
   E — Enforcement at the point pay is set (4 tests)
+  F — Payroll reporting and the compliance report (3 tests)
 """
 from __future__ import annotations
 
@@ -334,3 +335,69 @@ async def test_a_guard_with_no_grade_is_not_blocked(app_client):
     r = await app_client.put(f"/api/v1/users/{gid}",
                              json={"monthly_salary": 200}, headers=headers)
     assert r.status_code == 200, r.text
+
+
+# ─── F. Payroll reporting and the compliance report ──────────────────────────
+#
+# Payroll REPORTS below-floor payslips and still finalises. The wage is refused
+# earlier, on save. A run that will not finalise means guards are not paid on
+# time, which is its own violation.
+
+
+@pytest.mark.asyncio
+async def test_the_compliance_report_separates_unassessed_from_compliant(app_client):
+    """An agency reading "0 below floor" has to know how much of that is a clean
+    bill of health and how much is nobody having looked yet."""
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    tid, headers = await _tenant_with_admin()
+    await _guard(tid, grade=GRADE, monthly=Decimal("2600"))   # compliant
+    await _guard(tid, grade=None, monthly=Decimal("900"))     # not assessed
+
+    r = await app_client.get("/api/v1/payroll/pwm-compliance", headers=headers)
+    assert r.status_code == 200, r.text
+    s = r.json()["summary"]
+    assert s["compliant"] == 1
+    assert s["not_assessed"] == 1
+    assert s["below_floor"] == 0
+    assert s["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_the_compliance_report_finds_someone_already_below_floor(app_client):
+    """The reason this report exists. Blocking on save protects wages set from
+    now on; it finds nobody who was already underpaid when the check was
+    switched on — which on day one is the whole workforce."""
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    tid, headers = await _tenant_with_admin()
+    gid = await _guard(tid, grade=GRADE, monthly=Decimal("1800"))
+
+    r = await app_client.get("/api/v1/payroll/pwm-compliance", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["summary"]["below_floor"] == 1
+    flagged = [g for g in body["guards"] if g["verdict"] == "below_floor"]
+    assert flagged[0]["user_id"] == str(gid)
+    assert Decimal(str(flagged[0]["floor_applied"])) == Decimal("2500.00")
+
+
+@pytest.mark.asyncio
+async def test_a_payroll_run_reports_below_floor_pay_and_still_finalises(app_client):
+    """Both halves matter. The exception must be raised, AND the run must
+    complete — payroll's job is to say what happened, not to withhold pay for
+    hours somebody has already worked."""
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    tid, headers = await _tenant_with_admin()
+    gid = await _guard(tid, grade=GRADE, monthly=Decimal("1800"))
+
+    r = await app_client.post(
+        "/api/v1/payroll/runs",
+        json={"period_start": "2026-03-01", "period_end": "2026-03-31"},
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+
+    flagged = [e for e in body["pwm_exceptions"] if e["user_id"] == str(gid)]
+    assert flagged, f"expected a PWM exception for the underpaid guard: {body['pwm_exceptions']}"
+    assert Decimal(str(flagged[0]["floor_applied"])) == Decimal("2500.00")
+    assert body["id"], "the run must still have been created"
