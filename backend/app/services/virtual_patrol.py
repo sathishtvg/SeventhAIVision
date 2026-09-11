@@ -293,13 +293,20 @@ async def refresh_progress(db: AsyncSession, session_id: str) -> dict:
         camera_count=counts["cameras"], completed=counts["done"],
         unavailable=counts["unavailable"],
     )
+    # camera_count is rewritten here too, not just completed_camera_count.
+    # It is set at creation and would otherwise stay frozen while the completed
+    # tally is recounted from the rows -- so any divergence renders as "5 / 3",
+    # a figure that is not merely wrong but obviously nonsense to whoever reads
+    # it. Both numbers now come from the same count, so they cannot disagree.
     await db.execute(text("""
         UPDATE virtual_patrol_sessions
-           SET completed_camera_count = :done,
+           SET camera_count = :cameras,
+               completed_camera_count = :done,
                answered_question_count = :answered,
                updated_at = now()
          WHERE id = CAST(:id AS uuid)
-    """), {"done": counts["done"], "answered": counts["answered"], "id": session_id})
+    """), {"cameras": counts["cameras"], "done": counts["done"],
+           "answered": counts["answered"], "id": session_id})
 
     return {
         "camera_count": counts["cameras"],
