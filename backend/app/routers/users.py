@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.security import (
     InvalidTokenError, decode_access_token, hash_password, verify_password,
 )
-from app.services import password_policy
+from app.services import password_policy, pwm
 from app.core.uploads import MAX_DOCUMENT_UPLOAD_BYTES, read_upload_limited
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
@@ -25,6 +25,20 @@ router = APIRouter(prefix="/api/v1/users", tags=["users"])
 WorkPassType = Literal["citizen", "pr", "ep", "sp", "wp"]
 EmploymentType = Literal["full_time", "part_time", "contract"]
 
+# The seven Progressive Wage Model grades, matching ck_users_pwm_grade
+# (migration 0094) and pwm_wage_floors (migration 0115). The grade is what a
+# guard's basic wage is checked against, so it has to be settable — until now
+# the column existed and nothing could write to it.
+PwmGrade = Literal[
+    "security_officer",
+    "senior_security_officer",
+    "security_supervisor",
+    "senior_security_supervisor",
+    "security_site_supervisor",
+    "senior_security_site_supervisor",
+    "chief_security_officer",
+]
+
 # Employee profile fields shared by UserCreate/UserUpdate and the SELECT
 # column lists below (ShiftSecure Phase 1 — see plan). Nullable, filled in
 # incrementally via PUT.
@@ -34,6 +48,7 @@ _EMPLOYEE_FIELDS = (
     "department", "date_joined", "bank_name", "bank_account_number",
     "emergency_contact_name", "emergency_contact_phone",
     "hourly_rate", "daily_rate", "monthly_salary",
+    "pwm_grade",
     "profile_photo_path",
     # Relief officer: exempt from "a guard stands one post" (migration 0101),
     # so they may hold duty postings at several sites. The roster still puts
@@ -73,6 +88,7 @@ class UserUpdate(BaseModel):
     hourly_rate: float | None = None
     daily_rate: float | None = None
     monthly_salary: float | None = None
+    pwm_grade: PwmGrade | None = None
     is_standby: bool | None = None
 
 
@@ -354,6 +370,71 @@ async def get_user(
     return dict(row._mapping)
 
 
+#: Any of these changing can move a guard across the PWM floor.
+_PWM_WATCHED_FIELDS = frozenset(
+    {"pwm_grade", "employment_type", "monthly_salary", "daily_rate", "hourly_rate"}
+)
+
+
+async def _assert_pwm_floor_respected(
+    db: AsyncSession, user_id: uuid.UUID, updates: dict
+) -> None:
+    """Refuse to save a basic wage below the guard's PWM floor.
+
+    Blocking here rather than at payroll is deliberate. This is the moment the
+    mistake is cheap to fix and the person who can fix it is looking at the
+    screen; payroll day is the worst possible time to discover a data problem,
+    and a blocked run means guards are not paid, which is its own violation.
+    Payroll therefore reports below-floor payslips and still finalises.
+
+    THE GRADE IS WATCHED AS WELL AS THE PAY. Promoting a guard from Security
+    Officer to Supervisor can make an UNCHANGED wage non-compliant, because the
+    floor moved rather than the salary. A check that only fired on rate changes
+    would let every promotion through — which is precisely when pay is most
+    likely to be wrong.
+
+    The check runs against the RESULTING state, not the submitted fields: a PUT
+    that sets only a grade still has to be judged against the pay already on the
+    row, and vice versa.
+    """
+    if not (_PWM_WATCHED_FIELDS & updates.keys()):
+        return
+
+    current = (await db.execute(
+        text("SELECT pwm_grade, employment_type, monthly_salary, daily_rate, "
+             "       hourly_rate "
+             "  FROM users WHERE id = :id"),
+        {"id": user_id},
+    )).mappings().first()
+    if current is None:
+        return  # the UPDATE itself answers 404; nothing to assess
+
+    after = dict(current)
+    after.update({k: v for k, v in updates.items() if k in _PWM_WATCHED_FIELDS})
+
+    if not after.get("pwm_grade"):
+        return  # no grade is "not assessed", not a refusal
+
+    # As of today, because that is when this wage takes effect. Payroll resolves
+    # the floor as of the PERIOD instead, so a restated month is judged by the
+    # rates that were in force then.
+    floor = (await db.execute(
+        text("SELECT pwm_effective_floor(CAST(:g AS varchar), CURRENT_DATE)"),
+        {"g": after["pwm_grade"]},
+    )).scalar()
+
+    verdict = pwm.assess(
+        pwm_grade=after.get("pwm_grade"),
+        employment_type=after.get("employment_type"),
+        floor=floor,
+        monthly_salary=after.get("monthly_salary"),
+        daily_rate=after.get("daily_rate"),
+        hourly_rate=after.get("hourly_rate"),
+    )
+    if verdict["verdict"] == pwm.BELOW_FLOOR:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, verdict["reason"])
+
+
 @router.put("/{user_id}", dependencies=[Depends(require_permission("user:update"))])
 async def update_user(
     user_id: uuid.UUID,
@@ -371,6 +452,10 @@ async def update_user(
         updates["hashed_password"] = hash_password(body.new_password)
     if not updates:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No fields to update")
+
+    # Before the write, not after: a wage below the statutory floor should never
+    # reach the row in the first place.
+    await _assert_pwm_floor_respected(db, user_id, updates)
 
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     updates["id"] = user_id

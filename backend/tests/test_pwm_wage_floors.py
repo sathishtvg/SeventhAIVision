@@ -11,6 +11,7 @@ Sections:
   B — Pay bases: full-time, daily, hourly, part-time (4 tests)
   C — The floor resolves as of the PERIOD, not today (2 tests)
   D — A tenant may raise its own bar, never lower the law (3 tests)
+  E — Enforcement at the point pay is set (4 tests)
 """
 from __future__ import annotations
 
@@ -40,6 +41,10 @@ ADMIN_DATABASE_URL = os.environ.get(
 
 GRADE = "security_officer"
 SUPERVISOR = "security_supervisor"
+# Reserved for the "no rate on file" test. pwm_wage_floors is shared across every
+# tenant by design, so a test asking whether a grade has no rate must use one no
+# other test seeds — otherwise it is really asking who ran first.
+CHIEF = "chief_security_officer"
 
 
 async def _sql(statement: str, params: dict | None = None):
@@ -170,11 +175,17 @@ async def test_a_rate_rise_does_not_retroactively_fail_last_year():
 
 @pytest.mark.asyncio
 async def test_a_period_before_any_rate_returns_null():
-    """Not zero. A floor of zero makes every wage compliant."""
-    await _statutory(SUPERVISOR, date(2026, 1, 1), "3000")
+    """Not zero. A floor of zero makes every wage compliant.
+
+    Uses a grade no other test seeds, and a date long before any of them. The
+    statutory table is shared platform-wide by design, so a test that picks a
+    popular grade and asks "is there nothing here" is really asking whether any
+    other test got there first.
+    """
+    await _statutory(CHIEF, date(2026, 1, 1), "4000")
     got = (await _sql(
         "SELECT pwm_effective_floor(:g, CAST(:d AS date))",
-        {"g": SUPERVISOR, "d": date(2020, 1, 1)}))[0][0]
+        {"g": CHIEF, "d": date(2000, 1, 1)}))[0][0]
     assert got is None
 
 
@@ -234,3 +245,92 @@ async def test_the_statutory_floor_needs_no_tenant_scope_to_read():
         " WHERE grade = :g AND effective_from = CAST(:d AS date)",
         {"g": GRADE, "d": date(2026, 1, 1)})
     assert rows and Decimal(rows[0][0]) == Decimal("2500.00")
+
+
+# ─── E. Enforcement at the point pay is set ──────────────────────────────────
+#
+# Blocking on save rather than at payroll is deliberate: this is the moment the
+# mistake is cheap to fix and somebody who can fix it is looking at the screen.
+
+from app.core.security import create_access_token, hash_password  # noqa: E402
+
+
+async def _tenant_with_admin():
+    tid, admin_id = uuid.uuid4(), uuid.uuid4()
+    await _sql("INSERT INTO tenants (id, name, slug) VALUES (:id, 'PWM Co', :slug)",
+               {"id": tid, "slug": f"pwmapi-{tid.hex[:10]}"})
+    await _sql(
+        "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
+        "VALUES (:id, :t, CAST(2 AS smallint), :e, :p, 'PWM Admin')",
+        {"id": admin_id, "t": tid, "e": f"admin-{tid.hex[:8]}@pwm.test",
+         "p": hash_password("orbit-lantern-quay-42")},
+    )
+    return tid, {"Authorization": f"Bearer {create_access_token(str(admin_id), str(tid), 2)}"}
+
+
+async def _guard(tenant_id, *, grade=None, monthly=None):
+    gid = uuid.uuid4()
+    await _sql(
+        "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, "
+        "                   full_name, employment_type, pwm_grade, monthly_salary) "
+        "VALUES (:id, :t, CAST(5 AS smallint), :e, 'x', 'A Guard', 'full_time', "
+        "        :g, :m)",
+        {"id": gid, "t": tenant_id, "e": f"g-{gid.hex[:8]}@pwm.test",
+         "g": grade, "m": monthly},
+    )
+    return gid
+
+
+@pytest.mark.asyncio
+async def test_saving_a_wage_below_the_floor_is_refused(app_client):
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    tid, headers = await _tenant_with_admin()
+    gid = await _guard(tid, grade=GRADE, monthly=Decimal("2600"))
+
+    r = await app_client.put(f"/api/v1/users/{gid}",
+                             json={"monthly_salary": 2400}, headers=headers)
+    assert r.status_code == 422, r.text
+    assert "floor" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_a_promotion_that_leaves_pay_behind_is_refused(app_client):
+    """The test that justifies watching the grade as well as the pay.
+
+    Nothing about this guard's salary changes. Promoting them moves the FLOOR,
+    and a check that fired only on rate changes would wave every promotion
+    through — which is exactly when pay is most likely to be wrong.
+    """
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    await _statutory(SUPERVISOR, date(2020, 1, 1), "3500")
+    tid, headers = await _tenant_with_admin()
+    gid = await _guard(tid, grade=GRADE, monthly=Decimal("2600"))
+
+    r = await app_client.put(f"/api/v1/users/{gid}",
+                             json={"pwm_grade": SUPERVISOR}, headers=headers)
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
+async def test_a_compliant_wage_saves_normally(app_client):
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    tid, headers = await _tenant_with_admin()
+    gid = await _guard(tid, grade=GRADE, monthly=Decimal("2600"))
+
+    r = await app_client.put(f"/api/v1/users/{gid}",
+                             json={"monthly_salary": 2700}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert float(r.json()["monthly_salary"]) == 2700.0
+
+
+@pytest.mark.asyncio
+async def test_a_guard_with_no_grade_is_not_blocked(app_client):
+    """Unassessed is not the same as failing. An agency that has not graded its
+    staff yet must still be able to run its payroll and edit its people."""
+    await _statutory(GRADE, date(2020, 1, 1), "2500")
+    tid, headers = await _tenant_with_admin()
+    gid = await _guard(tid, grade=None, monthly=Decimal("100"))
+
+    r = await app_client.put(f"/api/v1/users/{gid}",
+                             json={"monthly_salary": 200}, headers=headers)
+    assert r.status_code == 200, r.text
