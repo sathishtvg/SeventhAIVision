@@ -59,6 +59,7 @@ export const PAGE_LABELS = {
   // ── People & money ────────────────────────────────────────────────────
   users: { title: 'Users', subtitle: 'Staff accounts, roles, employment details, pay rates and site access' },
   roles: { title: 'Roles', subtitle: 'What each role is allowed to see and do' },
+  'virtual-patrol': { title: 'Virtual Patrolling', subtitle: 'Scheduled camera-by-camera inspections, with a real snapshot and a signed-off answer for every question' },
   payroll: { title: 'Payroll', subtitle: 'Pay runs with CPF and overtime calculated from real worked hours' },
   invoicing: { title: 'Client Invoicing', subtitle: 'Bill your clients for guard hours delivered at their sites' },
   sites: { title: 'Sites', subtitle: 'The premises you protect — geofence, billing and recording policy per site' },

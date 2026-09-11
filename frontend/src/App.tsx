@@ -45,6 +45,7 @@ import { BarriersPage } from '@/pages/Barriers'
 import { MapViewPage } from '@/pages/MapView'
 import { LeavePage } from '@/pages/Leave'
 import { PayrollPage } from '@/pages/Payroll'
+import VirtualPatrolPage from '@/pages/VirtualPatrol'
 import { InvoicingPage } from '@/pages/Invoicing'
 import { PostOrdersPage } from '@/pages/PostOrders'
 import { KeyRegisterPage } from '@/pages/KeyRegister'
@@ -173,6 +174,7 @@ export default function App() {
         <Route path="map" element={<MapViewPage />} />
         <Route path="leave" element={<LeavePage />} />
         <Route path="payroll" element={<PayrollPage />} />
+        <Route path="virtual-patrol" element={<VirtualPatrolPage />} />
         <Route path="invoicing" element={<InvoicingPage />} />
         <Route path="post-orders" element={<PostOrdersPage />} />
         <Route path="key-register" element={<KeyRegisterPage />} />
