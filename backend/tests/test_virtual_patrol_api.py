@@ -10,6 +10,7 @@ Sections:
   C — Cameras belong to the site they are patrolling (2 tests)
   D — Execution is scoped to the assigned officer (2 tests)
   E — The list endpoints the pages open with (4 tests)
+  F — A failed check becomes an incident (4 tests)
 """
 from __future__ import annotations
 
@@ -309,3 +310,115 @@ async def test_listing_sessions_works_with_a_status_filter():
         r = await c.get(f"{BASE}/sessions", params={"status": "SCHEDULED"},
                         headers=w["admin_h"])
     assert r.status_code == 200, r.text
+
+
+# ─── F. A failed check becomes an incident ───────────────────────────────────
+#
+# Through the EXISTING incident system, referencing the camera, so the finding
+# lands in the Command Centre beside everything else about that camera rather
+# than in a parallel world of its own.
+
+
+async def _patrol_ready_to_answer(w, failure_action="CREATE_INCIDENT",
+                                  question_type="YES_NO"):
+    """A schedule with one camera and one question, run to a live session."""
+    from app.services import virtual_patrol as vp
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    engine = create_async_engine(ADMIN_DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    sched, sc = uuid.uuid4(), uuid.uuid4()
+    try:
+        async with factory() as s:
+            await s.execute(text(
+                "INSERT INTO virtual_patrol_schedules "
+                "  (id, tenant_id, site_id, name, schedule_type, start_date, patrol_time) "
+                "VALUES (:i,:t,:s,'Morning Patrol','DAILY','2026-01-01','07:00')"),
+                {"i": sched, "t": w["tenant"], "s": w["site"]})
+            await s.execute(text(
+                "INSERT INTO virtual_patrol_schedule_cameras "
+                "  (id, tenant_id, schedule_id, camera_id, sequence_no) "
+                "VALUES (:i,:t,:sc,:c,1)"),
+                {"i": sc, "t": w["tenant"], "sc": sched, "c": w["cam"]})
+            await s.execute(text(
+                "INSERT INTO virtual_patrol_questions "
+                "  (tenant_id, schedule_camera_id, question_text, question_type, "
+                "   sequence_no, failure_action) "
+                "VALUES (:t,:sc,'Is the fire exit clear?',:ty,1,:a)"),
+                {"t": w["tenant"], "sc": sc, "ty": question_type, "a": failure_action})
+            await s.commit()
+
+        async with factory() as s:
+            await s.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                            {"t": str(w["tenant"])})
+            created = await vp.create_session(
+                s, schedule_id=str(sched),
+                scheduled_for=datetime(2026, 8, 1, 7, 0, tzinfo=timezone.utc),
+                officer_user_id=str(w["guard"]))
+            await s.commit()
+
+        async with factory() as s:
+            q = (await s.execute(text(
+                "SELECT q.id, c.id AS cam FROM virtual_patrol_session_questions q "
+                "  JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id "
+                " WHERE c.session_id = CAST(:i AS uuid)"),
+                {"i": created["session_id"]})).mappings().first()
+        return created["session_id"], str(q["cam"]), str(q["id"])
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_check_raises_an_incident(app_client=None):
+    w = await _world()
+    sess, cam, q = await _patrol_ready_to_answer(w)
+    async with _client() as c:
+        r = await c.post(f"{BASE}/sessions/{sess}/cameras/{cam}/answers",
+                         json={"answers": [{"session_question_id": q, "answer": "NO"}]},
+                         headers=w["guard_h"])
+    assert r.status_code == 200, r.text
+    assert len(r.json()["incidents_raised"]) == 1, r.json()
+
+
+@pytest.mark.asyncio
+async def test_a_passing_check_raises_nothing():
+    """The common case. An incident for every answered question would make the
+    queue useless within a day."""
+    w = await _world()
+    sess, cam, q = await _patrol_ready_to_answer(w)
+    async with _client() as c:
+        r = await c.post(f"{BASE}/sessions/{sess}/cameras/{cam}/answers",
+                         json={"answers": [{"session_question_id": q, "answer": "YES"}]},
+                         headers=w["guard_h"])
+    assert r.status_code == 200, r.text
+    assert r.json()["incidents_raised"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_question_set_to_record_only_raises_nothing():
+    """The configuration is the decision. A negative answer on a NONE question
+    is still recorded as an exception, but nobody asked for an incident."""
+    w = await _world()
+    sess, cam, q = await _patrol_ready_to_answer(w, failure_action="NONE")
+    async with _client() as c:
+        r = await c.post(f"{BASE}/sessions/{sess}/cameras/{cam}/answers",
+                         json={"answers": [{"session_question_id": q, "answer": "NO"}]},
+                         headers=w["guard_h"])
+    assert r.status_code == 200, r.text
+    assert r.json()["incidents_raised"] == []
+
+
+@pytest.mark.asyncio
+async def test_answering_twice_does_not_raise_two_incidents():
+    """An officer correcting an answer, or a retried request, must not produce a
+    second incident for one finding."""
+    w = await _world()
+    sess, cam, q = await _patrol_ready_to_answer(w)
+    async with _client() as c:
+        first = await c.post(f"{BASE}/sessions/{sess}/cameras/{cam}/answers",
+                             json={"answers": [{"session_question_id": q, "answer": "NO"}]},
+                             headers=w["guard_h"])
+        second = await c.post(f"{BASE}/sessions/{sess}/cameras/{cam}/answers",
+                              json={"answers": [{"session_question_id": q, "answer": "NO"}]},
+                              headers=w["guard_h"])
+    assert first.json()["incidents_raised"] == second.json()["incidents_raised"]
+    assert len(second.json()["incidents_raised"]) == 1

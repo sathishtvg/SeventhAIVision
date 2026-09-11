@@ -626,8 +626,20 @@ async def submit_answers(session_id: str, session_camera_id: str, body: AnswersS
             " WHERE id = CAST(:id AS uuid)"),
             {"n": body.officer_notes, "id": session_camera_id})
 
+    # Raised AFTER every answer is written, not inside the loop. An incident is
+    # a fact about a finished submission, and raising one mid-loop would leave
+    # an incident pointing at a camera whose remaining answers then failed
+    # validation and were never saved.
+    incidents: list[str] = []
+    for item in body.answers:
+        raised = await vp.raise_exception_incident(
+            db, session_question_id=item.session_question_id,
+            answered_by_user_id=token.user_id)
+        if raised:
+            incidents.append(raised)
+
     await db.commit()
-    return {"saved": len(body.answers)}
+    return {"saved": len(body.answers), "incidents_raised": incidents}
 
 
 @router.post("/sessions/{session_id}/cameras/{session_camera_id}/complete",
