@@ -1,0 +1,23 @@
+# Statutory Progressive Wage Model minimum basic wages for the security sector.
+#
+# FILL IN monthly_basic_floor AND source FROM THE PUBLISHED MOM/PLRD SCHEDULE.
+# The amounts are deliberately blank: a wrong floor is worse than no floor,
+# because it reads as a clean bill of health while people are still underpaid.
+# With no rate loaded every guard shows "not assessed", which is visibly
+# incomplete and therefore safe.
+#
+# effective_from is the date the rate takes force. An annual increase is a NEW
+# row, never an edit to the old one -- payroll resolves the floor as of the
+# period being computed, so last year's payslips must still be judged by last
+# year's rates.
+#
+# source should name the document, e.g. "MOM PWM for Security Officers,
+# schedule effective 1 Jan 2026".
+grade,effective_from,monthly_basic_floor,source
+security_officer,,,
+senior_security_officer,,,
+security_supervisor,,,
+senior_security_supervisor,,,
+security_site_supervisor,,,
+senior_security_site_supervisor,,,
+chief_security_officer,,,
