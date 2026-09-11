@@ -108,10 +108,11 @@ def upgrade() -> None:
             -- A weekly patrol with no weekday would never run, and would look
             -- enabled while doing nothing at all.
             --
-            -- cardinality(), NOT array_length(). array_length('{}', 1) returns
-            -- NULL rather than 0, a CHECK passes on NULL, and the constraint
-            -- would have accepted exactly the row it exists to reject — while
-            -- looking correct in the schema. cardinality() returns 0.
+            -- cardinality(), NOT array_length(). On an EMPTY array
+            -- array_length returns NULL rather than zero, a CHECK constraint
+            -- passes on NULL, and so it would have accepted exactly the row it
+            -- exists to reject — while reading correctly in the schema.
+            -- cardinality() returns zero.
             CONSTRAINT ck_vps_weekdays  CHECK (
                 schedule_type <> 'WEEKLY' OR cardinality(weekdays) >= 1)
         )
