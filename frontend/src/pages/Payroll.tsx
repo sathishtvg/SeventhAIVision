@@ -42,8 +42,9 @@ import DownloadIcon from '@mui/icons-material/Download'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   createPayrollRun, listPayrollRuns, getPayrollRun, finalizePayrollRun,
-  payslipPdfUrl, getIr8aSummary, ir8aPdfUrl,
+  payslipPdfUrl, getIr8aSummary, ir8aPdfUrl, getPwmCompliance,
 } from '@/api/payroll'
+import type { PwmVerdict } from '@/api/payroll'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -375,6 +376,99 @@ function Ir8aTab() {
   )
 }
 
+const PWM_VERDICT_STYLE: Record<PwmVerdict, { label: string; color: 'success' | 'error' | 'default' }> = {
+  compliant: { label: 'Compliant', color: 'success' },
+  below_floor: { label: 'Below floor', color: 'error' },
+  // Deliberately neutral, not green. A guard nobody has graded has not been
+  // checked, and colouring that as a pass is how the report comes to reassure
+  // an agency that is still exposed.
+  not_assessed: { label: 'Not assessed', color: 'default' },
+}
+
+const GRADE_LABEL = (g: string | null) =>
+  g ? g.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—'
+
+function PwmComplianceTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['pwm-compliance'],
+    queryFn: () => getPwmCompliance(),
+  })
+
+  if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={260} /></Box>
+  if (!data) return null
+
+  const { summary } = data
+  const nothingSeeded = summary.total > 0 && summary.not_assessed === summary.total
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap' }}>
+        <Chip label={`${summary.total} guards`} />
+        <Chip label={`${summary.compliant} compliant`} color="success" variant="outlined" />
+        <Chip label={`${summary.below_floor} below floor`} color="error"
+              variant={summary.below_floor ? 'filled' : 'outlined'} />
+        <Chip label={`${summary.not_assessed} not assessed`} variant="outlined" />
+      </Stack>
+
+      {nothingSeeded && (
+        <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: 'flex-start' }}>
+          <WarningAmberIcon color="warning" fontSize="small" />
+          <Typography variant="body2" color="text.secondary">
+            No guard has been assessed. Either nobody has a PWM grade set, or no
+            statutory wage floor has been loaded for this period. Until then this
+            report is not a clean bill of health &mdash; it is a list of people
+            nobody has checked.
+          </Typography>
+        </Stack>
+      )}
+
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Guard</TableCell>
+              <TableCell>Grade</TableCell>
+              <TableCell>Basis</TableCell>
+              <TableCell align="right">Basic wage</TableCell>
+              <TableCell align="right">Floor</TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.guards.map((g) => {
+              const v = PWM_VERDICT_STYLE[g.verdict]
+              return (
+                <TableRow key={g.user_id} hover>
+                  <TableCell>
+                    {g.full_name || '—'}
+                    {g.employee_code && (
+                      <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        {g.employee_code}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>{GRADE_LABEL(g.pwm_grade)}</TableCell>
+                  <TableCell>{g.basis || '—'}</TableCell>
+                  <TableCell align="right">
+                    {g.actual != null ? Number(g.actual).toFixed(2) : '—'}
+                  </TableCell>
+                  <TableCell align="right">
+                    {g.floor_applied != null ? Number(g.floor_applied).toFixed(2) : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="small" label={v.label} color={v.color}
+                          variant={g.verdict === 'below_floor' ? 'filled' : 'outlined'} />
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  )
+}
+
 export function PayrollPage() {
   const [tab, setTab] = useState(0)
   const canManage = usePermission('payroll:manage')
@@ -387,11 +481,13 @@ export function PayrollPage() {
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Runs" />
+            <Tab label="PWM Compliance" />
             {canManage && <Tab label="IR8A" />}
           </Tabs>
         </Box>
         {tab === 0 && <RunsTab />}
-        {tab === 1 && canManage && (
+        {tab === 1 && <PwmComplianceTab />}
+        {tab === 2 && canManage && (
           <PermissionGuard permission="payroll:manage">
             <Ir8aTab />
           </PermissionGuard>

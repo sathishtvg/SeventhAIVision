@@ -165,6 +165,13 @@ services:
       - model_cache:/root/.insightface
       # Bind-mount host ai-worker source so code changes are reflected without rebuild.
       - ../ai-worker:/app/ai-worker
+      # shared/ is mounted for the same reason, and because it was NOT mounted the
+      # worker code (live) and shared/ (baked into the image) silently drifted
+      # apart: on 2026-09-10 face and PPE crash-looped on ModuleNotFoundError for
+      # shared.alert_rules, which had existed on disk since August. Mounting both
+      # or neither -- mounting one is how you get a container running two
+      # different versions of the same checkout.
+      - ../shared:/app/shared
       # Keep host models directory overlay (already covered by the source mount above,
       # but explicit for clarity and so the path survives if source mount is removed).
       - ../ai-worker/models:/app/ai-worker/models

@@ -21,6 +21,7 @@ from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
+from app.services import pwm
 from app.services.payroll import compute_age, compute_payslip
 
 try:
@@ -102,7 +103,8 @@ async def create_payroll_run(
 
     guards = await db.execute(
         text("""
-            SELECT id, full_name, date_of_birth, work_pass_type, hourly_rate, daily_rate, monthly_salary
+            SELECT id, full_name, date_of_birth, work_pass_type, hourly_rate, daily_rate, monthly_salary,
+                   employment_type, pwm_grade
             FROM users WHERE role_id = ANY(:roles) AND is_active = TRUE
         """),
         {"roles": list(_PAYROLL_GUARD_ROLES)},
@@ -110,6 +112,30 @@ async def create_payroll_run(
 
     payslips = []
     warnings = []
+
+    # Below-floor payslips are REPORTED, not refused. Payroll's job is to say
+    # what happened — the same reasoning as MAX_OT_HOURS_PER_MONTH — and a run
+    # that refuses to finalise means guards are not paid on time, which is its
+    # own violation. The wage is blocked earlier, when it is set, where the
+    # mistake is cheap to fix.
+    #
+    # Kept separate from `warnings`: "skipped, no rate configured" is an
+    # operator's housekeeping, while a below-floor wage is a legal exposure an
+    # agency may have to answer for. Mixing them buries the second in the first.
+    pwm_exceptions: list[dict] = []
+    _floors: dict[str, Decimal | None] = {}
+
+    async def _floor_for(grade: str):
+        """Resolved as of the PERIOD, not today, and once per grade rather than
+        once per guard — a restated month must be judged by the rates that were
+        in force then."""
+        if grade not in _floors:
+            _floors[grade] = (await db.execute(
+                text("SELECT pwm_effective_floor(CAST(:g AS varchar), CAST(:d AS date))"),
+                {"g": grade, "d": body.period_start},
+            )).scalar()
+        return _floors[grade]
+
     for g in guards:
         if g.hourly_rate is None and g.monthly_salary is None and g.daily_rate is None:
             warnings.append(f"{g.full_name or g.id} has no hourly_rate, daily_rate, or monthly_salary configured — skipped")
@@ -246,8 +272,37 @@ async def create_payroll_run(
         )).first()
         payslips.append(dict(row._mapping))
 
+        # Judged on the BASIC wage, not the gross. Overtime and allowances are
+        # not basic pay, and counting them would let a guard paid below the
+        # floor look compliant purely by working more hours — which is the
+        # arrangement PWM exists to prevent.
+        if g.pwm_grade:
+            assessment = pwm.assess(
+                pwm_grade=g.pwm_grade,
+                employment_type=g.employment_type,
+                floor=await _floor_for(g.pwm_grade),
+                monthly_salary=g.monthly_salary,
+                daily_rate=g.daily_rate,
+                hourly_rate=g.hourly_rate,
+            )
+            if assessment["verdict"] == pwm.BELOW_FLOOR:
+                pwm_exceptions.append({
+                    "user_id": str(g.id),
+                    "full_name": g.full_name,
+                    "pwm_grade": g.pwm_grade,
+                    "floor_applied": assessment["floor_applied"],
+                    "actual": assessment["actual"],
+                    "basis": assessment["basis"],
+                    "detail": assessment["reason"],
+                })
+
     await db.commit()
-    return {**dict(run_row._mapping), "payslips": payslips, "warnings": warnings}
+    return {
+        **dict(run_row._mapping),
+        "payslips": payslips,
+        "warnings": warnings,
+        "pwm_exceptions": pwm_exceptions,
+    }
 
 
 @router.get("/runs", dependencies=[Depends(require_permission("payroll:read"))])
@@ -512,6 +567,82 @@ _TIMESHEET_HOURS_SQL = """
      WHERE guard_user_id = :gid AND status = 'completed' AND actual_end IS NOT NULL
        AND actual_start::date >= :ps AND actual_start::date <= :pe
 """
+
+
+@router.get("/pwm-compliance", dependencies=[Depends(require_permission("payroll:read"))])
+async def pwm_compliance_report(
+    as_of: date | None = Query(
+        None, description="Judge against the floors in force on this date "
+                          "(default: today)."),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Every guard, their grade, their pay, the floor, and the verdict.
+
+    This exists because blocking a below-floor wage on save only protects wages
+    set from now on. It finds nobody who was ALREADY below the floor when the
+    check was switched on — and on day one that is the entire workforce. Without
+    this report the feature would prevent future mistakes while silently sitting
+    on present ones.
+
+    `not_assessed` is reported as its own count rather than folded into
+    "compliant". A guard with no grade, or a grade with no rate on file, has not
+    been checked, and an agency reading "0 below floor" needs to know how much of
+    that is a clean bill of health and how much is nobody having looked yet.
+    """
+    when = as_of or date.today()
+
+    guards = (await db.execute(
+        text("""
+            SELECT id, full_name, employee_code, pwm_grade, employment_type,
+                   monthly_salary, daily_rate, hourly_rate
+              FROM users
+             WHERE role_id = ANY(:roles) AND is_active = TRUE
+             ORDER BY pwm_grade NULLS FIRST, full_name
+        """),
+        {"roles": list(_PAYROLL_GUARD_ROLES)},
+    )).mappings().all()
+
+    floors: dict[str, Decimal | None] = {}
+    rows = []
+    for g in guards:
+        grade = g["pwm_grade"]
+        if grade and grade not in floors:
+            floors[grade] = (await db.execute(
+                text("SELECT pwm_effective_floor(CAST(:g AS varchar), CAST(:d AS date))"),
+                {"g": grade, "d": when},
+            )).scalar()
+
+        assessment = pwm.assess(
+            pwm_grade=grade,
+            employment_type=g["employment_type"],
+            floor=floors.get(grade) if grade else None,
+            monthly_salary=g["monthly_salary"],
+            daily_rate=g["daily_rate"],
+            hourly_rate=g["hourly_rate"],
+        )
+        rows.append({
+            "user_id": str(g["id"]),
+            "full_name": g["full_name"],
+            "employee_code": g["employee_code"],
+            "pwm_grade": grade,
+            "employment_type": g["employment_type"],
+            "verdict": assessment["verdict"],
+            "floor_applied": assessment["floor_applied"],
+            "actual": assessment["actual"],
+            "basis": assessment["basis"],
+            "detail": assessment["reason"],
+        })
+
+    return {
+        "as_of": when,
+        "summary": {
+            "total": len(rows),
+            "compliant": sum(1 for r in rows if r["verdict"] == pwm.COMPLIANT),
+            "below_floor": sum(1 for r in rows if r["verdict"] == pwm.BELOW_FLOOR),
+            "not_assessed": sum(1 for r in rows if r["verdict"] == pwm.NOT_ASSESSED),
+        },
+        "guards": rows,
+    }
 
 
 @router.post("/timesheets/generate", status_code=status.HTTP_201_CREATED,

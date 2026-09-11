@@ -25,9 +25,47 @@ export interface Payslip {
   unpaid_leave_days: number
 }
 
+export type PwmVerdict = 'compliant' | 'below_floor' | 'not_assessed'
+
+/** A payslip whose BASIC wage sits below the Progressive Wage Model floor.
+ *  Reported, never blocking: payroll says what happened, and a run that refuses
+ *  to finalise means guards are not paid on time. The wage is refused earlier,
+ *  when it is set. */
+export interface PwmException {
+  user_id: string
+  full_name: string | null
+  pwm_grade: string
+  floor_applied: number | null
+  actual: number | null
+  basis: string | null
+  detail: string
+}
+
 export interface PayrollRunDetail extends PayrollRun {
   payslips: Payslip[]
   warnings?: string[]
+  pwm_exceptions?: PwmException[]
+}
+
+export interface PwmComplianceRow {
+  user_id: string
+  full_name: string | null
+  employee_code: string | null
+  pwm_grade: string | null
+  employment_type: string | null
+  verdict: PwmVerdict
+  floor_applied: number | null
+  actual: number | null
+  basis: string | null
+  detail: string
+}
+
+export interface PwmComplianceReport {
+  as_of: string
+  /** not_assessed is its own count, never folded into compliant: "0 below
+   *  floor" must not hide "nobody has been graded yet". */
+  summary: { total: number; compliant: number; below_floor: number; not_assessed: number }
+  guards: PwmComplianceRow[]
 }
 
 export interface Ir8aRow {
@@ -60,3 +98,10 @@ export const getIr8aSummary = (year: number) =>
 
 export const ir8aPdfUrl = (year: number, token: string | null) =>
   token ? `${apiClient.defaults.baseURL}/api/v1/payroll/ir8a/pdf?year=${year}&token=${token}` : null
+
+export const getPwmCompliance = (asOf?: string) =>
+  apiClient
+    .get<PwmComplianceReport>('/api/v1/payroll/pwm-compliance', {
+      params: asOf ? { as_of: asOf } : undefined,
+    })
+    .then((r) => r.data)
