@@ -1,0 +1,717 @@
+"""Virtual patrolling: configuration for supervisors, execution for officers.
+
+Distinct from /api/v1/patrols, which is the PHYSICAL guard patrol — routes,
+checkpoints, QR scans. Different feature, different permissions (vpatrol:* not
+patrol:*), deliberately different namespace.
+
+TWO AUDIENCES, TWO PERMISSIONS. Everything that shapes a patrol needs
+vpatrol:manage. Everything that carries one out needs vpatrol:execute. A duty
+officer handed a patrol must not acquire the ability to rewrite the questions
+they are about to be asked (section 28), so no execution route accepts
+configuration and no configuration route is reachable with execute alone.
+
+VALIDATION IS REPEATED HERE EVEN THOUGH THE BROWSER DOES IT. A patrol is
+evidence, and anybody with curl can skip a browser. A required question answered
+only in the UI is a required question that was never asked.
+
+THE OFFICER'S ROUTES READ THE SESSION, NEVER THE SCHEDULE. Configuration was
+frozen at session creation; joining back to it here would undo the whole point
+and let a mid-patrol edit change what the officer is asked.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime, time, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.dependencies.auth import TokenPayload, get_token_payload
+from app.dependencies.permissions import require_permission
+from app.dependencies.tenant import get_db_with_tenant
+from app.services import virtual_patrol as vp
+from app.services import vpatrol_snapshot
+
+router = APIRouter(prefix="/api/v1/virtual-patrol", tags=["virtual-patrol"])
+
+_READ = Depends(require_permission("vpatrol:read"))
+_MANAGE = Depends(require_permission("vpatrol:manage"))
+_EXECUTE = Depends(require_permission("vpatrol:execute"))
+_REPORT = Depends(require_permission("vpatrol:report"))
+_EMAIL = Depends(require_permission("vpatrol:email"))
+
+SCHEDULE_TYPES = ("ONCE", "DAILY", "WEEKLY")
+EMAIL_FREQUENCIES = ("IMMEDIATE", "DAILY", "WEEKLY", "MONTHLY")
+
+
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
+class ScheduleCreate(BaseModel):
+    site_id: str
+    name: str = Field(min_length=1, max_length=150)
+    description: str | None = None
+    timezone: str = "Asia/Singapore"
+    schedule_type: str
+    start_date: date
+    end_date: date | None = None
+    patrol_time: time
+    weekdays: list[int] = Field(default_factory=list)
+    grace_minutes: int = 15
+    enabled: bool = True
+    assigned_user_id: str | None = None
+    assigned_role_id: int | None = None
+    email_frequency: str = "IMMEDIATE"
+
+
+class ScheduleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    timezone: str | None = None
+    schedule_type: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    patrol_time: time | None = None
+    weekdays: list[int] | None = None
+    grace_minutes: int | None = None
+    enabled: bool | None = None
+    assigned_user_id: str | None = None
+    assigned_role_id: int | None = None
+    email_frequency: str | None = None
+
+
+class CameraAdd(BaseModel):
+    camera_id: str
+    sequence_no: int | None = None
+    timeout_seconds: int | None = None
+
+
+class ReorderItem(BaseModel):
+    schedule_camera_id: str
+    sequence_no: int
+
+
+class QuestionCreate(BaseModel):
+    question_text: str = Field(min_length=1)
+    question_type: str
+    is_required: bool = True
+    sequence_no: int | None = None
+    options: list[str] | None = None
+    failure_action: str = "NONE"
+
+
+class AnswerIn(BaseModel):
+    session_question_id: str
+    answer: object | None = None
+
+
+class AnswersSubmit(BaseModel):
+    answers: list[AnswerIn]
+    officer_notes: str | None = None
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _validate_schedule_shape(schedule_type: str | None, weekdays: list[int] | None,
+                             email_frequency: str | None) -> None:
+    if schedule_type is not None and schedule_type not in SCHEDULE_TYPES:
+        raise HTTPException(422, f"schedule_type must be one of {', '.join(SCHEDULE_TYPES)}")
+    if email_frequency is not None and email_frequency not in EMAIL_FREQUENCIES:
+        raise HTTPException(422, f"email_frequency must be one of {', '.join(EMAIL_FREQUENCIES)}")
+    if schedule_type == "WEEKLY":
+        # The database enforces this too. Caught here so the supervisor is told
+        # what is wrong instead of receiving a constraint name.
+        if not weekdays:
+            raise HTTPException(422, "A weekly patrol must select at least one weekday.")
+        if any(d < 1 or d > 7 for d in weekdays):
+            raise HTTPException(422, "Weekdays must be 1 (Monday) to 7 (Sunday).")
+
+
+async def _schedule_or_404(db: AsyncSession, schedule_id: str) -> dict:
+    row = (await db.execute(text(
+        "SELECT * FROM virtual_patrol_schedules WHERE id = CAST(:id AS uuid)"),
+        {"id": schedule_id})).mappings().first()
+    if row is None:
+        raise HTTPException(404, "Patrol schedule not found")
+    return dict(row)
+
+
+async def _session_or_404(db: AsyncSession, session_id: str) -> dict:
+    row = (await db.execute(text(
+        "SELECT * FROM virtual_patrol_sessions WHERE id = CAST(:id AS uuid)"),
+        {"id": session_id})).mappings().first()
+    if row is None:
+        raise HTTPException(404, "Patrol session not found")
+    return dict(row)
+
+
+def _assert_is_the_assigned_officer(session: dict, token: TokenPayload) -> None:
+    """Holding vpatrol:execute is permission to run YOUR patrol, not anyone's.
+
+    Without this, every guard in the tenant could answer on behalf of every
+    other guard — and the report would carry the wrong name against the
+    evidence, which is worse than having no name at all.
+    """
+    assigned = session.get("officer_user_id")
+    if assigned is not None and str(assigned) != str(token.user_id):
+        raise HTTPException(403, "This patrol is assigned to another officer.")
+
+
+# ── Schedules ────────────────────────────────────────────────────────────────
+
+@router.get("/schedules", dependencies=[_READ])
+async def list_schedules(
+    site_id: str | None = Query(None),
+    enabled: bool | None = Query(None),
+    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    rows = (await db.execute(text("""
+        SELECT s.*, si.name AS site_name,
+               (SELECT count(*) FROM virtual_patrol_schedule_cameras c
+                 WHERE c.schedule_id = s.id) AS camera_count
+          FROM virtual_patrol_schedules s
+          JOIN sites si ON si.id = s.site_id
+         WHERE (:site IS NULL OR s.site_id = CAST(:site AS uuid))
+           AND (:enabled IS NULL OR s.enabled = :enabled)
+         ORDER BY s.created_at DESC
+         LIMIT :limit OFFSET :offset
+    """), {"site": site_id, "enabled": enabled, "limit": limit, "offset": offset})
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/schedules", status_code=status.HTTP_201_CREATED, dependencies=[_MANAGE])
+async def create_schedule(
+    body: ScheduleCreate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    _validate_schedule_shape(body.schedule_type, body.weekdays, body.email_frequency)
+    row = (await db.execute(text("""
+        INSERT INTO virtual_patrol_schedules
+            (tenant_id, site_id, name, description, timezone, schedule_type,
+             start_date, end_date, patrol_time, weekdays, grace_minutes, enabled,
+             assigned_user_id, assigned_role_id, email_frequency, created_by_user_id)
+        VALUES (current_setting('app.current_tenant')::uuid, CAST(:site AS uuid),
+                :name, :desc, :tz, :type, :sd, :ed, :pt, :wd, :grace, :enabled,
+                CAST(:user AS uuid), :role, :freq, CAST(:by AS uuid))
+        RETURNING *
+    """), {
+        "site": body.site_id, "name": body.name, "desc": body.description,
+        "tz": body.timezone, "type": body.schedule_type, "sd": body.start_date,
+        "ed": body.end_date, "pt": body.patrol_time, "wd": body.weekdays,
+        "grace": body.grace_minutes, "enabled": body.enabled,
+        "user": body.assigned_user_id, "role": body.assigned_role_id,
+        "freq": body.email_frequency, "by": token.user_id,
+    })).mappings().first()
+    await db.commit()
+    return dict(row)
+
+
+@router.get("/schedules/{schedule_id}", dependencies=[_READ])
+async def get_schedule(schedule_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    schedule = await _schedule_or_404(db, schedule_id)
+    cameras = (await db.execute(text("""
+        SELECT sc.*, c.name AS camera_name, c.location
+          FROM virtual_patrol_schedule_cameras sc
+          JOIN cameras c ON c.id = sc.camera_id
+         WHERE sc.schedule_id = CAST(:id AS uuid)
+         ORDER BY sc.sequence_no
+    """), {"id": schedule_id})).mappings().all()
+    return {**schedule, "cameras": [dict(c) for c in cameras]}
+
+
+@router.put("/schedules/{schedule_id}", dependencies=[_MANAGE])
+async def update_schedule(
+    schedule_id: str, body: ScheduleUpdate,
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    existing = await _schedule_or_404(db, schedule_id)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(422, "No fields to update")
+
+    _validate_schedule_shape(
+        updates.get("schedule_type", existing["schedule_type"]),
+        updates.get("weekdays", existing["weekdays"]),
+        updates.get("email_frequency"),
+    )
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = schedule_id
+    row = (await db.execute(text(
+        f"UPDATE virtual_patrol_schedules SET {set_clause}, updated_at = now() "
+        f" WHERE id = CAST(:id AS uuid) RETURNING *"), updates)).mappings().first()
+    await db.commit()
+    return dict(row)
+
+
+@router.patch("/schedules/{schedule_id}/status", dependencies=[_MANAGE])
+async def set_schedule_status(
+    schedule_id: str, enabled: bool = Query(...),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    await _schedule_or_404(db, schedule_id)
+    await db.execute(text(
+        "UPDATE virtual_patrol_schedules SET enabled = :e, updated_at = now() "
+        " WHERE id = CAST(:id AS uuid)"), {"e": enabled, "id": schedule_id})
+    await db.commit()
+    return {"id": schedule_id, "enabled": enabled}
+
+
+@router.delete("/schedules/{schedule_id}", dependencies=[_MANAGE])
+async def delete_schedule(schedule_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    """Sessions that already ran are kept — schedule_id is nulled, and the name
+    they ran under was copied into them (section 41)."""
+    await _schedule_or_404(db, schedule_id)
+    await db.execute(text("DELETE FROM virtual_patrol_schedules WHERE id = CAST(:id AS uuid)"),
+                     {"id": schedule_id})
+    await db.commit()
+    return {"deleted": schedule_id}
+
+
+# ── Cameras on a schedule ────────────────────────────────────────────────────
+
+@router.get("/schedules/{schedule_id}/cameras", dependencies=[_READ])
+async def list_schedule_cameras(schedule_id: str,
+                                db: AsyncSession = Depends(get_db_with_tenant)):
+    await _schedule_or_404(db, schedule_id)
+    rows = (await db.execute(text("""
+        SELECT sc.*, c.name AS camera_name, c.location,
+               (SELECT count(*) FROM virtual_patrol_questions q
+                 WHERE q.schedule_camera_id = sc.id) AS question_count
+          FROM virtual_patrol_schedule_cameras sc
+          JOIN cameras c ON c.id = sc.camera_id
+         WHERE sc.schedule_id = CAST(:id AS uuid)
+         ORDER BY sc.sequence_no
+    """), {"id": schedule_id})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/schedules/{schedule_id}/cameras", status_code=status.HTTP_201_CREATED,
+             dependencies=[_MANAGE])
+async def add_schedule_camera(schedule_id: str, body: CameraAdd,
+                              db: AsyncSession = Depends(get_db_with_tenant)):
+    schedule = await _schedule_or_404(db, schedule_id)
+
+    # A camera from another site would be inspected by an officer who is not
+    # there. RLS already stops cross-TENANT access; this is the cross-SITE case
+    # inside one tenant, which RLS cannot see.
+    camera = (await db.execute(text(
+        "SELECT id, site_id FROM cameras WHERE id = CAST(:c AS uuid)"),
+        {"c": body.camera_id})).mappings().first()
+    if camera is None:
+        raise HTTPException(404, "Camera not found")
+    if str(camera["site_id"]) != str(schedule["site_id"]):
+        raise HTTPException(422, "That camera belongs to a different site.")
+
+    seq = body.sequence_no
+    if seq is None:
+        seq = ((await db.execute(text(
+            "SELECT COALESCE(max(sequence_no), 0) + 1 FROM "
+            "virtual_patrol_schedule_cameras WHERE schedule_id = CAST(:id AS uuid)"),
+            {"id": schedule_id})).scalar())
+
+    try:
+        row = (await db.execute(text("""
+            INSERT INTO virtual_patrol_schedule_cameras
+                (tenant_id, schedule_id, camera_id, sequence_no, timeout_seconds)
+            VALUES (current_setting('app.current_tenant')::uuid,
+                    CAST(:s AS uuid), CAST(:c AS uuid), :seq, :timeout)
+            RETURNING *
+        """), {"s": schedule_id, "c": body.camera_id, "seq": seq,
+               "timeout": body.timeout_seconds})).mappings().first()
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        if "uq_vpsc_camera" in str(exc):
+            raise HTTPException(409, "That camera is already on this patrol.")
+        raise
+    return dict(row)
+
+
+@router.put("/schedules/{schedule_id}/cameras/reorder", dependencies=[_MANAGE])
+async def reorder_schedule_cameras(
+    schedule_id: str, items: list[ReorderItem],
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Rewrite the whole order in one transaction.
+
+    The sequence constraint is DEFERRABLE INITIALLY DEFERRED precisely so the
+    intermediate states of a reorder — where two cameras momentarily share a
+    number — are not rejected. Only the final arrangement has to be valid.
+    """
+    await _schedule_or_404(db, schedule_id)
+    if len({i.sequence_no for i in items}) != len(items):
+        raise HTTPException(422, "Two cameras cannot share the same position.")
+
+    for item in items:
+        await db.execute(text("""
+            UPDATE virtual_patrol_schedule_cameras
+               SET sequence_no = :seq
+             WHERE id = CAST(:id AS uuid) AND schedule_id = CAST(:s AS uuid)
+        """), {"seq": item.sequence_no, "id": item.schedule_camera_id,
+               "s": schedule_id})
+    await db.commit()
+    return {"reordered": len(items)}
+
+
+@router.delete("/schedules/{schedule_id}/cameras/{schedule_camera_id}",
+               dependencies=[_MANAGE])
+async def remove_schedule_camera(schedule_id: str, schedule_camera_id: str,
+                                 db: AsyncSession = Depends(get_db_with_tenant)):
+    await _schedule_or_404(db, schedule_id)
+    await db.execute(text(
+        "DELETE FROM virtual_patrol_schedule_cameras "
+        " WHERE id = CAST(:id AS uuid) AND schedule_id = CAST(:s AS uuid)"),
+        {"id": schedule_camera_id, "s": schedule_id})
+    await db.commit()
+    return {"removed": schedule_camera_id}
+
+
+# ── Questions ────────────────────────────────────────────────────────────────
+
+@router.get("/schedule-cameras/{schedule_camera_id}/questions", dependencies=[_READ])
+async def list_questions(schedule_camera_id: str,
+                         db: AsyncSession = Depends(get_db_with_tenant)):
+    rows = (await db.execute(text(
+        "SELECT * FROM virtual_patrol_questions "
+        " WHERE schedule_camera_id = CAST(:id AS uuid) ORDER BY sequence_no"),
+        {"id": schedule_camera_id})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/schedule-cameras/{schedule_camera_id}/questions",
+             status_code=status.HTTP_201_CREATED, dependencies=[_MANAGE])
+async def create_question(schedule_camera_id: str, body: QuestionCreate,
+                          db: AsyncSession = Depends(get_db_with_tenant)):
+    if body.question_type not in (vp.YES_NO, vp.PASS_FAIL, vp.TEXT, vp.NUMBER,
+                                  vp.SINGLE_CHOICE, vp.MULTI_CHOICE):
+        raise HTTPException(422, "Unknown question type.")
+    if body.question_type in (vp.SINGLE_CHOICE, vp.MULTI_CHOICE) and not body.options:
+        # The database enforces this as well; refused here so the supervisor is
+        # told what is wrong rather than handed a constraint name.
+        raise HTTPException(422, "A choice question needs at least one option.")
+
+    exists = (await db.execute(text(
+        "SELECT 1 FROM virtual_patrol_schedule_cameras WHERE id = CAST(:id AS uuid)"),
+        {"id": schedule_camera_id})).first()
+    if exists is None:
+        raise HTTPException(404, "Patrol camera not found")
+
+    seq = body.sequence_no or ((await db.execute(text(
+        "SELECT COALESCE(max(sequence_no), 0) + 1 FROM virtual_patrol_questions "
+        " WHERE schedule_camera_id = CAST(:id AS uuid)"),
+        {"id": schedule_camera_id})).scalar())
+
+    import json
+    row = (await db.execute(text("""
+        INSERT INTO virtual_patrol_questions
+            (tenant_id, schedule_camera_id, question_text, question_type,
+             is_required, sequence_no, options, failure_action)
+        VALUES (current_setting('app.current_tenant')::uuid, CAST(:sc AS uuid),
+                :qt, :ty, :req, :seq, CAST(:opts AS jsonb), :act)
+        RETURNING *
+    """), {"sc": schedule_camera_id, "qt": body.question_text,
+           "ty": body.question_type, "req": body.is_required, "seq": seq,
+           "opts": json.dumps(body.options) if body.options else None,
+           "act": body.failure_action})).mappings().first()
+    await db.commit()
+    return dict(row)
+
+
+@router.delete("/questions/{question_id}", dependencies=[_MANAGE])
+async def delete_question(question_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    """Deleting a configured question does not touch sessions that already
+    copied it — a historical report still shows what was asked."""
+    await db.execute(text("DELETE FROM virtual_patrol_questions WHERE id = CAST(:id AS uuid)"),
+                     {"id": question_id})
+    await db.commit()
+    return {"deleted": question_id}
+
+
+# ── Email configuration ──────────────────────────────────────────────────────
+
+@router.get("/schedules/{schedule_id}/email-recipients", dependencies=[_READ])
+async def list_recipients(schedule_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    rows = (await db.execute(text(
+        "SELECT * FROM virtual_patrol_email_recipients "
+        " WHERE schedule_id = CAST(:id AS uuid) ORDER BY email"),
+        {"id": schedule_id})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/schedules/{schedule_id}/email-recipients",
+             status_code=status.HTTP_201_CREATED, dependencies=[_EMAIL])
+async def add_recipient(schedule_id: str, email: str = Query(...),
+                        db: AsyncSession = Depends(get_db_with_tenant)):
+    await _schedule_or_404(db, schedule_id)
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise HTTPException(422, "That does not look like an email address.")
+    try:
+        row = (await db.execute(text("""
+            INSERT INTO virtual_patrol_email_recipients (tenant_id, schedule_id, email)
+            VALUES (current_setting('app.current_tenant')::uuid, CAST(:s AS uuid), :e)
+            RETURNING *
+        """), {"s": schedule_id, "e": email})).mappings().first()
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        if "uq_vper" in str(exc):
+            raise HTTPException(409, "That address is already on this patrol.")
+        raise
+    return dict(row)
+
+
+@router.delete("/email-recipients/{recipient_id}", dependencies=[_EMAIL])
+async def delete_recipient(recipient_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    await db.execute(text(
+        "DELETE FROM virtual_patrol_email_recipients WHERE id = CAST(:id AS uuid)"),
+        {"id": recipient_id})
+    await db.commit()
+    return {"deleted": recipient_id}
+
+
+# ── Officer execution ────────────────────────────────────────────────────────
+
+@router.get("/my-patrols", dependencies=[_EXECUTE])
+async def my_patrols(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    rows = (await db.execute(text("""
+        SELECT s.id, s.patrol_number, s.schedule_name, s.scheduled_for, s.status,
+               s.camera_count, s.completed_camera_count, si.name AS site_name
+          FROM virtual_patrol_sessions s
+          JOIN sites si ON si.id = s.site_id
+         WHERE s.officer_user_id = CAST(:uid AS uuid)
+           AND s.status IN ('SCHEDULED','STARTED','IN_PROGRESS')
+         ORDER BY s.scheduled_for
+    """), {"uid": token.user_id})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/sessions/{session_id}", dependencies=[_READ])
+async def get_session(session_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    session = await _session_or_404(db, session_id)
+    cameras = (await db.execute(text("""
+        SELECT id, sequence_no, camera_name, status, snapshot_path,
+               snapshot_taken_at, snapshot_error, officer_notes,
+               camera_metadata->>'location' AS location
+          FROM virtual_patrol_session_cameras
+         WHERE session_id = CAST(:id AS uuid) ORDER BY sequence_no
+    """), {"id": session_id})).mappings().all()
+    return {**session, "cameras": [dict(c) for c in cameras]}
+
+
+@router.post("/sessions/{session_id}/start", dependencies=[_EXECUTE])
+async def start_session(session_id: str,
+                        db: AsyncSession = Depends(get_db_with_tenant),
+                        token: TokenPayload = Depends(get_token_payload)):
+    session = await _session_or_404(db, session_id)
+    _assert_is_the_assigned_officer(session, token)
+    if session["status"] in ("COMPLETED", "CANCELLED"):
+        raise HTTPException(409, f"This patrol is already {session['status'].lower()}.")
+
+    await db.execute(text("""
+        UPDATE virtual_patrol_sessions
+           SET status = 'IN_PROGRESS',
+               started_at = COALESCE(started_at, now()),
+               officer_user_id = COALESCE(officer_user_id, CAST(:uid AS uuid)),
+               updated_at = now()
+         WHERE id = CAST(:id AS uuid)
+    """), {"id": session_id, "uid": token.user_id})
+    await db.commit()
+    return {"session_id": session_id, "status": "IN_PROGRESS"}
+
+
+@router.get("/sessions/{session_id}/current-camera", dependencies=[_EXECUTE])
+async def current_camera(session_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    """The next camera needing attention, with its frozen questions."""
+    await _session_or_404(db, session_id)
+    cam = (await db.execute(text("""
+        SELECT id, sequence_no, camera_name, status, snapshot_path,
+               snapshot_taken_at, snapshot_error, officer_notes,
+               camera_metadata->>'location' AS location
+          FROM virtual_patrol_session_cameras
+         WHERE session_id = CAST(:id AS uuid)
+           AND status NOT IN ('COMPLETED','CAMERA_UNAVAILABLE')
+         ORDER BY sequence_no LIMIT 1
+    """), {"id": session_id})).mappings().first()
+    if cam is None:
+        return {"camera": None, "message": "Every camera on this patrol is done."}
+
+    questions = (await db.execute(text("""
+        SELECT q.id, q.question_text, q.question_type, q.is_required,
+               q.sequence_no, q.options, q.failure_action,
+               a.answer_text, a.answer_json
+          FROM virtual_patrol_session_questions q
+          LEFT JOIN virtual_patrol_session_answers a ON a.session_question_id = q.id
+         WHERE q.session_camera_id = :cam ORDER BY q.sequence_no
+    """), {"cam": cam["id"]})).mappings().all()
+    return {"camera": dict(cam), "questions": [dict(q) for q in questions]}
+
+
+@router.post("/sessions/{session_id}/cameras/{session_camera_id}/snapshot",
+             dependencies=[_EXECUTE])
+async def capture_snapshot(session_id: str, session_camera_id: str,
+                           db: AsyncSession = Depends(get_db_with_tenant),
+                           token: TokenPayload = Depends(get_token_payload)):
+    session = await _session_or_404(db, session_id)
+    _assert_is_the_assigned_officer(session, token)
+    result = await vpatrol_snapshot.capture(db, session_camera_id=session_camera_id)
+    await db.commit()
+    if not result["ok"]:
+        # 200 with ok=False, not an error status: an unreachable camera is an
+        # expected outcome the officer must see and may retry, not a failed
+        # request. A 5xx here would look like the app is broken.
+        return result
+    return result
+
+
+@router.post("/sessions/{session_id}/cameras/{session_camera_id}/answers",
+             dependencies=[_EXECUTE])
+async def submit_answers(session_id: str, session_camera_id: str, body: AnswersSubmit,
+                         db: AsyncSession = Depends(get_db_with_tenant),
+                         token: TokenPayload = Depends(get_token_payload)):
+    session = await _session_or_404(db, session_id)
+    _assert_is_the_assigned_officer(session, token)
+
+    import json
+    for item in body.answers:
+        q = (await db.execute(text("""
+            SELECT q.id, q.question_type, q.is_required, q.options, q.failure_action
+              FROM virtual_patrol_session_questions q
+              JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id
+             WHERE q.id = CAST(:qid AS uuid) AND c.id = CAST(:cam AS uuid)
+        """), {"qid": item.session_question_id, "cam": session_camera_id})
+        ).mappings().first()
+        if q is None:
+            raise HTTPException(404, "That question is not part of this camera.")
+
+        problem = vp.validate_answer(
+            question_type=q["question_type"], is_required=q["is_required"],
+            options=q["options"], answer=item.answer)
+        if problem:
+            raise HTTPException(422, problem)
+
+        exception = vp.is_exception(question_type=q["question_type"], answer=item.answer)
+        is_list = isinstance(item.answer, list)
+        await db.execute(text("""
+            INSERT INTO virtual_patrol_session_answers
+                (tenant_id, session_question_id, answered_by_user_id,
+                 answer_text, answer_json, is_exception)
+            VALUES (current_setting('app.current_tenant')::uuid, CAST(:q AS uuid),
+                    CAST(:by AS uuid), :txt, CAST(:js AS jsonb), :exc)
+            ON CONFLICT (session_question_id) DO UPDATE
+               SET answer_text = EXCLUDED.answer_text,
+                   answer_json = EXCLUDED.answer_json,
+                   is_exception = EXCLUDED.is_exception,
+                   answered_by_user_id = EXCLUDED.answered_by_user_id,
+                   answered_at = now()
+        """), {"q": item.session_question_id, "by": token.user_id,
+               "txt": None if is_list else (None if item.answer is None else str(item.answer)),
+               "js": json.dumps(item.answer) if is_list else None,
+               "exc": exception})
+
+    if body.officer_notes is not None:
+        await db.execute(text(
+            "UPDATE virtual_patrol_session_cameras SET officer_notes = :n "
+            " WHERE id = CAST(:id AS uuid)"),
+            {"n": body.officer_notes, "id": session_camera_id})
+
+    await db.commit()
+    return {"saved": len(body.answers)}
+
+
+@router.post("/sessions/{session_id}/cameras/{session_camera_id}/complete",
+             dependencies=[_EXECUTE])
+async def complete_camera(session_id: str, session_camera_id: str,
+                          db: AsyncSession = Depends(get_db_with_tenant),
+                          token: TokenPayload = Depends(get_token_payload)):
+    session = await _session_or_404(db, session_id)
+    _assert_is_the_assigned_officer(session, token)
+
+    cam = (await db.execute(text(
+        "SELECT snapshot_path, snapshot_error FROM virtual_patrol_session_cameras "
+        " WHERE id = CAST(:id AS uuid) AND session_id = CAST(:s AS uuid)"),
+        {"id": session_camera_id, "s": session_id})).mappings().first()
+    if cam is None:
+        raise HTTPException(404, "Patrol camera not found")
+
+    unanswered = (await db.execute(text("""
+        SELECT count(*) FROM virtual_patrol_session_questions q
+         WHERE q.session_camera_id = CAST(:id AS uuid) AND q.is_required
+           AND NOT EXISTS (SELECT 1 FROM virtual_patrol_session_answers a
+                            WHERE a.session_question_id = q.id)
+    """), {"id": session_camera_id})).scalar()
+
+    blockers = vp.camera_blockers(
+        snapshot_path=cam["snapshot_path"], snapshot_error=cam["snapshot_error"],
+        required_unanswered=unanswered)
+    if blockers:
+        raise HTTPException(422, " ".join(blockers))
+
+    await db.execute(text(
+        "UPDATE virtual_patrol_session_cameras "
+        "   SET status = 'COMPLETED', completed_at = now() "
+        " WHERE id = CAST(:id AS uuid)"), {"id": session_camera_id})
+    progress = await vp.refresh_progress(db, session_id)
+    await db.commit()
+    return {"completed": session_camera_id, **progress}
+
+
+@router.post("/sessions/{session_id}/complete", dependencies=[_EXECUTE])
+async def complete_patrol(session_id: str,
+                          db: AsyncSession = Depends(get_db_with_tenant),
+                          token: TokenPayload = Depends(get_token_payload)):
+    session = await _session_or_404(db, session_id)
+    _assert_is_the_assigned_officer(session, token)
+    status_out = await vp.complete_session(db, session_id)
+    await db.commit()
+    return {"session_id": session_id, "status": status_out}
+
+
+# ── History and reports ──────────────────────────────────────────────────────
+
+@router.get("/sessions", dependencies=[_READ])
+async def list_sessions(
+    site_id: str | None = Query(None), status_filter: str | None = Query(None, alias="status"),
+    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    rows = (await db.execute(text("""
+        SELECT s.id, s.patrol_number, s.schedule_name, s.scheduled_for, s.started_at,
+               s.completed_at, s.status, s.camera_count, s.completed_camera_count,
+               si.name AS site_name, u.full_name AS officer_name,
+               (SELECT count(*) FROM virtual_patrol_session_answers a
+                  JOIN virtual_patrol_session_questions q ON q.id = a.session_question_id
+                  JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id
+                 WHERE c.session_id = s.id AND a.is_exception) AS exception_count
+          FROM virtual_patrol_sessions s
+          JOIN sites si ON si.id = s.site_id
+          LEFT JOIN users u ON u.id = s.officer_user_id
+         WHERE (:site IS NULL OR s.site_id = CAST(:site AS uuid))
+           AND (:st IS NULL OR s.status = :st)
+         ORDER BY s.scheduled_for DESC
+         LIMIT :limit OFFSET :offset
+    """), {"site": site_id, "st": status_filter, "limit": limit, "offset": offset})
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/sessions/{session_id}/report/pdf", dependencies=[_REPORT])
+async def session_report_pdf(session_id: str,
+                             db: AsyncSession = Depends(get_db_with_tenant)):
+    from fastapi.responses import StreamingResponse
+    import io as _io
+    from app.services import vpatrol_reports
+
+    session = await _session_or_404(db, session_id)
+    pdf = await vpatrol_reports.build_patrol_pdf(db, session_id)
+    filename = f"virtual-patrol-{session['patrol_number']}.pdf"
+    return StreamingResponse(
+        _io.BytesIO(pdf), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
