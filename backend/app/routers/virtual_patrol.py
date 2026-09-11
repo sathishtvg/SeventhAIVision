@@ -173,8 +173,13 @@ async def list_schedules(
                  WHERE c.schedule_id = s.id) AS camera_count
           FROM virtual_patrol_schedules s
           JOIN sites si ON si.id = s.site_id
-         WHERE (:site IS NULL OR s.site_id = CAST(:site AS uuid))
-           AND (:enabled IS NULL OR s.enabled = :enabled)
+         -- Every optional filter is CAST on BOTH sides of the OR. Used once
+         -- bare and once cast, Postgres cannot infer a single type for the
+         -- parameter and answers AmbiguousParameterError -- which surfaces as
+         -- a 500 on the page's very first request.
+         WHERE (CAST(:site AS uuid) IS NULL OR s.site_id = CAST(:site AS uuid))
+           AND (CAST(:enabled AS boolean) IS NULL
+                OR s.enabled = CAST(:enabled AS boolean))
          ORDER BY s.created_at DESC
          LIMIT :limit OFFSET :offset
     """), {"site": site_id, "enabled": enabled, "limit": limit, "offset": offset})
@@ -692,8 +697,8 @@ async def list_sessions(
           FROM virtual_patrol_sessions s
           JOIN sites si ON si.id = s.site_id
           LEFT JOIN users u ON u.id = s.officer_user_id
-         WHERE (:site IS NULL OR s.site_id = CAST(:site AS uuid))
-           AND (:st IS NULL OR s.status = :st)
+         WHERE (CAST(:site AS uuid) IS NULL OR s.site_id = CAST(:site AS uuid))
+           AND (CAST(:st AS varchar) IS NULL OR s.status = CAST(:st AS varchar))
          ORDER BY s.scheduled_for DESC
          LIMIT :limit OFFSET :offset
     """), {"site": site_id, "st": status_filter, "limit": limit, "offset": offset})

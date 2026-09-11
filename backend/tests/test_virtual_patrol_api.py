@@ -9,6 +9,7 @@ Sections:
   B — A schedule cannot be made nonsensical (3 tests)
   C — Cameras belong to the site they are patrolling (2 tests)
   D — Execution is scoped to the assigned officer (2 tests)
+  E — The list endpoints the pages open with (4 tests)
 """
 from __future__ import annotations
 
@@ -244,3 +245,67 @@ async def test_the_assigned_officer_can_start_their_patrol():
         r = await c.post(f"{BASE}/sessions/{sess}/start", headers=w["guard_h"])
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "IN_PROGRESS"
+
+
+# ─── E. The list endpoints the pages open with ───────────────────────────────
+#
+# These were missing, and their absence cost a 500 on the admin page's very
+# first request. The POST tests above passed all along: creating a schedule
+# worked, listing them did not, and nothing exercised the difference.
+#
+# The cause was an optional filter used once bare and once cast --
+# ":site IS NULL OR site_id = CAST(:site AS uuid)" -- which Postgres cannot
+# assign a single type, answering AmbiguousParameterError. It fails whether or
+# not the filter is supplied, so the page was broken for everyone.
+
+
+@pytest.mark.asyncio
+async def test_listing_schedules_works_without_a_filter():
+    """What the admin page calls the moment it opens."""
+    w = await _world()
+    async with _client() as c:
+        await c.post(f"{BASE}/schedules", json=_schedule_body(w["site"]),
+                     headers=w["admin_h"])
+        r = await c.get(f"{BASE}/schedules", headers=w["admin_h"])
+    assert r.status_code == 200, r.text
+    assert any(s["name"] == "Morning Patrol" for s in r.json())
+
+
+@pytest.mark.asyncio
+async def test_listing_schedules_works_with_every_optional_filter():
+    """Supplied and omitted are different SQL paths for the same parameter, and
+    the type-inference failure hits both."""
+    w = await _world()
+    async with _client() as c:
+        await c.post(f"{BASE}/schedules", json=_schedule_body(w["site"]),
+                     headers=w["admin_h"])
+        by_site = await c.get(f"{BASE}/schedules", params={"site_id": str(w["site"])},
+                              headers=w["admin_h"])
+        by_enabled = await c.get(f"{BASE}/schedules", params={"enabled": "true"},
+                                 headers=w["admin_h"])
+        both = await c.get(f"{BASE}/schedules",
+                           params={"site_id": str(w["site"]), "enabled": "true"},
+                           headers=w["admin_h"])
+    assert by_site.status_code == 200, by_site.text
+    assert by_enabled.status_code == 200, by_enabled.text
+    assert both.status_code == 200, both.text
+
+
+@pytest.mark.asyncio
+async def test_listing_sessions_works_without_a_filter():
+    """What the history tab calls."""
+    w = await _world()
+    await _session_for(w["tenant"], w["site"], officer=w["guard"])
+    async with _client() as c:
+        r = await c.get(f"{BASE}/sessions", headers=w["admin_h"])
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_listing_sessions_works_with_a_status_filter():
+    w = await _world()
+    await _session_for(w["tenant"], w["site"], officer=w["guard"])
+    async with _client() as c:
+        r = await c.get(f"{BASE}/sessions", params={"status": "SCHEDULED"},
+                        headers=w["admin_h"])
+    assert r.status_code == 200, r.text
