@@ -41,9 +41,25 @@ ADMIN_DATABASE_URL = os.environ.get(
 )
 # svc_app is the role the application runs as, and the only one RLS applies to.
 # postgres has BYPASSRLS, so an isolation test run as postgres proves nothing.
-APP_DATABASE_URL = ADMIN_DATABASE_URL.replace(
-    "postgres:change_me_dev_only", "svc_app:change_me_dev_only"
-)
+#
+# Derived from the app's own DATABASE_URL rather than by string-replacing the
+# admin URL. The replace approach silently produced the ADMIN url whenever the
+# credentials differed from the ones hardcoded in the pattern — which is exactly
+# what happened in CI — and an isolation test that quietly reconnects as a
+# BYPASSRLS superuser is worse than no isolation test: it goes green while
+# checking nothing.
+def _svc_app_test_url() -> str:
+    raw = os.environ.get("DATABASE_URL", "")
+    if not raw:
+        return ADMIN_DATABASE_URL
+    base, _, db = raw.rpartition("/")
+    db = db.split("?")[0]
+    if not db.endswith("_test"):
+        db = f"{db}_test"
+    return f"{base}/{db}"
+
+
+APP_DATABASE_URL = _svc_app_test_url()
 
 
 async def _sql(statement: str, params: dict | None = None, *, url: str | None = None,
@@ -147,6 +163,18 @@ async def test_one_tenant_cannot_see_another_tenants_schedules():
     tid_b, sid_b = await _tenant_site()
     await _schedule(tid_a, sid_a)
     await _schedule(tid_b, sid_b)
+
+    # Prove we are not a superuser before drawing any conclusion from the count.
+    # Without this the test degrades into "postgres can see everything", passes
+    # a looser assertion, and reports isolation it never exercised.
+    who = await _sql(
+        "SELECT current_user, "
+        "       (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)",
+        url=APP_DATABASE_URL)
+    assert who[0][1] is False, (
+        f"connected as {who[0][0]!r}, which has BYPASSRLS — this test would "
+        f"prove nothing"
+    )
 
     seen = await _sql("SELECT count(*) FROM virtual_patrol_schedules",
                       url=APP_DATABASE_URL, tenant=str(tid_a))
