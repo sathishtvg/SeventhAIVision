@@ -246,3 +246,15 @@ export const patrolReportPdfUrl = (sessionId: string, token: string | null) =>
   token
     ? `${apiClient.defaults.baseURL}${BASE}/sessions/${sessionId}/report/pdf?token=${token}`
     : null
+
+/** An <img> cannot carry an Authorization header, so the token rides in the
+ *  query string — same pattern as evidence images. The server still reads the
+ *  tenant FROM the token, so this is authorization, not obscurity. */
+export const snapshotImageUrl = (
+  sessionId: string,
+  sessionCameraId: string,
+  token: string | null,
+) =>
+  token
+    ? `${apiClient.defaults.baseURL}${BASE}/sessions/${sessionId}/cameras/${sessionCameraId}/snapshot?token=${token}`
+    : null

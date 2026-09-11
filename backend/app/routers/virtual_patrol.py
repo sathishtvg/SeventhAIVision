@@ -701,6 +701,57 @@ async def list_sessions(
     return [dict(r) for r in rows]
 
 
+@router.get("/sessions/{session_id}/cameras/{session_camera_id}/snapshot")
+async def get_snapshot_image(
+    session_id: str, session_camera_id: str,
+    token: str = Query(..., description="JWT access token"),
+):
+    """Serve a patrol snapshot, authorized, never by raw path.
+
+    An <img> tag cannot carry an Authorization header, so the token rides in the
+    query string — the same pattern as evidence images and payslip PDFs. It is
+    still a real token: the tenant is read FROM it and used to scope the lookup,
+    so a valid token for tenant A cannot fetch tenant B's evidence by guessing a
+    session id.
+
+    The path in the database is never returned to the browser. Section 38: a
+    storage path handed to a client is an invitation to walk the directory.
+    """
+    from fastapi.responses import FileResponse
+    from app.core.security import InvalidTokenError, decode_access_token
+    from app.db.session import AsyncSessionLocal
+    from app.core.config import settings as app_settings
+    from pathlib import Path
+
+    try:
+        payload = decode_access_token(token)
+    except InvalidTokenError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            text("SELECT set_config('app.current_tenant', :t, true)"),
+            {"t": str(payload.tenant_id)},
+        )
+        row = (await db.execute(text("""
+            SELECT sc.snapshot_path
+              FROM virtual_patrol_session_cameras sc
+              JOIN virtual_patrol_sessions s ON s.id = sc.session_id
+             WHERE sc.id = CAST(:cam AS uuid) AND s.id = CAST(:sess AS uuid)
+        """), {"cam": session_camera_id, "sess": session_id})).first()
+
+    if row is None or not row[0]:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No snapshot for this camera")
+
+    file_path = Path(app_settings.EVIDENCE_ROOT) / row[0]
+    if not file_path.exists():
+        # The row says a capture happened; the file does not. Saying so beats a
+        # broken image icon, which reads as a UI fault rather than lost evidence.
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "The snapshot file is missing from storage")
+    return FileResponse(str(file_path), media_type="image/jpeg")
+
+
 @router.get("/sessions/{session_id}/report/pdf", dependencies=[_REPORT])
 async def session_report_pdf(session_id: str,
                              db: AsyncSession = Depends(get_db_with_tenant)):
