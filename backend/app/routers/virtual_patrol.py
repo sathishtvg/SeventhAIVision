@@ -20,6 +20,7 @@ and let a mid-patrol edit change what the officer is asked.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, time, timezone
 
@@ -37,6 +38,8 @@ from app.dependencies.sites import _CLIENT_ROLE, _UNRESTRICTED_ROLES
 from app.dependencies.tenant import get_db_with_tenant
 from app.services import virtual_patrol as vp
 from app.services import vpatrol_snapshot
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/virtual-patrol", tags=["virtual-patrol"])
 
@@ -692,6 +695,18 @@ async def complete_patrol(session_id: str,
     _assert_is_the_assigned_officer(session, token)
     status_out = await vp.complete_session(db, session_id)
 
+    # The report is written and recorded here, before the email is queued, so a
+    # finished patrol leaves a durable artefact rather than one that exists only
+    # while somebody is clicking Download. Non-fatal on purpose: a report that
+    # cannot be rendered must not cost the officer the patrol they just walked.
+    from app.services import vpatrol_reports
+    try:
+        stored = await vpatrol_reports.store_reports(db, session_id)
+    except Exception:
+        logger.exception("virtual patrol: storing the report for %s failed "
+                         "(the patrol itself is unaffected)", session_id)
+        stored = []
+
     # Queued, never sent from here. The officer is standing at the last camera;
     # they should not be waiting on an SMTP handshake, and a mail server that is
     # down must not make a finished patrol look broken.
@@ -700,6 +715,7 @@ async def complete_patrol(session_id: str,
 
     await db.commit()
     return {"session_id": session_id, "status": status_out,
+            "reports_stored": [s["report_format"] for s in stored],
             "report_email_queued": queued is not None}
 
 

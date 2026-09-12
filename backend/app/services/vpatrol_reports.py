@@ -23,12 +23,16 @@ somebody can act on rather than an ImportError at startup.
 from __future__ import annotations
 
 import io
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 MAX_IMAGE_WIDTH_MM = 120
 MAX_IMAGE_HEIGHT_MM = 80
@@ -388,3 +392,73 @@ def render_xlsx(data: dict) -> bytes:
 
 async def build_patrol_xlsx(db: AsyncSession, session_id: str) -> bytes:
     return render_xlsx(await load_session_for_report(db, session_id))
+
+
+# ── Storing the finished report ──────────────────────────────────────────────
+
+async def store_reports(db: AsyncSession, session_id: str) -> list[dict]:
+    """Write the PDF and Excel to storage and record them against the patrol.
+
+    THE POINT IS THE RECORD, NOT THE CACHE. The download endpoints render on
+    demand and always did, so nothing here makes a report *available* that was
+    not available before. What it makes is a row saying this patrol's report
+    existed, in this format, at this path, at this time -- which is what an
+    agency is asked for months later when a client disputes whether a site was
+    inspected. A report that only exists while someone is clicking Download is
+    not evidence.
+
+    Written next to the snapshots, under the same tenant/site/date tree, so a
+    patrol's evidence and its report are retained and purged together rather
+    than drifting apart.
+
+    Idempotent per (session, format): completing a patrol twice, or a retry
+    after a timeout, must not leave two rows claiming two reports.
+    """
+    data = await load_session_for_report(db, session_id)
+    session = data["session"]
+
+    # load_session_for_report selects only what the report DISPLAYS, so it
+    # carries no tenant_id or site_id. Read them here rather than widening that
+    # loader, which the PDF and Excel renderers both depend on.
+    owner = (await db.execute(text("""
+        SELECT tenant_id, site_id, scheduled_for
+          FROM virtual_patrol_sessions WHERE id = CAST(:id AS uuid)
+    """), {"id": session_id})).mappings().first()
+    if owner is None:
+        raise ValueError("Patrol session not found")
+
+    day = owner["scheduled_for"] or datetime.now(timezone.utc)
+    prefix = (f"{owner['tenant_id']}/{owner['site_id']}/virtual-patrol/"
+              f"{day:%Y/%m/%d}/{session_id}")
+
+    stored: list[dict] = []
+    for fmt, builder, ext in (("PDF", render_pdf, "pdf"), ("XLSX", render_xlsx, "xlsx")):
+        try:
+            payload = builder(data)
+        except Exception:
+            # A missing reportlab/openpyxl must not cost the officer their
+            # completed patrol. The row simply is not written, and the download
+            # endpoint fails the same way it always did.
+            logger.exception("virtual patrol: could not render the %s report for %s",
+                             fmt, session_id)
+            continue
+
+        rel = f"{prefix}/report.{ext}"
+        path = Path(settings.EVIDENCE_ROOT) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+        row = (await db.execute(text("""
+            INSERT INTO virtual_patrol_reports
+                (tenant_id, session_id, report_format, storage_path, file_bytes)
+            VALUES (:t, CAST(:s AS uuid), :f, :p, :n)
+            ON CONFLICT (session_id, report_format) DO UPDATE
+                SET storage_path = EXCLUDED.storage_path,
+                    file_bytes = EXCLUDED.file_bytes,
+                    generated_at = now()
+            RETURNING id, report_format, storage_path, file_bytes
+        """), {"t": owner["tenant_id"], "s": session_id, "f": fmt,
+               "p": rel, "n": len(payload)})).mappings().first()
+        stored.append(dict(row))
+
+    return stored
