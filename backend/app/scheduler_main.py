@@ -1214,6 +1214,28 @@ async def run_once(redis: Redis | None = None) -> None:
     except Exception:
         logger.exception("usage rollup failed (non-fatal)")
 
+    # Virtual patrolling: create the sessions whose time has come, then mark
+    # the ones nobody started. Both are wrapped separately — a tenant with a
+    # broken schedule must not stop the sweep for everybody else, and a patrol
+    # that cannot be created is far less bad than a scheduler that stops.
+    try:
+        from app.services import vpatrol_scheduler
+        async with AsyncSessionLocal() as db:
+            counts = await vpatrol_scheduler.create_due_sessions(db)
+        if counts["created"] or counts["failed"]:
+            logger.info("virtual patrol sessions: %s", counts)
+    except Exception:
+        logger.exception("virtual patrol session creation failed (non-fatal)")
+
+    try:
+        from app.services import vpatrol_scheduler
+        async with AsyncSessionLocal() as db:
+            missed = await vpatrol_scheduler.sweep_missed_sessions(db)
+        if missed:
+            logger.info("virtual patrol: %d session(s) marked missed", missed)
+    except Exception:
+        logger.exception("virtual patrol missed sweep failed (non-fatal)")
+
     # Roster auto-generation (Gap 86): expand recurring shift patterns into
     # concrete shifts for the next 7 days across all tenants.
     try:
