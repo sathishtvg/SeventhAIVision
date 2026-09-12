@@ -3,6 +3,10 @@
 SMTP is never touched — the sender is injected, so these tests exercise the
 queue's behaviour rather than a mail server's mood.
 
+The fakes take **kw because process_queue passes the row's frequency, schedule
+and period alongside the session: one queue drains both immediate reports and
+digests, and the sender has to know which it is holding.
+
 Sections:
   A — What gets queued (3 tests)
   B — Sending, and claiming before sending (2 tests)
@@ -138,7 +142,7 @@ async def test_a_queued_report_is_sent_and_marked():
     await _enqueue(ids)
     seen = {}
 
-    async def fake_send(db, *, session_id, recipients, subject):
+    async def fake_send(db, *, session_id, recipients, subject, **kw):
         seen["recipients"] = recipients
         seen["subject"] = subject
 
@@ -161,7 +165,7 @@ async def test_a_sent_report_is_not_sent_again_on_the_next_run():
     await _enqueue(ids)
     calls = []
 
-    async def fake_send(db, *, session_id, recipients, subject):
+    async def fake_send(db, *, session_id, recipients, subject, **kw):
         calls.append(session_id)
 
     await _drain(fake_send)
@@ -176,7 +180,7 @@ async def test_a_failed_send_records_the_reason_and_retries_later():
     ids = await _patrol(recipients=["ops@example.com"])
     await _enqueue(ids)
 
-    async def boom(db, *, session_id, recipients, subject):
+    async def boom(db, *, session_id, recipients, subject, **kw):
         raise RuntimeError("smtp: connection refused")
 
     now = datetime.now(timezone.utc)
@@ -198,7 +202,7 @@ async def test_a_failed_send_is_not_retried_before_its_backoff():
     await _enqueue(ids)
     calls = []
 
-    async def boom(db, *, session_id, recipients, subject):
+    async def boom(db, *, session_id, recipients, subject, **kw):
         calls.append(1)
         raise RuntimeError("smtp down")
 
@@ -215,7 +219,7 @@ async def test_it_gives_up_after_the_attempt_limit_but_stays_visible():
     ids = await _patrol(recipients=["ops@example.com"])
     await _enqueue(ids)
 
-    async def boom(db, *, session_id, recipients, subject):
+    async def boom(db, *, session_id, recipients, subject, **kw):
         raise RuntimeError("smtp down")
 
     now = datetime.now(timezone.utc)

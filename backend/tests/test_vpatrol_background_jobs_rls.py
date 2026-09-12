@@ -210,7 +210,7 @@ async def test_the_email_queue_runs_across_tenants_under_rls():
 
     sent_to = []
 
-    async def fake_send(db, *, session_id, recipients, subject):
+    async def fake_send(db, *, session_id, recipients, subject, **kw):
         sent_to.append(session_id)
 
     async def run(s):
@@ -254,7 +254,7 @@ async def test_a_sent_report_is_marked_sent_and_not_retried():
 
     calls = []
 
-    async def fake_send(db, *, session_id, recipients, subject):
+    async def fake_send(db, *, session_id, recipients, subject, **kw):
         if session_id == str(sess):
             calls.append(session_id)
 

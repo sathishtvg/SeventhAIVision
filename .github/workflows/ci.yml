@@ -219,6 +219,44 @@ jobs:
           PY
 
 
+      # ── The §52 flow, end to end ──────────────────────────────────────────
+      #
+      # The unit tests cover the pieces; this is the only thing that exercises
+      # the whole flow -- login, the real scheduler, a real RTSP capture, the
+      # reports, the stored row, the queued email, the incident. Every defect
+      # this module shipped with was found by running it rather than reading it,
+      # including three scheduler jobs that failed every cycle and an endpoint
+      # that had never once returned a 200.
+      #
+      # No real camera is needed: mediamtx generates the streams from the video
+      # files committed under docker/mediamtx/videos, and the script seeds its
+      # own tenant, site and cameras against them.
+      - name: Start the test camera source
+        run: docker compose -f docker/docker-compose.yml up -d mediamtx
+
+      - name: Wait for a live RTSP stream
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose -f docker/docker-compose.yml exec -T api \
+                 ffprobe -rtsp_transport tcp -timeout 5000000 \
+                 -i rtsp://mediamtx:8554/cam1 -show_entries stream=codec_name \
+                 -of csv=p=0 >/dev/null 2>&1; then
+              echo "cam1 is publishing"
+              exit 0
+            fi
+            sleep 4
+          done
+          echo "::error::mediamtx never published cam1; the end-to-end run cannot capture a frame"
+          docker compose -f docker/docker-compose.yml logs mediamtx | tail -40
+          exit 1
+
+      - name: Virtual patrol end-to-end (§52)
+        run: |
+          docker compose -f docker/docker-compose.yml cp \
+            scripts/ops/vpatrol_e2e.py api:/tmp/vpatrol_e2e.py
+          docker compose -f docker/docker-compose.yml exec -T api \
+            python /tmp/vpatrol_e2e.py
+
       - name: Tear down
         if: always()
         run: docker compose -f docker/docker-compose.yml down -v
