@@ -126,6 +126,13 @@ async def create_due_sessions(db: AsyncSession, *, now_utc: datetime | None = No
     # return everything, it raises. This is the same trap that has caught every
     # other sweep in this file; they all loop tenants and set the GUC, and so
     # does this one.
+    #
+    # The tenant is ALSO in the WHERE clause, not left to the policy alone.
+    # Relying on RLS to filter means the query returns every row for any
+    # connection that bypasses RLS -- postgres, a superuser, a future admin
+    # session -- and the loop then collects one copy of every row PER TENANT.
+    # That is not a subtle degradation: it is thousands of duplicate rows,
+    # each acted on thousands of times.
     tenants = (await db.execute(text(
         "SELECT id FROM tenants WHERE is_active"))).scalars().all()
 
@@ -138,7 +145,8 @@ async def create_due_sessions(db: AsyncSession, *, now_utc: datetime | None = No
                    s.weekdays, s.patrol_time, s.timezone, s.assigned_user_id
               FROM virtual_patrol_schedules s
              WHERE s.enabled
-        """))).mappings().all()
+               AND s.tenant_id = CAST(:t AS uuid)
+        """), {"t": str(tenant_id)})).mappings().all()
         schedules.extend(dict(r) for r in rows)
     await db.rollback()  # end the read transaction; each create gets its own
 
@@ -204,9 +212,10 @@ async def sweep_missed_sessions(db: AsyncSession, *, now_utc: datetime | None = 
               FROM virtual_patrol_sessions s
               LEFT JOIN virtual_patrol_schedules sc ON sc.id = s.schedule_id
              WHERE s.status = 'SCHEDULED'
+               AND s.tenant_id = CAST(:t AS uuid)
                AND s.scheduled_for
                    + make_interval(mins => COALESCE(sc.grace_minutes, 15)) < :now
-        """), {"now": now_utc})).mappings().all()
+        """), {"now": now_utc, "t": str(tenant_id)})).mappings().all()
         rows.extend(dict(r) for r in found)
     await db.rollback()
 

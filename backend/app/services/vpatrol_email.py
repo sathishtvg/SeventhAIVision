@@ -100,6 +100,10 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
     # gathered one tenant at a time with the GUC set. An unscoped read does not
     # quietly return nothing — the policy casts current_setting(...) to uuid and
     # the empty string fails the cast, taking the whole run down.
+    #
+    # The tenant is in the WHERE clause too. Leaving the filtering to RLS alone
+    # means any BYPASSRLS connection reads every row on every iteration, and the
+    # loop then sends the same report once per tenant in the system.
     tenants = (await db.execute(text(
         "SELECT id FROM tenants WHERE is_active"))).scalars().all()
 
@@ -111,11 +115,13 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
             SELECT id, tenant_id, session_id, recipients, subject, attempts
               FROM virtual_patrol_email_queue
              WHERE status IN ('PENDING', 'FAILED')
+               AND tenant_id = CAST(:t AS uuid)
                AND attempts < :max
                AND scheduled_at <= :now
              ORDER BY scheduled_at
              LIMIT :batch
-        """), {"max": MAX_ATTEMPTS, "now": now, "batch": BATCH})).mappings().all()
+        """), {"max": MAX_ATTEMPTS, "now": now, "batch": BATCH,
+               "t": str(tenant_id)})).mappings().all()
         due.extend(dict(r) for r in rows)
     await db.rollback()
 
