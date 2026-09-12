@@ -1236,6 +1236,19 @@ async def run_once(redis: Redis | None = None) -> None:
     except Exception:
         logger.exception("virtual patrol missed sweep failed (non-fatal)")
 
+    # Virtual patrol report emails. Retries with backoff and gives up after
+    # five attempts, leaving the row FAILED with its reason attached rather than
+    # dropping it -- an email nobody can prove was never sent is worse than one
+    # plainly marked failed.
+    try:
+        from app.services import vpatrol_email
+        async with AsyncSessionLocal() as db:
+            counts = await vpatrol_email.process_queue(db)
+        if counts["sent"] or counts["failed"]:
+            logger.info("virtual patrol emails: %s", counts)
+    except Exception:
+        logger.exception("virtual patrol email queue failed (non-fatal)")
+
     # Roster auto-generation (Gap 86): expand recurring shift patterns into
     # concrete shifts for the next 7 days across all tenants.
     try:

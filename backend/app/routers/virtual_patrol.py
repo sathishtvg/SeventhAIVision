@@ -40,6 +40,7 @@ _READ = Depends(require_permission("vpatrol:read"))
 _MANAGE = Depends(require_permission("vpatrol:manage"))
 _EXECUTE = Depends(require_permission("vpatrol:execute"))
 _REPORT = Depends(require_permission("vpatrol:report"))
+_EXPORT = Depends(require_permission("vpatrol:export"))
 _EMAIL = Depends(require_permission("vpatrol:email"))
 
 SCHEDULE_TYPES = ("ONCE", "DAILY", "WEEKLY")
@@ -686,8 +687,16 @@ async def complete_patrol(session_id: str,
     session = await _session_or_404(db, session_id)
     _assert_is_the_assigned_officer(session, token)
     status_out = await vp.complete_session(db, session_id)
+
+    # Queued, never sent from here. The officer is standing at the last camera;
+    # they should not be waiting on an SMTP handshake, and a mail server that is
+    # down must not make a finished patrol look broken.
+    from app.services import vpatrol_email
+    queued = await vpatrol_email.enqueue_completed_patrol(db, session_id)
+
     await db.commit()
-    return {"session_id": session_id, "status": status_out}
+    return {"session_id": session_id, "status": status_out,
+            "report_email_queued": queued is not None}
 
 
 # ── History and reports ──────────────────────────────────────────────────────
@@ -767,6 +776,25 @@ async def get_snapshot_image(
         raise HTTPException(status.HTTP_404_NOT_FOUND,
                             "The snapshot file is missing from storage")
     return FileResponse(str(file_path), media_type="image/jpeg")
+
+
+@router.get("/sessions/{session_id}/report/excel", dependencies=[_EXPORT])
+async def session_report_excel(session_id: str,
+                               db: AsyncSession = Depends(get_db_with_tenant)):
+    """The workbook. Needs vpatrol:export rather than vpatrol:report, because
+    taking the data out of the system is a different act from reading it."""
+    from fastapi.responses import StreamingResponse
+    import io as _io
+    from app.services import vpatrol_reports
+
+    session = await _session_or_404(db, session_id)
+    xlsx = await vpatrol_reports.build_patrol_xlsx(db, session_id)
+    filename = f"virtual-patrol-{session['patrol_number']}.xlsx"
+    return StreamingResponse(
+        _io.BytesIO(xlsx),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/sessions/{session_id}/report/pdf", dependencies=[_REPORT])

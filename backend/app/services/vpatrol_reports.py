@@ -72,6 +72,7 @@ async def load_session_for_report(db: AsyncSession, session_id: str) -> dict:
         SELECT q.session_camera_id, q.sequence_no, q.question_text,
                q.question_type, a.answer_text, a.answer_json,
                a.is_exception, a.exception_reason, a.incident_id,
+               a.answered_at,
                u.full_name AS answered_by
           FROM virtual_patrol_session_questions q
           JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id
@@ -254,3 +255,136 @@ def render_pdf(data: dict) -> bytes:
 
 async def build_patrol_pdf(db: AsyncSession, session_id: str) -> bytes:
     return render_pdf(await load_session_for_report(db, session_id))
+
+
+# ── Excel ────────────────────────────────────────────────────────────────────
+
+def _check_openpyxl():
+    try:
+        import openpyxl  # noqa: F401
+    except ImportError:  # pragma: no cover - environment guard
+        raise RuntimeError(
+            "openpyxl is not installed - rebuild the container with openpyxl>=3.1"
+        )
+
+
+def render_xlsx(data: dict) -> bytes:
+    """Four sheets, because they answer four different questions.
+
+    Summary is what happened. Camera Inspection is what was looked at.
+    Questions is the full record. Exceptions is the only sheet most people open,
+    so it exists separately rather than as a filter somebody has to remember to
+    apply -- a findings list buried inside two hundred rows of "YES" is a
+    findings list nobody reads.
+
+    Unlike the PDF this carries no images. A spreadsheet is for sorting and
+    totalling; the evidence lives in the PDF, and the snapshot timestamp here
+    points at it.
+    """
+    _check_openpyxl()
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    session = data["session"]
+    header_font = Font(bold=True)
+    header_fill = PatternFill("solid", fgColor="EEEEEE")
+    exception_fill = PatternFill("solid", fgColor="FDE7E7")
+
+    wb = Workbook()
+
+    def sheet(title: str, headers: list[str], first: bool = False):
+        ws = wb.active if first else wb.create_sheet()
+        ws.title = title
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+        ws.freeze_panes = "A2"
+        return ws
+
+    def autosize(ws, widths: list[int]):
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Summary ──
+    done = session["completed_camera_count"] or 0
+    total = session["camera_count"] or 0
+    ws = sheet("Summary", ["Field", "Value"], first=True)
+    for label, value in (
+        ("Site", session["site_name"]),
+        ("Patrol", session["schedule_name"]),
+        ("Patrol number", session["patrol_number"]),
+        ("Scheduled", _fmt(session["scheduled_for"])),
+        ("Duty officer", session["officer_name"] or "Unassigned"),
+        ("Started", _fmt(session["started_at"], "Not started")),
+        ("Completed", _fmt(session["completed_at"], "Not completed")),
+        ("Status", session["status"].replace("_", " ").title()),
+        ("Cameras inspected", f"{done} of {total}"),
+        # Stored as text, not a float: 66.67% invites somebody to average two
+        # patrols' percentages, which is not a number that means anything.
+        ("Completion", f"{round(done / total * 100) if total else 0}%"),
+    ):
+        ws.append([label, value])
+    autosize(ws, [22, 46])
+
+    # ── Camera Inspection ──
+    ws = sheet("Camera Inspection",
+               ["#", "Camera", "Location", "Status", "Snapshot taken",
+                "Officer notes"])
+    for cam in data["cameras"]:
+        ws.append([
+            cam["sequence_no"], cam["camera_name"], cam["location"] or "",
+            cam["status"].replace("_", " ").title(),
+            _fmt(cam["snapshot_taken_at"], "none"),
+            cam["officer_notes"] or "",
+        ])
+    autosize(ws, [5, 26, 20, 20, 20, 50])
+
+    # ── Questions & Answers ──
+    ws = sheet("Questions & Answers",
+               ["Camera", "#", "Question", "Answer", "Answered by",
+                "Answered at", "Exception"])
+    for cam in data["cameras"]:
+        for a in data["answers"].get(str(cam["id"]), []):
+            ws.append([
+                cam["camera_name"], a["sequence_no"], a["question_text"],
+                _answer_display(a), a["answered_by"] or "",
+                _fmt(a.get("answered_at"), ""),
+                "Yes" if a["is_exception"] else "",
+            ])
+            if a["is_exception"]:
+                for cell in ws[ws.max_row]:
+                    cell.fill = exception_fill
+    autosize(ws, [24, 5, 52, 20, 20, 18, 12])
+
+    # ── Exceptions ──
+    ws = sheet("Exceptions",
+               ["Camera", "Question", "Answer", "Reason", "Incident", "Answered at"])
+    found = 0
+    for cam in data["cameras"]:
+        for a in data["answers"].get(str(cam["id"]), []):
+            if not a["is_exception"]:
+                continue
+            found += 1
+            ws.append([
+                cam["camera_name"], a["question_text"], _answer_display(a),
+                a["exception_reason"] or "",
+                str(a["incident_id"]) if a["incident_id"] else "No incident raised",
+                _fmt(a.get("answered_at"), ""),
+            ])
+    if not found:
+        # An empty sheet reads as "the export is broken". This reads as the
+        # good news it actually is.
+        ws.append(["No exceptions were raised on this patrol.", "", "", "", "", ""])
+        ws["A2"].alignment = Alignment(horizontal="left")
+    autosize(ws, [24, 52, 20, 40, 38, 18])
+
+    import io as _io
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+async def build_patrol_xlsx(db: AsyncSession, session_id: str) -> bytes:
+    return render_xlsx(await load_session_for_report(db, session_id))
