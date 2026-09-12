@@ -117,13 +117,30 @@ async def create_due_sessions(db: AsyncSession, *, now_utc: datetime | None = No
     """
     now_utc = now_utc or datetime.now(timezone.utc)
 
-    schedules = (await db.execute(text("""
-        SELECT s.id, s.tenant_id, s.schedule_type, s.start_date, s.end_date,
-               s.weekdays, s.patrol_time, s.timezone, s.assigned_user_id
-          FROM virtual_patrol_schedules s
-          JOIN tenants t ON t.id = s.tenant_id
-         WHERE s.enabled AND t.is_active
-    """))).mappings().all()
+    # READ PER TENANT, WITH THE GUC SET FIRST.
+    #
+    # virtual_patrol_schedules is RLS-protected, and the policy casts
+    # current_setting('app.current_tenant', true) to uuid. With no tenant set
+    # that setting is the empty string and the cast fails outright --
+    # "invalid input syntax for type uuid" -- so a cross-tenant SELECT does not
+    # return everything, it raises. This is the same trap that has caught every
+    # other sweep in this file; they all loop tenants and set the GUC, and so
+    # does this one.
+    tenants = (await db.execute(text(
+        "SELECT id FROM tenants WHERE is_active"))).scalars().all()
+
+    schedules = []
+    for tenant_id in tenants:
+        await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                         {"t": str(tenant_id)})
+        rows = (await db.execute(text("""
+            SELECT s.id, s.tenant_id, s.schedule_type, s.start_date, s.end_date,
+                   s.weekdays, s.patrol_time, s.timezone, s.assigned_user_id
+              FROM virtual_patrol_schedules s
+             WHERE s.enabled
+        """))).mappings().all()
+        schedules.extend(dict(r) for r in rows)
+    await db.rollback()  # end the read transaction; each create gets its own
 
     created, skipped, failed = 0, 0, 0
     for row in schedules:
@@ -173,14 +190,25 @@ async def sweep_missed_sessions(db: AsyncSession, *, now_utc: datetime | None = 
     """
     now_utc = now_utc or datetime.now(timezone.utc)
 
-    rows = (await db.execute(text("""
-        SELECT s.id, s.tenant_id
-          FROM virtual_patrol_sessions s
-          LEFT JOIN virtual_patrol_schedules sc ON sc.id = s.schedule_id
-         WHERE s.status = 'SCHEDULED'
-           AND s.scheduled_for
-               + make_interval(mins => COALESCE(sc.grace_minutes, 15)) < :now
-    """), {"now": now_utc})).mappings().all()
+    # Per tenant, for the same reason as above: these are RLS-protected tables
+    # and an unscoped read raises rather than returning everything.
+    tenants = (await db.execute(text(
+        "SELECT id FROM tenants WHERE is_active"))).scalars().all()
+
+    rows = []
+    for tenant_id in tenants:
+        await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                         {"t": str(tenant_id)})
+        found = (await db.execute(text("""
+            SELECT s.id, s.tenant_id
+              FROM virtual_patrol_sessions s
+              LEFT JOIN virtual_patrol_schedules sc ON sc.id = s.schedule_id
+             WHERE s.status = 'SCHEDULED'
+               AND s.scheduled_for
+                   + make_interval(mins => COALESCE(sc.grace_minutes, 15)) < :now
+        """), {"now": now_utc})).mappings().all()
+        rows.extend(dict(r) for r in found)
+    await db.rollback()
 
     missed = 0
     for row in rows:

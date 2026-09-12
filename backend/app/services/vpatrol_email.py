@@ -96,15 +96,28 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
     now = now or datetime.now(timezone.utc)
     send = send or _send_patrol_email
 
-    due = (await db.execute(text("""
-        SELECT id, tenant_id, session_id, recipients, subject, attempts
-          FROM virtual_patrol_email_queue
-         WHERE status IN ('PENDING', 'FAILED')
-           AND attempts < :max
-           AND scheduled_at <= :now
-         ORDER BY scheduled_at
-         LIMIT :batch
-    """), {"max": MAX_ATTEMPTS, "now": now, "batch": BATCH})).mappings().all()
+    # The queue is RLS-protected and this worker spans tenants, so the rows are
+    # gathered one tenant at a time with the GUC set. An unscoped read does not
+    # quietly return nothing — the policy casts current_setting(...) to uuid and
+    # the empty string fails the cast, taking the whole run down.
+    tenants = (await db.execute(text(
+        "SELECT id FROM tenants WHERE is_active"))).scalars().all()
+
+    due = []
+    for tenant_id in tenants:
+        await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                         {"t": str(tenant_id)})
+        rows = (await db.execute(text("""
+            SELECT id, tenant_id, session_id, recipients, subject, attempts
+              FROM virtual_patrol_email_queue
+             WHERE status IN ('PENDING', 'FAILED')
+               AND attempts < :max
+               AND scheduled_at <= :now
+             ORDER BY scheduled_at
+             LIMIT :batch
+        """), {"max": MAX_ATTEMPTS, "now": now, "batch": BATCH})).mappings().all()
+        due.extend(dict(r) for r in rows)
+    await db.rollback()
 
     sent, failed = 0, 0
     for row in due:
@@ -114,6 +127,13 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
             continue  # another worker got there first
 
         try:
+            # _claim COMMITS, and set_config(..., true) is SET LOCAL, so the
+            # tenant is gone the moment the claim lands. Everything after this
+            # point -- building the report, and marking the row SENT -- needs it
+            # set again. Without this the send succeeds and the UPDATE throws,
+            # the row is marked FAILED, and the same report goes out five times.
+            await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                             {"t": str(row["tenant_id"])})
             await send(db, session_id=str(row["session_id"]),
                        recipients=[e.strip() for e in row["recipients"].split(",") if e.strip()],
                        subject=row["subject"])
