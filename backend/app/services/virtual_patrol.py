@@ -293,13 +293,20 @@ async def refresh_progress(db: AsyncSession, session_id: str) -> dict:
         camera_count=counts["cameras"], completed=counts["done"],
         unavailable=counts["unavailable"],
     )
+    # camera_count is rewritten here too, not just completed_camera_count.
+    # It is set at creation and would otherwise stay frozen while the completed
+    # tally is recounted from the rows -- so any divergence renders as "5 / 3",
+    # a figure that is not merely wrong but obviously nonsense to whoever reads
+    # it. Both numbers now come from the same count, so they cannot disagree.
     await db.execute(text("""
         UPDATE virtual_patrol_sessions
-           SET completed_camera_count = :done,
+           SET camera_count = :cameras,
+               completed_camera_count = :done,
                answered_question_count = :answered,
                updated_at = now()
          WHERE id = CAST(:id AS uuid)
-    """), {"done": counts["done"], "answered": counts["answered"], "id": session_id})
+    """), {"cameras": counts["cameras"], "done": counts["done"],
+           "answered": counts["answered"], "id": session_id})
 
     return {
         "camera_count": counts["cameras"],
@@ -322,3 +329,84 @@ async def complete_session(db: AsyncSession, session_id: str) -> str:
          WHERE id = CAST(:id AS uuid)
     """), {"st": status, "id": session_id})
     return status
+
+
+async def raise_exception_incident(
+    db: AsyncSession, *, session_question_id: str, answered_by_user_id: str | None,
+) -> str | None:
+    """Turn a failed check into an incident in the EXISTING incident system.
+
+    Returns the incident id, or None if nothing was raised.
+
+    Only fires when the supervisor configured CREATE_INCIDENT for that question
+    AND the officer's answer is the negative one. A question set to NONE records
+    the exception and raises nothing — the configuration is the decision, not
+    this function.
+
+    IDEMPOTENT. An officer who corrects an answer, or a retried request, must not
+    produce a second incident for one finding. The answer row carries the
+    incident id, and an answer that already has one is left alone. An incident
+    that has been raised is also never withdrawn here: somebody may already have
+    been dispatched to it, and silently deleting the record of why would be
+    worse than leaving a resolved one behind.
+
+    The incident references the camera, so it lands in the Command Centre beside
+    everything else about that camera rather than in a parallel world of its own.
+    """
+    row = (await db.execute(text("""
+        SELECT q.id, q.question_text, q.failure_action,
+               a.id AS answer_id, a.answer_text, a.is_exception, a.incident_id,
+               c.id AS session_camera_id, c.camera_id, c.camera_name,
+               c.snapshot_path,
+               s.id AS session_id, s.patrol_number, s.schedule_name,
+               u.full_name AS officer_name
+          FROM virtual_patrol_session_questions q
+          JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id
+          JOIN virtual_patrol_sessions s ON s.id = c.session_id
+          LEFT JOIN virtual_patrol_session_answers a ON a.session_question_id = q.id
+          LEFT JOIN users u ON u.id = CAST(:by AS uuid)
+         WHERE q.id = CAST(:qid AS uuid)
+    """), {"qid": session_question_id, "by": answered_by_user_id})).mappings().first()
+
+    if row is None or not row["is_exception"]:
+        return None
+    if row["failure_action"] != "CREATE_INCIDENT":
+        return None
+    if row["incident_id"] is not None:
+        return str(row["incident_id"])
+
+    description = chr(10).join([
+        "Raised by a virtual patrol.",
+        "",
+        f"Patrol: {row['schedule_name']} ({row['patrol_number']})",
+        f"Camera: {row['camera_name']}",
+        f"Question: {row['question_text']}",
+        f"Answer: {row['answer_text']}",
+        f"Officer: {row['officer_name'] or 'Unknown'}",
+        f"Snapshot: {'captured' if row['snapshot_path'] else 'not available'}",
+    ])
+
+    # severity is the system default rather than a figure invented here. The
+    # supervisor chose to raise an incident; how urgent it is belongs to the
+    # people triaging it, and guessing "critical" for every failed checkbox is
+    # how an incident queue stops being read.
+    incident_id = (await db.execute(text("""
+        INSERT INTO incidents
+            (tenant_id, camera_id, title, description, severity, is_auto_created)
+        VALUES (current_setting('app.current_tenant')::uuid, :cam, :title, :descr,
+                'medium', TRUE)
+        RETURNING id
+    """), {
+        "cam": row["camera_id"], "descr": description,
+        "title": f"Virtual patrol exception: {row['camera_name']}",
+    })).scalar()
+
+    await db.execute(text("""
+        UPDATE virtual_patrol_session_answers
+           SET incident_id = :inc,
+               exception_reason = COALESCE(exception_reason, :reason)
+         WHERE id = :aid
+    """), {"inc": incident_id, "aid": row["answer_id"],
+           "reason": f"{row['question_text']} answered {row['answer_text']}"})
+
+    return str(incident_id)

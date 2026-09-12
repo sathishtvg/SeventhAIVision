@@ -866,6 +866,11 @@ VISITOR_OVERSTAY_INTERVAL = int(os.environ.get("VISITOR_OVERSTAY_INTERVAL_SECOND
 CAMERA_OFFLINE_INTERVAL  = int(os.environ.get("CAMERA_OFFLINE_INTERVAL_SECONDS", "300"))       # 5 min
 COMPLIANCE_INTERVAL      = int(os.environ.get("COMPLIANCE_INTERVAL_SECONDS", "900"))           # 15 min
 CONTRACTOR_EXPIRY_INTERVAL = int(os.environ.get("CONTRACTOR_EXPIRY_INTERVAL_SECONDS", "3600"))  # 1 hr
+# Virtual patrolling runs on a SHORT cycle, not with the daily jobs. A patrol
+# due at 07:00 has to exist at 07:00 -- putting it in run_once would create it
+# whenever the nightly sweep happened to run, and leave its report queued for up
+# to a day. Two minutes sits well inside the smallest sensible grace period.
+VPATROL_INTERVAL = int(os.environ.get("VPATROL_INTERVAL_SECONDS", "120"))  # 2 min
 NO_SHOW_CHECK_INTERVAL   = int(os.environ.get("NO_SHOW_CHECK_INTERVAL_SECONDS", "900"))         # 15 min
 
 
@@ -1237,6 +1242,7 @@ async def main() -> None:
     last_compliance = 0.0
     last_contractor = 0.0
     last_no_show = 0.0
+    last_vpatrol = 0.0
 
     try:
         while True:
@@ -1249,6 +1255,35 @@ async def main() -> None:
                 except Exception:
                     logger.exception("daily run_once failed")
                 last_daily = now
+
+            # Virtual patrolling (every 2 min): create the patrols whose
+            # time has come, mark the ones nobody started, and post the
+            # reports. Three separate try blocks -- one tenant's broken
+            # schedule must not stop the other two jobs for everybody else.
+            if now - last_vpatrol >= VPATROL_INTERVAL:
+                from app.services import vpatrol_email, vpatrol_scheduler
+                try:
+                    async with AsyncSessionLocal() as db:
+                        counts = await vpatrol_scheduler.create_due_sessions(db)
+                    if counts["created"] or counts["failed"]:
+                        logger.info("virtual patrol sessions: %s", counts)
+                except Exception:
+                    logger.exception("virtual patrol session creation failed")
+                try:
+                    async with AsyncSessionLocal() as db:
+                        missed = await vpatrol_scheduler.sweep_missed_sessions(db)
+                    if missed:
+                        logger.info("virtual patrol: %d session(s) marked missed", missed)
+                except Exception:
+                    logger.exception("virtual patrol missed sweep failed")
+                try:
+                    async with AsyncSessionLocal() as db:
+                        mail = await vpatrol_email.process_queue(db)
+                    if mail["sent"] or mail["failed"]:
+                        logger.info("virtual patrol emails: %s", mail)
+                except Exception:
+                    logger.exception("virtual patrol email queue failed")
+                last_vpatrol = now
 
             # Camera offline check (every 5 min)
             if now - last_camera >= CAMERA_OFFLINE_INTERVAL:

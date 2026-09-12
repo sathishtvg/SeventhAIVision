@@ -20,6 +20,7 @@ and let a mid-patrol edit change what the officer is asked.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, time, timezone
 
@@ -30,9 +31,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
+# Imported rather than restated: the snapshot endpoint scopes by site by hand
+# (its token is a query param, so the usual dependency cannot run), and a second
+# copy of these role numbers would drift from the real ones without saying so.
+from app.dependencies.sites import _CLIENT_ROLE, _UNRESTRICTED_ROLES
 from app.dependencies.tenant import get_db_with_tenant
 from app.services import virtual_patrol as vp
 from app.services import vpatrol_snapshot
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/virtual-patrol", tags=["virtual-patrol"])
 
@@ -40,6 +47,7 @@ _READ = Depends(require_permission("vpatrol:read"))
 _MANAGE = Depends(require_permission("vpatrol:manage"))
 _EXECUTE = Depends(require_permission("vpatrol:execute"))
 _REPORT = Depends(require_permission("vpatrol:report"))
+_EXPORT = Depends(require_permission("vpatrol:export"))
 _EMAIL = Depends(require_permission("vpatrol:email"))
 
 SCHEDULE_TYPES = ("ONCE", "DAILY", "WEEKLY")
@@ -173,8 +181,13 @@ async def list_schedules(
                  WHERE c.schedule_id = s.id) AS camera_count
           FROM virtual_patrol_schedules s
           JOIN sites si ON si.id = s.site_id
-         WHERE (:site IS NULL OR s.site_id = CAST(:site AS uuid))
-           AND (:enabled IS NULL OR s.enabled = :enabled)
+         -- Every optional filter is CAST on BOTH sides of the OR. Used once
+         -- bare and once cast, Postgres cannot infer a single type for the
+         -- parameter and answers AmbiguousParameterError -- which surfaces as
+         -- a 500 on the page's very first request.
+         WHERE (CAST(:site AS uuid) IS NULL OR s.site_id = CAST(:site AS uuid))
+           AND (CAST(:enabled AS boolean) IS NULL
+                OR s.enabled = CAST(:enabled AS boolean))
          ORDER BY s.created_at DESC
          LIMIT :limit OFFSET :offset
     """), {"site": site_id, "enabled": enabled, "limit": limit, "offset": offset})
@@ -621,8 +634,20 @@ async def submit_answers(session_id: str, session_camera_id: str, body: AnswersS
             " WHERE id = CAST(:id AS uuid)"),
             {"n": body.officer_notes, "id": session_camera_id})
 
+    # Raised AFTER every answer is written, not inside the loop. An incident is
+    # a fact about a finished submission, and raising one mid-loop would leave
+    # an incident pointing at a camera whose remaining answers then failed
+    # validation and were never saved.
+    incidents: list[str] = []
+    for item in body.answers:
+        raised = await vp.raise_exception_incident(
+            db, session_question_id=item.session_question_id,
+            answered_by_user_id=token.user_id)
+        if raised:
+            incidents.append(raised)
+
     await db.commit()
-    return {"saved": len(body.answers)}
+    return {"saved": len(body.answers), "incidents_raised": incidents}
 
 
 @router.post("/sessions/{session_id}/cameras/{session_camera_id}/complete",
@@ -669,8 +694,29 @@ async def complete_patrol(session_id: str,
     session = await _session_or_404(db, session_id)
     _assert_is_the_assigned_officer(session, token)
     status_out = await vp.complete_session(db, session_id)
+
+    # The report is written and recorded here, before the email is queued, so a
+    # finished patrol leaves a durable artefact rather than one that exists only
+    # while somebody is clicking Download. Non-fatal on purpose: a report that
+    # cannot be rendered must not cost the officer the patrol they just walked.
+    from app.services import vpatrol_reports
+    try:
+        stored = await vpatrol_reports.store_reports(db, session_id)
+    except Exception:
+        logger.exception("virtual patrol: storing the report for %s failed "
+                         "(the patrol itself is unaffected)", session_id)
+        stored = []
+
+    # Queued, never sent from here. The officer is standing at the last camera;
+    # they should not be waiting on an SMTP handshake, and a mail server that is
+    # down must not make a finished patrol look broken.
+    from app.services import vpatrol_email
+    queued = await vpatrol_email.enqueue_completed_patrol(db, session_id)
+
     await db.commit()
-    return {"session_id": session_id, "status": status_out}
+    return {"session_id": session_id, "status": status_out,
+            "reports_stored": [s["report_format"] for s in stored],
+            "report_email_queued": queued is not None}
 
 
 # ── History and reports ──────────────────────────────────────────────────────
@@ -692,13 +738,122 @@ async def list_sessions(
           FROM virtual_patrol_sessions s
           JOIN sites si ON si.id = s.site_id
           LEFT JOIN users u ON u.id = s.officer_user_id
-         WHERE (:site IS NULL OR s.site_id = CAST(:site AS uuid))
-           AND (:st IS NULL OR s.status = :st)
+         WHERE (CAST(:site AS uuid) IS NULL OR s.site_id = CAST(:site AS uuid))
+           AND (CAST(:st AS varchar) IS NULL OR s.status = CAST(:st AS varchar))
          ORDER BY s.scheduled_for DESC
          LIMIT :limit OFFSET :offset
     """), {"site": site_id, "st": status_filter, "limit": limit, "offset": offset})
     ).mappings().all()
     return [dict(r) for r in rows]
+
+
+@router.get("/sessions/{session_id}/cameras/{session_camera_id}/snapshot")
+async def get_snapshot_image(
+    session_id: str, session_camera_id: str,
+    token: str = Query(..., description="JWT access token"),
+):
+    """Serve a patrol snapshot, authorized, never by raw path.
+
+    An <img> tag cannot carry an Authorization header, so the token rides in the
+    query string — the same pattern as evidence images and payslip PDFs. It is
+    still a real token: the tenant is read FROM it and used to scope the lookup,
+    so a valid token for tenant A cannot fetch tenant B's evidence by guessing a
+    session id.
+
+    The path in the database is never returned to the browser. Section 38: a
+    storage path handed to a client is an invitation to walk the directory.
+    """
+    from fastapi.responses import FileResponse
+    from app.core.security import InvalidTokenError, decode_access_token
+    from app.db.session import AsyncSessionLocal
+    from app.core.config import settings as app_settings
+    from pathlib import Path
+
+    try:
+        payload = decode_access_token(token)
+    except InvalidTokenError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+
+    # decode_access_token returns a dict, not an object. This read was written
+    # as payload.tenant_id, which raised AttributeError on every valid token --
+    # so this endpoint 500'd for its entire life and no snapshot ever reached a
+    # browser. Every other query-token endpoint in the codebase (evidence.py,
+    # payroll.py, invoicing.py) subscripts it; so does this one now.
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            text("SELECT set_config('app.current_tenant', :t, true)"),
+            {"t": str(payload["tenant_id"])},
+        )
+
+        # THE PERMISSION, CHECKED INLINE. The normal dependencies read the
+        # Authorization header, and this endpoint's token arrives in the query
+        # string, so the check is done here against role_permissions -- the same
+        # shape evidence.py uses for the same reason. Without it any
+        # authenticated user of the tenant could fetch patrol evidence,
+        # including roles granted no patrol permission at all.
+        role_id = payload.get("role_id")
+        allowed = (await db.execute(text(
+            "SELECT 1 FROM role_permissions rp "
+            "  JOIN permissions p ON p.id = rp.permission_id "
+            " WHERE rp.role_id = :role_id AND p.code = 'vpatrol:read'"
+        ), {"role_id": role_id})).first()
+        if allowed is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "Missing permission: vpatrol:read")
+
+        # AND THE SITE, because a snapshot is the evidence itself. A supervisor
+        # restricted to two sites must not read a third site's camera by id.
+        # Same semantics as dependencies/sites.py::get_allowed_site_ids: roles 1
+        # and 2 are unrestricted by design, an explicit assignment restricts,
+        # and no assignment leaves role 7 with nothing and everyone else open.
+        site_filter, site_params = "", {}
+        if role_id not in _UNRESTRICTED_ROLES:
+            assigned = [str(r[0]) for r in (await db.execute(text(
+                "SELECT site_id FROM user_sites WHERE user_id = CAST(:uid AS uuid)"
+            ), {"uid": payload["sub"]})).all()]
+            if assigned:
+                site_filter = " AND s.site_id = ANY(:allowed_site_ids)"
+                site_params["allowed_site_ids"] = [uuid.UUID(x) for x in assigned]
+            elif role_id == _CLIENT_ROLE:
+                site_filter = " AND FALSE"
+
+        row = (await db.execute(text(f"""
+            SELECT sc.snapshot_path
+              FROM virtual_patrol_session_cameras sc
+              JOIN virtual_patrol_sessions s ON s.id = sc.session_id
+             WHERE sc.id = CAST(:cam AS uuid) AND s.id = CAST(:sess AS uuid)
+               {site_filter}
+        """), {"cam": session_camera_id, "sess": session_id, **site_params})).first()
+
+    if row is None or not row[0]:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No snapshot for this camera")
+
+    file_path = Path(app_settings.EVIDENCE_ROOT) / row[0]
+    if not file_path.exists():
+        # The row says a capture happened; the file does not. Saying so beats a
+        # broken image icon, which reads as a UI fault rather than lost evidence.
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "The snapshot file is missing from storage")
+    return FileResponse(str(file_path), media_type="image/jpeg")
+
+
+@router.get("/sessions/{session_id}/report/excel", dependencies=[_EXPORT])
+async def session_report_excel(session_id: str,
+                               db: AsyncSession = Depends(get_db_with_tenant)):
+    """The workbook. Needs vpatrol:export rather than vpatrol:report, because
+    taking the data out of the system is a different act from reading it."""
+    from fastapi.responses import StreamingResponse
+    import io as _io
+    from app.services import vpatrol_reports
+
+    session = await _session_or_404(db, session_id)
+    xlsx = await vpatrol_reports.build_patrol_xlsx(db, session_id)
+    filename = f"virtual-patrol-{session['patrol_number']}.xlsx"
+    return StreamingResponse(
+        _io.BytesIO(xlsx),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/sessions/{session_id}/report/pdf", dependencies=[_REPORT])

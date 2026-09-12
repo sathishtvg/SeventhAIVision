@@ -23,12 +23,16 @@ somebody can act on rather than an ImportError at startup.
 from __future__ import annotations
 
 import io
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 MAX_IMAGE_WIDTH_MM = 120
 MAX_IMAGE_HEIGHT_MM = 80
@@ -72,6 +76,7 @@ async def load_session_for_report(db: AsyncSession, session_id: str) -> dict:
         SELECT q.session_camera_id, q.sequence_no, q.question_text,
                q.question_type, a.answer_text, a.answer_json,
                a.is_exception, a.exception_reason, a.incident_id,
+               a.answered_at,
                u.full_name AS answered_by
           FROM virtual_patrol_session_questions q
           JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id
@@ -254,3 +259,206 @@ def render_pdf(data: dict) -> bytes:
 
 async def build_patrol_pdf(db: AsyncSession, session_id: str) -> bytes:
     return render_pdf(await load_session_for_report(db, session_id))
+
+
+# ── Excel ────────────────────────────────────────────────────────────────────
+
+def _check_openpyxl():
+    try:
+        import openpyxl  # noqa: F401
+    except ImportError:  # pragma: no cover - environment guard
+        raise RuntimeError(
+            "openpyxl is not installed - rebuild the container with openpyxl>=3.1"
+        )
+
+
+def render_xlsx(data: dict) -> bytes:
+    """Four sheets, because they answer four different questions.
+
+    Summary is what happened. Camera Inspection is what was looked at.
+    Questions is the full record. Exceptions is the only sheet most people open,
+    so it exists separately rather than as a filter somebody has to remember to
+    apply -- a findings list buried inside two hundred rows of "YES" is a
+    findings list nobody reads.
+
+    Unlike the PDF this carries no images. A spreadsheet is for sorting and
+    totalling; the evidence lives in the PDF, and the snapshot timestamp here
+    points at it.
+    """
+    _check_openpyxl()
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    session = data["session"]
+    header_font = Font(bold=True)
+    header_fill = PatternFill("solid", fgColor="EEEEEE")
+    exception_fill = PatternFill("solid", fgColor="FDE7E7")
+
+    wb = Workbook()
+
+    def sheet(title: str, headers: list[str], first: bool = False):
+        ws = wb.active if first else wb.create_sheet()
+        ws.title = title
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+        ws.freeze_panes = "A2"
+        return ws
+
+    def autosize(ws, widths: list[int]):
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Summary ──
+    done = session["completed_camera_count"] or 0
+    total = session["camera_count"] or 0
+    ws = sheet("Summary", ["Field", "Value"], first=True)
+    for label, value in (
+        ("Site", session["site_name"]),
+        ("Patrol", session["schedule_name"]),
+        ("Patrol number", session["patrol_number"]),
+        ("Scheduled", _fmt(session["scheduled_for"])),
+        ("Duty officer", session["officer_name"] or "Unassigned"),
+        ("Started", _fmt(session["started_at"], "Not started")),
+        ("Completed", _fmt(session["completed_at"], "Not completed")),
+        ("Status", session["status"].replace("_", " ").title()),
+        ("Cameras inspected", f"{done} of {total}"),
+        # Stored as text, not a float: 66.67% invites somebody to average two
+        # patrols' percentages, which is not a number that means anything.
+        ("Completion", f"{round(done / total * 100) if total else 0}%"),
+    ):
+        ws.append([label, value])
+    autosize(ws, [22, 46])
+
+    # ── Camera Inspection ──
+    ws = sheet("Camera Inspection",
+               ["#", "Camera", "Location", "Status", "Snapshot taken",
+                "Officer notes"])
+    for cam in data["cameras"]:
+        ws.append([
+            cam["sequence_no"], cam["camera_name"], cam["location"] or "",
+            cam["status"].replace("_", " ").title(),
+            _fmt(cam["snapshot_taken_at"], "none"),
+            cam["officer_notes"] or "",
+        ])
+    autosize(ws, [5, 26, 20, 20, 20, 50])
+
+    # ── Questions & Answers ──
+    ws = sheet("Questions & Answers",
+               ["Camera", "#", "Question", "Answer", "Answered by",
+                "Answered at", "Exception"])
+    for cam in data["cameras"]:
+        for a in data["answers"].get(str(cam["id"]), []):
+            ws.append([
+                cam["camera_name"], a["sequence_no"], a["question_text"],
+                _answer_display(a), a["answered_by"] or "",
+                _fmt(a.get("answered_at"), ""),
+                "Yes" if a["is_exception"] else "",
+            ])
+            if a["is_exception"]:
+                for cell in ws[ws.max_row]:
+                    cell.fill = exception_fill
+    autosize(ws, [24, 5, 52, 20, 20, 18, 12])
+
+    # ── Exceptions ──
+    ws = sheet("Exceptions",
+               ["Camera", "Question", "Answer", "Reason", "Incident", "Answered at"])
+    found = 0
+    for cam in data["cameras"]:
+        for a in data["answers"].get(str(cam["id"]), []):
+            if not a["is_exception"]:
+                continue
+            found += 1
+            ws.append([
+                cam["camera_name"], a["question_text"], _answer_display(a),
+                a["exception_reason"] or "",
+                str(a["incident_id"]) if a["incident_id"] else "No incident raised",
+                _fmt(a.get("answered_at"), ""),
+            ])
+    if not found:
+        # An empty sheet reads as "the export is broken". This reads as the
+        # good news it actually is.
+        ws.append(["No exceptions were raised on this patrol.", "", "", "", "", ""])
+        ws["A2"].alignment = Alignment(horizontal="left")
+    autosize(ws, [24, 52, 20, 40, 38, 18])
+
+    import io as _io
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+async def build_patrol_xlsx(db: AsyncSession, session_id: str) -> bytes:
+    return render_xlsx(await load_session_for_report(db, session_id))
+
+
+# ── Storing the finished report ──────────────────────────────────────────────
+
+async def store_reports(db: AsyncSession, session_id: str) -> list[dict]:
+    """Write the PDF and Excel to storage and record them against the patrol.
+
+    THE POINT IS THE RECORD, NOT THE CACHE. The download endpoints render on
+    demand and always did, so nothing here makes a report *available* that was
+    not available before. What it makes is a row saying this patrol's report
+    existed, in this format, at this path, at this time -- which is what an
+    agency is asked for months later when a client disputes whether a site was
+    inspected. A report that only exists while someone is clicking Download is
+    not evidence.
+
+    Written next to the snapshots, under the same tenant/site/date tree, so a
+    patrol's evidence and its report are retained and purged together rather
+    than drifting apart.
+
+    Idempotent per (session, format): completing a patrol twice, or a retry
+    after a timeout, must not leave two rows claiming two reports.
+    """
+    data = await load_session_for_report(db, session_id)
+    session = data["session"]
+
+    # load_session_for_report selects only what the report DISPLAYS, so it
+    # carries no tenant_id or site_id. Read them here rather than widening that
+    # loader, which the PDF and Excel renderers both depend on.
+    owner = (await db.execute(text("""
+        SELECT tenant_id, site_id, scheduled_for
+          FROM virtual_patrol_sessions WHERE id = CAST(:id AS uuid)
+    """), {"id": session_id})).mappings().first()
+    if owner is None:
+        raise ValueError("Patrol session not found")
+
+    day = owner["scheduled_for"] or datetime.now(timezone.utc)
+    prefix = (f"{owner['tenant_id']}/{owner['site_id']}/virtual-patrol/"
+              f"{day:%Y/%m/%d}/{session_id}")
+
+    stored: list[dict] = []
+    for fmt, builder, ext in (("PDF", render_pdf, "pdf"), ("XLSX", render_xlsx, "xlsx")):
+        try:
+            payload = builder(data)
+        except Exception:
+            # A missing reportlab/openpyxl must not cost the officer their
+            # completed patrol. The row simply is not written, and the download
+            # endpoint fails the same way it always did.
+            logger.exception("virtual patrol: could not render the %s report for %s",
+                             fmt, session_id)
+            continue
+
+        rel = f"{prefix}/report.{ext}"
+        path = Path(settings.EVIDENCE_ROOT) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+        row = (await db.execute(text("""
+            INSERT INTO virtual_patrol_reports
+                (tenant_id, session_id, report_format, storage_path, file_bytes)
+            VALUES (:t, CAST(:s AS uuid), :f, :p, :n)
+            ON CONFLICT (session_id, report_format) DO UPDATE
+                SET storage_path = EXCLUDED.storage_path,
+                    file_bytes = EXCLUDED.file_bytes,
+                    generated_at = now()
+            RETURNING id, report_format, storage_path, file_bytes
+        """), {"t": owner["tenant_id"], "s": session_id, "f": fmt,
+               "p": rel, "n": len(payload)})).mappings().first()
+        stored.append(dict(row))
+
+    return stored

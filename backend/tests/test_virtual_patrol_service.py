@@ -11,6 +11,7 @@ Sections:
   C — What blocks a camera from completing (4 tests)
   D — What "done" means for a session (4 tests)
   E — Freezing the configuration, against a real database (4 tests)
+  F — The two progress numbers cannot disagree (1 test)
 """
 from __future__ import annotations
 
@@ -291,5 +292,52 @@ async def test_the_same_execution_twice_is_refused_by_the_database():
             async with factory() as s:
                 await vp.create_session(s, schedule_id=str(ids["schedule"]), scheduled_for=when)
                 await s.commit()
+    finally:
+        await engine.dispose()
+
+
+# ─── F. The two progress numbers cannot disagree ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_both_progress_counts_are_recounted_together():
+    """A session showing "5 / 3 cameras" is not merely wrong, it is obviously
+    nonsense to whoever reads it.
+
+    camera_count is written at creation; completed_camera_count is recounted
+    from the rows. If only the second is refreshed the pair can drift apart, so
+    both now come from the same count.
+    """
+    ids = await _seed_schedule_with_one_camera()
+    engine, factory = await _session_factory()
+    try:
+        async with factory() as s:
+            created = await vp.create_session(
+                s, schedule_id=str(ids["schedule"]),
+                scheduled_for=datetime(2026, 7, 1, 7, 0, tzinfo=timezone.utc))
+            await s.commit()
+
+        # A camera appears that creation never counted — the shape of any future
+        # bug that adds rows after the fact.
+        async with factory() as s:
+            await s.execute(text(
+                "INSERT INTO virtual_patrol_session_cameras "
+                "  (tenant_id, session_id, camera_id, sequence_no, camera_name, status) "
+                "VALUES (:t, CAST(:se AS uuid), NULL, 99, 'Late Arrival', 'COMPLETED')"),
+                {"t": ids["tenant"], "se": created["session_id"]})
+            await s.commit()
+
+        async with factory() as s:
+            await vp.refresh_progress(s, created["session_id"])
+            await s.commit()
+
+        async with factory() as s:
+            row = (await s.execute(text(
+                "SELECT camera_count, completed_camera_count "
+                "  FROM virtual_patrol_sessions WHERE id = CAST(:i AS uuid)"),
+                {"i": created["session_id"]})).mappings().first()
+
+        assert row["completed_camera_count"] <= row["camera_count"], (
+            f"{row['completed_camera_count']} of {row['camera_count']} is nonsense")
+        assert row["camera_count"] == 2, "camera_count was not recounted"
     finally:
         await engine.dispose()

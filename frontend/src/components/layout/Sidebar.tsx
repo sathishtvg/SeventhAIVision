@@ -228,6 +228,8 @@ const NAV_SECTIONS: {
       { label: 'Roster',          path: '/roster',      icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
       { label: 'Duty Teams',      path: '/duty-assignments', icon: <GroupsIcon fontSize="small" />,  permission: 'shift:read' },
       { label: 'Guard Ops',       path: '/guard-ops',   icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'My Patrols',      path: '/my-patrols',   icon: <CameraAltIcon fontSize="small" />,   permission: 'vpatrol:execute' },
+      { label: 'Virtual Patrol',  path: '/virtual-patrol', icon: <VideocamIcon fontSize="small" />,     permission: 'vpatrol:read' },
       { label: 'Tour Compliance', path: '/compliance',  icon: <RouteIcon fontSize="small" />,        permission: 'compliance:read' },
       { label: 'Violations',      path: '/violations',  icon: <WarningAmberIcon fontSize="small" />, permission: 'violation:read' },
       { label: 'Leave',           path: '/leave',       icon: <EventBusyIcon fontSize="small" />,    permission: 'leave:read' },

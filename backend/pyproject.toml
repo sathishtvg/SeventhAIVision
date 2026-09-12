@@ -26,6 +26,9 @@ dependencies = [
     "pyotp>=2.9",
     "qrcode[pil]>=7.4",
     "reportlab>=4.2",
+    # Virtual patrol Excel workbooks. Exports elsewhere are CSV via the
+    # stdlib; a four-sheet workbook is not something csv.DictWriter does.
+    "openpyxl>=3.1",
     "pillow>=10.0",
     "insightface>=0.7",
     "onnxruntime>=1.17",
