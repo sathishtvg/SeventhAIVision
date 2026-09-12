@@ -486,6 +486,80 @@ async def delete_recipient(recipient_id: str, db: AsyncSession = Depends(get_db_
     return {"deleted": recipient_id}
 
 
+# ── The email queue: seeing what failed, and sending it again ────────────────
+#
+# WITHOUT THESE TWO ROUTES A LOST DIGEST STAYS LOST. Retries span about five
+# hours and then the row rests at FAILED -- and because uq_vpeq_digest_period
+# permits one digest per (schedule, frequency, period), no replacement can ever
+# be queued for that window. A mail outage over a weekend would silently cost a
+# client their weekly summary, with a FAILED row nobody looks at as the only
+# trace. The constraint that stops duplicates is exactly what makes the loss
+# permanent, so recovery has to be deliberate.
+
+@router.get("/email-queue", dependencies=[_EMAIL])
+async def list_email_queue(
+    status_filter: str | None = Query(None, alias="status"),
+    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """What is queued, sent or stuck. Defaults to everything, newest first.
+
+    `?status=FAILED` is the one an operator wants: it answers "did anything not
+    go out?", which is otherwise unanswerable without database access.
+    """
+    rows = (await db.execute(text("""
+        SELECT q.id, q.schedule_id, q.session_id, q.frequency, q.recipients,
+               q.subject, q.status, q.attempts, q.last_error, q.scheduled_at,
+               q.sent_at, q.created_at, q.period_start, q.period_end,
+               s.name AS schedule_name, sess.patrol_number
+          FROM virtual_patrol_email_queue q
+          LEFT JOIN virtual_patrol_schedules s ON s.id = q.schedule_id
+          LEFT JOIN virtual_patrol_sessions sess ON sess.id = q.session_id
+         WHERE (CAST(:st AS varchar) IS NULL OR q.status = CAST(:st AS varchar))
+         ORDER BY q.created_at DESC
+         LIMIT :limit OFFSET :offset
+    """), {"st": status_filter, "limit": limit, "offset": offset})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/email-queue/{queue_id}/resend", dependencies=[_EMAIL])
+async def resend_email(queue_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    """Put a failed report or digest back in the queue for another attempt.
+
+    Only FAILED rows. A PENDING one is already going to be tried, and re-sending
+    a SENT one is a different decision — somebody asking for a second copy of an
+    email that did arrive — which should be its own deliberate action rather
+    than a side effect of a button labelled "resend".
+
+    Clears the error and the attempt count, so the row gets the full retry
+    budget again rather than one last try against a mail server that may still
+    be recovering.
+    """
+    row = (await db.execute(text("""
+        UPDATE virtual_patrol_email_queue
+           SET status = 'PENDING', attempts = 0, last_error = NULL,
+               scheduled_at = now()
+         WHERE id = CAST(:id AS uuid) AND status = 'FAILED'
+        RETURNING id, frequency, recipients, subject, period_start, period_end
+    """), {"id": queue_id})).mappings().first()
+
+    if row is None:
+        # Distinguish "no such row" from "not failed", because the second is a
+        # reasonable thing to have got wrong and the operator can act on it.
+        current = (await db.execute(text(
+            "SELECT status FROM virtual_patrol_email_queue WHERE id = CAST(:id AS uuid)"),
+            {"id": queue_id})).scalar()
+        if current is None:
+            raise HTTPException(404, "No such queued email")
+        raise HTTPException(
+            409, f"That email is {current}, not FAILED. Only a failed email can "
+                 f"be resent.")
+
+    await db.commit()
+    return {"requeued": str(row["id"]), "recipients": row["recipients"],
+            "subject": row["subject"]}
+
+
 # ── Officer execution ────────────────────────────────────────────────────────
 
 @router.get("/my-patrols", dependencies=[_EXECUTE])

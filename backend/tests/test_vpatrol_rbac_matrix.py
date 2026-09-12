@@ -139,6 +139,18 @@ async def _world() -> dict:
         "INSERT INTO virtual_patrol_email_recipients (id, tenant_id, schedule_id, email) "
         "VALUES (:i,:t,:sc,'ops@example.test')",
         {"i": i["recipient"], "t": i["tenant"], "sc": i["sched"]})
+
+    # A FAILED queue row, so the resend route has a legitimate target. Resend
+    # accepts only FAILED rows, so a PENDING one would answer 409 for every
+    # role and the permission test would pass while proving nothing.
+    i["queued"] = uuid.uuid4()
+    await _sql(
+        "INSERT INTO virtual_patrol_email_queue "
+        "  (id, tenant_id, schedule_id, session_id, frequency, recipients, "
+        "   subject, status, attempts, last_error) "
+        "VALUES (:i,:t,:sc,:se,'IMMEDIATE','ops@example.test','Report',"
+        "        'FAILED',5,'simulated outage')",
+        {"i": i["queued"], "t": i["tenant"], "sc": i["sched"], "se": i["session"]})
     return i
 
 
@@ -209,6 +221,8 @@ ENDPOINTS = [
     ("report",  "GET",    "/api/v1/virtual-patrol/sessions/{session}/report/pdf"),
     ("export",  "GET",    "/api/v1/virtual-patrol/sessions/{session}/report/excel"),
     ("email",   "DELETE", "/api/v1/virtual-patrol/email-recipients/{recipient}"),
+    ("email",   "GET",    "/api/v1/virtual-patrol/email-queue"),
+    ("email",   "POST",   "/api/v1/virtual-patrol/email-queue/{queued}/resend"),
 ]
 
 ROLES = [ADMIN, MANAGER, SUPERVISOR, OPERATOR, GUARD]
@@ -235,7 +249,8 @@ async def test_the_endpoint_agrees_with_the_grant_matrix(permission, method, pat
     """
     w = await _world()
     who = await _user(w["tenant"], role_id)
-    url = path.format(session=w["session"], recipient=w["recipient"])
+    url = path.format(session=w["session"], recipient=w["recipient"],
+                      queued=w["queued"])
 
     async with _client() as c:
         r = await _call(c, method, url, who["headers"])
@@ -260,7 +275,8 @@ async def test_a_role_with_no_patrol_permissions_at_all_is_refused_everywhere():
     who = await _user(w["tenant"], VIEWER)
     async with _client() as c:
         for permission, method, path in ENDPOINTS:
-            url = path.format(session=w["session"], recipient=w["recipient"])
+            url = path.format(session=w["session"], recipient=w["recipient"],
+                              queued=w["queued"])
             r = await _call(c, method, url, who["headers"])
             assert r.status_code == 403, (
                 f"a Viewer reached {method} {path} ({r.status_code}) — that role "
