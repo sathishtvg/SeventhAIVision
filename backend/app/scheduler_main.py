@@ -1277,6 +1277,17 @@ async def main() -> None:
                 except Exception:
                     logger.exception("virtual patrol missed sweep failed")
                 try:
+                    # Queued before the queue is drained, so a digest whose
+                    # window closed this tick goes out on this tick rather than
+                    # waiting two minutes. The unique index makes re-queueing
+                    # per tick harmless.
+                    async with AsyncSessionLocal() as db:
+                        digests = await vpatrol_email.enqueue_due_digests(db)
+                    if digests["queued"]:
+                        logger.info("virtual patrol digests: %s", digests)
+                except Exception:
+                    logger.exception("virtual patrol digest queueing failed")
+                try:
                     async with AsyncSessionLocal() as db:
                         mail = await vpatrol_email.process_queue(db)
                     if mail["sent"] or mail["failed"]:

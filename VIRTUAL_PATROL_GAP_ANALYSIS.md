@@ -1,7 +1,10 @@
 # Virtual Patrolling — Gap Analysis
 
 **Date:** 2026-09-11
-**Status:** Phase 1 complete. Implementation not started.
+**Status:** COMPLETE. All 14 phases delivered; the §52 Definition of Done
+passes end to end in CI. See VIRTUAL_PATROL_IMPLEMENTATION.md for what was
+built and VIRTUAL_PATROL_API.md for the endpoints. This document is kept as
+the record of the analysis the work started from.
 **Rule followed:** inspect before modifying; integrate, never duplicate.
 
 ---
@@ -175,19 +178,19 @@ import), run via `docker exec docker-api-1 python -m pytest`.
 | Phase | Deliverable |
 |---|---|
 | 1 ✅ | Inspection + this document |
-| 2 | Migration `0116`: 10 tables, FKs, indexes, constraints, RLS policies, permissions seed |
-| 3 | Services: `virtual_patrol.py` (session lifecycle, snapshotting config), `vpatrol_snapshot.py` (ffmpeg one-shot), `vpatrol_reports.py` |
-| 4 | Routers: schedules, cameras, questions, email settings, officer execution, reports |
-| 5 | Admin UI: dashboard, schedule list/create/edit, camera sequence, question builder, email config |
-| 6 | Duty Officer execution screen |
-| 7 | Snapshot integration + failure states |
-| 8 | Incident integration on failure actions |
-| 9 | PDF (reportlab) + Excel (openpyxl) |
-| 10 | Scheduler: due detection, idempotent creation, missed-patrol sweep |
-| 11 | Email queue + retry + aggregate reports |
-| 12 | Command Centre surfacing |
-| 13 | Tests: RLS, RBAC, scheduler, execution, reports, email, incidents |
-| 14 | End-to-end verification against §52 |
+| 2 ✅ | Migration `0116`: 10 tables, FKs, indexes, constraints, RLS policies, permissions seed |
+| 3 ✅ | Services: `virtual_patrol.py` (session lifecycle, snapshotting config), `vpatrol_snapshot.py` (ffmpeg one-shot), `vpatrol_reports.py` |
+| 4 ✅ | Routers: schedules, cameras, questions, email settings, officer execution, reports |
+| 5 ✅ | Admin UI: dashboard, schedule list/create/edit, camera sequence, question builder, email config |
+| 6 ✅ | Duty Officer execution screen |
+| 7 ✅ | Snapshot integration + failure states |
+| 8 ✅ | Incident integration on failure actions |
+| 9 ✅ | PDF (reportlab) + Excel (openpyxl) |
+| 10 ✅ | Scheduler: due detection, idempotent creation, missed-patrol sweep |
+| 11 ✅ | Email queue + retry + aggregate reports |
+| 12 ✅ | Command Centre surfacing |
+| 13 ✅ | Tests: RLS, RBAC, scheduler, execution, reports, email, incidents |
+| 14 ✅ | End-to-end verification against §52 |
 
 **Scope note.** This is a large module — ten tables, ~25 endpoints, eleven
 screens, two report formats, a scheduler and an email queue. It will be delivered

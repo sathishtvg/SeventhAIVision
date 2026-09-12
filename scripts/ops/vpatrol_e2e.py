@@ -35,6 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 BASE = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 API = f"{BASE}/api/v1/virtual-patrol"
 SITE_NAME = os.environ.get("E2E_SITE", "Marina Bay Tower")
+#: Where the test streams live. mediamtx generates them from the video files
+#: committed under docker/mediamtx/videos, so this works in CI as well as
+#: on a developer machine -- no real camera required.
+RTSP_HOST = os.environ.get("E2E_RTSP_HOST", "mediamtx:8554")
+SEED_CAMERAS = int(os.environ.get("E2E_CAMERAS", "3"))
 
 _step = 0
 _failures: list[str] = []
@@ -77,6 +82,35 @@ async def sql(stmt: str, params: dict | None = None, *, url: str | None = None):
         await engine.dispose()
 
 
+async def _seed_world() -> dict:
+    """A tenant, a site and SEED_CAMERAS cameras pointed at the test streams.
+
+    Everything the flow needs and nothing it does not, so this script is
+    hermetic: it runs against a database that has only had its migrations
+    applied. Named distinctly enough that nobody mistakes the rows for a real
+    customer's.
+    """
+    tenant, site = uuid.uuid4(), uuid.uuid4()
+    await sql("INSERT INTO tenants (id, name, slug, is_active) "
+              "VALUES (:t, 'Phase 14 E2E', :s, TRUE)",
+              {"t": tenant, "s": f"e2e-{tenant.hex[:10]}"})
+    await sql("INSERT INTO sites (id, tenant_id, name) VALUES (:i,:t,:n)",
+              {"i": site, "t": tenant, "n": SITE_NAME})
+    for n in range(1, SEED_CAMERAS + 1):
+        cam = uuid.uuid4()
+        await sql("INSERT INTO cameras (id, tenant_id, site_id, name, is_active) "
+                  "VALUES (:i,:t,:s,:n,TRUE)",
+                  {"i": cam, "t": tenant, "s": site, "n": f"E2E Camera {n}"})
+        # cam1 is a looping video and cam2+ are still images in the committed
+        # mediamtx config; any of them yields a real decodable frame.
+        await sql("INSERT INTO streams (tenant_id, camera_id, protocol, url, status) "
+                  "VALUES (:t,:c,'rtsp',:u,'active')",
+                  {"t": tenant, "c": cam, "u": f"rtsp://{RTSP_HOST}/cam{n}"})
+    slug = (await sql("SELECT slug FROM tenants WHERE id = :t",
+                      {"t": tenant}))[0]["slug"]
+    return {"id": site, "tenant_id": tenant, "slug": slug}
+
+
 async def main() -> int:
     print("\n§52 DEFINITION OF DONE — end-to-end against the running stack")
     print("=" * 72, flush=True)
@@ -84,12 +118,22 @@ async def main() -> int:
     created: dict = {}
     try:
         # ── 1. Admin login ───────────────────────────────────────────────────
+        #
+        # SEEDS ITS OWN WORLD when the named site is absent, which is the case
+        # on any freshly migrated database -- CI included. A verification script
+        # that depends on demo data somebody seeded by hand passes or fails for
+        # reasons that have nothing to do with the code, and cannot run in a
+        # pipeline at all.
         site = (await sql(
             "SELECT s.id, s.tenant_id, t.slug FROM sites s JOIN tenants t ON t.id=s.tenant_id "
             " WHERE s.name = :n AND t.is_active LIMIT 1", {"n": SITE_NAME}))
-        if not site:
-            step("Admin login", False, f"no site named {SITE_NAME!r}")
-        site = site[0]
+        if site:
+            site = site[0]
+        else:
+            print(f"  (no site named {SITE_NAME!r}; seeding an isolated one "
+                  f"against {RTSP_HOST})", flush=True)
+            site = await _seed_world()
+            created["seeded_tenant"] = site["tenant_id"]
 
         # A temporary admin, so the run never touches a real person's password.
         # The hash is produced and bound as a parameter — never interpolated
@@ -141,8 +185,8 @@ async def main() -> int:
             # ── 5. Select cameras ───────────────────────────────────────────
             cams = await sql(
                 "SELECT c.id, c.name FROM cameras c JOIN streams s ON s.camera_id=c.id "
-                " WHERE c.site_id = :s AND c.is_active AND s.url LIKE 'rtsp://mediamtx%' "
-                " ORDER BY c.name", {"s": site["id"]})
+                " WHERE c.site_id = :s AND c.is_active AND s.url LIKE :pat "
+                " ORDER BY c.name", {"s": site["id"], "pat": f"rtsp://{RTSP_HOST}%"})
             step("Cameras available on the site", len(cams) >= 2,
                  f"{len(cams)} reachable camera(s)")
 
@@ -376,7 +420,18 @@ async def main() -> int:
             await sql("UPDATE virtual_patrol_sessions SET officer_user_id = NULL "
                       " WHERE officer_user_id = :u", {"u": created["admin"]})
             await sql("DELETE FROM users WHERE id = :u", {"u": created["admin"]})
-        print("\n  cleaned up: temporary admin removed", flush=True)
+
+        # A tenant this script seeded is entirely its own, so it goes -- every
+        # patrol table cascades from tenants. A PRE-EXISTING tenant is left
+        # alone: there, the session and its report are the evidence the run
+        # happened, and deleting them would throw away what was just proved.
+        if created.get("seeded_tenant"):
+            await sql("DELETE FROM tenants WHERE id = :t",
+                      {"t": created["seeded_tenant"]})
+            print("\n  cleaned up: temporary admin and seeded tenant removed",
+                  flush=True)
+        else:
+            print("\n  cleaned up: temporary admin removed", flush=True)
 
     print("=" * 72)
     print("§52 DEFINITION OF DONE: all steps passed" if not _failures

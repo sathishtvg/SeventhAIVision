@@ -23,7 +23,7 @@ queue and the immediate report, which is the one an agency actually acts on.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,22 @@ MAX_ATTEMPTS = 5
 #: server that is down is usually down for minutes, not seconds.
 BACKOFF_MINUTES = [1, 5, 15, 60, 240]
 BATCH = 20
+
+
+def _zone(name: str | None):
+    """The schedule's timezone, falling back rather than stopping.
+
+    Shared shape with vpatrol_scheduler._zone: a tenant can type anything
+    into a timezone field, and one bad value must not stop the digest run
+    for every other schedule in the system.
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        return ZoneInfo(name or "Asia/Singapore")
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("virtual patrol: unknown timezone %r, using "
+                       "Asia/Singapore", name)
+        return ZoneInfo("Asia/Singapore")
 
 
 def next_attempt_at(*, attempts: int, now: datetime) -> datetime:
@@ -112,7 +128,8 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
         await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
                          {"t": str(tenant_id)})
         rows = (await db.execute(text("""
-            SELECT id, tenant_id, session_id, recipients, subject, attempts
+            SELECT id, tenant_id, schedule_id, session_id, recipients, subject,
+                   attempts, frequency, period_start, period_end
               FROM virtual_patrol_email_queue
              WHERE status IN ('PENDING', 'FAILED')
                AND tenant_id = CAST(:t AS uuid)
@@ -140,9 +157,18 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
             # the row is marked FAILED, and the same report goes out five times.
             await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
                              {"t": str(row["tenant_id"])})
-            await send(db, session_id=str(row["session_id"]),
-                       recipients=[e.strip() for e in row["recipients"].split(",") if e.strip()],
-                       subject=row["subject"])
+            await send(
+                db,
+                session_id=str(row["session_id"]) if row["session_id"] else None,
+                recipients=[e.strip() for e in row["recipients"].split(",") if e.strip()],
+                subject=row["subject"],
+                # A digest row has no session and cannot be rendered as one.
+                # Passed explicitly rather than inferred inside the sender, so a
+                # test can drive either path without inventing a queue row.
+                frequency=row["frequency"],
+                schedule_id=str(row["schedule_id"]) if row["schedule_id"] else None,
+                period=(row["period_start"], row["period_end"]),
+            )
             await db.execute(text("""
                 UPDATE virtual_patrol_email_queue
                    SET status = 'SENT', sent_at = now(), last_error = NULL
@@ -169,14 +195,26 @@ async def process_queue(db: AsyncSession, *, send=None, now: datetime | None = N
     return {"sent": sent, "failed": failed, "considered": len(due)}
 
 
-async def _send_patrol_email(db: AsyncSession, *, session_id: str,
-                             recipients: list[str], subject: str) -> None:
-    """Build the report and hand it to SMTP.
+async def _send_patrol_email(db: AsyncSession, *, session_id: str | None,
+                             recipients: list[str], subject: str,
+                             frequency: str = "IMMEDIATE",
+                             schedule_id: str | None = None,
+                             period: tuple | None = None) -> None:
+    """Build the right document for this row and hand it to SMTP.
 
-    The PDF is generated at SEND time rather than stored on the queue row. The
-    evidence it renders is already immutable, so the document is identical
-    whenever it is built — and keeping megabytes of attachment in a queue table
-    that retries five times is how a database fills up.
+    Two kinds of row arrive here. An IMMEDIATE row names one session and gets
+    that patrol's PDF, snapshots included. A digest row names a schedule and a
+    closed window, and gets a workbook with a row per patrol — thirty PDFs of
+    embedded snapshots is not an email anyone can receive.
+
+    Either document is generated at SEND time rather than stored on the queue
+    row. The evidence is already immutable, so the document is identical
+    whenever it is built — and keeping megabytes of attachment in a table that
+    retries five times is how a database fills up.
+
+    The keyword arguments have defaults so an existing caller passing only a
+    session still gets the immediate path, which is what every current caller
+    other than process_queue does.
     """
     from email.mime.application import MIMEApplication
     from email.mime.multipart import MIMEMultipart
@@ -185,21 +223,40 @@ async def _send_patrol_email(db: AsyncSession, *, session_id: str,
     import aiosmtplib
 
     from app.core.config import settings
-    from app.services import vpatrol_reports
 
-    pdf = await vpatrol_reports.build_patrol_pdf(db, session_id)
+    if (frequency or "IMMEDIATE") == "IMMEDIATE":
+        from app.services import vpatrol_reports
+        payload = await vpatrol_reports.build_patrol_pdf(db, session_id)
+        body = ("The attached report covers a completed virtual patrol, including "
+                "the snapshot captured at each camera and the answers recorded "
+                "against it.")
+        subtype, ext = "pdf", "pdf"
+    else:
+        # A digest row has no session_id, so there is nothing to render as a
+        # patrol report. It carries a schedule and a window instead.
+        from app.services import vpatrol_digest
+        start, end = period if period else (None, None)
+        if not schedule_id or start is None or end is None:
+            raise ValueError("A digest email needs a schedule and a period")
+        tz = (await db.execute(text(
+            "SELECT timezone FROM virtual_patrol_schedules WHERE id = CAST(:i AS uuid)"
+        ), {"i": schedule_id})).scalar()
+        payload, body = await vpatrol_digest.build(
+            db, schedule_id=schedule_id, start=start, end=end, tz_name=tz)
+        subtype = "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
 
     msg = MIMEMultipart()
     msg["Subject"] = subject
     msg["From"] = settings.SMTP_FROM
     msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(
-        "The attached report covers a completed virtual patrol, including the "
-        "snapshot captured at each camera and the answers recorded against it.",
-        "plain"))
-    attachment = MIMEApplication(pdf, _subtype="pdf")
+    msg.attach(MIMEText(body, "plain"))
+    attachment = MIMEApplication(payload, _subtype=subtype)
+    # The subject carries a date range with spaces and a dash; kept as the
+    # filename because that is what the recipient is looking for when they go
+    # back through a mailbox months later.
     attachment.add_header("Content-Disposition", "attachment",
-                          filename=f"{subject}.pdf")
+                          filename=f"{subject}.{ext}")
     msg.attach(attachment)
 
     await aiosmtplib.send(
@@ -208,3 +265,131 @@ async def _send_patrol_email(db: AsyncSession, *, session_id: str,
         password=settings.SMTP_PASSWORD or None,
         start_tls=settings.SMTP_PORT == 587,
     )
+
+
+# ── Digests ──────────────────────────────────────────────────────────────────
+#
+# A digest is one email covering a closed window -- yesterday, last week, last
+# month -- for schedules whose email_frequency is not IMMEDIATE. Somebody who
+# asked for a weekly summary has said, in as many words, that they do not want
+# an email per patrol.
+#
+# THE WINDOW IS COMPUTED IN THE SCHEDULE'S OWN TIMEZONE, like everything else in
+# this module. "Yesterday" in Singapore is not yesterday in UTC for eight hours
+# of every day, and a digest that silently covers the wrong day is worse than no
+# digest: it looks authoritative.
+#
+# ONLY CLOSED WINDOWS. A digest queued for the current week would be sent before
+# the week's patrols had happened, and the unique index would then refuse the
+# real one.
+
+def digest_period(frequency: str, *, today: date) -> tuple[date, date] | None:
+    """The most recent CLOSED window for this frequency, in local dates.
+
+    Returns None for IMMEDIATE, which has no window, and for an unknown
+    frequency -- a typo in a tenant's configuration must not silently become
+    "daily".
+    """
+    if frequency == "DAILY":
+        d = today - timedelta(days=1)
+        return d, d
+    if frequency == "WEEKLY":
+        # isoweekday: Monday = 1. Step back into last week, then take that
+        # week's Monday and Sunday.
+        this_monday = today - timedelta(days=today.isoweekday() - 1)
+        last_monday = this_monday - timedelta(days=7)
+        return last_monday, last_monday + timedelta(days=6)
+    if frequency == "MONTHLY":
+        first_of_this = today.replace(day=1)
+        last_of_prev = first_of_this - timedelta(days=1)
+        return last_of_prev.replace(day=1), last_of_prev
+    return None
+
+
+async def enqueue_due_digests(db: AsyncSession, *, now: datetime | None = None) -> dict:
+    """Queue one digest per schedule whose window has closed, across all tenants.
+
+    Reads per tenant with the GUC set AND the tenant in the WHERE clause. The
+    policy alone is not enough: under any connection that bypasses RLS nothing
+    would filter, and this loop would queue one digest per tenant per schedule.
+    """
+    now = now or datetime.now(timezone.utc)
+
+    tenants = (await db.execute(text(
+        "SELECT id FROM tenants WHERE is_active"))).scalars().all()
+
+    schedules: list[dict] = []
+    for tenant_id in tenants:
+        await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                         {"t": str(tenant_id)})
+        rows = (await db.execute(text("""
+            SELECT s.id, s.tenant_id, s.name, s.timezone, s.email_frequency,
+                   (SELECT string_agg(r.email, ',' ORDER BY r.email)
+                      FROM virtual_patrol_email_recipients r
+                     WHERE r.schedule_id = s.id) AS recipients
+              FROM virtual_patrol_schedules s
+             WHERE s.tenant_id = CAST(:t AS uuid)
+               AND s.email_frequency <> 'IMMEDIATE'
+        """), {"t": str(tenant_id)})).mappings().all()
+        schedules.extend(dict(r) for r in rows)
+    await db.rollback()
+
+    queued, skipped, empty = 0, 0, 0
+    for row in schedules:
+        if not row["recipients"]:
+            # A digest addressed to nobody would fail five times and sit there
+            # looking like a fault.
+            continue
+
+        local_today = now.astimezone(_zone(row["timezone"])).date()
+        window = digest_period(row["email_frequency"], today=local_today)
+        if window is None:
+            logger.warning("virtual patrol: schedule %s has an unrecognised "
+                           "email_frequency %r; no digest queued",
+                           row["id"], row["email_frequency"])
+            continue
+        start, end = window
+
+        try:
+            await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                             {"t": str(row["tenant_id"])})
+
+            # Nothing to summarise is not a digest. An agency that receives "0
+            # patrols" every Monday stops reading Monday's email, and then
+            # misses the week something did go wrong.
+            n = (await db.execute(text("""
+                SELECT count(*) FROM virtual_patrol_sessions
+                 WHERE schedule_id = CAST(:s AS uuid)
+                   AND (scheduled_for AT TIME ZONE :tz)::date BETWEEN :a AND :b
+            """), {"s": str(row["id"]), "tz": row["timezone"] or "Asia/Singapore",
+                   "a": start, "b": end})).scalar()
+            if not n:
+                empty += 1
+                await db.rollback()
+                continue
+
+            await db.execute(text("""
+                INSERT INTO virtual_patrol_email_queue
+                    (tenant_id, schedule_id, session_id, frequency, recipients,
+                     subject, period_start, period_end)
+                VALUES (:t, CAST(:s AS uuid), NULL, :f, :to, :subject, :a, :b)
+            """), {
+                "t": row["tenant_id"], "s": str(row["id"]),
+                "f": row["email_frequency"], "to": row["recipients"],
+                "subject": f"Virtual patrol {row['email_frequency'].lower()} summary: "
+                           f"{row['name']} ({start:%d %b} – {end:%d %b %Y})",
+                "a": start, "b": end,
+            })
+            await db.commit()
+            queued += 1
+        except Exception as exc:
+            await db.rollback()
+            # The unique index doing its job is the expected path: this window
+            # was already queued, by an earlier tick or another worker.
+            if "uq_vpeq_digest_period" in str(exc) or "duplicate key" in str(exc).lower():
+                skipped += 1
+            else:
+                logger.warning("virtual patrol: could not queue the %s digest for "
+                               "schedule %s: %s", row["email_frequency"], row["id"], exc)
+
+    return {"queued": queued, "already_queued": skipped, "nothing_to_report": empty}
