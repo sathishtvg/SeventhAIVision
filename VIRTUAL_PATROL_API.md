@@ -137,8 +137,28 @@ halfway through a swap.
 | GET | `/schedules/{schedule_id}/email-recipients` | `read` |
 | POST | `/schedules/{schedule_id}/email-recipients` | `email` |
 | DELETE | `/email-recipients/{recipient_id}` | `email` |
+| GET | `/email-queue` | `email` |
+| POST | `/email-queue/{queue_id}/resend` | `email` |
 
-`POST` takes `?email=` as a query parameter.
+`POST /email-recipients` takes `?email=` as a query parameter.
+
+`GET /email-queue` accepts `?status=` (`PENDING`/`PROCESSING`/`SENT`/`FAILED`),
+`limit`, `offset`. `?status=FAILED` answers "did anything not go out?", which is
+otherwise unanswerable without database access.
+
+**`POST /email-queue/{id}/resend`** puts a failed report or digest back in the
+queue, clearing the error and restoring the full retry budget. This is the only
+recovery path for a lost digest, and it exists because
+`uq_vpeq_digest_period` allows exactly one digest per window: once the five
+attempts (about five hours) are spent, no replacement can be queued, so a mail
+outage over a weekend would otherwise cost a client their weekly summary
+permanently.
+
+Refuses anything that is not `FAILED` with **409**, naming the current status.
+A `PENDING` row is already going to be tried, and a second copy of an email that
+did arrive is a different decision — not a side effect of a button labelled
+"resend". An unknown id is **404**, because a typo and a wrong state are
+different problems.
 
 ### Execution — `vpatrol:execute`, and only your own patrol
 

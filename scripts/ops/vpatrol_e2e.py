@@ -294,14 +294,31 @@ async def main() -> int:
                     step(f"Camera 1 displayed", True, f"{cam_name}")
 
                 # 15. A REAL snapshot, over RTSP, right now.
-                r = await c.post(
-                    f"{API}/sessions/{session_id}/cameras/{cam_row_id}/snapshot", headers=H)
-                snap = r.json() if r.status_code == 200 else {}
+                #
+                # RETRIED, because a real capture really does fail sometimes --
+                # a busy stream, a slow handshake, a camera mid-keyframe. The
+                # application is right to refuse to complete a camera whose
+                # snapshot failed ("must be retried"), and an officer in that
+                # position presses Retake. A script that captures once and gives
+                # up turns an ordinary transient into a red build, which is how
+                # a CI step stops being trusted.
+                snap, attempts = {}, 0
+                for attempts in range(1, 4):
+                    r = await c.post(
+                        f"{API}/sessions/{session_id}/cameras/{cam_row_id}/snapshot",
+                        headers=H)
+                    snap = r.json() if r.status_code == 200 else {}
+                    if snap.get("ok"):
+                        break
+                    if attempts < 3:
+                        await asyncio.sleep(3)
                 if cameras_done == 0:
-                    captured = bool(snap.get("snapshot_path") or snap.get("captured"))
-                    step("Actual snapshot captured", r.status_code == 200,
-                         f"-> {r.status_code} " + (f"captured={captured}" if captured
-                                                   else str(snap)[:160]))
+                    step("Actual snapshot captured", bool(snap.get("ok")),
+                         f"-> {r.status_code} {str(snap)[:150]}"
+                         + (f" (after {attempts} attempts)" if attempts > 1 else ""))
+                elif not snap.get("ok"):
+                    step(f"Snapshot for {cam_name}", False,
+                         f"failed {attempts} times: {str(snap)[:200]}")
 
                 # 16-17. Questions, and the officer's answers.
                 qs = cur.get("questions") or []
@@ -403,11 +420,86 @@ async def main() -> int:
             step("Incident created when configured", bool(inc),
                  f"{len(inc)} incident(s); latest: {inc[0]['title'][:70]!r}" if inc else "none")
 
+            # ── 29-32. The digest, and recovering one that failed ───────────
+            #
+            # §52 covers the immediate report; the digest is the other half of
+            # email_frequency and it is where a failure now has PERMANENT
+            # consequences, because the uniqueness index allows one digest per
+            # window. Exercised here rather than left to unit tests for exactly
+            # that reason.
+            #
+            # SMTP is not reachable from CI, so this asserts what can be
+            # asserted honestly: the digest is queued for the correct closed
+            # window, and the workbook it would attach genuinely builds.
+            await sql("UPDATE virtual_patrol_schedules SET email_frequency = 'DAILY' "
+                      " WHERE id = CAST(:s AS uuid)", {"s": sched_id})
+
+            # A patrol inside yesterday's window, in the schedule's own zone, so
+            # the digest has something real to summarise.
+            tz = (await sql("SELECT timezone FROM virtual_patrol_schedules "
+                            " WHERE id = CAST(:s AS uuid)",
+                            {"s": sched_id}))[0]["timezone"] or "Asia/Singapore"
+            local_today = (await sql(
+                "SELECT (now() AT TIME ZONE :tz)::date AS d", {"tz": tz}))[0]["d"]
+            yesterday = local_today - timedelta(days=1)
+            await sql(
+                "INSERT INTO virtual_patrol_sessions "
+                "  (tenant_id, site_id, schedule_id, patrol_number, schedule_name, "
+                "   scheduled_for, status, camera_count, completed_camera_count) "
+                "VALUES (:t,:s,CAST(:sc AS uuid),:n,'Phase 14 E2E Patrol',"
+                # CAST(), not :d::date -- text() parses the :: as part of the
+                # bind name and leaves the parameter unsubstituted.
+                "        ((CAST(:d AS date) + time '09:00') AT TIME ZONE :tz),"
+                "        'COMPLETED',3,3)",
+                {"t": site["tenant_id"], "s": site["id"], "sc": sched_id,
+                 "n": f"VP-DIGEST-{uuid.uuid4().hex[:8]}", "d": yesterday, "tz": tz})
+
+            from app.services import vpatrol_email
+            async with AsyncSessionLocal() as db:
+                counts = await vpatrol_email.enqueue_due_digests(db)
+            step("Digest queued for the closed window", counts["queued"] >= 1, f"{counts}")
+
+            drow = await sql(
+                "SELECT id, frequency, period_start, period_end, recipients, status "
+                "  FROM virtual_patrol_email_queue "
+                " WHERE schedule_id = CAST(:s AS uuid) AND session_id IS NULL",
+                {"s": sched_id})
+            right_window = bool(drow) and drow[0]["period_start"] == yesterday
+            step("Digest covers yesterday, not today", right_window,
+                 f"{drow[0]['frequency']} {drow[0]['period_start']}..{drow[0]['period_end']}"
+                 if drow else "no digest row")
+
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
+                                 {"t": str(site["tenant_id"])})
+                from app.services import vpatrol_digest
+                digest_bytes, digest_body = await vpatrol_digest.build(
+                    db, schedule_id=sched_id, start=yesterday, end=yesterday,
+                    tz_name=tz)
+            step("Digest workbook builds", digest_bytes[:2] == b"PK",
+                 f"{len(digest_bytes):,} bytes, "
+                 f"{'summary mentions the patrol count' if 'Patrols scheduled' in digest_body else 'SUMMARY MISSING COUNTS'}")
+
+            # A digest that failed past its retry budget can be recovered.
+            # Without this the uniqueness index makes the loss permanent.
+            await sql("UPDATE virtual_patrol_email_queue "
+                      "   SET status='FAILED', attempts=5, last_error='simulated outage' "
+                      " WHERE id = :i", {"i": drow[0]["id"]})
+            r = await c.post(f"{API}/email-queue/{drow[0]['id']}/resend", headers=H)
+            after = await sql("SELECT status, attempts, last_error "
+                              "  FROM virtual_patrol_email_queue WHERE id = :i",
+                              {"i": drow[0]["id"]})
+            step("A failed digest can be resent", r.status_code == 200
+                 and after[0]["status"] == "PENDING" and after[0]["attempts"] == 0,
+                 f"-> {r.status_code}, now {after[0]['status']} "
+                 f"attempts={after[0]['attempts']}")
+
             # Keep the artefacts where a human can look at them.
             outdir = Path("/data/evidence/phase14")
             outdir.mkdir(parents=True, exist_ok=True)
             (outdir / "patrol_report.pdf").write_bytes(pdf_bytes)
             (outdir / "patrol_report.xlsx").write_bytes(xlsx_bytes)
+            (outdir / "patrol_digest.xlsx").write_bytes(digest_bytes)
             print(f"\n  artefacts written to {outdir}", flush=True)
 
     finally:

@@ -143,6 +143,20 @@ A window with no patrols queues nothing: an agency that receives "0 patrols"
 every Monday stops reading Monday's email, and then misses the week something
 did go wrong.
 
+### A lost digest can be recovered, deliberately
+
+Retries span about five hours across five attempts, then the row rests at
+`FAILED`. For a digest that would be terminal: the uniqueness index allows one
+digest per window, so no replacement can ever be queued for it. A mail outage
+over a weekend would silently cost a client their weekly summary, with a
+`FAILED` row nobody looks at as the only trace.
+
+So `GET /email-queue?status=FAILED` surfaces them and
+`POST /email-queue/{id}/resend` puts one back with its error cleared and its
+full retry budget restored. `FAILED` only — a `PENDING` row is already going to
+be tried, and re-sending a `SENT` one is a different decision that should not
+be a side effect of a button labelled "resend".
+
 ### Exceptions become incidents in the system that already exists
 
 A failed answer on a question with `failure_action = CREATE_INCIDENT` writes to
@@ -181,7 +195,7 @@ database with 2,269 tenants that became 2,275 sends of one email.
 
 ## Tests
 
-**129 tests across ten files**, plus a 29-step end-to-end script.
+**141 tests across twelve files**, plus a 33-step end-to-end script.
 
 | File | Covers |
 |---|---|
@@ -193,6 +207,7 @@ database with 2,269 tenants that became 2,275 sends of one email.
 | `test_vpatrol_scheduler.py` | Due detection, timezones, idempotency, missed sweep |
 | `test_vpatrol_email.py` | Queue, claiming, backoff, giving up visibly |
 | `test_vpatrol_digests.py` | Window boundaries, queued-once, digest contents |
+| `test_vpatrol_email_resend.py` | Recovering a failed report or digest |
 | `test_vpatrol_command_centre.py` | Board contents and site scoping |
 | `test_vpatrol_rls_isolation.py` | All ten tables, read and write, as `svc_app` |
 | `test_vpatrol_rbac_matrix.py` | Six permissions × five roles, two layers |
@@ -211,8 +226,8 @@ bugs; the `postgres` tests see bugs RLS was *masking* — the 2,275-sends defect
 above was caught by the postgres tests while the `svc_app` tests passed
 throughout.
 
-**CI runs the end-to-end script.** `scripts/ops/vpatrol_e2e.py` walks all 29
-steps of §52 against a live stack — real login, real scheduler, real RTSP
+**CI runs the end-to-end script.** `scripts/ops/vpatrol_e2e.py` walks all 33
+steps of §52 and the digest path against a live stack — real login, real scheduler, real RTSP
 capture, real reports — and it is the only thing that exercises the full flow.
 The backend job starts `mediamtx`, waits for `cam1` to publish, and runs it.
 
@@ -222,6 +237,13 @@ site and cameras against them, then deletes the tenant on the way out. It is
 hermetic — it runs against a database that has only had its migrations applied.
 Pointed at a database that *does* have the named site, it uses that instead and
 leaves the session and report behind as evidence.
+
+**Snapshot capture is retried up to three times**, because a real capture really
+does fail sometimes — a busy stream, a slow handshake, a camera mid-keyframe.
+The application is right to refuse to complete a camera whose snapshot failed,
+and an officer in that position presses Retake. Without the retry an ordinary
+transient turns into a red build, which is how a CI step stops being trusted;
+this was caught by the script failing that way on its own second run.
 
 Locally:
 
