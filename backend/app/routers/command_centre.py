@@ -270,3 +270,81 @@ async def get_cc_overview(
         "recent_alerts": recent_alerts,
         "guards":        all_guards,
     }
+
+
+@router.get("/virtual-patrol",
+            dependencies=[Depends(require_permission("vpatrol:read"))])
+async def get_virtual_patrol_overview(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What the operations room needs to know about camera patrols right now.
+
+    A SEPARATE ENDPOINT, NOT BOLTED ONTO /overview. That call is made
+    constantly by every open Command Centre; adding four more aggregates to it
+    would slow the board everybody watches in order to serve a panel not every
+    tenant has. It is also gated on vpatrol:read, so a tenant without the module
+    gets a clean 403 rather than an empty section implying something is broken.
+
+    SITE SCOPING IS APPLIED, exactly as it is to alerts and guards. A supervisor
+    restricted to two sites must not read the findings of a third — a patrol
+    exception names a camera, a time and what was wrong with it, which is
+    precisely the kind of detail site restrictions exist to contain.
+    """
+    params: dict = {}
+    scope = site_scope_clause(allowed_sites, "s.site_id", params)
+    where_scope = f" AND {scope}" if scope else ""
+
+    summary = (await db.execute(text(f"""
+        SELECT
+          count(*) FILTER (WHERE s.status IN ('STARTED','IN_PROGRESS'))   AS active,
+          count(*) FILTER (WHERE s.status = 'SCHEDULED')                  AS scheduled,
+          count(*) FILTER (WHERE s.status = 'COMPLETED'
+                             AND s.completed_at > now() - interval '24 hours') AS completed_today,
+          count(*) FILTER (WHERE s.status = 'PARTIALLY_COMPLETED'
+                             AND s.completed_at > now() - interval '24 hours') AS partial_today,
+          count(*) FILTER (WHERE s.status = 'MISSED'
+                             AND s.scheduled_for > now() - interval '24 hours') AS missed_today
+          FROM virtual_patrol_sessions s
+         WHERE TRUE{where_scope}
+    """), params)).mappings().first()
+
+    in_progress = (await db.execute(text(f"""
+        SELECT s.id, s.patrol_number, s.schedule_name, s.status,
+               s.camera_count, s.completed_camera_count, s.started_at,
+               si.name AS site_name, u.full_name AS officer_name
+          FROM virtual_patrol_sessions s
+          JOIN sites si ON si.id = s.site_id
+          LEFT JOIN users u ON u.id = s.officer_user_id
+         WHERE s.status IN ('STARTED','IN_PROGRESS','SCHEDULED'){where_scope}
+         ORDER BY s.scheduled_for
+         LIMIT 20
+    """), params)).mappings().all()
+
+    # Exceptions carry everything an operator needs to act without opening the
+    # patrol: which camera, what was asked, what the officer answered, whether
+    # there is a picture, and whether an incident already exists.
+    exceptions = (await db.execute(text(f"""
+        SELECT a.id, a.answer_text, a.answered_at, a.incident_id,
+               q.question_text,
+               c.id AS session_camera_id, c.camera_name,
+               (c.snapshot_path IS NOT NULL) AS has_snapshot,
+               s.id AS session_id, s.patrol_number, s.schedule_name,
+               si.name AS site_name, u.full_name AS officer_name
+          FROM virtual_patrol_session_answers a
+          JOIN virtual_patrol_session_questions q ON q.id = a.session_question_id
+          JOIN virtual_patrol_session_cameras c ON c.id = q.session_camera_id
+          JOIN virtual_patrol_sessions s ON s.id = c.session_id
+          JOIN sites si ON si.id = s.site_id
+          LEFT JOIN users u ON u.id = a.answered_by_user_id
+         WHERE a.is_exception
+           AND a.answered_at > now() - interval '48 hours'{where_scope}
+         ORDER BY a.answered_at DESC
+         LIMIT 25
+    """), params)).mappings().all()
+
+    return {
+        "summary": dict(summary) if summary else {},
+        "in_progress": [dict(r) for r in in_progress],
+        "exceptions": [dict(r) for r in exceptions],
+    }
