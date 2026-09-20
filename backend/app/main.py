@@ -91,6 +91,7 @@ from app.routers import (
     platform_console,
     support_sessions,
     tenants,
+    certification_compliance,
     training,
     two_fa,
     violations,
@@ -419,6 +420,7 @@ app.include_router(access_control.router)
 app.include_router(barriers.router)
 app.include_router(vms.router)
 app.include_router(training.router)
+app.include_router(certification_compliance.router)
 app.include_router(emergency.router)
 app.include_router(bwc.router)
 app.include_router(compliance.router)

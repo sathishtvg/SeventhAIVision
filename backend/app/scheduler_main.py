@@ -866,6 +866,7 @@ VISITOR_OVERSTAY_INTERVAL = int(os.environ.get("VISITOR_OVERSTAY_INTERVAL_SECOND
 CAMERA_OFFLINE_INTERVAL  = int(os.environ.get("CAMERA_OFFLINE_INTERVAL_SECONDS", "300"))       # 5 min
 COMPLIANCE_INTERVAL      = int(os.environ.get("COMPLIANCE_INTERVAL_SECONDS", "900"))           # 15 min
 CONTRACTOR_EXPIRY_INTERVAL = int(os.environ.get("CONTRACTOR_EXPIRY_INTERVAL_SECONDS", "3600"))  # 1 hr
+CERTIFICATION_SWEEP_INTERVAL = int(os.environ.get("CERTIFICATION_SWEEP_INTERVAL_SECONDS", "3600"))  # 1 hr
 # Virtual patrolling runs on a SHORT cycle, not with the daily jobs. A patrol
 # due at 07:00 has to exist at 07:00 -- putting it in run_once would create it
 # whenever the nightly sweep happened to run, and leave its report queued for up
@@ -1242,6 +1243,7 @@ async def main() -> None:
     last_compliance = 0.0
     last_contractor = 0.0
     last_no_show = 0.0
+    last_certification = 0.0
     last_vpatrol = 0.0
 
     try:
@@ -1389,6 +1391,24 @@ async def main() -> None:
                 except Exception:
                     logger.exception("check_contractor_expiry failed")
                 last_contractor = now
+
+            # Guard certification compliance across the upcoming roster.
+            #
+            # Hourly rather than daily: a licence does not lapse on the hour,
+            # but rosters are edited all day and this is the only thing that
+            # sees a shift however it was created -- there are seven creation
+            # paths and two reassignment paths, and warning at each would mean
+            # nine places to remember.
+            if now - last_certification >= CERTIFICATION_SWEEP_INTERVAL:
+                try:
+                    from app.services import certification_compliance
+                    async with AsyncSessionLocal() as db:
+                        counts = await certification_compliance.sweep_upcoming_shifts(db)
+                    if counts["raised"] or counts["resolved"]:
+                        logger.info("certification compliance: %s", counts)
+                except Exception:
+                    logger.exception("certification compliance sweep failed")
+                last_certification = now
 
             # No-show violation detection (every 15 min)
             if now - last_no_show >= NO_SHOW_CHECK_INTERVAL:
