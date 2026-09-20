@@ -117,10 +117,13 @@ async def _ops_feed(db: AsyncSession, role_id: int, allowed_sites: list[str] | N
         SELECT a.id, a.title, a.severity, a.module_type,
                s.name AS site_name, c.name AS camera_name, a.created_at
         FROM alerts a
-        JOIN cameras c ON c.id = a.camera_id
+        -- LEFT: an alert need not be about a camera (0119). An inner
+        -- join here silently hid every contractor, visitor and panic
+        -- alert from the board an operator actually watches.
+        LEFT JOIN cameras c ON c.id = a.camera_id
         LEFT JOIN sites s ON s.id = c.site_id
         WHERE a.status = 'open' AND a.severity IN ('critical','high')
-          {scoped("c.site_id")}
+          {scoped("COALESCE(a.site_id, c.site_id)")}
         ORDER BY a.created_at DESC
         LIMIT 25
     """), params)

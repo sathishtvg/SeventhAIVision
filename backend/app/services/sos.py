@@ -14,16 +14,20 @@ Whichever button a guard found, they got half a response. The mobile app calls
 the second, the web client calls the first, and both are reachable today, so
 neither can simply be deleted.
 
-The patrols one also had a quieter failure that matters more. `incidents`
-requires a camera_id, and that endpoint sourced one with
-
-    (SELECT id FROM cameras WHERE tenant_id = ... LIMIT 1)
-
-inside an INSERT ... SELECT. For a tenant with no cameras — a guarding-only
-customer, which is a large part of who this is sold to — the SELECT returns no
-rows, so the INSERT writes nothing, and the endpoint answers
+The patrols one also had a quieter failure that matters more. `incidents` then
+required a camera_id, and that endpoint sourced one with a subselect for any
+camera the tenant happened to own, inside an INSERT ... SELECT. For a tenant
+with no cameras — a guarding-only customer, which is a large part of who this
+is sold to — the SELECT returned no rows, so the INSERT wrote nothing, and the
+endpoint answered
 `{"sos_acknowledged": true, "incident_id": null}`. A guard pressed panic, the
 app said it was received, and nothing whatsoever was recorded.
+
+Migration 0119 removed the cause -- alerts.camera_id is nullable and alerts
+carry their own site -- so nothing here invents a camera any longer. The
+occurrence-book-first ordering below is kept regardless: it is the record a
+licensed agency must hold, and it should not depend on anything else
+succeeding.
 
 So: one function, called by both endpoints, which does all three things and is
 honest about which of them succeeded.

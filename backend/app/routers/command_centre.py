@@ -77,9 +77,9 @@ async def get_cc_overview(
             SUM(CASE WHEN a.severity = 'high'     THEN 1 ELSE 0 END)            AS high,
             SUM(CASE WHEN a.severity = 'medium'   THEN 1 ELSE 0 END)            AS medium
         FROM alerts a
-        JOIN cameras c ON c.id = a.camera_id
+        LEFT JOIN cameras c ON c.id = a.camera_id
         JOIN sites   s ON s.id = c.site_id
-        WHERE a.status IN ('open', 'acknowledged'){scoped("c.site_id")}
+        WHERE a.status IN ('open', 'acknowledged'){scoped("COALESCE(a.site_id, c.site_id)")}
         GROUP BY s.id
     """), scope_params)
     alerts_by_site = {str(r._mapping["site_id"]): dict(r._mapping) for r in alerts_result}
@@ -226,8 +226,8 @@ async def get_cc_overview(
     else:
         total_active_alerts_row = await db.execute(text(f"""
             SELECT COUNT(*) FROM alerts a
-            JOIN cameras c ON c.id = a.camera_id
-            WHERE a.status IN ('open', 'acknowledged'){scoped("c.site_id")}
+            LEFT JOIN cameras c ON c.id = a.camera_id
+            WHERE a.status IN ('open', 'acknowledged'){scoped("COALESCE(a.site_id, c.site_id)")}
         """), scope_params)
     total_active_alerts = int(total_active_alerts_row.scalar() or 0)
 
@@ -250,10 +250,10 @@ async def get_cc_overview(
             c.name AS camera_name,
             s.name AS site_name
         FROM alerts a
-        JOIN cameras c ON c.id = a.camera_id
+        LEFT JOIN cameras c ON c.id = a.camera_id
         LEFT JOIN sites s ON s.id = c.site_id
         WHERE a.severity IN ('critical', 'high')
-          AND a.created_at > now() - INTERVAL '4 hours'{scoped("c.site_id")}
+          AND a.created_at > now() - INTERVAL '4 hours'{scoped("COALESCE(a.site_id, c.site_id)")}
         ORDER BY a.created_at DESC
         LIMIT 20
     """), scope_params)

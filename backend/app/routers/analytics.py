@@ -54,7 +54,7 @@ async def get_summary(
         WITH d AS (SELECT d.detected_at FROM detections d
                    JOIN cameras c ON c.id = d.camera_id WHERE TRUE {site_clause}),
              a AS (SELECT a.created_at, a.status, a.severity FROM alerts a
-                   JOIN cameras c ON c.id = a.camera_id WHERE TRUE {site_clause})
+                   LEFT JOIN cameras c ON c.id = a.camera_id WHERE TRUE {site_clause})
         SELECT
             (SELECT COUNT(*) FROM a WHERE status = 'open')::int                       AS open_alerts,
             (SELECT COUNT(*) FROM incidents i JOIN cameras c ON c.id = i.camera_id

@@ -98,7 +98,7 @@ async def generate_site_summary(
                 """
                 SELECT a.severity, a.module_type, a.title, a.status, a.created_at
                 FROM alerts a
-                JOIN cameras c ON c.id = a.camera_id
+                LEFT JOIN cameras c ON c.id = a.camera_id
                 WHERE c.site_id = CAST(:sid AS uuid)
                   AND a.created_at BETWEEN CAST(:df AS timestamptz) AND CAST(:du AS timestamptz)
                 ORDER BY a.created_at DESC LIMIT 200
@@ -439,7 +439,7 @@ async def build_site_summary_bytes(db: AsyncSession, site_id: str | None,
 
     alerts_rows = (await db.execute(text(f"""
         SELECT a.severity, a.module_type, a.title, a.status, a.created_at
-        FROM alerts a JOIN cameras c ON c.id = a.camera_id
+        FROM alerts a LEFT JOIN cameras c ON c.id = a.camera_id
         WHERE a.created_at BETWEEN CAST(:df AS timestamptz) AND CAST(:du AS timestamptz)
         {site_filter}
         ORDER BY a.created_at DESC LIMIT 200
