@@ -857,3 +857,56 @@ async def reject_timesheet(
         )
     return await _move_timesheet(db, timesheet_id, "rejected", token.user_id,
                                  body.review_notes, ("draft", "submitted"))
+
+
+@router.get("/overtime-projection",
+            dependencies=[Depends(require_permission("payroll:read"))])
+async def overtime_projection_report(
+    month: str | None = Query(
+        None, description="Month to project, as YYYY-MM. Defaults to the "
+                          "current one, which is the only one still fixable."),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Which guards the roster is about to put past the statutory overtime cap.
+
+    THE SIBLING OF pwm-compliance, AND FOR THE SAME REASON. That report exists
+    because blocking a below-floor wage on save protects only wages set from now
+    on. This one exists because MAX_OT_HOURS_PER_MONTH is checked when payroll
+    totals a month -- by which point the guard has worked the hours and the
+    agency is already in breach. Nothing looked at the roster ahead of it.
+
+    Accrued and projected are returned separately and never summed away: one is
+    what payroll will bill from completed shifts, the other is an estimate of
+    shifts nobody has worked yet. An operator deciding whether to move a shift
+    needs to know which half is which.
+    """
+    from calendar import monthrange
+
+    from app.services import overtime_projection
+
+    if month:
+        try:
+            year, mon = (int(x) for x in month.split("-", 1))
+            first = date(year, mon, 1)
+        except (ValueError, TypeError):
+            raise HTTPException(422, "month must look like 2026-09")
+    else:
+        first = date.today().replace(day=1)
+    last = date(first.year, first.month, monthrange(first.year, first.month)[1])
+
+    rows = await overtime_projection.project_month(db, month_start=first,
+                                                   month_end=last)
+    actionable = [r for r in rows
+                  if r.status in (overtime_projection.OVER_CAP,
+                                  overtime_projection.APPROACHING)]
+    return {
+        "month": f"{first:%Y-%m}",
+        "cap_hours": float(overtime_projection.MAX_OT_HOURS_PER_MONTH),
+        "normal_hours_per_day": float(overtime_projection.HOURS_PER_DAY),
+        "over_cap": sum(1 for r in rows
+                        if r.status == overtime_projection.OVER_CAP),
+        "approaching": sum(1 for r in rows
+                           if r.status == overtime_projection.APPROACHING),
+        "guards_assessed": len(rows),
+        "guards": [r.as_dict() for r in actionable],
+    }
