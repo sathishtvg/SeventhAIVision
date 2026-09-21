@@ -18,6 +18,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import PaymentsIcon from '@mui/icons-material/Payments'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import BadgeIcon from '@mui/icons-material/Badge'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import SearchIcon from '@mui/icons-material/Search'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
@@ -230,6 +231,7 @@ const NAV_SECTIONS: {
       { label: 'Guard Ops',       path: '/guard-ops',   icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
       { label: 'My Patrols',      path: '/my-patrols',   icon: <CameraAltIcon fontSize="small" />,   permission: 'vpatrol:execute' },
       { label: 'Virtual Patrol',  path: '/virtual-patrol', icon: <VideocamIcon fontSize="small" />,     permission: 'vpatrol:read' },
+      { label: 'Certifications', path: '/certification-compliance', icon: <BadgeIcon fontSize="small" />, permission: 'training:read' },
       { label: 'Tour Compliance', path: '/compliance',  icon: <RouteIcon fontSize="small" />,        permission: 'compliance:read' },
       { label: 'Violations',      path: '/violations',  icon: <WarningAmberIcon fontSize="small" />, permission: 'violation:read' },
       { label: 'Leave',           path: '/leave',       icon: <EventBusyIcon fontSize="small" />,    permission: 'leave:read' },

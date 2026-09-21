@@ -717,18 +717,17 @@ async def ingest_event(
                         tenant_id, alert_id, camera_id, title, description,
                         alert_code, message_params, severity, status, is_auto_created
                     )
+                    -- The zone's own camera, or none. incidents.camera_id is
+                    -- nullable; the old fallback to "any tenant camera" tied the
+                    -- incident to an unrelated one and, via the guard below,
+                    -- dropped it entirely for a tenant with no cameras.
                     SELECT CAST(:tid AS uuid), CAST(:aid AS uuid),
-                           COALESCE(az.linked_camera_id, (
-                               SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1
-                           )),
+                           az.linked_camera_id,
                            :title, :desc,
                            :code, CAST(:params AS jsonb), :sev, 'open', TRUE
                     FROM alarm_panels ap
                     LEFT JOIN alarm_zones az ON az.id = CAST(:zid AS uuid)
                     WHERE ap.id = CAST(:pid AS uuid)
-                      AND COALESCE(az.linked_camera_id, (
-                              SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1
-                          )) IS NOT NULL
                     RETURNING id
                 """), {
                     "tid": tenant_id,

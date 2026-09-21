@@ -369,11 +369,11 @@ async def ingest_event(
         }
         title = title_map.get(body.event_type, f"Access event at {door_row.name}")
 
-        # Use the door's linked camera, falling back to any tenant camera
-        cam_source = (
-            f"'{door_row.camera_id}'" if door_row.camera_id
-            else "(SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1)"
-        )
+        # The door's own camera when it has one, and NULL when it does not.
+        # The old fallback to "any tenant camera" filed the alert against an
+        # unrelated door at an unrelated site, and skipped it altogether for a
+        # tenant with no cameras (alerts.camera_id is nullable since 0119).
+        cam_source = f"'{door_row.camera_id}'" if door_row.camera_id else "NULL"
         alert_row = (await db.execute(text(f"""
             INSERT INTO alerts (tenant_id, camera_id, module_type, severity,
                                 alert_code, message_params, title, message, status)
@@ -381,7 +381,6 @@ async def ingest_event(
                    {cam_source},
                    'access', :sev, :code,
                    CAST(:params AS jsonb), :title, :msg, 'open'
-            WHERE {cam_source} IS NOT NULL
             RETURNING id
         """), {
             "tid": tenant_id, "sev": sev, "code": code,

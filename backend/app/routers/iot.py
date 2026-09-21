@@ -309,13 +309,14 @@ async def ingest_reading(
             _tid = str(sensor_row.tenant_id)
             _title = f"IoT threshold breach: {sensor_row.sensor_type or 'sensor'} — {(alert_msg or '')[:100]}"
             _alert_row = (await db.execute(text("""
+                -- An IoT sensor threshold breach is about a device, not a camera. Before 0119 alerts.camera_id was
+                -- NOT NULL, so this named an arbitrary one and skipped the
+                -- alert entirely for tenants that had none.
                 INSERT INTO alerts (tenant_id, camera_id, module_type, severity,
                                     alert_code, message_params, title, message, status)
-                SELECT CAST(:tid AS uuid),
-                       (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1),
+                SELECT CAST(:tid AS uuid), NULL,
                        'iot', :sev, 'iot.threshold_breach',
                        CAST(:params AS jsonb), :title, :msg, 'open'
-                WHERE (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1) IS NOT NULL
                 RETURNING id
             """), {
                 "tid": _tid, "sev": alert_severity,

@@ -362,13 +362,14 @@ async def ingest_position(
             _sev = "high" if event_type == "speed_violation" else "medium"
             _title = f"GPS {event_type.replace('_', ' ').title()}: {gf['name']}"
             _alert_row = (await db.execute(text("""
+                -- A GPS event is about a vehicle or a guard, not a camera. Before 0119 alerts.camera_id was
+                -- NOT NULL, so this named an arbitrary one and skipped the
+                -- alert entirely for tenants that had none.
                 INSERT INTO alerts (tenant_id, camera_id, module_type, severity,
                                     alert_code, message_params, title, message, status)
-                SELECT CAST(:tid AS uuid),
-                       (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1),
+                SELECT CAST(:tid AS uuid), NULL,
                        'gps', :sev, :code,
                        CAST(:params AS jsonb), :title, :msg, 'open'
-                WHERE (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1) IS NOT NULL
                 RETURNING id
             """), {
                 "tid": _tid, "sev": _sev,

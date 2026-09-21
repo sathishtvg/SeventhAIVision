@@ -318,30 +318,23 @@ async def check_visitor_overstays(db: AsyncSession, redis: Redis) -> int:
             # `= NULL` (never true in SQL), so visitors without a site would never
             # trigger an alert under the old single-query pattern.  COALESCE falls
             # back to any tenant camera when no site-specific one is found.
-            cam_id = (await db.execute(
-                text("""
-                    SELECT COALESCE(
-                        (SELECT id FROM cameras WHERE tenant_id = :tid AND site_id = :sid LIMIT 1),
-                        (SELECT id FROM cameras WHERE tenant_id = :tid LIMIT 1)
-                    )
-                """),
-                {"tid": tenant_id, "sid": site_id},
-            )).scalar()
-
-            if cam_id is None:
-                continue  # tenant has no cameras at all — skip silently
+            # No camera is resolved any more. Before 0119 one had to be,
+            # because alerts.camera_id was NOT NULL -- and when the tenant
+            # had none this skipped silently, so a guarding-only customer
+            # was never told anybody had overstayed. The SITE is what this
+            # alert is about.
 
             alert_row = (await db.execute(
                 text(
-                    "INSERT INTO alerts (tenant_id, camera_id, module_type, severity, alert_code, "
-                    "                   message_params, title, message, status) "
-                    "VALUES (:tid, :cid, 'visitor_overstay', 'medium', 'visitor.overstay', "
+                    "INSERT INTO alerts (tenant_id, camera_id, site_id, module_type, severity, "
+                    "                   alert_code, message_params, title, message, status) "
+                    "VALUES (:tid, NULL, :sid, 'visitor_overstay', 'medium', 'visitor.overstay', "
                     "       CAST(:alert_params AS jsonb), :title, :msg, 'open') "
                     "RETURNING id"
                 ),
                 {
                     "tid": tenant_id,
-                    "cid": cam_id,
+                    "sid": site_id,
                     "alert_params": json.dumps({"visitor_id": str(visitor_id), "visitor_name": visitor_name}),
                     "title": f"Visitor overstay: {visitor_name}",
                     "msg": f"{visitor_name} has not departed and their expected exit time has passed"
@@ -409,30 +402,24 @@ async def check_parking_overstays(db: AsyncSession, redis: Redis) -> int:
         )).fetchall()
 
         for visitor_id, name, plate, site_id, site_name, mins, allowance in overstays:
-            cam_id = (await db.execute(
-                text("""
-                    SELECT COALESCE(
-                        (SELECT id FROM cameras WHERE tenant_id = :tid AND site_id = :sid LIMIT 1),
-                        (SELECT id FROM cameras WHERE tenant_id = :tid LIMIT 1)
-                    )
-                """),
-                {"tid": tenant_id, "sid": site_id},
-            )).scalar()
-            if cam_id is None:
-                continue
+            # No camera is resolved any more. Before 0119 one had to be,
+            # because alerts.camera_id was NOT NULL -- and when the tenant
+            # had none this skipped silently, so a guarding-only customer
+            # was never told anybody had overstayed. The SITE is what this
+            # alert is about.
 
             over_by = mins - allowance
             alert_id = (await db.execute(
                 text(
-                    "INSERT INTO alerts (tenant_id, camera_id, module_type, severity, alert_code, "
-                    "                   message_params, title, message, status) "
-                    "VALUES (:tid, :cid, 'parking_overstay', 'medium', 'parking.overstay', "
+                    "INSERT INTO alerts (tenant_id, camera_id, site_id, module_type, severity, "
+                    "                   alert_code, message_params, title, message, status) "
+                    "VALUES (:tid, NULL, :sid, 'parking_overstay', 'medium', 'parking.overstay', "
                     "       CAST(:params AS jsonb), :title, :msg, 'open') "
                     "RETURNING id"
                 ),
                 {
                     "tid": tenant_id,
-                    "cid": cam_id,
+                    "sid": site_id,
                     "params": json.dumps({
                         "visitor_id": str(visitor_id), "visitor_name": name,
                         "plate_number": plate, "minutes_on_site": mins,
@@ -866,6 +853,7 @@ VISITOR_OVERSTAY_INTERVAL = int(os.environ.get("VISITOR_OVERSTAY_INTERVAL_SECOND
 CAMERA_OFFLINE_INTERVAL  = int(os.environ.get("CAMERA_OFFLINE_INTERVAL_SECONDS", "300"))       # 5 min
 COMPLIANCE_INTERVAL      = int(os.environ.get("COMPLIANCE_INTERVAL_SECONDS", "900"))           # 15 min
 CONTRACTOR_EXPIRY_INTERVAL = int(os.environ.get("CONTRACTOR_EXPIRY_INTERVAL_SECONDS", "3600"))  # 1 hr
+CERTIFICATION_SWEEP_INTERVAL = int(os.environ.get("CERTIFICATION_SWEEP_INTERVAL_SECONDS", "3600"))  # 1 hr
 # Virtual patrolling runs on a SHORT cycle, not with the daily jobs. A patrol
 # due at 07:00 has to exist at 07:00 -- putting it in run_once would create it
 # whenever the nightly sweep happened to run, and leave its report queued for up
@@ -930,30 +918,24 @@ async def check_contractor_expiry(
 
         for permit_id, contractor_id, site_id, permit_number, company_name in ending_soon:
             pnum = permit_number or "N/A"
+            # No camera, and no pretending. This alert is about a permit at a
+            # site; before 0119 it had to name an arbitrary camera to satisfy a
+            # NOT NULL, which both hid it from tenants with no cameras and filed
+            # it against an unrelated site for everyone else.
             inserted = (await db.execute(text("""
                 INSERT INTO alerts (
-                    tenant_id, camera_id, module_type, severity,
+                    tenant_id, camera_id, site_id, module_type, severity,
                     alert_code, message_params, title, message, status
                 )
-                SELECT CAST(:tid AS uuid),
-                       COALESCE(
-                           (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid)
-                            AND site_id = CAST(:sid AS uuid) LIMIT 1),
-                           (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1)
-                       ),
-                       'contractor', 'medium',
-                       'contractor.permit_expiring',
-                       CAST(:params AS jsonb),
-                       :title, :msg, 'open'
-                WHERE COALESCE(
-                    (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid)
-                     AND site_id = CAST(:sid AS uuid) LIMIT 1),
-                    (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1)
-                ) IS NOT NULL
+                VALUES (CAST(:tid AS uuid), NULL, CAST(:sid AS uuid),
+                        'contractor', 'medium',
+                        'contractor.permit_expiring',
+                        CAST(:params AS jsonb),
+                        :title, :msg, 'open')
                 RETURNING id
             """), {
                 "tid": str(tenant_id),
-                "sid": str(site_id) if site_id else "00000000-0000-0000-0000-000000000000",
+                "sid": str(site_id) if site_id else None,
                 "params": json.dumps({"permit_id": str(permit_id), "company": company_name,
                                       "permit_number": pnum}),
                 "title": f"Work permit expiring: {company_name}",
@@ -992,18 +974,18 @@ async def check_contractor_expiry(
 
         for acred_id, contractor_id, acred_type, expires_at, company_name in expiring_accreds:
             days_left = (expires_at - now_utc.date()).days
+            # An accreditation belongs to a contractor company, not to any site,
+            # so there is nothing to scope it to and nothing to invent.
             inserted = (await db.execute(text("""
                 INSERT INTO alerts (
-                    tenant_id, camera_id, module_type, severity,
+                    tenant_id, camera_id, site_id, module_type, severity,
                     alert_code, message_params, title, message, status
                 )
-                SELECT CAST(:tid AS uuid),
-                       (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1),
-                       'contractor', 'low',
-                       'contractor.accreditation_expiring',
-                       CAST(:params AS jsonb),
-                       :title, :msg, 'open'
-                WHERE (SELECT id FROM cameras WHERE tenant_id = CAST(:tid AS uuid) LIMIT 1) IS NOT NULL
+                VALUES (CAST(:tid AS uuid), NULL, NULL,
+                        'contractor', 'low',
+                        'contractor.accreditation_expiring',
+                        CAST(:params AS jsonb),
+                        :title, :msg, 'open')
                 RETURNING id
             """), {
                 "tid": str(tenant_id),
@@ -1242,6 +1224,7 @@ async def main() -> None:
     last_compliance = 0.0
     last_contractor = 0.0
     last_no_show = 0.0
+    last_certification = 0.0
     last_vpatrol = 0.0
 
     try:
@@ -1389,6 +1372,24 @@ async def main() -> None:
                 except Exception:
                     logger.exception("check_contractor_expiry failed")
                 last_contractor = now
+
+            # Guard certification compliance across the upcoming roster.
+            #
+            # Hourly rather than daily: a licence does not lapse on the hour,
+            # but rosters are edited all day and this is the only thing that
+            # sees a shift however it was created -- there are seven creation
+            # paths and two reassignment paths, and warning at each would mean
+            # nine places to remember.
+            if now - last_certification >= CERTIFICATION_SWEEP_INTERVAL:
+                try:
+                    from app.services import certification_compliance
+                    async with AsyncSessionLocal() as db:
+                        counts = await certification_compliance.sweep_upcoming_shifts(db)
+                    if counts["raised"] or counts["resolved"]:
+                        logger.info("certification compliance: %s", counts)
+                except Exception:
+                    logger.exception("certification compliance sweep failed")
+                last_certification = now
 
             # No-show violation detection (every 15 min)
             if now - last_no_show >= NO_SHOW_CHECK_INTERVAL:
