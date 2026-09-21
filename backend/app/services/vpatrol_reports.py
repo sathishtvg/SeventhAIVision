@@ -22,6 +22,7 @@ somebody can act on rather than an ImportError at startup.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 from datetime import datetime, timezone
@@ -448,17 +449,25 @@ async def store_reports(db: AsyncSession, session_id: str) -> list[dict]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
 
+        # Hashed from the bytes just written, NOT re-read from disk. Reading it
+        # back would hash whatever actually landed, so a truncated or partial
+        # write would be recorded as correct and verification could never
+        # detect the very corruption it exists to find.
+        checksum = hashlib.sha256(payload).hexdigest()
+
         row = (await db.execute(text("""
             INSERT INTO virtual_patrol_reports
-                (tenant_id, session_id, report_format, storage_path, file_bytes)
-            VALUES (:t, CAST(:s AS uuid), :f, :p, :n)
+                (tenant_id, session_id, report_format, storage_path, file_bytes,
+                 checksum_sha256)
+            VALUES (:t, CAST(:s AS uuid), :f, :p, :n, :sum)
             ON CONFLICT (session_id, report_format) DO UPDATE
                 SET storage_path = EXCLUDED.storage_path,
                     file_bytes = EXCLUDED.file_bytes,
+                    checksum_sha256 = EXCLUDED.checksum_sha256,
                     generated_at = now()
-            RETURNING id, report_format, storage_path, file_bytes
+            RETURNING id, report_format, storage_path, file_bytes, checksum_sha256
         """), {"t": owner["tenant_id"], "s": session_id, "f": fmt,
-               "p": rel, "n": len(payload)})).mappings().first()
+               "p": rel, "n": len(payload), "sum": checksum})).mappings().first()
         stored.append(dict(row))
 
     return stored

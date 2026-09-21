@@ -855,6 +855,7 @@ COMPLIANCE_INTERVAL      = int(os.environ.get("COMPLIANCE_INTERVAL_SECONDS", "90
 CONTRACTOR_EXPIRY_INTERVAL = int(os.environ.get("CONTRACTOR_EXPIRY_INTERVAL_SECONDS", "3600"))  # 1 hr
 CERTIFICATION_SWEEP_INTERVAL = int(os.environ.get("CERTIFICATION_SWEEP_INTERVAL_SECONDS", "3600"))  # 1 hr
 OVERTIME_SWEEP_INTERVAL = int(os.environ.get("OVERTIME_SWEEP_INTERVAL_SECONDS", "3600"))  # 1 hr
+INTEGRITY_SWEEP_INTERVAL = int(os.environ.get("INTEGRITY_SWEEP_INTERVAL_SECONDS", str(24 * 3600)))  # daily
 # Virtual patrolling runs on a SHORT cycle, not with the daily jobs. A patrol
 # due at 07:00 has to exist at 07:00 -- putting it in run_once would create it
 # whenever the nightly sweep happened to run, and leave its report queued for up
@@ -1227,6 +1228,7 @@ async def main() -> None:
     last_no_show = 0.0
     last_certification = 0.0
     last_overtime = 0.0
+    last_integrity = 0.0
     last_vpatrol = 0.0
 
     try:
@@ -1406,6 +1408,21 @@ async def main() -> None:
                 except Exception:
                     logger.exception("overtime projection sweep failed")
                 last_overtime = now
+
+            # Patrol evidence integrity. Daily rather than hourly: files do not
+            # rot on the hour, and re-hashing every recent snapshot and PDF is
+            # real disk work. A mismatch is logged at ERROR because it is either
+            # corruption or interference and both want a person.
+            if now - last_integrity >= INTEGRITY_SWEEP_INTERVAL:
+                try:
+                    from app.services import patrol_integrity
+                    async with AsyncSessionLocal() as db:
+                        counts = await patrol_integrity.sweep_recent(db)
+                    if counts["mismatched"] or counts["files_missing"]:
+                        logger.warning("patrol integrity: %s", counts)
+                except Exception:
+                    logger.exception("patrol integrity sweep failed")
+                last_integrity = now
 
             # No-show violation detection (every 15 min)
             if now - last_no_show >= NO_SHOW_CHECK_INTERVAL:

@@ -46,6 +46,15 @@ SUPERVISOR = "security_supervisor"
 # tenant by design, so a test asking whether a grade has no rate must use one no
 # other test seeds — otherwise it is really asking who ran first.
 CHIEF = "chief_security_officer"
+# Reserved for the retroactive-resolution test, for a related but distinct
+# reason. pwm_effective_floor returns GREATEST(statutory, tenant override), and
+# these tests connect as postgres, which has BYPASSRLS -- so the override CTE
+# sees EVERY tenant's rows, not just one tenant's. A grade another test sets an
+# override on therefore resolves to that override here, and the test passes only
+# on a database where the override test has not run yet. That is a test which
+# depends on the database being new, which is a test that lies on the second
+# run.
+RETRO = "senior_security_officer"
 
 
 async def _sql(statement: str, params: dict | None = None):
@@ -160,15 +169,18 @@ async def test_a_rate_rise_does_not_retroactively_fail_last_year():
     increase turns non-compliant the moment that increase lands — and an agency
     would be chasing violations that never happened.
     """
-    await _statutory(GRADE, date(2025, 1, 1), "2000")
-    await _statutory(GRADE, date(2026, 1, 1), "2500")
+    # RETRO, not GRADE: see the note beside the constant. Another test in this
+    # file sets a tenant override of 2800 on GRADE, and because these run as a
+    # BYPASSRLS superuser that override is visible here regardless of tenant.
+    await _statutory(RETRO, date(2025, 1, 1), "2000")
+    await _statutory(RETRO, date(2026, 1, 1), "2500")
 
     old = (await _sql(
         "SELECT pwm_effective_floor(:g, CAST(:d AS date))",
-        {"g": GRADE, "d": date(2025, 6, 1)}))[0][0]
+        {"g": RETRO, "d": date(2025, 6, 1)}))[0][0]
     new = (await _sql(
         "SELECT pwm_effective_floor(:g, CAST(:d AS date))",
-        {"g": GRADE, "d": date(2026, 6, 1)}))[0][0]
+        {"g": RETRO, "d": date(2026, 6, 1)}))[0][0]
 
     assert Decimal(old) == Decimal("2000.00"), "June 2025 must use the 2025 floor"
     assert Decimal(new) == Decimal("2500.00")

@@ -944,3 +944,26 @@ async def session_report_pdf(session_id: str,
         _io.BytesIO(pdf), media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/sessions/{session_id}/integrity", dependencies=[_READ])
+async def verify_session_integrity(session_id: str,
+                                   db: AsyncSession = Depends(get_db_with_tenant)):
+    """Re-read this patrol's snapshots and reports and compare them to the
+    checksums recorded when they were written.
+
+    EXISTS BECAUSE A CHECKSUM NOTHING COMPARES IS JUST A NUMBER. Every patrol
+    snapshot has carried a SHA-256 since 0116 and not one had ever been read
+    back. A frame truncated by a full volume, corrupted on disk, or replaced
+    would have left the database holding a hash that said otherwise, and no
+    part of the application would have noticed.
+
+    The response names the limit of what it proves: this detects a file changed
+    since it was written, not a change made to the database and the file
+    together. Answering "verified" to the narrow question and letting it be
+    heard as the broad one would be worse than not answering at all.
+    """
+    from app.services import patrol_integrity
+
+    await _session_or_404(db, session_id)
+    return await patrol_integrity.verify_session(db, session_id)
