@@ -490,6 +490,21 @@ async def _recording_task(
             ),
             {"id": recording_id, "size": file_size, "dur": duration},
         )
+
+        # The file is complete and sized, so this is the moment it can be
+        # hashed. recording_policies.verify_checksums has advertised integrity
+        # checking since it was added, defaulting to true, while `recordings`
+        # carried no checksum at all -- there was nothing to verify. Recorded
+        # for every finished segment regardless of the flag: the flag governs
+        # whether we CHECK, and a recording with no hash can never be checked
+        # later even if the site turns it on tomorrow.
+        #
+        # Never fatal. A segment that cannot be hashed keeps its row with a NULL
+        # checksum; losing footage because the integrity feature stumbled would
+        # be the worse outcome.
+        from app.services import recording_integrity
+        await recording_integrity.record_checksum(session, recording_id, file_path)
+
         await session.commit()
 
     _active_recordings.pop(recording_id, None)

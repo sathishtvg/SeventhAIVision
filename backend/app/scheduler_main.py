@@ -1424,6 +1424,18 @@ async def main() -> None:
                     logger.exception("patrol integrity sweep failed")
                 last_integrity = now
 
+                # Recorded video, for the sites whose policy asks for it.
+                # recording_policies.verify_checksums has defaulted to true and
+                # been acted on nowhere; this is what makes it mean something.
+                try:
+                    from app.services import recording_integrity
+                    async with AsyncSessionLocal() as db:
+                        counts = await recording_integrity.verify_recent(db)
+                    if counts["mismatched"] or counts["files_missing"]:
+                        logger.warning("recording integrity: %s", counts)
+                except Exception:
+                    logger.exception("recording integrity sweep failed")
+
             # No-show violation detection (every 15 min)
             if now - last_no_show >= NO_SHOW_CHECK_INTERVAL:
                 try:
