@@ -105,3 +105,39 @@ export const getPwmCompliance = (asOf?: string) =>
       params: asOf ? { as_of: asOf } : undefined,
     })
     .then((r) => r.data)
+
+/**
+ * Accrued and projected are separate fields on purpose. One is what payroll
+ * will bill from completed shifts; the other is an estimate of shifts nobody
+ * has worked yet. Summing them away would hide which half is a fact from the
+ * person deciding whether to move a shift.
+ */
+export interface OvertimeProjectionRow {
+  guard_user_id: string
+  guard_name: string
+  accrued_ot_hours: number
+  projected_ot_hours: number
+  total_ot_hours: number
+  cap_hours: number
+  over_by_hours: number
+  status: 'OVER_CAP' | 'APPROACHING' | 'WITHIN'
+  scheduled_shifts_remaining: number
+}
+
+export interface OvertimeProjectionReport {
+  month: string
+  cap_hours: number
+  normal_hours_per_day: number
+  over_cap: number
+  approaching: number
+  guards_assessed: number
+  /** Only the guards worth acting on; WITHIN is counted, not listed. */
+  guards: OvertimeProjectionRow[]
+}
+
+export const getOvertimeProjection = (month?: string) =>
+  apiClient
+    .get<OvertimeProjectionReport>('/api/v1/payroll/overtime-projection', {
+      params: month ? { month } : undefined,
+    })
+    .then((r) => r.data)
