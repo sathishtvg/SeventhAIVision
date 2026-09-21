@@ -43,8 +43,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   createPayrollRun, listPayrollRuns, getPayrollRun, finalizePayrollRun,
   payslipPdfUrl, getIr8aSummary, ir8aPdfUrl, getPwmCompliance,
+  getOvertimeProjection,
 } from '@/api/payroll'
-import type { PwmVerdict } from '@/api/payroll'
+import type { OvertimeProjectionRow, PwmVerdict } from '@/api/payroll'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -388,6 +389,82 @@ const PWM_VERDICT_STYLE: Record<PwmVerdict, { label: string; color: 'success' | 
 const GRADE_LABEL = (g: string | null) =>
   g ? g.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—'
 
+function OvertimeTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['overtime-projection'],
+    queryFn: () => getOvertimeProjection(),
+  })
+
+  if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={260} /></Box>
+  if (!data) return null
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Overtime this month against the {data.cap_hours}h Employment Act limit,
+        counting shifts already worked plus those still rostered &mdash; so a
+        breach can be seen while there is still a shift to move. Payroll reports
+        the same cap only once the month is totalled.
+      </Typography>
+
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap' }}>
+        <Chip label={`${data.guards_assessed} guards`} />
+        <Chip label={`${data.over_cap} over cap`} color="error"
+              variant={data.over_cap ? 'filled' : 'outlined'} />
+        <Chip label={`${data.approaching} approaching`} color="warning"
+              variant={data.approaching ? 'filled' : 'outlined'} />
+      </Stack>
+
+      {data.guards.length === 0 ? (
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+          <WarningAmberIcon color="success" fontSize="small" />
+          <Typography variant="body2" color="text.secondary">
+            No guard is projected to pass the limit this month.
+          </Typography>
+        </Stack>
+      ) : (
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Guard</TableCell>
+                {/* Worked and rostered are shown apart, never as one number:
+                    one is payroll's own figure and the other is a forecast. */}
+                <TableCell align="right">Worked</TableCell>
+                <TableCell align="right">Still rostered</TableCell>
+                <TableCell align="right">Projected total</TableCell>
+                <TableCell align="right">Over by</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.guards.map((g: OvertimeProjectionRow) => (
+                <TableRow key={g.guard_user_id} hover>
+                  <TableCell>{g.guard_name}</TableCell>
+                  <TableCell align="right">{g.accrued_ot_hours.toFixed(1)}h</TableCell>
+                  <TableCell align="right">{g.projected_ot_hours.toFixed(1)}h</TableCell>
+                  <TableCell align="right">
+                    <strong>{g.total_ot_hours.toFixed(1)}h</strong>
+                  </TableCell>
+                  <TableCell align="right">
+                    {g.over_by_hours > 0 ? `${g.over_by_hours.toFixed(1)}h` : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="small"
+                          color={g.status === 'OVER_CAP' ? 'error' : 'warning'}
+                          label={g.status === 'OVER_CAP' ? 'Over cap' : 'Approaching'} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  )
+}
+
+
 function PwmComplianceTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['pwm-compliance'],
@@ -482,12 +559,14 @@ export function PayrollPage() {
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Runs" />
             <Tab label="PWM Compliance" />
+            <Tab label="Overtime" />
             {canManage && <Tab label="IR8A" />}
           </Tabs>
         </Box>
         {tab === 0 && <RunsTab />}
         {tab === 1 && <PwmComplianceTab />}
-        {tab === 2 && canManage && (
+        {tab === 2 && <OvertimeTab />}
+        {tab === 3 && canManage && (
           <PermissionGuard permission="payroll:manage">
             <Ir8aTab />
           </PermissionGuard>
