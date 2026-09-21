@@ -143,9 +143,18 @@ def upgrade() -> None:
              'training')
         ON CONFLICT (code) DO NOTHING;
 
+        -- Roles 2 (Admin) and 8 (Manager) ONLY. NOT role 1.
+        --
+        -- Super Admin is the VENDOR's operator, not a tenant user, and 0102
+        -- deliberately stripped it to nine platform permissions: tenant,
+        -- license, audit, support, billing, platform, 2fa. Granting it a
+        -- tenant feature permission walks privilege back across the boundary
+        -- that migration exists to hold, and test_support_sessions asserts the
+        -- set exactly. An earlier draft of this migration listed role 1, and CI
+        -- caught it.
         INSERT INTO role_permissions (role_id, permission_id)
         SELECT r.id, p.id FROM roles r CROSS JOIN permissions p
-         WHERE r.id IN (1, 2, 8) AND p.code = 'certification:enforce'
+         WHERE r.id IN (2, 8) AND p.code = 'certification:enforce'
         ON CONFLICT DO NOTHING;
     """)
 
