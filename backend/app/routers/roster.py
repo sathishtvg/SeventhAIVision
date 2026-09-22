@@ -1146,6 +1146,11 @@ async def rest_day_compliance_report(
     days: int = Query(30, ge=1, le=180,
                       description="How far ahead to look. The point is to see "
                                   "a breach while a shift can still be moved."),
+    back: int = Query(30, ge=0, le=180,
+                      description="How far back to look. A breach that already "
+                                  "happened cannot be re-rostered, but it is "
+                                  "the one an MOM audit asks about, and a roster "
+                                  "that produced it will produce another."),
     db: AsyncSession = Depends(get_db_with_tenant),
 ):
     """Guards the roster leaves without the rest the tenant's own rules require.
@@ -1157,9 +1162,18 @@ async def rest_day_compliance_report(
 
     Reports; never blocks. An ops manager covering a 2am no-show must not be
     stopped by the roster tool, or they stop using the roster tool.
+
+    Looks BACKWARDS as well as forwards, and this was not the first shape. A
+    lookahead-only window showed nothing on the one tenant that had breaches --
+    the demo roster's 19-day run is in the past -- and a screen that is blank
+    while the database holds four of them is the same bug this whole change
+    exists to fix. Past breaches cannot be re-rostered; they are still the ones
+    an audit asks about, and the rostering habit that produced them is still
+    producing them.
     """
     from app.services import rest_day_compliance
 
     today = date.today()
     return await rest_day_compliance.assess(
-        db, window_start=today, window_end=today + timedelta(days=days))
+        db, window_start=today - timedelta(days=back),
+        window_end=today + timedelta(days=days))

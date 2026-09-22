@@ -138,8 +138,26 @@ def score_candidate(
 
 
 async def _get_roster_setting(db: AsyncSession, key: str) -> int:
+    """This tenant's value for a roster setting, or the default.
+
+    tenant_id IS IN THE WHERE CLAUSE AS WELL AS THE RLS POLICY, and it has to
+    be. The policy alone scopes this correctly only on a connection that RLS
+    applies to; on one that bypasses it -- a superuser, or any sweep that
+    connects as an owner -- the query matched every tenant's row for the key and
+    .first() returned whichever one Postgres happened to hand back. That is not
+    a hypothetical: it read a limit of 10 belonging to an unrelated tenant and
+    reported a nine-day run as lawful.
+
+    NULLIF because the GUC is set with SET LOCAL: after a commit it is the empty
+    string, and CAST('' AS uuid) raises. Empty means no rows, which falls through
+    to the defaults below -- the same thing an unconfigured tenant gets.
+    """
     row = (await db.execute(
-        text("SELECT setting_value FROM tenant_settings WHERE setting_key = :k"), {"k": key}
+        text("SELECT setting_value FROM tenant_settings "
+             " WHERE setting_key = :k "
+             "   AND tenant_id = CAST(NULLIF("
+             "         current_setting('app.current_tenant', true), '') AS uuid)"),
+        {"k": key},
     )).first()
     if row is not None and isinstance(row[0], int):
         return row[0]

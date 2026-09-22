@@ -164,7 +164,7 @@ def test_an_overlap_and_a_short_rest_land_in_their_own_lists():
 
 # ─── D. Against the database ─────────────────────────────────────────────────
 
-async def _world(*, consecutive_days: int):
+async def _world(*, consecutive_days: int, starting_days_ago: int = 0):
     i = {k: uuid.uuid4() for k in ("tenant", "site", "guard")}
     await _sql("INSERT INTO tenants (id, name, slug) VALUES (:t,'Rest Co',:s)",
                {"t": i["tenant"], "s": f"rest-{i['tenant'].hex[:10]}"})
@@ -175,7 +175,7 @@ async def _world(*, consecutive_days: int):
         "VALUES (:i,:t,5,:e,'x','Tired Guard')",
         {"i": i["guard"], "t": i["tenant"], "e": f"g-{i['guard'].hex[:8]}@rest.test"})
 
-    first = date.today()
+    first = date.today() - timedelta(days=starting_days_ago)
     for n in range(consecutive_days):
         start = datetime.combine(first + timedelta(days=n), time(8, 0),
                                  tzinfo=timezone.utc)
@@ -188,15 +188,16 @@ async def _world(*, consecutive_days: int):
     return i
 
 
-async def _assess(tenant_id):
+async def _assess(tenant_id, *, back_days: int = 0):
     engine = create_async_engine(ADMIN_DATABASE_URL)
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     try:
         async with factory() as s:
             await s.execute(text("SELECT set_config('app.current_tenant', :t, true)"),
                             {"t": str(tenant_id)})
-            return await rd.assess(s, window_start=date.today(),
-                                   window_end=date.today() + timedelta(days=60))
+            return await rd.assess(
+                s, window_start=date.today() - timedelta(days=back_days),
+                window_end=date.today() + timedelta(days=60))
     finally:
         await engine.dispose()
 
@@ -238,3 +239,61 @@ async def test_the_limit_comes_from_the_tenant_setting_not_a_constant():
     assert r["max_consecutive_days"] == 10, r["max_consecutive_days"]
     mine = [x for x in r["over_run"] if x["guard_user_id"] == str(w["guard"])]
     assert mine == [], "nine days was reported despite the tenant allowing ten"
+
+
+@pytest.mark.asyncio
+async def test_a_breach_that_already_happened_is_found_when_the_window_reaches_back():
+    """THE SHAPE THE UI FORCED. The report looked only forwards to begin with,
+    on the reasoning that a warning is worth having while a shift can still be
+    moved. Rendered against the real roster it showed nothing at all -- every
+    breach in it, including a guard on nineteen consecutive days, is behind us.
+    A blank screen over a database holding four of them is the failure this
+    whole feature exists to fix, in the other direction.
+
+    So the window reaches back, and this is the test that stops somebody
+    restoring the lookahead-only version as a tidy-up.
+    """
+    w = await _world(consecutive_days=9, starting_days_ago=20)
+
+    ahead_only = await _assess(w["tenant"])
+    assert [x for x in ahead_only["over_run"]
+            if x["guard_user_id"] == str(w["guard"])] == [], (
+        "the run is in the past; a forward-only window must not see it, or this "
+        "test proves nothing about the backward one")
+
+    looking_back = await _assess(w["tenant"], back_days=30)
+    mine = [x for x in looking_back["over_run"]
+            if x["guard_user_id"] == str(w["guard"])]
+    assert mine, "a nine-day run twenty days ago went unreported"
+    assert mine[0]["consecutive_days"] == 9
+
+
+@pytest.mark.asyncio
+async def test_another_tenants_limit_is_not_used_for_this_one():
+    """THE BUG THIS FILE CAUGHT BY FAILING. _get_roster_setting selected on
+    setting_key alone and left the scoping to RLS. That holds on a connection
+    RLS applies to and on no other -- and these tests, like any sweep running as
+    an owner, bypass it. A limit of 10 belonging to an unrelated tenant was read
+    here and a nine-day run came back lawful.
+
+    Two tenants, one of which has raised its limit, and the other must be judged
+    by its own. Without the tenant_id predicate this fails whenever the raised
+    row is the one Postgres returns first, which is to say unpredictably -- the
+    worst kind of green.
+    """
+    loud = await _world(consecutive_days=9)
+    await _sql(
+        "INSERT INTO tenant_settings (tenant_id, setting_key, setting_value, "
+        "                             updated_by_user_id) "
+        "VALUES (:t,'roster.max_consecutive_days','10'::jsonb,:u) "
+        "ON CONFLICT (tenant_id, setting_key) DO UPDATE "
+        "  SET setting_value = EXCLUDED.setting_value",
+        {"t": loud["tenant"], "u": loud["guard"]})
+
+    quiet = await _world(consecutive_days=9)          # no settings of its own
+    r = await _assess(quiet["tenant"])
+
+    assert r["max_consecutive_days"] == 6, (
+        f"read {r['max_consecutive_days']} -- another tenant's limit leaked in")
+    mine = [x for x in r["over_run"] if x["guard_user_id"] == str(quiet["guard"])]
+    assert mine, "a nine-day run went unreported against a six-day limit"
