@@ -40,7 +40,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
   assignCover, discardBatch, dismissCover, generateRoster, getBatch, getCoverRequests,
-  getLeaveBlocks, getRosterCoverage,
+  getLeaveBlocks, getRestDayCompliance, getRosterCoverage,
   listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
   type CoverageShift, type DraftShift,
 } from '@/api/roster'
@@ -479,6 +479,138 @@ function GuardLeaveCard() {
  * Assigning is a person's decision. The list will not pick for you: who can
  * actually take a shift at short notice is not something the roster knows.
  */
+/**
+ * Still-changeable findings first, already-worked ones after, each group keeping
+ * the order the API sorted it into -- which is worst-first.
+ *
+ * Module level and exported so it can be tested, because the live roster cannot
+ * test it: every breach in the demo data is in the past, so the split never
+ * splits anything and a broken partition would look exactly like a working one.
+ *
+ * Without this the five rows that fit are simply the five most severe, and a
+ * month of history outnumbers the week ahead that somebody can still act on.
+ * Returns [row, isPast] pairs so the caller can mark what it cannot change.
+ */
+export function actionableFirst<T>(
+  rows: T[], at: (r: T) => string, now: number = Date.now(),
+): [T, boolean][] {
+  const marked = rows.map((r) => [r, new Date(at(r)).getTime() < now] as [T, boolean])
+  return [...marked.filter(([, past]) => !past), ...marked.filter(([, past]) => past)]
+}
+
+
+function RestComplianceCard() {
+  /**
+   * Shown here, on the page where the roster is actually built, rather than on
+   * a compliance screen somebody visits afterwards. The point of warning at all
+   * is that there is still a shift to move.
+   *
+   * THREE SEPARATE LISTS. An overlap means the guard is rostered in two places
+   * at once, which is a different and worse fact than a short rest; merged into
+   * one list against a real roster they outnumbered the genuine short rests two
+   * to one and buried every single one.
+   *
+   * IT LOOKS BACKWARDS TOO, and that was not the first shape either. Asking
+   * only for the month ahead rendered nothing on the one tenant that had
+   * breaches, because the demo roster's 19-day run is behind us. A blank card
+   * over a database holding four of them is the failure this feature exists to
+   * fix. Past breaches cannot be re-rostered, so they are marked and sorted
+   * below the ones that can -- but they are shown, because that is what an
+   * audit asks about and the habit that produced them has not changed.
+   */
+  const { data } = useQuery({
+    queryKey: ['rest-day-compliance'],
+    queryFn: () => getRestDayCompliance(30, 30),
+    refetchInterval: 120_000,
+  })
+
+  if (!data) return null
+  const total = data.over_run.length + data.short_rest.length + data.overlap.length
+  // Nothing wrong is not worth a card. The page is for building a roster.
+  if (total === 0) return null
+
+  const when = (iso: string) => new Date(iso).toLocaleString(undefined, {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  })
+
+  const Past = () => (
+    <Chip label="already worked" size="small" variant="outlined"
+          sx={{ ml: 0.75, height: 16, fontSize: 10, opacity: 0.7 }} />
+  )
+
+  return (
+    <GlassCard sx={{ p: 2, mt: 2, border: '1px solid rgba(255,183,77,0.4)' }}>
+      <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700, color: '#FFB74D' }}>
+        Rest rules: {total} finding{total === 1 ? '' : 's'} between{' '}
+        {data.window.from} and {data.window.to}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        Against this tenant&rsquo;s own limits &mdash; at most {data.max_consecutive_days}{' '}
+        consecutive days, at least {data.min_rest_hours}h between shifts. Nothing
+        is blocked; the roster can still be published.
+      </Typography>
+
+      <Stack spacing={1}>
+        {data.overlap.length > 0 && (
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#FF4560' }}>
+              Rostered in two places at once ({data.overlap.length})
+            </Typography>
+            {actionableFirst(data.overlap, (g) => g.next_shift_starts)
+              .slice(0, 5).map(([g, past], n) => (
+              <Typography key={n} variant="body2" color="text.secondary">
+                {g.guard_name} &mdash; {when(g.next_shift_starts)} starts{' '}
+                {Math.abs(g.gap_hours)}h before the previous shift ends
+                {past && <Past />}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {data.over_run.length > 0 && (
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>
+              No rest day ({data.over_run.length})
+            </Typography>
+            {actionableFirst(data.over_run, (r) => r.to_day)
+              .slice(0, 5).map(([r, past], n) => (
+              <Typography key={n} variant="body2" color="text.secondary">
+                {r.guard_name} &mdash; {r.consecutive_days} consecutive days,{' '}
+                {r.from_day} to {r.to_day}
+                {past && <Past />}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {data.short_rest.length > 0 && (
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>
+              Too little rest between shifts ({data.short_rest.length})
+            </Typography>
+            {actionableFirst(data.short_rest, (g) => g.next_shift_starts)
+              .slice(0, 5).map(([g, past], n) => (
+              <Typography key={n} variant="body2" color="text.secondary">
+                {g.guard_name} &mdash; {g.gap_hours}h off before{' '}
+                {when(g.next_shift_starts)}
+                {past && <Past />}
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </Stack>
+
+      {/* The service is explicit that it is not rendering a legal verdict, and
+          so is the card. */}
+      <Typography variant="caption" color="text.secondary"
+                  sx={{ display: 'block', mt: 1.5, fontStyle: 'italic' }}>
+        {data.basis}
+      </Typography>
+    </GlassCard>
+  )
+}
+
+
 function CoverRequestsCard() {
   const qc = useQueryClient()
   const [picked, setPicked] = useState<Record<string, string>>({})
@@ -826,6 +958,7 @@ export function RosterPage() {
         </Box>
       </GlassCard>
 
+      <RestComplianceCard />
       <CoverRequestsCard />
       <GuardLeaveCard />
 

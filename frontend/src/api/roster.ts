@@ -382,3 +382,50 @@ export interface AutoScheduleRules {
   respect_leave?: boolean
   overwrite_existing?: boolean
 }
+
+/**
+ * Three distinct findings, deliberately not merged into one list. A guard
+ * rostered in two places at once is a different and worse fact than a short
+ * rest, and reporting them together buried every real short rest under the
+ * double-bookings when this first ran against a live roster.
+ */
+export interface RestRun {
+  guard_user_id: string
+  guard_name: string
+  from_day: string
+  to_day: string
+  consecutive_days: number
+  status: 'OVER_RUN'
+}
+
+export interface RestGap {
+  guard_user_id: string
+  guard_name: string
+  previous_shift_ended: string
+  next_shift_starts: string
+  /** Negative for an overlap. */
+  gap_hours: number
+  status: 'SHORT_REST' | 'OVERLAP'
+}
+
+export interface RestDayCompliance {
+  window: { from: string; to: string }
+  max_consecutive_days: number
+  min_rest_hours: number
+  guards_assessed: number
+  over_run: RestRun[]
+  short_rest: RestGap[]
+  overlap: RestGap[]
+  /** What the check does and does not claim. Shown, not hidden. */
+  basis: string
+}
+
+// `back` as well as `days`: the breaches on a real roster are often already
+// behind you, and a report that only looks ahead renders an empty card over a
+// database that holds four of them.
+export const getRestDayCompliance = (days = 30, back = 30) =>
+  apiClient
+    .get<RestDayCompliance>('/api/v1/roster/rest-day-compliance', {
+      params: { days, back },
+    })
+    .then((r) => r.data)
