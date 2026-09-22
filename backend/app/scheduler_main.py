@@ -1407,6 +1407,19 @@ async def main() -> None:
                         logger.info("overtime projection: %s", counts)
                 except Exception:
                     logger.exception("overtime projection sweep failed")
+
+                # Rest days the roster does not give. Same cadence and same
+                # reason as overtime: the rules exist (roster.max_consecutive_days,
+                # roster.min_rest_hours) and only the auto-scheduler honoured
+                # them, so a roster built any other way was never measured.
+                try:
+                    from app.services import rest_day_compliance
+                    async with AsyncSessionLocal() as db:
+                        counts = await rest_day_compliance.sweep(db)
+                    if counts["alerts_raised"]:
+                        logger.info("rest-day compliance: %s", counts)
+                except Exception:
+                    logger.exception("rest-day compliance sweep failed")
                 last_overtime = now
 
             # Patrol evidence integrity. Daily rather than hourly: files do not

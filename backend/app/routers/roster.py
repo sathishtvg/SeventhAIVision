@@ -11,7 +11,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1134,3 +1134,32 @@ async def bulk_assign(
         "skipped_clash": skipped_clash,
         "per_guard": per_guard,
     }
+
+
+@router.get("/rest-day-compliance",
+            # shift:read, which is what every other read in this router uses.
+            # There is no roster:read permission -- requiring one would have
+            # meant a 403 for everybody, since require_permission matches a code
+            # that has to exist to be granted.
+            dependencies=[Depends(require_permission("shift:read"))])
+async def rest_day_compliance_report(
+    days: int = Query(30, ge=1, le=180,
+                      description="How far ahead to look. The point is to see "
+                                  "a breach while a shift can still be moved."),
+    db: AsyncSession = Depends(get_db_with_tenant),
+):
+    """Guards the roster leaves without the rest the tenant's own rules require.
+
+    roster.max_consecutive_days and roster.min_rest_hours have existed as tenant
+    settings all along, and roster_autoschedule honours both -- when IT picks who
+    to place. A roster built any other way (manual creation, the three paths in
+    this router, the two reassignment paths) was never measured against them.
+
+    Reports; never blocks. An ops manager covering a 2am no-show must not be
+    stopped by the roster tool, or they stop using the roster tool.
+    """
+    from app.services import rest_day_compliance
+
+    today = date.today()
+    return await rest_day_compliance.assess(
+        db, window_start=today, window_end=today + timedelta(days=days))
