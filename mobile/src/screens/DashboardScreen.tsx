@@ -12,6 +12,8 @@ import { Card } from '@/components/Card'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { useWebSocket, RealtimeEvent } from '@/hooks/useWebSocket'
+import { ShiftCheckInCard } from '@/components/ShiftCheckInCard'
+import { VirtualPatrolCard } from '@/components/VirtualPatrolCard'
 import { useAuthStore } from '@/store/auth'
 import { colors, fontSize, spacing, radius, severity as severityColors } from '@/theme'
 
@@ -149,8 +151,17 @@ export function DashboardScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
-    await qc.invalidateQueries({ queryKey: ['dashboard-summary'] })
-    await qc.invalidateQueries({ queryKey: ['my-duties'] })
+    // Every card on this screen, not just the two that were here first. The
+    // cache is persisted to storage with a 30s staleTime, so a card left out of
+    // this list keeps showing yesterday's answer however hard the guard pulls —
+    // a patrol assigned to them read "Nothing assigned right now" until the
+    // app was restarted.
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['dashboard-summary'] }),
+      qc.invalidateQueries({ queryKey: ['my-duties'] }),
+      qc.invalidateQueries({ queryKey: ['my-shifts'] }),
+      qc.invalidateQueries({ queryKey: ['my-virtual-patrols'] }),
+    ])
     setRefreshing(false)
   }, [qc])
 
@@ -168,6 +179,15 @@ export function DashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
+      {/* Attendance first: checking on and off a shift is the thing a guard
+          opens this app to do, and it used to be three taps away under
+          Patrol → My Shifts. The card hides itself for roles that never work
+          a shift. */}
+      <ShiftCheckInCard />
+
+      {/* Virtual patrol: the phone's way in to a feature it never exposed. */}
+      <VirtualPatrolCard />
+
       {/* Your Duties — guard-only reminder feed, self-scoped server-side */}
       {roleId === GUARD_ROLE_ID && duties && duties.items.length > 0 && (
         <>

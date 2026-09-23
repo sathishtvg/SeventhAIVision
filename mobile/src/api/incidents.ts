@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import { apiClient, rows } from './client'
 
 export type IncidentStatus =
   | 'open'
@@ -35,10 +35,13 @@ export interface IncidentNote {
 
 export const getIncidents = (status?: string, siteId?: string, moduleType?: string) => {
   const params: Record<string, string> = {}
-  if (status) params.status = status
+  // status_filter, not status — see the note in alerts.ts.
+  if (status) params.status_filter = status
   if (siteId) params.site_id = siteId
   if (moduleType) params.module_type = moduleType
-  return apiClient.get<Incident[]>('/api/v1/incidents', { params }).then((r) => r.data)
+  return apiClient
+    .get<{ items: Incident[] }>('/api/v1/incidents', { params })
+    .then((r) => rows(r.data))
 }
 
 export const getIncidentNotes = (id: string) =>

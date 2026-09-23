@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import { apiClient, rows } from './client'
 
 export type AlertSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 export type AlertStatus = 'open' | 'acknowledged' | 'resolved' | 'dismissed'
@@ -26,10 +26,14 @@ export interface Alert {
 
 export const getAlerts = (status?: string, siteId?: string, moduleType?: string) => {
   const params: Record<string, string> = {}
-  if (status) params.status = status
+  // status_filter, not status: the endpoint's parameter is status_filter, so
+  // the Open/Acknowledged/All chips silently did nothing.
+  if (status) params.status_filter = status
   if (siteId) params.site_id = siteId
   if (moduleType) params.module_type = moduleType
-  return apiClient.get<Alert[]>('/api/v1/alerts', { params }).then((r) => r.data)
+  return apiClient
+    .get<{ items: Alert[] }>('/api/v1/alerts', { params })
+    .then((r) => rows(r.data))
 }
 
 // Responses from this app are tagged 'mobile' so a supervisor reviewing the

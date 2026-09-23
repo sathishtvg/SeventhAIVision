@@ -119,6 +119,12 @@ class AnswersSubmit(BaseModel):
     officer_notes: str | None = None
 
 
+class CameraUnavailable(BaseModel):
+    """Why the officer says this camera is not working. Optional: the capture
+    error already on the row is used when they do not add anything."""
+    reason: str | None = None
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _validate_schedule_shape(schedule_type: str | None, weekdays: list[int] | None,
@@ -759,6 +765,66 @@ async def complete_camera(session_id: str, session_camera_id: str,
     progress = await vp.refresh_progress(db, session_id)
     await db.commit()
     return {"completed": session_camera_id, **progress}
+
+
+@router.post("/sessions/{session_id}/cameras/{session_camera_id}/unavailable",
+             dependencies=[_EXECUTE])
+async def mark_camera_unavailable(session_id: str, session_camera_id: str,
+                                  body: CameraUnavailable,
+                                  db: AsyncSession = Depends(get_db_with_tenant),
+                                  token: TokenPayload = Depends(get_token_payload)):
+    """The officer reports that this camera is not working, and moves on.
+
+    THE GAP THIS FILLS. A camera the snapshot service finds offline is already
+    marked CAMERA_UNAVAILABLE: current-camera skips it and derive_session_status
+    counts it, so the patrol ends PARTIALLY_COMPLETED. But a camera whose
+    capture *errors* gets SNAPSHOT_FAILED, which is counted by neither -- the
+    officer is stuck on it for the rest of the patrol with no way forward, and
+    the patrol can never be finished at all. That is worse than either outcome
+    it was protecting against.
+
+    So the officer can say so. This is deliberately NOT the same as completing
+    the camera: the status is CAMERA_UNAVAILABLE, the reason is recorded, and
+    the patrol finishes as PARTIALLY_COMPLETED rather than COMPLETED, because
+    COMPLETED is an assertion that the site was seen and nobody saw this one.
+    The evidence rule of section 40 is intact -- no camera is marked done
+    without an image.
+    """
+    session = await _session_or_404(db, session_id)
+    _assert_is_the_assigned_officer(session, token)
+
+    cam = (await db.execute(text(
+        "SELECT snapshot_path, snapshot_error, camera_name "
+        "  FROM virtual_patrol_session_cameras "
+        " WHERE id = CAST(:id AS uuid) AND session_id = CAST(:s AS uuid)"),
+        {"id": session_camera_id, "s": session_id})).mappings().first()
+    if cam is None:
+        raise HTTPException(404, "Patrol camera not found")
+
+    # A camera that produced an image is not "not working". Refusing here stops
+    # this becoming a quiet way to skip a camera somebody did not want to answer
+    # questions about.
+    if cam["snapshot_path"]:
+        raise HTTPException(
+            422, "This camera returned an image, so it cannot be reported as not working.")
+
+    reason = (body.reason or "").strip() or cam["snapshot_error"] or "Reported not working by the officer."
+    await db.execute(text("""
+        UPDATE virtual_patrol_session_cameras
+           SET status = 'CAMERA_UNAVAILABLE',
+               completed_at = now(),
+               officer_notes = COALESCE(NULLIF(TRIM(officer_notes), ''), '') ||
+                               CASE WHEN COALESCE(TRIM(officer_notes), '') = '' THEN '' ELSE E'
+' END ||
+                               :note
+         WHERE id = CAST(:id AS uuid)
+    """), {"id": session_camera_id, "note": f"Camera not working: {reason}"})
+
+    progress = await vp.refresh_progress(db, session_id)
+    await db.commit()
+    logger.info("virtual patrol %s: %s reported not working (%s)",
+                session_id, cam["camera_name"], reason)
+    return {"unavailable": session_camera_id, "reason": reason, **progress}
 
 
 @router.post("/sessions/{session_id}/complete", dependencies=[_EXECUTE])
