@@ -33,6 +33,7 @@ interface MenuItem extends Gated {
 
 const MENU_ITEMS: MenuItem[] = [
   { screen: 'MyRecord',      label: 'My Record',          description: 'Your violations and leave requests', icon: 'document-text-outline',    color: colors.warning, permission: 'violation:read' },
+  { screen: 'Leave',         label: 'Leave',              description: 'Apply for leave and see where your application got to', icon: 'calendar-outline', color: colors.info, permission: 'leave:read' },
   { screen: 'ActionCenter',  label: 'Action Center',      description: 'What needs your attention now',      icon: 'checkmark-done-outline',   color: colors.error },
   { screen: 'Attendance',    label: 'Live Attendance',    description: 'Who is on duty and who is missing',  icon: 'people-circle-outline',    color: colors.success, permission: 'attendance:read', audience: 'ops' },
   { screen: 'MySchedule',    label: 'My Schedule',        description: 'Your upcoming and recent shifts',    icon: 'calendar-outline',         color: colors.secondary, permission: 'shift:read' },
