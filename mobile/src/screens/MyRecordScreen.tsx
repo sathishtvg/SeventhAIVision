@@ -8,8 +8,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { getMyViolations, getMyViolationsSummary, type Violation } from '@/api/violations'
 import {
   getLeaveTypes, getMyLeaveRequests, getMyLeaveBalances,
-  createLeaveRequest, cancelLeaveRequest, type LeaveRequest, type LeaveType, type LeaveBalanceRow,
+  createLeaveRequest, cancelLeaveRequest, uploadLeaveDocument, leaveRequestBlocker,
+  type LeaveRequest, type LeaveType, type LeaveBalanceRow,
 } from '@/api/leave'
+import { DateField, fromISODate } from '@/components/DateField'
+import { AttachmentField, type PickedFile } from '@/components/AttachmentField'
 import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -87,25 +90,41 @@ function RequestLeaveModal({ visible, onClose }: { visible: boolean; onClose: ()
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [reason, setReason] = useState('')
+  const [attachment, setAttachment] = useState<PickedFile | null>(null)
+
+  const selectedType = types.find((t: LeaveType) => t.id === typeId)
 
   const { mutate: submit, isPending } = useMutation({
-    mutationFn: () => createLeaveRequest({
-      guard_user_id: user!.id,
-      leave_type_id: typeId!,
-      start_date: startDate,
-      end_date: endDate,
-      reason: reason || undefined,
-    }),
+    mutationFn: async () => {
+      const created = await createLeaveRequest({
+        guard_user_id: user!.id,
+        leave_type_id: typeId!,
+        start_date: startDate,
+        end_date: endDate,
+        reason: reason || undefined,
+      })
+      // Two calls, because that is what the server offers: the request first,
+      // then the document against its id. If the upload fails the request still
+      // exists — better a submitted application missing its certificate, which
+      // a supervisor can ask for, than leave that was never applied for.
+      if (attachment && created?.id) {
+        await uploadLeaveDocument(created.id, attachment)
+      }
+      return created
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['my-leave-requests'] })
       qc.invalidateQueries({ queryKey: ['my-leave-balances'] })
-      setTypeId(null); setStartDate(''); setEndDate(''); setReason('')
+      setTypeId(null); setStartDate(''); setEndDate(''); setReason(''); setAttachment(null)
       onClose()
     },
     onError: () => Alert.alert('Request failed', 'Could not submit the leave request. Please try again.'),
   })
 
-  const canSubmit = !!typeId && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+  // A sentence, not a silent grey button: the old form disabled Submit and
+  // gave no clue which field was wrong.
+  const blocker = leaveRequestBlocker({ type: selectedType, startDate, endDate, attachment })
+  const canSubmit = blocker === null
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -128,21 +147,23 @@ function RequestLeaveModal({ visible, onClose }: { visible: boolean; onClose: ()
             ))}
           </View>
 
-          <Text style={styles.label}>Start Date</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textDisabled}
+          {/* Pickers, not typing. A guard should not have to know today's date
+              and the ISO format to ask for a day off. */}
+          <DateField
+            label="Start Date"
             value={startDate}
-            onChangeText={setStartDate}
+            onChange={(iso) => {
+              setStartDate(iso)
+              // Keep the pair sensible: an end date already before the new
+              // start is never what was meant.
+              if (endDate && endDate < iso) setEndDate(iso)
+            }}
           />
-          <Text style={styles.label}>End Date</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textDisabled}
+          <DateField
+            label="End Date"
             value={endDate}
-            onChangeText={setEndDate}
+            onChange={setEndDate}
+            minimumDate={fromISODate(startDate) ?? undefined}
           />
           <Text style={styles.label}>Reason (optional)</Text>
           <TextInput
@@ -153,6 +174,20 @@ function RequestLeaveModal({ visible, onClose }: { visible: boolean; onClose: ()
             onChangeText={setReason}
             multiline
           />
+
+          {/* Only for leave types whose tenant says a document is needed —
+              Medical Leave in the Demo data, but it is the flag that decides,
+              not the name. */}
+          {selectedType?.requires_document && (
+            <AttachmentField
+              label={`${selectedType.name} document`}
+              hint="Photograph the certificate or attach a PDF. Required for this leave type."
+              value={attachment}
+              onChange={setAttachment}
+            />
+          )}
+
+          {!!blocker && <Text style={styles.blocker}>{blocker}</Text>}
 
           <Pressable
             style={[styles.saveBtn, !canSubmit && styles.saveBtnDisabled]}
@@ -169,7 +204,10 @@ function RequestLeaveModal({ visible, onClose }: { visible: boolean; onClose: ()
   )
 }
 
-function LeaveTab() {
+/** Exported so the standalone Leave screen renders THIS, not a second copy.
+ *  Two implementations of "apply for leave and see where it got to" would drift,
+ *  and the one that drifts is the one showing a guard the wrong status. */
+export function LeaveTab() {
   const qc = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
   const { data: balances = [], isLoading: loadBal } = useQuery({
@@ -313,6 +351,9 @@ const styles = StyleSheet.create({
   input:           { borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, color: colors.text, fontSize: fontSize.md },
   textArea:        { minHeight: 70, textAlignVertical: 'top' },
   saveBtn:         { backgroundColor: colors.primary, borderRadius: radius.md, alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.lg },
+  blocker: {
+    color: colors.warning, fontSize: fontSize.sm, marginTop: spacing.md, textAlign: 'center',
+  },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText:     { color: '#fff', fontWeight: '700', fontSize: fontSize.md },
 })

@@ -44,6 +44,7 @@ import { ComplianceScreen }            from '@/screens/ComplianceScreen'
 import { IoTScreen }                   from '@/screens/IoTScreen'
 import { EmergencyScreen }             from '@/screens/EmergencyScreen'
 import { MyRecordScreen }              from '@/screens/MyRecordScreen'
+import { LeaveScreen }                 from '@/screens/LeaveScreen'
 import { TrainingScreen }              from '@/screens/TrainingScreen'
 import { PostOrdersScreen }            from '@/screens/PostOrdersScreen'
 import { KeyRegisterScreen }           from '@/screens/KeyRegisterScreen'
@@ -91,6 +92,7 @@ export type PatrolStackParamList = {
 
 export type MoreStackParamList = {
   MoreMenu:      undefined
+  Leave:         undefined
   Visitors:      undefined
   Dispatch:      undefined
   Detections:    undefined
@@ -226,6 +228,9 @@ function MoreNavigator() {
       <MoreStack.Screen name="IoT"           component={IoTScreen}                  options={{ title: 'IoT Devices' }} />
       <MoreStack.Screen name="Emergency"     component={EmergencyScreen}            options={{ title: 'Emergency Broadcast' }} />
       <MoreStack.Screen name="MyRecord"      component={MyRecordScreen}             options={{ title: 'My Record' }} />
+      {/* Leave has its own row now: it worked all along behind the second tab
+          of My Record, where nobody looked for it. */}
+      <MoreStack.Screen name="Leave"         component={LeaveScreen}                options={{ title: 'Leave' }} />
     </MoreStack.Navigator>
   )
 }
