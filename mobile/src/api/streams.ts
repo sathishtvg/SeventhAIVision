@@ -26,21 +26,6 @@ export const getStreams = (cameraId?: string) =>
     .get<Stream[]>(cameraId ? `/api/v1/cameras/${cameraId}/streams` : '/api/v1/streams')
     .then((r) => r.data)
 
-export const getStream = (streamId: string) =>
-  apiClient.get<Stream>(`/api/v1/streams/${streamId}`).then((r) => r.data)
-
-export const createStream = (data: {
-  camera_id: string
-  protocol?: string
-  url: string
-}) => apiClient.post<Stream>('/api/v1/streams', data).then((r) => r.data)
-
-export const updateStream = (streamId: string, data: { url?: string; protocol?: string }) =>
-  apiClient.put<Stream>(`/api/v1/streams/${streamId}`, data).then((r) => r.data)
-
-export const deleteStream = (streamId: string) =>
-  apiClient.delete(`/api/v1/streams/${streamId}`)
-
 export const getCameraHealth = (cameraId: string, limit = 50) =>
   apiClient
     .get<CameraHealthEvent[]>(`/api/v1/cameras/${cameraId}/health`, { params: { limit } })

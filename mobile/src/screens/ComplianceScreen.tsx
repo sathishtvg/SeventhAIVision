@@ -1,87 +1,92 @@
-import React, { useState, useCallback } from 'react'
+/**
+ * Tour compliance: what was due, what was done, what was missed.
+ *
+ * REBUILT AGAINST THE API THAT EXISTS. This screen was written for
+ * /compliance/summary, /compliance/policies and /compliance/checks — three
+ * routes the server has never had. Every request answered 404 and the screen
+ * showed "No checks recorded", which reads as "all clear" rather than "this has
+ * never worked once". Compliance in this system is patrol tours: schedules, and
+ * the occurrences generated from them.
+ *
+ * MISSED TOURS ARE THE POINT, so they lead: a tour nobody walked is the finding
+ * a supervisor is looking for, and it was the one thing the old screen could
+ * never have shown.
+ */
+import { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, RefreshControl,
-  StyleSheet, Text, View, Pressable,
+  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { getComplianceSummary, getPolicies, getComplianceChecks, type CompliancePolicy, type ComplianceCheck } from '@/api/compliance'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
+import {
+  getComplianceDashboard, getTourOccurrences, getTourSchedules,
+  type TourOccurrence, type TourSchedule,
+} from '@/api/compliance'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
-const CHECK_COLOR: Record<string, string> = {
-  passed:  colors.success,
-  failed:  colors.error,
+/** The server's occurrence statuses. */
+const STATUS_COLOR: Record<string, string> = {
+  completed: colors.success,
+  missed: colors.error,
+  late: colors.warning,
   partial: colors.warning,
+  incomplete: colors.warning,
   pending: colors.info,
-  waived:  colors.textDisabled,
 }
 
+const when = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString([], {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  }) : '—'
+
 function StatusPill({ status }: { status: string }) {
-  const color = CHECK_COLOR[status] ?? colors.textDisabled
   return (
-    <View style={[styles.pill, { backgroundColor: color + '28', borderColor: color }]}>
-      <Text style={[styles.pillText, { color }]}>{status}</Text>
+    <View style={[styles.pill, { backgroundColor: STATUS_COLOR[status] ?? colors.info }]}>
+      <Text style={styles.pillText}>{status}</Text>
     </View>
   )
 }
 
-function PolicyRow({ item }: { item: CompliancePolicy }) {
-  const isOverdue = item.next_due_at != null && new Date(item.next_due_at) < new Date()
+function OccurrenceRow({ item }: { item: TourOccurrence }) {
   return (
     <Card style={styles.row}>
-      <View style={styles.rowTop}>
-        <View style={[styles.iconWrap, { backgroundColor: (isOverdue ? colors.error : colors.info) + '20' }]}>
-          <Ionicons name="clipboard-outline" size={18} color={isOverdue ? colors.error : colors.info} />
-        </View>
-        <View style={styles.rowInfo}>
-          <Text style={styles.name}>{item.title}</Text>
-          <Text style={styles.sub}>{item.category} · {item.frequency}</Text>
-        </View>
-        {isOverdue && (
-          <View style={[styles.pill, { backgroundColor: colors.error + '28', borderColor: colors.error }]}>
-            <Text style={[styles.pillText, { color: colors.error }]}>OVERDUE</Text>
-          </View>
-        )}
+      <View style={styles.rowHeader}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {item.schedule_name ?? item.route_name ?? 'Tour'}
+        </Text>
+        <StatusPill status={item.status} />
       </View>
-      {item.next_due_at && (
-        <View style={styles.metaRow}>
-          <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaText}>Due {new Date(item.next_due_at).toLocaleDateString()}</Text>
-        </View>
-      )}
-      {item.last_completed_at && (
-        <View style={styles.metaRow}>
-          <Ionicons name="checkmark-circle-outline" size={12} color={colors.success} />
-          <Text style={styles.metaText}>Last done {new Date(item.last_completed_at).toLocaleDateString()}</Text>
-        </View>
+      <Text style={styles.rowMeta}>Due {when(item.scheduled_at)}</Text>
+      {!!item.site_name && <Text style={styles.rowMeta}>{item.site_name}</Text>}
+      {!!item.assigned_guard_name && (
+        <Text style={styles.rowMeta}>Assigned to {item.assigned_guard_name}</Text>
       )}
     </Card>
   )
 }
 
-function CheckRow({ item }: { item: ComplianceCheck }) {
+function ScheduleRow({ item }: { item: TourSchedule }) {
+  const rate = item.total_30d ? Math.round((item.completed_30d ?? 0) / item.total_30d * 100) : null
   return (
     <Card style={styles.row}>
-      <View style={styles.rowTop}>
-        <View style={styles.rowInfo}>
-          <Text style={styles.name}>{item.policy_title ?? 'Compliance Check'}</Text>
-          {item.checker_name && <Text style={styles.sub}>By: {item.checker_name}</Text>}
-          {item.notes && <Text style={styles.sub}>{item.notes}</Text>}
-        </View>
-        <StatusPill status={item.status} />
+      <View style={styles.rowHeader}>
+        <Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text>
+        {!item.is_active && <Text style={styles.inactive}>inactive</Text>}
       </View>
-      {(item.score != null && item.max_score != null) && (
-        <View style={styles.metaRow}>
-          <Ionicons name="stats-chart-outline" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaText}>Score {item.score}/{item.max_score}</Text>
-        </View>
-      )}
-      {item.completed_at && (
-        <View style={styles.metaRow}>
-          <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaText}>{new Date(item.completed_at).toLocaleString()}</Text>
-        </View>
+      <Text style={styles.rowMeta}>
+        {[item.route_name, item.site_name].filter(Boolean).join(' · ') || 'No route'}
+      </Text>
+      <Text style={styles.rowMeta}>
+        {item.scheduled_time ?? '—'}
+        {item.recurrence ? ` · ${item.recurrence.toLowerCase()}` : ''}
+        {item.window_minutes ? ` · ${item.window_minutes} min window` : ''}
+      </Text>
+      {rate !== null && (
+        <Text style={[styles.rowMeta, { color: rate >= 90 ? colors.success : rate >= 70 ? colors.warning : colors.error }]}>
+          {rate}% completed over 30 days ({item.completed_30d}/{item.total_30d})
+        </Text>
       )}
     </Card>
   )
@@ -89,24 +94,22 @@ function CheckRow({ item }: { item: ComplianceCheck }) {
 
 export function ComplianceScreen() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'summary' | 'policies' | 'checks'>('summary')
+  const [tab, setTab] = useState<'today' | 'tours' | 'schedules'>('today')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: summary, isLoading: loadingSummary } = useQuery({
-    queryKey: ['compliance-summary'],
-    queryFn: getComplianceSummary,
+  const { data: dash, isLoading: loadingDash } = useQuery({
+    queryKey: ['compliance', 'dashboard'],
+    queryFn: getComplianceDashboard,
   })
-
-  const { data: policies = [], isLoading: loadingPolicies } = useQuery({
-    queryKey: ['compliance-policies'],
-    queryFn: () => getPolicies(),
-    enabled: tab === 'policies',
+  const { data: occurrences = [], isLoading: loadingOcc } = useQuery({
+    queryKey: ['compliance', 'occurrences'],
+    queryFn: () => getTourOccurrences({ limit: 50 }),
+    enabled: tab === 'tours',
   })
-
-  const { data: checks = [], isLoading: loadingChecks } = useQuery({
-    queryKey: ['compliance-checks'],
-    queryFn: () => getComplianceChecks({ limit: 50 }),
-    enabled: tab === 'checks',
+  const { data: schedules = [], isLoading: loadingSched } = useQuery({
+    queryKey: ['compliance', 'schedules'],
+    queryFn: () => getTourSchedules(),
+    enabled: tab === 'schedules',
   })
 
   const onRefresh = useCallback(async () => {
@@ -115,106 +118,131 @@ export function ComplianceScreen() {
     setRefreshing(false)
   }, [qc])
 
-  const isLoading = tab === 'summary' ? loadingSummary : tab === 'policies' ? loadingPolicies : loadingChecks
+  const loading = tab === 'today' ? loadingDash : tab === 'tours' ? loadingOcc : loadingSched
+
+  const stats = dash ? [
+    { label: 'Due today', value: dash.tours_today, color: colors.text },
+    { label: 'Completed', value: dash.completed_today, color: colors.success },
+    { label: 'Missed', value: dash.missed_today, color: dash.missed_today > 0 ? colors.error : colors.success },
+    { label: 'Late', value: dash.late_today, color: dash.late_today > 0 ? colors.warning : colors.success },
+    {
+      label: '7-day rate',
+      value: dash.compliance_rate_7d === null ? '—' : `${dash.compliance_rate_7d}%`,
+      color: colors.info,
+    },
+    { label: 'Active schedules', value: dash.active_schedules, color: colors.text },
+  ] : []
 
   return (
     <View style={styles.root}>
       <View style={styles.tabRow}>
-        {(['summary', 'policies', 'checks'] as const).map((t) => (
+        {(['today', 'tours', 'schedules'] as const).map((t) => (
           <Pressable key={t} style={[styles.tabBtn, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'today' ? 'Today' : t === 'tours' ? 'Tours' : 'Schedules'}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      {isLoading ? (
+      {loading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : tab === 'summary' && summary ? (
+      ) : tab === 'today' ? (
         <FlatList
-          data={summary.recent_checks}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={() => (
-            <View style={styles.kpiGrid}>
-              {[
-                { label: 'Active Policies', value: summary.active_policies, color: colors.text },
-                { label: 'Overdue', value: summary.overdue, color: summary.overdue > 0 ? colors.error : colors.success },
-                { label: 'Due This Week', value: summary.due_this_week, color: colors.warning },
-                { label: 'Pass Rate', value: `${summary.passed_rate_pct}%`, color: colors.success },
-              ].map((k) => (
-                <Card key={k.label} style={styles.kpiCard}>
-                  <Text style={[styles.kpiValue, { color: k.color }]}>{k.value}</Text>
-                  <Text style={styles.kpiLabel}>{k.label}</Text>
-                </Card>
-              ))}
-              <Text style={[styles.name, { paddingHorizontal: spacing.md, paddingTop: spacing.sm }]}>Recent Checks</Text>
-            </View>
-          )}
-          renderItem={({ item }) => <CheckRow item={item} />}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
-          contentContainerStyle={styles.list}
+          data={dash?.recent_missed ?? []}
+          keyExtractor={(_, i) => String(i)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          contentContainerStyle={styles.content}
+          ListHeaderComponent={
+            <>
+              <View style={styles.statGrid}>
+                {stats.map((s) => (
+                  <Card key={s.label} style={styles.statCard}>
+                    <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
+                    <Text style={styles.statLabel}>{s.label}</Text>
+                  </Card>
+                ))}
+              </View>
+              <Text style={styles.sectionTitle}>Recently missed</Text>
+            </>
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Ionicons name="checkmark-done-outline" size={40} color={colors.textDisabled} />
+              <Text style={styles.emptyText}>No missed tours.</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <Card style={styles.row}>
+              <Text style={styles.rowTitle} numberOfLines={1}>
+                {item.schedule_name ?? item.route_name ?? 'Tour'}
+              </Text>
+              <Text style={styles.rowMeta}>
+                {[item.route_name, item.assigned_guard ? `assigned to ${item.assigned_guard}` : null]
+                  .filter(Boolean).join(' · ') || 'Unassigned'}
+              </Text>
+              {!!item.scheduled_at && <Text style={styles.rowMeta}>Due {when(item.scheduled_at)}</Text>}
+            </Card>
+          )}
         />
-      ) : tab === 'policies' ? (
-        policies.length === 0 ? (
-          <View style={styles.center}>
-            <Ionicons name="clipboard-outline" size={48} color={colors.textDisabled} />
-            <Text style={styles.emptyText}>No policies</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={policies}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <PolicyRow item={item} />}
-            ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
-            contentContainerStyle={styles.list}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          />
-        )
+      ) : tab === 'tours' ? (
+        <FlatList
+          data={occurrences}
+          keyExtractor={(o) => o.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          contentContainerStyle={styles.content}
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Ionicons name="footsteps-outline" size={40} color={colors.textDisabled} />
+              <Text style={styles.emptyText}>No tours in this window.</Text>
+            </View>
+          }
+          renderItem={({ item }) => <OccurrenceRow item={item} />}
+        />
       ) : (
-        checks.length === 0 ? (
-          <View style={styles.center}>
-            <Ionicons name="checkmark-done-outline" size={48} color={colors.textDisabled} />
-            <Text style={styles.emptyText}>No checks recorded</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={checks}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <CheckRow item={item} />}
-            ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
-            contentContainerStyle={styles.list}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          />
-        )
+        <FlatList
+          data={schedules}
+          keyExtractor={(s) => s.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          contentContainerStyle={styles.content}
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Ionicons name="calendar-outline" size={40} color={colors.textDisabled} />
+              <Text style={styles.emptyText}>No tour schedules yet.</Text>
+            </View>
+          }
+          renderItem={({ item }) => <ScheduleRow item={item} />}
+        />
       )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  root:          { flex: 1, backgroundColor: colors.background },
-  center:        { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  emptyText:     { color: colors.textSecondary, fontSize: fontSize.md },
-  tabRow:        { flexDirection: 'row', padding: spacing.md, gap: spacing.sm },
-  tabBtn:        { flex: 1, paddingVertical: 8, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center' },
-  tabActive:     { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText:       { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '600' },
+  root: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.md, gap: spacing.sm },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
+  emptyText: { color: colors.textSecondary, fontSize: fontSize.sm },
+  tabRow: { flexDirection: 'row', padding: spacing.sm, gap: spacing.xs },
+  tabBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: spacing.sm,
+    borderRadius: radius.sm, backgroundColor: colors.surface,
+  },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { color: colors.textSecondary, fontWeight: '600', fontSize: fontSize.sm },
   tabTextActive: { color: '#fff' },
-  kpiGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
-  kpiCard:       { width: '47%', alignItems: 'center', paddingVertical: spacing.sm },
-  kpiValue:      { fontSize: fontSize.xl, fontWeight: '800' },
-  kpiLabel:      { fontSize: 10, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
-  list:          { padding: spacing.md, paddingTop: 0, paddingBottom: spacing.xl },
-  row:           { gap: 6 },
-  rowTop:        { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  iconWrap:      { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  rowInfo:       { flex: 1 },
-  name:          { fontSize: fontSize.md, fontWeight: '700', color: colors.text },
-  sub:           { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 1 },
-  metaRow:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText:      { fontSize: fontSize.xs, color: colors.textSecondary },
-  pill:          { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full, borderWidth: 1 },
-  pillText:      { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  statCard: { flexBasis: '31%', flexGrow: 1, alignItems: 'center', paddingVertical: spacing.md },
+  statValue: { fontSize: fontSize.xl, fontWeight: '700' },
+  statLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  sectionTitle: {
+    fontSize: fontSize.sm, fontWeight: '700', color: colors.text, marginBottom: spacing.xs,
+  },
+  row: { padding: spacing.md },
+  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  rowTitle: { flex: 1, fontSize: fontSize.md, fontWeight: '700', color: colors.text },
+  rowMeta: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
+  inactive: { fontSize: fontSize.xs, color: colors.textDisabled, textTransform: 'uppercase' },
+  pill: { borderRadius: radius.sm, paddingHorizontal: spacing.xs, paddingVertical: 2 },
+  pillText: { fontSize: 10, fontWeight: '700', color: '#04120a', textTransform: 'uppercase' },
 })

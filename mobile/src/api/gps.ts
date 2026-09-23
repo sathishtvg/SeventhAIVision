@@ -43,5 +43,5 @@ export const getVehicles = (params?: { status?: string; limit?: number }) =>
 
 export const getVehicleTrack = (vehicleId: string, params?: { hours?: number }) =>
   apiClient
-    .get<GpsPosition[]>(`/api/v1/gps/vehicles/${vehicleId}/track`, { params: { hours: 4, ...params } })
+    .get<GpsPosition[]>(`/api/v1/gps/vehicles/${vehicleId}/positions`, { params: { hours: 4, ...params } })
     .then((r) => r.data)

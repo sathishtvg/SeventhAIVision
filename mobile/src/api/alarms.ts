@@ -44,11 +44,8 @@ export const getAlarmEvents = (params?: { panel_id?: string; severity?: string; 
     .get<AlarmEvent[]>('/api/v1/alarms/events', { params: { limit: 50, ...params } })
     .then((r) => r.data)
 
-export const getAlarmZones = (panelId: string) =>
-  apiClient.get<AlarmZone[]>(`/api/v1/alarms/panels/${panelId}/zones`).then((r) => r.data)
-
 export const armPanel = (panelId: string, mode: string) =>
-  apiClient.post(`/api/v1/alarms/panels/${panelId}/arm`, { mode }).then((r) => r.data)
+  apiClient.put(`/api/v1/alarms/panels/${panelId}/arm`, { mode }).then((r) => r.data)
 
 export const disarmPanel = (panelId: string) =>
-  apiClient.post(`/api/v1/alarms/panels/${panelId}/disarm`, {}).then((r) => r.data)
+  apiClient.put(`/api/v1/alarms/panels/${panelId}/disarm`, {}).then((r) => r.data)

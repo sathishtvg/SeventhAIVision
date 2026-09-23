@@ -20,14 +20,12 @@ export const getEvidence = (params?: { incident_id?: string; limit?: number }) =
     .get<Evidence[]>('/api/v1/evidence', { params: { limit: 50, ...params } })
     .then((r) => r.data)
 
-export const getEvidenceById = (evidenceId: string) =>
-  apiClient.get<Evidence>(`/api/v1/evidence/${evidenceId}`).then((r) => r.data)
-
-// Returns an absolute URL suitable for Image source in React Native
+// Absolute URL for an evidence file, for an Image source in React Native.
 export const evidenceFileUrl = (evidenceId: string): string =>
   `${BASE_URL}/api/v1/evidence/${evidenceId}/file`
 
-// Returns auth header for authenticating evidence file requests
+// Auth header for evidence file requests — an <Image> cannot carry one itself,
+// so the caller passes these as headers on the source.
 export const getEvidenceFileHeaders = (): Record<string, string> => {
   const token = apiClient.defaults.headers.common['Authorization']
   return token ? { Authorization: token as string } : {}
