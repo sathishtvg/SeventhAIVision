@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
 import { useBiometricStore } from '@/store/biometric'
+import { canSee } from '@/lib/access'
 import { useAppResumeBiometric } from '@/hooks/useAppResumeBiometric'
 import { LoginScreen }                 from '@/screens/LoginScreen'
 import { DashboardScreen }             from '@/screens/DashboardScreen'
@@ -24,6 +25,8 @@ import { ShiftScreen }                 from '@/screens/ShiftScreen'
 import { PatrolSelectScreen }          from '@/screens/PatrolSelectScreen'
 import { PatrolScanScreen }            from '@/screens/PatrolScanScreen'
 import { OccurrenceBookScreen }        from '@/screens/OccurrenceBookScreen'
+import { VirtualPatrolScreen }         from '@/screens/VirtualPatrolScreen'
+import { VirtualPatrolRunScreen }      from '@/screens/VirtualPatrolRunScreen'
 import { MoreMenuScreen }              from '@/screens/MoreMenuScreen'
 import { VisitorsScreen }              from '@/screens/VisitorsScreen'
 import { DispatchScreen }              from '@/screens/DispatchScreen'
@@ -78,10 +81,12 @@ export type CamerasStackParamList = {
 }
 
 export type PatrolStackParamList = {
-  Shifts:         undefined
-  PatrolSelect:   { shiftId: string }
-  PatrolScan:     { routeId: string; shiftId: string }
-  OccurrenceBook: { shiftId?: string }
+  Shifts:           undefined
+  PatrolSelect:     { shiftId: string }
+  PatrolScan:       { routeId: string; shiftId: string }
+  OccurrenceBook:   { shiftId?: string }
+  VirtualPatrols:   undefined
+  VirtualPatrolRun: { sessionId: string }
 }
 
 export type MoreStackParamList = {
@@ -182,6 +187,10 @@ function PatrolNavigator() {
       <PatrolStack.Screen name="PatrolSelect"   component={PatrolSelectScreen}   options={{ title: 'Select Route' }} />
       <PatrolStack.Screen name="PatrolScan"     component={PatrolScanScreen}     options={{ title: 'Patrol', headerBackTitle: 'Back' }} />
       <PatrolStack.Screen name="OccurrenceBook" component={OccurrenceBookScreen} options={{ title: 'Occurrence Book', headerBackTitle: 'Back' }} />
+      {/* Virtual patrol: the backend has run this since the beginning and the
+          guard role carries vpatrol:execute, but the phone had no way in. */}
+      <PatrolStack.Screen name="VirtualPatrols"   component={VirtualPatrolScreen}    options={{ title: 'Virtual Patrols' }} />
+      <PatrolStack.Screen name="VirtualPatrolRun" component={VirtualPatrolRunScreen} options={{ title: 'Virtual Patrol', headerBackTitle: 'Back' }} />
     </PatrolStack.Navigator>
   )
 }
@@ -234,6 +243,13 @@ const TAB_ICONS: Record<string, { active: string; inactive: string }> = {
 
 function MainTabs() {
   useAppResumeBiometric()
+  // Same two gates as the More menu (src/lib/access.ts). Watchlists needs
+  // watchlist:manage — there is no watchlist:read — so a guard never had a way
+  // to use that tab, and Evidence is kept because guards do hold evidence:read.
+  const permissions = useAuthStore((s) => s.permissions)
+  const roleId = useAuthStore((s) => s.user?.roleId)
+  const show = (permission?: string, audience?: 'field' | 'ops') =>
+    canSee({ permission, audience }, permissions, roleId)
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -261,14 +277,18 @@ function MainTabs() {
         component={DashboardScreen}
         options={{ headerShown: true, ...screenOptions, title: '7th AI Vision' }}
       />
-      <Tab.Screen name="Alerts"     component={AlertsNavigator} />
-      <Tab.Screen name="Incidents"  component={IncidentsNavigator} />
-      <Tab.Screen name="Cameras"    component={CamerasNavigator} />
-      <Tab.Screen name="Patrol"     component={PatrolNavigator} />
-      <Tab.Screen name="Watchlists" component={WatchlistsScreen}
-        options={{ headerShown: true, ...screenOptions, title: 'Watchlists' }} />
-      <Tab.Screen name="Evidence"   component={EvidenceScreen}
-        options={{ headerShown: true, ...screenOptions, title: 'Evidence' }} />
+      {show('alert:read') && <Tab.Screen name="Alerts" component={AlertsNavigator} />}
+      {show('incident:read') && <Tab.Screen name="Incidents" component={IncidentsNavigator} />}
+      {show('camera:read') && <Tab.Screen name="Cameras" component={CamerasNavigator} />}
+      {show('patrol:read') && <Tab.Screen name="Patrol" component={PatrolNavigator} />}
+      {show('watchlist:manage', 'ops') && (
+        <Tab.Screen name="Watchlists" component={WatchlistsScreen}
+          options={{ headerShown: true, ...screenOptions, title: 'Watchlists' }} />
+      )}
+      {show('evidence:read') && (
+        <Tab.Screen name="Evidence" component={EvidenceScreen}
+          options={{ headerShown: true, ...screenOptions, title: 'Evidence' }} />
+      )}
       <Tab.Screen name="More"       component={MoreNavigator} />
     </Tab.Navigator>
   )

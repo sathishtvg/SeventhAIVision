@@ -3,7 +3,6 @@ import {
   ActivityIndicator, Alert as RNAlert, FlatList, Modal, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native'
-import * as Location from 'expo-location'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -14,24 +13,9 @@ import {
 } from '@/api/patrols'
 import { Card } from '@/components/Card'
 import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
+import { useShiftCheckIn } from '@/hooks/useShiftCheckIn'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
-
-/** Best-effort GPS capture — never blocks check-in/out on permission denial or
- * GPS-off (a missing/failed reading isn't spoofing, just weak signal). `mocked`
- * (Android-only field on expo-location's LocationObject; undefined on iOS,
- * which has no equivalent signal) IS enforced — a positive detection blocks
- * check-in outright at the caller. */
-async function tryGetCoords(): Promise<{ latitude: number; longitude: number; mocked: boolean } | undefined> {
-  try {
-    const { status } = await Location.requestForegroundPermissionsAsync()
-    if (status !== 'granted') return undefined
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-    return { latitude: pos.coords.latitude, longitude: pos.coords.longitude, mocked: pos.mocked === true }
-  } catch {
-    return undefined
-  }
-}
 
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
 
@@ -65,52 +49,11 @@ export function ShiftScreen() {
     enabled: briefingShiftId !== null,
   })
 
-  // ── Check-in/out selfie flow ──────────────────────────────────────────────
-  // GPS is captured once, up front, when the guard taps Start/End — mock
-  // location is checked there and blocks before the camera ever opens. The
-  // photo is captured next; liveness/mock-location are enforced again
-  // server-side (defense in depth) when the shift mutation actually fires.
-  const [checkinFlow, setCheckinFlow] = useState<{
-    shiftId: string; action: 'start' | 'end'; latitude?: number; longitude?: number
-  } | null>(null)
-  const [checkinError, setCheckinError] = useState<string | null>(null)
-
-  const beginCheckin = async (shiftId: string, action: 'start' | 'end') => {
-    const coords = await tryGetCoords()
-    if (coords?.mocked) {
-      RNAlert.alert(
-        'Fake GPS Detected',
-        'Mock location is enabled on this device. Disable any fake-GPS app before checking in.',
-      )
-      return
-    }
-    setCheckinError(null)
-    setCheckinFlow({ shiftId, action, latitude: coords?.latitude, longitude: coords?.longitude })
-  }
-
-  const checkinMut = useMutation({
-    mutationFn: (photoUri: string) => {
-      const { shiftId, action, latitude, longitude } = checkinFlow!
-      return action === 'start'
-        ? startShift(shiftId, photoUri, false, latitude, longitude)
-        : endShift(shiftId, photoUri, false, latitude, longitude)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['my-shifts'] })
-      setCheckinFlow(null)
-    },
-    onError: (err: any) => {
-      const status = err?.response?.status
-      const detail = err?.response?.data?.detail
-      if (status === 422) {
-        setCheckinError(typeof detail === 'string' ? detail : 'Liveness check failed — please retake the photo.')
-      } else if (status === 403) {
-        setCheckinError(typeof detail === 'string' ? detail : 'Check-in blocked — fake GPS location detected.')
-      } else {
-        setCheckinError('Failed to submit check-in. Please try again.')
-      }
-    },
-  })
+  // Check-in/out (GPS, then selfie) lives in useShiftCheckIn so this screen and
+  // the home-screen card cannot drift apart — see the note in that file.
+  const { flow: checkinFlow, error: checkinError, begin: beginCheckin,
+          submit: submitCheckin, submitting: checkinSubmitting,
+          close: closeCheckin } = useShiftCheckIn()
 
   const startBreakMut = useMutation({
     mutationFn: (id: string) => startBreak(id),
@@ -522,9 +465,9 @@ export function ShiftScreen() {
       <CheckInPhotoModal
         visible={checkinFlow !== null}
         title={checkinFlow?.action === 'start' ? 'Check-In Selfie' : 'Check-Out Selfie'}
-        onClose={() => { setCheckinFlow(null); setCheckinError(null) }}
-        onConfirm={(photoUri) => checkinMut.mutate(photoUri)}
-        confirming={checkinMut.isPending}
+        onClose={closeCheckin}
+        onConfirm={submitCheckin}
+        confirming={checkinSubmitting}
         errorMessage={checkinError}
       />
     </View>
