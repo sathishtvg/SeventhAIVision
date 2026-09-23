@@ -5,7 +5,7 @@ import {
 } from 'react-native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { getDoors, getAccessEvents, lockDoor, unlockDoor, type Door, type AccessEvent } from '@/api/access_control'
+import { getDoors, getAccessEvents, type Door, type AccessEvent } from '@/api/access_control'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -19,40 +19,36 @@ const EVENT_COLOR: Record<string, string> = {
   door_closed: colors.textSecondary,
 }
 
-function DoorRow({ item, onLock, onUnlock }: { item: Door; onLock: (id: string) => void; onUnlock: (id: string) => void }) {
-  const lockColor = item.is_locked ? colors.error : colors.success
+function DoorRow({ item }: { item: Door }) {
+  /*
+   * Shows what the server knows about a door: where it is, what kind it is,
+   * which camera watches it. It used to show a padlock and a LOCKED/OPEN pill
+   * driven by `is_locked`, a field the API has never returned — so every door
+   * read as OPEN, on every site, forever — above Lock and Unlock buttons
+   * calling routes that do not exist. Live door state is in the events tab,
+   * which is where the readers actually report it.
+   */
+  const inactive = !item.is_active
   return (
     <Card style={styles.row}>
       <View style={styles.rowTop}>
-        <View style={[styles.iconWrap, { backgroundColor: lockColor + '20' }]}>
-          <Ionicons name={item.is_locked ? 'lock-closed-outline' : 'lock-open-outline'} size={18} color={lockColor} />
+        <View style={[styles.iconWrap, { backgroundColor: colors.primary + '20' }]}>
+          <Ionicons name="git-branch-outline" size={18} color={colors.primary} />
         </View>
         <View style={styles.rowInfo}>
           <Text style={styles.name}>{item.name}</Text>
-          {item.location && <Text style={styles.sub}>{item.location}</Text>}
-          <Text style={styles.sub}>{item.door_type.replace('_', ' ')}</Text>
+          {!!item.location && <Text style={styles.sub}>{item.location}</Text>}
+          <Text style={styles.sub}>
+            {[item.door_type?.replace(/_/g, ' '), item.site_name].filter(Boolean).join(' · ')}
+          </Text>
+          {!!item.camera_name && (
+            <Text style={styles.sub}>Camera: {item.camera_name}</Text>
+          )}
         </View>
-        <View style={[styles.pill, { backgroundColor: lockColor + '20', borderColor: lockColor }]}>
-          <Text style={[styles.pillText, { color: lockColor }]}>{item.is_locked ? 'LOCKED' : 'OPEN'}</Text>
-        </View>
-      </View>
-      {item.held_open && (
-        <View style={styles.warningBanner}>
-          <Ionicons name="warning-outline" size={12} color={colors.warning} />
-          <Text style={[styles.sub, { color: colors.warning }]}>Door held open</Text>
-        </View>
-      )}
-      <View style={styles.actionRow}>
-        {item.is_locked ? (
-          <Pressable style={[styles.actionBtn, { borderColor: colors.success }]} onPress={() => onUnlock(item.id)}>
-            <Ionicons name="lock-open-outline" size={14} color={colors.success} />
-            <Text style={[styles.actionText, { color: colors.success }]}>Unlock</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={[styles.actionBtn, { borderColor: colors.warning }]} onPress={() => onLock(item.id)}>
-            <Ionicons name="lock-closed-outline" size={14} color={colors.warning} />
-            <Text style={[styles.actionText, { color: colors.warning }]}>Lock</Text>
-          </Pressable>
+        {inactive && (
+          <View style={[styles.pill, { backgroundColor: colors.textDisabled + '20', borderColor: colors.textDisabled }]}>
+            <Text style={[styles.pillText, { color: colors.textDisabled }]}>INACTIVE</Text>
+          </View>
         )}
       </View>
     </Card>
@@ -92,18 +88,6 @@ export function AccessControlScreen() {
     enabled: tab === 'events',
   })
 
-  const lockMutation = useMutation({
-    mutationFn: lockDoor,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['access-doors'] }),
-    onError: () => Alert.alert('Error', 'Failed to lock door.'),
-  })
-
-  const unlockMutation = useMutation({
-    mutationFn: (id: string) => unlockDoor(id, 10),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['access-doors'] }),
-    onError: () => Alert.alert('Error', 'Failed to unlock door.'),
-  })
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
     await qc.invalidateQueries({ queryKey: ['access'] })
@@ -138,7 +122,7 @@ export function AccessControlScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) =>
             tab === 'doors'
-              ? <DoorRow item={item} onLock={lockMutation.mutate} onUnlock={unlockMutation.mutate} />
+              ? <DoorRow item={item} />
               : <EventRow item={item} />
           }
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}

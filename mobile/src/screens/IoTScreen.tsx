@@ -1,248 +1,263 @@
-import React, { useState, useCallback } from 'react'
+/**
+ * IoT sensors and their open alerts.
+ *
+ * REBUILT AGAINST THE REAL API. This screen asked for /iot/devices and
+ * /iot/readings, which the server has never had, and rendered a device with a
+ * battery percentage and a firmware version that no table stores. Both calls
+ * answered 404, and the screen said "No devices" — indistinguishable from an
+ * estate that has none.
+ *
+ * WHAT THE SERVER ACTUALLY HAS is sensors with a type, a unit, thresholds and a
+ * current status of normal / warning / critical / offline, plus alerts raised
+ * against them. Readings belong to one sensor, so they are shown by opening a
+ * sensor rather than as a global feed that was never served.
+ *
+ * SENSORS THAT NEED ATTENTION SORT FIRST: critical, then warning, then offline.
+ * A list in insertion order buries the one reading that matters.
+ */
+import { useCallback, useMemo, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, RefreshControl,
-  ScrollView, StyleSheet, Text, View, Pressable,
+  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { getIoTDashboard, getIoTDevices, getIoTReadings, type IoTDevice, type IoTReading } from '@/api/iot'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
+import {
+  getIoTAlerts, getIoTDashboard, getSensorReadings,
+  type IoTSensor, type SensorStatus,
+} from '@/api/iot'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
-const STATUS_COLOR: Record<string, string> = {
-  online:  colors.success,
+const STATUS_COLOR: Record<SensorStatus, string> = {
+  normal: colors.success,
+  warning: colors.warning,
+  critical: colors.error,
   offline: colors.textDisabled,
-  error:   colors.error,
-  unknown: colors.warning,
+  unknown: colors.textDisabled,
 }
 
-const DEVICE_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
-  temperature_sensor: 'thermometer-outline',
-  humidity_sensor:    'water-outline',
-  motion_sensor:      'body-outline',
-  door_sensor:        'log-in-outline',
-  smoke_detector:     'flame-outline',
-  flood_sensor:       'rainy-outline',
-  power_meter:        'flash-outline',
-  default:            'hardware-chip-outline',
+/** Worst first. Exported for the test: a critical sensor sorted below a normal
+ *  one is a reading nobody sees. */
+export function sensorsByUrgency(sensors: IoTSensor[]): IoTSensor[] {
+  const rank: Record<string, number> = { critical: 0, warning: 1, offline: 2, unknown: 3, normal: 4 }
+  return [...sensors].sort((a, b) =>
+    (rank[a.current_status] ?? 9) - (rank[b.current_status] ?? 9) ||
+    a.name.localeCompare(b.name))
 }
 
-function StatusDot({ status }: { status: string }) {
-  const color = STATUS_COLOR[status] ?? colors.warning
-  return <View style={[styles.dot, { backgroundColor: color }]} />
+const ago = (iso: string | null) => {
+  if (!iso) return 'no reading yet'
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hrs = Math.round(mins / 60)
+  return hrs < 24 ? `${hrs} h ago` : `${Math.round(hrs / 24)} d ago`
 }
 
-function DeviceRow({ item }: { item: IoTDevice }) {
-  const icon = DEVICE_ICON[item.device_type] ?? DEVICE_ICON.default
-  const statusColor = STATUS_COLOR[item.status] ?? colors.warning
+function SensorRow({ sensor, onPress, expanded, readings }: {
+  sensor: IoTSensor
+  onPress: () => void
+  expanded: boolean
+  readings: { id: string; value: number; recorded_at: string }[]
+}) {
   return (
     <Card style={styles.row}>
-      <View style={styles.rowTop}>
-        <View style={[styles.iconWrap, { backgroundColor: statusColor + '20' }]}>
-          <Ionicons name={icon} size={18} color={statusColor} />
-        </View>
-        <View style={styles.rowInfo}>
-          <Text style={styles.name}>{item.name}</Text>
-          <Text style={styles.sub}>{item.device_type.replace(/_/g, ' ')}</Text>
-          {item.location && <Text style={styles.sub}>{item.location}</Text>}
-        </View>
-        <View style={styles.statusWrap}>
-          <StatusDot status={item.status} />
-          <Text style={[styles.statusText, { color: statusColor }]}>{item.status}</Text>
-        </View>
-      </View>
-      <View style={styles.metaStrip}>
-        {item.battery_pct != null && (
-          <View style={styles.metaItem}>
-            <Ionicons name="battery-half-outline" size={12}
-              color={item.battery_pct <= 20 ? colors.error : colors.textSecondary} />
-            <Text style={styles.metaText}>{item.battery_pct}%</Text>
+      <Pressable onPress={onPress} accessibilityRole="button">
+        <View style={styles.rowHeader}>
+          <Text style={styles.name} numberOfLines={1}>{sensor.name}</Text>
+          <View style={[styles.pill, { backgroundColor: STATUS_COLOR[sensor.current_status] }]}>
+            <Text style={styles.pillText}>{sensor.current_status}</Text>
           </View>
-        )}
-        {item.firmware_version && (
-          <View style={styles.metaItem}>
-            <Ionicons name="code-outline" size={12} color={colors.textSecondary} />
-            <Text style={styles.metaText}>v{item.firmware_version}</Text>
-          </View>
-        )}
-        {item.last_seen_at && (
-          <View style={styles.metaItem}>
-            <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-            <Text style={styles.metaText}>{new Date(item.last_seen_at).toLocaleTimeString()}</Text>
-          </View>
-        )}
-      </View>
-    </Card>
-  )
-}
-
-function ReadingRow({ item }: { item: IoTReading }) {
-  const color = item.is_alert ? colors.error : colors.textSecondary
-  return (
-    <Card style={styles.row}>
-      <View style={styles.rowTop}>
-        {item.is_alert && <View style={[styles.dot, { backgroundColor: colors.error }]} />}
-        <View style={styles.rowInfo}>
-          <Text style={styles.name}>{item.device_name ?? 'Device'}</Text>
-          <Text style={styles.sub}>{item.metric.replace(/_/g, ' ')}</Text>
         </View>
-        <Text style={[styles.readingValue, { color }]}>
-          {item.value}{item.unit ? ` ${item.unit}` : ''}
+        <Text style={styles.meta}>
+          {[sensor.sensor_type, sensor.location, sensor.site_name].filter(Boolean).join(' · ')}
         </Text>
-        <Text style={styles.time}>{new Date(item.recorded_at).toLocaleTimeString()}</Text>
-      </View>
+        <View style={styles.readingRow}>
+          <Text style={styles.reading}>
+            {sensor.last_reading_value ?? '—'}
+            {sensor.unit ? ` ${sensor.unit}` : ''}
+          </Text>
+          <Text style={styles.meta}>{ago(sensor.last_reading_at)}</Text>
+          {sensor.open_alerts > 0 && (
+            <View style={styles.alertBadge}>
+              <Ionicons name="warning" size={11} color="#1a1205" />
+              <Text style={styles.alertBadgeText}>{sensor.open_alerts}</Text>
+            </View>
+          )}
+        </View>
+      </Pressable>
+
+      {expanded && (
+        <View style={styles.readings}>
+          {readings.length === 0 ? (
+            <Text style={styles.meta}>No recent readings.</Text>
+          ) : readings.slice(0, 8).map((r) => (
+            <View key={r.id} style={styles.readingLine}>
+              <Text style={styles.meta}>
+                {new Date(r.recorded_at).toLocaleString([], {
+                  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                })}
+              </Text>
+              <Text style={styles.readingValue}>{r.value}{sensor.unit ? ` ${sensor.unit}` : ''}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </Card>
   )
 }
 
 export function IoTScreen() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'devices' | 'readings'>('devices')
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  const [tab, setTab] = useState<'sensors' | 'alerts'>('sensors')
+  const [openSensor, setOpenSensor] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: dashboard } = useQuery({
+  const { data: dashboard, isLoading } = useQuery({
     queryKey: ['iot-dashboard'],
     queryFn: () => getIoTDashboard(),
   })
-
-  const { data: devices = [], isLoading: loadingDevices } = useQuery({
-    queryKey: ['iot-devices', statusFilter],
-    queryFn: () => getIoTDevices({ status: statusFilter }),
+  const { data: alerts = [], isLoading: loadingAlerts } = useQuery({
+    queryKey: ['iot-alerts'],
+    queryFn: () => getIoTAlerts({ status: 'open', limit: 50 }),
+    enabled: tab === 'alerts',
+  })
+  const { data: readings = [] } = useQuery({
+    queryKey: ['iot-readings', openSensor],
+    queryFn: () => getSensorReadings(openSensor!),
+    enabled: !!openSensor,
   })
 
-  const { data: readings = [], isLoading: loadingReadings } = useQuery({
-    queryKey: ['iot-readings'],
-    queryFn: () => getIoTReadings({ limit: 50 }),
-    enabled: tab === 'readings',
-  })
+  const sensors = useMemo(() => sensorsByUrgency(dashboard?.sensors ?? []), [dashboard])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
-    await qc.invalidateQueries({ queryKey: ['iot'] })
+    await qc.invalidateQueries({ queryKey: ['iot-dashboard'] })
+    await qc.invalidateQueries({ queryKey: ['iot-alerts'] })
     setRefreshing(false)
   }, [qc])
 
-  const FILTERS = [
-    { label: 'All', value: undefined },
-    { label: 'Online', value: 'online' },
-    { label: 'Offline', value: 'offline' },
-    { label: 'Error', value: 'error' },
-  ]
-
-  const isLoading = tab === 'devices' ? loadingDevices : loadingReadings
+  const s = dashboard?.summary
+  const stats = s ? [
+    { label: 'Sensors', value: s.total, color: colors.text },
+    { label: 'Normal', value: s.normal, color: colors.success },
+    { label: 'Warning', value: s.warning, color: s.warning > 0 ? colors.warning : colors.textSecondary },
+    { label: 'Critical', value: s.critical, color: s.critical > 0 ? colors.error : colors.textSecondary },
+    { label: 'Offline', value: s.offline, color: s.offline > 0 ? colors.textDisabled : colors.textSecondary },
+    { label: 'Open alerts', value: s.open_alerts, color: s.open_alerts > 0 ? colors.error : colors.success },
+  ] : []
 
   return (
     <View style={styles.root}>
-      {/* KPI strip */}
-      {dashboard && (
-        <View style={styles.kpiRow}>
-          {[
-            { label: 'Total', value: dashboard.total_devices, color: colors.text },
-            { label: 'Online', value: dashboard.online, color: colors.success },
-            { label: 'Offline', value: dashboard.offline, color: colors.textDisabled },
-            { label: 'Alerts', value: dashboard.alerts_today, color: dashboard.alerts_today > 0 ? colors.error : colors.textSecondary },
-          ].map((k) => (
-            <Card key={k.label} style={styles.kpiCard}>
-              <Text style={[styles.kpiValue, { color: k.color }]}>{k.value}</Text>
-              <Text style={styles.kpiLabel}>{k.label}</Text>
-            </Card>
-          ))}
-        </View>
-      )}
-
       <View style={styles.tabRow}>
-        {(['devices', 'readings'] as const).map((t) => (
+        {(['sensors', 'alerts'] as const).map((t) => (
           <Pressable key={t} style={[styles.tabBtn, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'devices' ? 'Devices' : 'Readings'}
+              {t === 'sensors' ? 'Sensors' : 'Alerts'}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      {tab === 'devices' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipContent}>
-          {FILTERS.map((f) => (
-            <Pressable
-              key={String(f.value)}
-              style={[styles.chip, statusFilter === f.value && styles.chipActive]}
-              onPress={() => setStatusFilter(f.value)}
-            >
-              <Text style={[styles.chipText, statusFilter === f.value && styles.chipTextActive]}>{f.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-
-      {isLoading ? (
+      {(tab === 'sensors' ? isLoading : loadingAlerts) ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : (tab === 'devices' ? devices : readings).length === 0 ? (
-        <View style={styles.center}>
-          <Ionicons name="hardware-chip-outline" size={48} color={colors.textDisabled} />
-          <Text style={styles.emptyText}>No {tab}</Text>
-        </View>
+      ) : tab === 'sensors' ? (
+        <FlatList
+          data={sensors}
+          keyExtractor={(x) => x.id}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            stats.length > 0 ? (
+              <View style={styles.statGrid}>
+                {stats.map((x) => (
+                  <Card key={x.label} style={styles.statCard}>
+                    <Text style={[styles.statValue, { color: x.color }]}>{x.value}</Text>
+                    <Text style={styles.statLabel}>{x.label}</Text>
+                  </Card>
+                ))}
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Ionicons name="hardware-chip-outline" size={40} color={colors.textDisabled} />
+              <Text style={styles.emptyText}>No sensors configured.</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <SensorRow
+              sensor={item}
+              expanded={openSensor === item.id}
+              readings={openSensor === item.id ? readings : []}
+              onPress={() => setOpenSensor(openSensor === item.id ? null : item.id)}
+            />
+          )}
+        />
       ) : (
-        // One list per tab, not one list fed a union. The single FlatList
-        // this replaced needed `item as IoTDevice` / `item as IoTReading`
-        // casts that TypeScript could not check, and it carried its scroll
-        // position and recycled item views between two unrelated shapes.
-        tab === 'devices' ? (
-          <FlatList
-            data={devices}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <DeviceRow item={item} />}
-            ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
-            contentContainerStyle={styles.list}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          />
-        ) : (
-          <FlatList
-            data={readings}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <ReadingRow item={item} />}
-            ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
-            contentContainerStyle={styles.list}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          />
-        )
+        <FlatList
+          data={alerts}
+          keyExtractor={(a) => a.id}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Ionicons name="checkmark-circle-outline" size={40} color={colors.textDisabled} />
+              <Text style={styles.emptyText}>No open sensor alerts.</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <Card style={styles.row}>
+              <View style={styles.rowHeader}>
+                <Text style={styles.name} numberOfLines={1}>{item.sensor_name ?? 'Sensor'}</Text>
+                <View style={[styles.pill, { backgroundColor: item.severity === 'critical' ? colors.error : colors.warning }]}>
+                  <Text style={styles.pillText}>{item.severity}</Text>
+                </View>
+              </View>
+              {!!item.message && <Text style={styles.meta}>{item.message}</Text>}
+              <Text style={styles.meta}>{new Date(item.created_at).toLocaleString()}</Text>
+            </Card>
+          )}
+        />
       )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  root:          { flex: 1, backgroundColor: colors.background },
-  center:        { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  emptyText:     { color: colors.textSecondary, fontSize: fontSize.md },
-  kpiRow:        { flexDirection: 'row', gap: spacing.xs, padding: spacing.md, paddingBottom: 0 },
-  kpiCard:       { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
-  kpiValue:      { fontSize: fontSize.xl, fontWeight: '800' },
-  kpiLabel:      { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
-  tabRow:        { flexDirection: 'row', padding: spacing.md, paddingBottom: 0, gap: spacing.sm },
-  tabBtn:        { flex: 1, paddingVertical: 8, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center' },
-  tabActive:     { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText:       { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '600' },
+  root: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.md, gap: spacing.sm },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
+  emptyText: { color: colors.textSecondary, fontSize: fontSize.sm },
+  tabRow: { flexDirection: 'row', padding: spacing.sm, gap: spacing.xs },
+  tabBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: spacing.sm,
+    borderRadius: radius.sm, backgroundColor: colors.surface,
+  },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { color: colors.textSecondary, fontWeight: '600', fontSize: fontSize.sm },
   tabTextActive: { color: '#fff' },
-  chipScroll:    { flexGrow: 0, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  chipContent:   { flexDirection: 'row', gap: spacing.xs },
-  chip:          { borderRadius: radius.full, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing.md, paddingVertical: 5 },
-  chipActive:    { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText:      { fontSize: fontSize.sm, color: colors.textSecondary },
-  chipTextActive:{ color: '#fff', fontWeight: '600' },
-  list:          { padding: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl },
-  row:           { gap: 6 },
-  rowTop:        { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  iconWrap:      { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  rowInfo:       { flex: 1 },
-  name:          { fontSize: fontSize.md, fontWeight: '700', color: colors.text },
-  sub:           { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 1, textTransform: 'capitalize' },
-  statusWrap:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statusText:    { fontSize: fontSize.xs, fontWeight: '600', textTransform: 'capitalize' },
-  dot:           { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  metaStrip:     { flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' },
-  metaItem:      { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  metaText:      { fontSize: fontSize.xs, color: colors.textSecondary },
-  readingValue:  { fontSize: fontSize.md, fontWeight: '700' },
-  time:          { fontSize: fontSize.xs, color: colors.textSecondary },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  statCard: { flexBasis: '31%', flexGrow: 1, alignItems: 'center', paddingVertical: spacing.md },
+  statValue: { fontSize: fontSize.xl, fontWeight: '700' },
+  statLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  row: { padding: spacing.md },
+  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  name: { flex: 1, fontSize: fontSize.md, fontWeight: '700', color: colors.text },
+  meta: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
+  readingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  reading: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
+  alertBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto',
+    backgroundColor: colors.warning, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1,
+  },
+  alertBadgeText: { fontSize: 11, fontWeight: '700', color: '#1a1205' },
+  readings: {
+    marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.cardBorder, paddingTop: spacing.sm,
+  },
+  readingLine: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  readingValue: { fontSize: fontSize.sm, color: colors.text, fontWeight: '600' },
+  pill: { borderRadius: radius.sm, paddingHorizontal: spacing.xs, paddingVertical: 2 },
+  pillText: { fontSize: 10, fontWeight: '700', color: '#04120a', textTransform: 'uppercase' },
 })

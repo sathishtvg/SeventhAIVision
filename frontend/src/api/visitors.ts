@@ -60,8 +60,11 @@ export interface QRScanCheckin {
 export const listVisitors = () =>
   client.get<{ items: Visitor[] }>('/api/v1/visitors').then(r => r.data.items)
 
-export const getVisitor = (id: string) =>
-  client.get<Visitor>(`/api/v1/visitors/${id}`).then(r => r.data)
+/*
+ * No getVisitor here: /api/v1/visitors/{id} accepts DELETE only, so this
+ * fetched a 405 for anyone who called it. Nothing did. A visitor's details come
+ * from the list, or from /visitors/by-qr/{token} when a pass is scanned.
+ */
 
 export const createVisitor = (data: VisitorCreate) =>
   client.post<Visitor>('/api/v1/visitors', data).then(r => r.data)

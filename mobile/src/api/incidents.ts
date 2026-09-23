@@ -29,6 +29,8 @@ export interface IncidentNote {
   id: string
   incident_id: string
   author_user_id: string | null
+  /** From the timeline, which names the person rather than giving their id. */
+  author_name?: string | null
   note: string
   created_at: string
 }
@@ -44,8 +46,36 @@ export const getIncidents = (status?: string, siteId?: string, moduleType?: stri
     .then((r) => rows(r.data))
 }
 
+/** One entry of the incident timeline: a note, or a status change. */
+interface TimelineEntry {
+  type: 'note' | 'status_change'
+  occurred_at: string
+  notes: string | null
+  actor_name: string | null
+  from_status?: string | null
+  to_status?: string | null
+}
+
+/**
+ * The notes on an incident.
+ *
+ * Read from /timeline, which is where the server keeps them. There is no GET on
+ * /incidents/{id}/notes -- only a POST to add one -- so this screen asked for a
+ * route that answers 405 and showed "No notes yet" however many notes existed.
+ */
 export const getIncidentNotes = (id: string) =>
-  apiClient.get<IncidentNote[]>(`/api/v1/incidents/${id}/notes`).then((r) => r.data)
+  apiClient
+    .get<TimelineEntry[]>(`/api/v1/incidents/${id}/timeline`)
+    .then((r) => (r.data ?? [])
+      .filter((e) => e.type === 'note')
+      .map((e, i): IncidentNote => ({
+        id: `${id}-note-${i}`,          // the timeline is a view; entries carry no id
+        incident_id: id,
+        author_user_id: null,
+        author_name: e.actor_name,
+        note: e.notes ?? '',
+        created_at: e.occurred_at,
+      })))
 
 export const addIncidentNote = (id: string, note: string) =>
   apiClient.post(`/api/v1/incidents/${id}/notes`, { note }).then((r) => r.data)

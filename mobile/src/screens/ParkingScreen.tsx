@@ -5,7 +5,10 @@ import {
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { getCarParks, getParkingOccupancy, getParkingSessions, type CarPark, type ParkingSession } from '@/api/parking'
+import {
+  getCarParks, getParkingSessions, occupancyPct,
+  type CarPark, type ParkingSession,
+} from '@/api/parking'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -35,20 +38,24 @@ function OccupancyBar({ pct }: { pct: number }) {
 }
 
 function CarParkCard({ item, onSelect, selected }: { item: CarPark; onSelect: (id: string) => void; selected: boolean }) {
-  const { data: occ } = useQuery({
-    queryKey: ['parking-occ', item.id],
-    queryFn: () => getParkingOccupancy(item.id),
-  })
+  // Counted from the row the list already returned — no second request per
+  // card, which is what the old occupancy call cost.
+  const pct = occupancyPct(item)
   return (
     <Pressable onPress={() => onSelect(item.id)}>
       <Card style={[styles.carparkCard, selected && styles.carparkSelected]}>
         <View style={styles.rowTop}>
           <Ionicons name="car-outline" size={16} color={colors.primary} />
           <Text style={styles.name}>{item.name}</Text>
-          {occ && <Text style={[styles.sub, { marginLeft: 'auto' }]}>{occ.occupancy_pct}%</Text>}
+          {pct !== null && <Text style={[styles.sub, { marginLeft: 'auto' }]}>{pct}%</Text>}
         </View>
-        {occ && <OccupancyBar pct={occ.occupancy_pct} />}
-        <Text style={styles.sub}>{item.total_bays} bays total</Text>
+        {pct !== null && <OccupancyBar pct={pct} />}
+        <Text style={styles.sub}>
+          {item.bay_count > 0
+            ? `${item.occupied_bays} of ${item.bay_count} bays occupied`
+            : `${item.total_capacity} capacity — no bays mapped yet`}
+        </Text>
+        {!!item.site_name && <Text style={styles.sub}>{item.site_name}</Text>}
       </Card>
     </Pressable>
   )

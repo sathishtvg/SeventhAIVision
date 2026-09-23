@@ -19,9 +19,6 @@ export type SettingKey = (typeof SETTING_KEYS)[number]
 export const getSettings = () =>
   apiClient.get<TenantSetting[]>('/api/v1/settings').then((r) => r.data)
 
-export const getSetting = (key: SettingKey) =>
-  apiClient.get<TenantSetting>(`/api/v1/settings/${key}`).then((r) => r.data)
-
 export const upsertSetting = (key: SettingKey, value: number) =>
   apiClient
     .put<TenantSetting>(`/api/v1/settings/${key}`, { setting_value: value })

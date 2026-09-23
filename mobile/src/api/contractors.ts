@@ -42,9 +42,9 @@ export const getDeliveries = (params?: { status?: string; limit?: number }) =>
     .then((r) => r.data)
 
 export const approveWorkPermit = (permitId: string) =>
-  apiClient.post(`/api/v1/work-permits/${permitId}/approve`, {}).then((r) => r.data)
+  apiClient.put(`/api/v1/work-permits/${permitId}/approve`, {}).then((r) => r.data)
 
 export const collectDelivery = (deliveryId: string, collectedBy: string) =>
   apiClient
-    .post(`/api/v1/deliveries/${deliveryId}/collect`, { collected_by: collectedBy })
+    .put(`/api/v1/deliveries/${deliveryId}/collect`, { collected_by: collectedBy })
     .then((r) => r.data)
