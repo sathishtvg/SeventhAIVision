@@ -226,7 +226,12 @@ export function IncidentDetailScreen() {
             renderItem={({ item }) => (
               <Card style={styles.noteCard}>
                 <Text style={styles.noteText}>{item.note}</Text>
-                <Text style={styles.noteTime}>{new Date(item.created_at).toLocaleString()}</Text>
+                {/* The timeline names who wrote it, which matters on an incident
+                    several people touch. */}
+                <Text style={styles.noteTime}>
+                  {item.author_name ? `${item.author_name} · ` : ''}
+                  {new Date(item.created_at).toLocaleString()}
+                </Text>
               </Card>
             )}
             ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
