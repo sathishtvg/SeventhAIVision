@@ -121,6 +121,84 @@ def _dispose_engine():
     yield
 
 
+# ── Per-test tenant cleanup ──────────────────────────────────────────────────
+#
+# Cleaning up only at the END of a session stopped the table growing ACROSS
+# runs, but within one run it still climbed to ~2,450 rows, and the scheduler
+# tests that iterate every tenant got slower the longer the suite ran. Cleaning
+# after each test holds it near zero from first test to last.
+#
+# One engine for the whole session: an engine per test would cost more than the
+# cleanup saves.
+_cleanup_engine = None
+_cleanup_mark = None          # DB clock; rows created after it belong to this run
+
+
+def _cleanup_engine_or_none():
+    global _cleanup_engine
+    if _cleanup_engine is None:
+        try:
+            _cleanup_engine = create_async_engine(
+                os.environ.get("ADMIN_TEST_DATABASE_URL", _admin_url()),
+                pool_size=1, max_overflow=0,
+            )
+        except Exception:
+            return None
+    return _cleanup_engine
+
+
+async def _delete_tenants_since(conn, since):
+    """Remove this run's tenants and the billing rows that pin them.
+
+    platform_invoices and platform_payments are ON DELETE RESTRICT — in
+    production an invoice must outlive the tenant it was raised against — so
+    they go first, in FK order (payments reference invoices).
+    """
+    mine = "SELECT id FROM tenants WHERE created_at >= :t"
+    await conn.execute(text(f"DELETE FROM platform_payments WHERE tenant_id IN ({mine})"), {"t": since})
+    await conn.execute(text(f"DELETE FROM platform_invoices WHERE tenant_id IN ({mine})"), {"t": since})
+    result = await conn.execute(text("DELETE FROM tenants WHERE created_at >= :t"), {"t": since})
+    return result.rowcount
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _purge_tenants_after_each_test():
+    """Delete the tenants this TEST created, as soon as it finishes.
+
+    NEVER BLOCKS AND NEVER FAILS A TEST. lock_timeout is set on the cleanup
+    connection: if a test still holds a lock on a row being removed, the delete
+    gives up in two seconds and the session-scoped sweep catches the leftovers
+    at the end. Housekeeping that can hang a suite is worse than housekeeping
+    that occasionally skips.
+
+    The mark is the database's own clock, not the client's — the two differ,
+    and a client-side timestamp would leave rows behind or delete a neighbour's.
+    """
+    global _cleanup_mark
+    yield
+
+    engine = _cleanup_engine_or_none()
+    if engine is None:
+        return
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SET lock_timeout = '2s'"))
+            if _cleanup_mark is None:
+                # First test of the session: adopt the current clock and delete
+                # nothing, so a developer's existing rows are never touched.
+                _cleanup_mark = (await conn.execute(text("SELECT now()"))).scalar()
+                await conn.commit()
+                return
+            await _delete_tenants_since(conn, _cleanup_mark)
+            _cleanup_mark = (await conn.execute(text("SELECT now()"))).scalar()
+            await conn.commit()
+    except Exception:
+        # Silent by design HERE, unlike the session sweep: a lock timeout or a
+        # closed pool mid-test is expected occasionally, and the end-of-session
+        # sweep reports anything this missed.
+        pass
+
+
 def _report_cleanup(message: str) -> None:
     """Say what happened, where a person will see it.
 
@@ -178,20 +256,15 @@ async def _purge_tenants_created_by_this_run():
 
     try:
         if started_at is not None:
-            mine = "SELECT id FROM tenants WHERE created_at >= :t"
             async with engine.connect() as conn:
-                # RESTRICT children first, deepest reference last-in first-out:
-                # payments -> invoices -> tenants.
-                await conn.execute(
-                    text(f"DELETE FROM platform_payments WHERE tenant_id IN ({mine})"),
-                    {"t": started_at})
-                await conn.execute(
-                    text(f"DELETE FROM platform_invoices WHERE tenant_id IN ({mine})"),
-                    {"t": started_at})
-                result = await conn.execute(
-                    text("DELETE FROM tenants WHERE created_at >= :t"), {"t": started_at})
+                # The same delete the per-test fixture uses. This sweep is the
+                # backstop: it catches what a lock timeout skipped, and anything
+                # created outside a test — module import, a session fixture.
+                removed = await _delete_tenants_since(conn, started_at)
                 await conn.commit()
-                _report_cleanup(f"removed {result.rowcount} tenant(s) created by this run")
+                _report_cleanup(
+                    f"removed {removed} tenant(s) the per-test cleanup left behind"
+                    if removed else "nothing left over — per-test cleanup kept up")
     except Exception as exc:
         # Still never fails the suite — a green run must not go red because
         # housekeeping could not reach the database. But it is no longer
