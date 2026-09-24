@@ -25,6 +25,8 @@ protocol.registerSchemesAsPrivileged([
 let autoUpdater = null
 try { autoUpdater = require('electron-updater').autoUpdater } catch (_) {}
 
+const { buildCsp } = require('./csp')
+
 const store = new Store({
   schema: {
     serverUrl: {
@@ -484,7 +486,7 @@ app.whenReady().then(() => {
   // paths like /assets/index.js resolve correctly under Electron's file:// origin
   // without having to change Vite's build output or the nginx deployment.
   const DIST_ROOT = path.join(__dirname, '../dist')
-  protocol.handle('app', (request) => {
+  protocol.handle('app', async (request) => {
     let { pathname } = new URL(request.url)
     // Strip leading slash so path.join doesn't treat it as absolute
     if (pathname.startsWith('/')) pathname = pathname.slice(1)
@@ -497,7 +499,16 @@ app.whenReady().then(() => {
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       filePath = path.join(DIST_ROOT, 'index.html')
     }
-    return net.fetch(`file:///${filePath.replace(/\\/g, '/')}`)
+    const response = await net.fetch(`file:///${filePath.replace(/\\/g, '/')}`)
+    // Set on every app:// response, not only the document: a CSP on the
+    // document alone leaves workers and sub-documents unprotected.
+    const headers = new Headers(response.headers)
+    headers.set('Content-Security-Policy', buildCsp(store.get('serverUrl'), DIST_ROOT))
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
   })
 
   // Patch CORS response headers so the app:// origin can reach the backend.
