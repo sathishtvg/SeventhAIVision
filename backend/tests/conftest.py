@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import warnings
 from urllib.parse import quote_plus
 
 # Derive the DB host from the app's DATABASE_URL so tests work both inside
@@ -120,6 +121,15 @@ def _dispose_engine():
     yield
 
 
+def _report_cleanup(message: str) -> None:
+    """Say what happened, where a person will see it.
+
+    Warnings survive -q and are summarised at the end of the run, which a print
+    to stdout is not; the suite is long and nobody reads its middle.
+    """
+    warnings.warn(f"test-tenant cleanup: {message}", stacklevel=2)
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _purge_tenants_created_by_this_run():
     """Delete the tenants this run created, once the session ends.
@@ -138,6 +148,19 @@ async def _purge_tenants_created_by_this_run():
     Scoped by created_at rather than "delete everything" so a developer's
     seeded fixtures or a shared database are never touched — this removes
     exactly what the run added. FK cascades handle the tenant-owned children.
+
+    EXCEPT THREE THAT DO NOT CASCADE, which is why this stopped working. Of the
+    279 foreign keys pointing at tenants, 276 are ON DELETE CASCADE; billing is
+    deliberately not — platform_invoices and platform_payments are RESTRICT,
+    because in production an invoice must not disappear with the tenant it was
+    raised against. A single billing test in a run is therefore enough to abort
+    the whole DELETE, and since the failure was swallowed below, EVERY tenant
+    from that run survived. The table was back to 2,455 rows within a day of
+    being rebuilt, and the suite had slowed from 30 minutes to over 60.
+
+    So billing rows for the run's own tenants are removed first, in FK order
+    (payments reference invoices, invoices reference themselves for credits),
+    and a failure now says so instead of passing quietly.
     """
     admin_url = os.environ.get(
         "ADMIN_TEST_DATABASE_URL",
@@ -155,15 +178,27 @@ async def _purge_tenants_created_by_this_run():
 
     try:
         if started_at is not None:
+            mine = "SELECT id FROM tenants WHERE created_at >= :t"
             async with engine.connect() as conn:
+                # RESTRICT children first, deepest reference last-in first-out:
+                # payments -> invoices -> tenants.
                 await conn.execute(
-                    text("DELETE FROM tenants WHERE created_at >= :t"), {"t": started_at}
-                )
+                    text(f"DELETE FROM platform_payments WHERE tenant_id IN ({mine})"),
+                    {"t": started_at})
+                await conn.execute(
+                    text(f"DELETE FROM platform_invoices WHERE tenant_id IN ({mine})"),
+                    {"t": started_at})
+                result = await conn.execute(
+                    text("DELETE FROM tenants WHERE created_at >= :t"), {"t": started_at})
                 await conn.commit()
-    except Exception:
-        # Cleanup is housekeeping — never fail an otherwise-green suite
-        # because teardown could not reach the database.
-        pass
+                _report_cleanup(f"removed {result.rowcount} tenant(s) created by this run")
+    except Exception as exc:
+        # Still never fails the suite — a green run must not go red because
+        # housekeeping could not reach the database. But it is no longer
+        # silent: this exact failure hid for months while the table grew to
+        # 88,877 rows and the timeouts it caused were blamed on pool
+        # exhaustion, locks and the event loop.
+        _report_cleanup(f"FAILED to remove this run's tenants: {exc!r}")
     finally:
         await engine.dispose()
 
