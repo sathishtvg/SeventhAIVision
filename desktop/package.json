@@ -1,6 +1,6 @@
 {
   "name": "seventh-ai-vision-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "7th AI Vision — Windows Desktop Application",
   "author": "Seventh AI",
   "main": "electron/main.js",
