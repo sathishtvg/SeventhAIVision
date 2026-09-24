@@ -92,6 +92,25 @@ async def _tenant_site() -> tuple[uuid.UUID, uuid.UUID]:
     return tid, sid
 
 
+async def _camera(tenant_id, site_id, name="Lobby") -> uuid.UUID:
+    """A camera belonging to THIS tenant.
+
+    Both callers used to take whatever `SELECT id FROM cameras LIMIT 1` returned
+    and skip the test when the table was empty. That was wrong twice over: the
+    row came from whichever tenant happened to own it, so the test quietly
+    attached another tenant's camera to this tenant's schedule; and it only ran
+    at all when some earlier test had left a camera behind. Once each test
+    cleaned up after itself the table was empty and both tests silently stopped
+    running — 2,873 passing became 2,871, with two more skips.
+    """
+    cam = uuid.uuid4()
+    await _sql(
+        "INSERT INTO cameras (id, tenant_id, site_id, name) VALUES (:c, :t, :s, :n)",
+        {"c": cam, "t": tenant_id, "s": site_id, "n": name},
+    )
+    return cam
+
+
 async def _schedule(tenant_id, site_id, *, stype="DAILY",
                     weekdays: list[int] | None = None) -> uuid.UUID:
     # asyncpg maps a Python list onto smallint[]; a '{}' string is a str and it
@@ -218,16 +237,13 @@ async def test_a_choice_question_must_have_options():
     tid, sid = await _tenant_site()
     sched = await _schedule(tid, sid)
     cam_row = uuid.uuid4()
+    camera = await _camera(tid, sid)
     await _sql(
         "INSERT INTO virtual_patrol_schedule_cameras "
         "  (id, tenant_id, schedule_id, camera_id, sequence_no) "
-        "SELECT :id, :t, :sc, c.id, 1 FROM cameras c LIMIT 1",
-        {"id": cam_row, "t": tid, "sc": sched},
+        "VALUES (:id, :t, :sc, :cam, 1)",
+        {"id": cam_row, "t": tid, "sc": sched, "cam": camera},
     )
-    rows = await _sql("SELECT count(*) FROM virtual_patrol_schedule_cameras WHERE id = :id",
-                      {"id": cam_row})
-    if rows[0][0] == 0:
-        pytest.skip("no camera rows available in the test database")
 
     with pytest.raises(Exception) as exc:
         await _sql(
@@ -243,20 +259,19 @@ async def test_a_choice_question_must_have_options():
 async def test_a_camera_cannot_appear_twice_in_one_schedule():
     tid, sid = await _tenant_site()
     sched = await _schedule(tid, sid)
-    inserted = await _sql(
+    camera = await _camera(tid, sid)
+    await _sql(
         "INSERT INTO virtual_patrol_schedule_cameras "
         "  (tenant_id, schedule_id, camera_id, sequence_no) "
-        "SELECT :t, :sc, c.id, 1 FROM cameras c LIMIT 1 RETURNING camera_id",
-        {"t": tid, "sc": sched},
+        "VALUES (:t, :sc, :cam, 1)",
+        {"t": tid, "sc": sched, "cam": camera},
     )
-    if not inserted:
-        pytest.skip("no camera rows available in the test database")
     with pytest.raises(Exception) as exc:
         await _sql(
             "INSERT INTO virtual_patrol_schedule_cameras "
             "  (tenant_id, schedule_id, camera_id, sequence_no) "
             "VALUES (:t, :sc, :cam, 2)",
-            {"t": tid, "sc": sched, "cam": inserted[0][0]},
+            {"t": tid, "sc": sched, "cam": camera},
         )
     assert "uq_vpsc_camera" in str(exc.value)
 
