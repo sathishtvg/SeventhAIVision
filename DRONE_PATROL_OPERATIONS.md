@@ -115,6 +115,22 @@ corroboration changed), and from edge gateways `drone_gateway_status_changed`,
 `drone_sync_completed`, `drone_event_created`, `drone_media_recorded`,
 `drone_media_synced`.
 
+## From event to guard
+
+1. A drone event is **verified** and its risk scored (`DRONE_PATROL_AI.md`). A
+   drone alert reaches the command centre carrying the card: site, area, drone,
+   mission, site time, AI confidence, risk.
+2. An **incident** opens in the platform's incident list — automatically at the
+   profile's incident level (HIGH by default) or in an `INCIDENT` zone, or
+   when an officer opens one (`POST /drone-events/{id}/incident`).
+3. **Verify with drone**, if the drone is still overhead: it holds for up to two
+   minutes while the AI keeps looking; the incident gets a note with what it saw.
+4. **Dispatch** the nearest free guard (`POST /drone-events/{id}/dispatch`), or
+   one you name — the platform's own dispatch, SLA and mobile flow.
+5. The guard's acknowledgement, arrival and resolution run in the existing
+   incident flow. When the incident is resolved or closed, the drone event is
+   resolved too.
+
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |
@@ -132,6 +148,10 @@ corroboration changed), and from edge gateways `drone_gateway_status_changed`,
 | Mission `BLOCKED` by `AI_TAMPERING` | The drone's camera has tampering detection on | Turn tampering off for that camera: on a moving camera it alerts at every change of view |
 | An event lists no related CCTV | No fixed camera at the site has a position within 150 m, or every surveyed one faces away | Give cameras their positions; survey coverage (`PUT /drones/camera-coverage/{camera_id}`), then `POST /drone-events/{id}/correlate` |
 | A camera that clearly sees the spot is called only "nearby" | Its coverage has not been surveyed | Record its heading, field of view and range, or draw its coverage polygon |
+| No incident opened for a serious event | Not verified yet, below the profile rule's incident level (HIGH by default), or in a zone whose policy is `NONE` | Open one by hand, or set the rule's incident level / the zone's policy to `INCIDENT` |
+| A drone incident shows no site in the incident list | The drone has no camera linked: incidents take their site from their camera | Link the drone's camera |
+| Dispatch says no guard is free | Nobody is on shift at the site, or everyone on shift is on an open incident | Name a guard to dispatch anyway |
+| Verify with drone refused | The flight is not active, the drone has moved on (over 75 m), the provider cannot pause and resume, battery under 30%, or an abort is pending | The reason says which; none of these can be overridden from here |
 | An event stays `OBSERVING` | Seen fewer than 3 times, for less than the profile's verification time | After 30 s of quiet it closes `UNVERIFIED`; if it looked high risk, a low "Unconfirmed" alert asks for review |
 
 ## Simulator settings

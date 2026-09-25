@@ -36,6 +36,7 @@ from app.dependencies.tenant import get_db_with_tenant
 from app.services import drone_ai as ai
 from app.services import drone_ai_pipeline as ai_pipeline
 from app.services import drone_cctv_correlation as cctv_corr
+from app.services import drone_response as response
 from app.services.drone_runner import RedisPublisher, announce
 from app.services.drone_sessions import Announcements, utcnow
 from app.services.drone_access import assert_site_visible, audit, scope_sql
@@ -532,9 +533,182 @@ async def correlate_event(event_id: uuid.UUID, request: Request,
     event = await _event_or_404(db, event_id, allowed)
     result = await cctv_corr.view(db, event)
     await db.commit()
-    redis = getattr(request.app.state, "redis", None)
-    await announce(RedisPublisher(redis) if redis is not None else None, token.tenant_id, out)
+    await announce(_pub(request), token.tenant_id, out)
     return result
+
+
+# ── Response: the card, the incident, the guard, the second look ─────────────
+
+_INC_CREATE = Depends(require_permission("incident:create"))
+_DISPATCH = Depends(require_permission("incident:dispatch"))
+_OPERATE_EVENT = Depends(require_permission("drone:operate"))
+
+
+def _actions(card: dict) -> list[dict]:
+    eid, sid = card["event_id"], card["session_id"]
+    acts = [
+        ("acknowledge", "POST", f"/api/v1/drone-events/{eid}/acknowledge", "drone:event:acknowledge"),
+        ("open_incident", "POST", f"/api/v1/drone-events/{eid}/incident", "incident:create"),
+        ("view_cctv", "GET", f"/api/v1/drone-events/{eid}/cctv", "drone:event:read"),
+        ("dispatch_guard", "POST", f"/api/v1/drone-events/{eid}/dispatch", "incident:dispatch"),
+        ("escalate", "POST", f"/api/v1/drone-events/{eid}/escalate", "drone:event:investigate"),
+        ("mark_false_positive", "POST", f"/api/v1/drone-events/{eid}/false-positive", "drone:event:investigate"),
+        ("resolve", "POST", f"/api/v1/drone-events/{eid}/resolve", "drone:event:investigate"),
+    ]
+    if sid:
+        acts += [("view_drone", "GET", f"/api/v1/drone-patrols/{sid}", "drone:read"),
+                 ("view_map", "GET", f"/api/v1/drone-patrols/{sid}/track", "drone:read"),
+                 ("verify_with_drone", "POST", f"/api/v1/drone-events/{eid}/verify-with-drone", "drone:operate")]
+    if card.get("incident_id"):
+        acts.append(("view_incident", "GET", f"/api/v1/incidents/{card['incident_id']}/timeline", "incident:read"))
+    return [{"action": a, "method": m, "path": p, "permission": perm} for a, m, p, perm in acts]
+
+
+@router.get("/drone-events/{event_id}/card", dependencies=[_EVENT_READ])
+async def event_card(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                     allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """The command-centre alert card: what, where, which drone and mission,
+    when in site time, AI confidence and risk (two different numbers), the
+    related cameras, the incident and its guard — and every action an operator
+    can take, with the permission each needs."""
+    await _event_or_404(db, event_id, allowed)
+    card = await response.event_card(db, event_id)
+    incident = None
+    if card["incident_id"]:
+        incident = (await db.execute(text("""
+            SELECT i.id, i.title, i.severity, i.status, i.assigned_to_user_id, i.dispatched_guard_id,
+                   i.dispatched_at, i.guard_arrived_at, i.sla_deadline_at, i.resolved_at,
+                   i.message_params->>'incident_ref' AS incident_ref, g.full_name AS dispatched_guard_name
+              FROM incidents i LEFT JOIN users g ON g.id = i.dispatched_guard_id WHERE i.id = :i
+        """), {"i": card["incident_id"]})).mappings().first()
+    return {**card, "incident": dict(incident) if incident else None, "actions": _actions(card)}
+
+
+class OpenIncidentIn(BaseModel):
+    reason: str | None = Field(None, max_length=2000)
+
+
+@router.post("/drone-events/{event_id}/incident", dependencies=[_INC_CREATE])
+async def open_event_incident(event_id: uuid.UUID, request: Request, body: OpenIncidentIn | None = None,
+                              db: AsyncSession = Depends(get_db_with_tenant),
+                              token: TokenPayload = Depends(get_token_payload),
+                              allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Open (or return) the event's incident in the platform's incident system."""
+    await _event_or_404(db, event_id, allowed)
+    out = Announcements()
+    incident_id, created = await response.open_incident(db, event_id, utcnow(), out, by_user_id=token.user_id,
+                                                        reason=(body.reason if body else None))
+    await audit(db, request, token, "drone.event.open_incident", "drone_event", event_id,
+                {"incident_id": incident_id, "created": created})
+    inc = (await db.execute(text(
+        "SELECT id, title, severity, status, message_params->>'incident_ref' AS incident_ref FROM incidents "
+        " WHERE id = CAST(:i AS uuid)"), {"i": incident_id})).mappings().first()
+    await db.commit()
+    await announce(_pub(request), token.tenant_id, out)
+    return {"incident": dict(inc), "created": created}
+
+
+def _pub(request: Request):
+    redis = getattr(request.app.state, "redis", None)
+    return RedisPublisher(redis) if redis is not None else None
+
+
+@router.get("/drone-events/{event_id}/guards", dependencies=[_DISPATCH])
+async def event_guards(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                       allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Guards on shift at the event's site, nearest first and free before busy,
+    each with where they were last known to be, from what, and how long ago."""
+    event = await _event_or_404(db, event_id, allowed)
+    return await response.available_guards(db, event, utcnow())
+
+
+class DispatchIn(BaseModel):
+    guard_user_id: uuid.UUID | None = None
+    notes: str | None = Field(None, max_length=2000)
+
+
+@router.post("/drone-events/{event_id}/dispatch", dependencies=[_DISPATCH])
+async def dispatch_from_event(event_id: uuid.UUID, request: Request, body: DispatchIn | None = None,
+                              db: AsyncSession = Depends(get_db_with_tenant),
+                              token: TokenPayload = Depends(get_token_payload),
+                              allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Dispatch a guard — the one named, or the nearest available — through the
+    platform's own dispatch, opening the event's incident first if it has none."""
+    from app.routers.dispatch import DispatchBody, dispatch_guard
+    body = body or DispatchIn()
+    event = await _event_or_404(db, event_id, allowed)
+    now = utcnow()
+    guards = await response.available_guards(db, event, now)
+    if body.guard_user_id is not None:
+        guard = next((g for g in guards if str(g["user_id"]) == str(body.guard_user_id)), None)
+        if guard is None:
+            known = (await db.execute(text("SELECT id, full_name FROM users WHERE id = CAST(:u AS uuid) "
+                                           "   AND is_active"), {"u": str(body.guard_user_id)})).mappings().first()
+            if known is None:
+                raise HTTPException(404, "No such guard in this organisation.")
+            guard = {"user_id": known["id"], "full_name": known["full_name"], "available": None,
+                     "distance_m": None, "position_source": None}
+    else:
+        guard = next((g for g in guards if g["available"]), None)
+        if guard is None:
+            raise HTTPException(409, "No guard on shift at this site is free. Name one to dispatch anyway.")
+    out = Announcements()
+    incident_id, created = await response.open_incident(db, event_id, now, out, by_user_id=token.user_id)
+    where = (f"about {guard['distance_m']:.0f} m away by their {guard['position_source']}"
+             if guard.get("distance_m") is not None else "position unknown")
+    await db.execute(text("""
+        INSERT INTO incident_notes (tenant_id, incident_id, author_user_id, note)
+        VALUES (current_setting('app.current_tenant')::uuid, CAST(:i AS uuid), CAST(:u AS uuid), :n)
+    """), {"i": incident_id, "u": token.user_id,
+           "n": f"Guard {guard['full_name']} dispatched from drone event {event_id} ({where})."})
+    await audit(db, request, token, "drone.event.dispatch", "drone_event", event_id,
+                {"incident_id": incident_id, "guard_user_id": str(guard["user_id"])})
+    # The platform's own dispatch, last: it commits.
+    dispatched = await dispatch_guard(incident_id, DispatchBody(guard_user_id=str(guard["user_id"]),
+                                                                dispatch_notes=body.notes), db, token)
+    out.add("drone_event_dispatched", {"event_id": str(event_id), "incident_id": incident_id,
+                                       "guard_user_id": str(guard["user_id"])})
+    await announce(_pub(request), token.tenant_id, out)
+    return {"incident_id": incident_id, "incident_created": created, "guard": guard, "dispatch": dispatched}
+
+
+class VerifyIn(BaseModel):
+    hold_seconds: int = Field(30, ge=5, le=120)
+    reason: str | None = Field(None, max_length=2000)
+
+
+@router.post("/drone-events/{event_id}/verify-with-drone", status_code=202, dependencies=[_OPERATE_EVENT])
+async def verify_with_drone(event_id: uuid.UUID, request: Request, body: VerifyIn | None = None,
+                            db: AsyncSession = Depends(get_db_with_tenant),
+                            token: TokenPayload = Depends(get_token_payload),
+                            allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Ask the drone that saw this to hold where it is and look again. Checked
+    first — the flight active, the drone still near the spot, able to pause and
+    resume, with battery to spare — then queued as an ordinary pause; the
+    runner resumes it when the hold is over. Not licence-gated: it acts on a
+    flight already in the air."""
+    body = body or VerifyIn()
+    event = await _event_or_404(db, event_id, allowed)
+    try:
+        v = await response.request_verification(db, event, token.user_id, body.hold_seconds, body.reason, utcnow())
+    except response.VerificationRefused as refused:
+        raise HTTPException(refused.status, refused.reason) from refused
+    await audit(db, request, token, "drone.event.verify_with_drone", "drone_event", event_id,
+                {"verification_id": str(v["id"]), "hold_seconds": body.hold_seconds})
+    await db.commit()
+    return {"verification": v}
+
+
+@router.get("/drone-events/{event_id}/verifications", dependencies=[_EVENT_READ])
+async def list_verifications(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                             allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    await _event_or_404(db, event_id, allowed)
+    rows = (await db.execute(text("""
+        SELECT v.*, u.full_name AS requested_by_name FROM drone_verification_requests v
+          LEFT JOIN users u ON u.id = v.requested_by_user_id
+         WHERE v.event_id = CAST(:e AS uuid) ORDER BY v.created_at
+    """), {"e": str(event_id)})).mappings().all()
+    return [dict(r) for r in rows]
 
 
 @router.get("/drone-ai/modules", dependencies=[_READ])

@@ -1,7 +1,7 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** Phases 1–7 complete (analysis, data model, API, flying on the simulator, site edge gateway, AI to security event, CCTV correlation). Decisions D1–D7 approved 2026-09-24.
+**Status:** Phases 1–8 complete (analysis, data model, API, flying on the simulator, site edge gateway, AI to security event, CCTV correlation, incident response). Decisions D1–D7 approved 2026-09-24.
 No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
@@ -361,7 +361,7 @@ The prompt's 14 phases hold, with these adjustments.
 | 5 | Edge integration | **Done** — migration 0125, the isolated `drone-edge` service (§1.3) and its sync API, exercised against the simulator. The recording columns 0079 designed for edge sync are used as designed. Offline, a gateway finishes flights in the air but starts none; see `DRONE_PATROL_EDGE.md`, "Decision for the owner" |
 | 6 | AI integration | **Done** — migration 0126 and the context and risk engine; no worker changed. §1.2's open question answered by reading every worker: six work frame by frame, intrusion and crowd need an image zone (a full-frame zone makes intrusion the drone's person detector), behaviour, abandoned and tampering are unreliable on a moving camera. Workers still alert on their own — a decision for the owner in `DRONE_PATROL_AI.md` |
 | 7 | CCTV correlation | **Done** — migration 0127. Nearby by distance; covering from the optional surveyed coverage (D2); corroboration by a matching fixed-camera detection verifies the event; operator view with live and playback paths, no stream addresses |
-| 8 | Incident integration | Through the existing tables and dispatch endpoint |
+| 8 | Incident integration | **Done** — migration 0128. Incidents, notes, status history and dispatch are the platform's own; nearest free guard from existing shift and position data; verify with drone as a checked pause and resume |
 | 9 | Frontend | Needs a map-drawing capability (§7) |
 | 10 | Mobile and desktop | Mobile: alerts, incident, snapshot, clip, acknowledge, escalate. Desktop: nothing separate |
 | 11–14 | Reporting, analytics, hardening, final validation | As in the prompt |

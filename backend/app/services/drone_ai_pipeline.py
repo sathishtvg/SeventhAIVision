@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import drone_ai as ai
 from app.services import drone_flight_plan as fp
+from app.services import drone_response as response
 from app.services import drone_sessions as ds
 
 logger = logging.getLogger(__name__)
@@ -302,6 +303,7 @@ async def evaluate(db: AsyncSession, event: dict, sighting: ai.Sighting, rule: d
 
     if event["status"] not in CLOSED_STATUSES:
         await _alert(db, event, ai.alert_severity(risk.level, verified, zone), risk, zone, out)
+        await response.on_assessed(db, event, risk.level, verified, zone, rule, risk.factors, now, out)
 
 
 def _s(v) -> str | None:
@@ -380,9 +382,16 @@ async def _alert(db: AsyncSession, event: dict, severity: str | None, risk: ai.R
         return
     await db.execute(text("UPDATE drone_events SET alert_id = :a WHERE id = :e"), {"a": row[0], "e": event["id"]})
     event["alert_id"] = row[0]
+    # The command-centre card travels with the alert: site, area, drone,
+    # mission, site time, AI confidence and risk — kept apart.
+    card = await response.event_card(db, event["id"]) or {}
     out.add("alert_created", {"alert_id": str(row[0]), "alert_code": code, "severity": severity,
                               "module_type": ds.MODULE, "site_id": _s(event["site_id"]), "title": title[:255],
-                              "drone_event_id": str(event["id"])})
+                              "drone_event_id": str(event["id"]),
+                              "drone": fp.jsonable({k: card.get(k) for k in (
+                                  "headline", "site_name", "area", "drone_code", "drone_name", "mission_name",
+                                  "session_number", "detected_at_site_time", "ai_confidence", "risk_level",
+                                  "risk_score", "verification_state", "latitude", "longitude")})})
 
 
 # ── Closing sightings that were never confirmed ──────────────────────────────

@@ -143,8 +143,14 @@ are constants.
   worker judged it — and again only if it grows more serious still.
 - A sighting that would have been HIGH or CRITICAL but was never confirmed is not
   dropped: it raises a `low` "Unconfirmed — …" alert asking a person to review it.
-- The zone's `INCIDENT` policy and the rule's `incident_risk_level` are for
-  Phase 8, which creates incidents.
+- **Incidents** (Phase 8) open automatically in the platform's incident system
+  for a verified event that reaches the profile rule's `incident_risk_level`
+  (HIGH unless set otherwise — the same default for a flight with no profile), or
+  for any alertable event in a zone whose
+  alert policy is `INCIDENT`; never in a zone whose policy is `NONE`. A worker's
+  own incident for the same detection is linked instead. If the event's risk
+  rises later, the drone's own incident's severity rises with it, with a note
+  saying why.
 
 ## CCTV correlation (Phase 7)
 

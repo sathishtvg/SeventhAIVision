@@ -198,3 +198,14 @@ def test_what_alerts():
     assert ai.alert_severity("MEDIUM", True, None) == "medium"
     assert ai.alert_severity("HIGH", False, None) is None
     assert ai.alert_severity("CRITICAL", True, _zone(alert_policy="NONE")) is None
+
+
+def test_when_an_event_becomes_an_incident():
+    rule_high = {"incident_risk_level": "HIGH"}
+    assert ai.incident_due("HIGH", True, None, rule_high)
+    assert not ai.incident_due("MEDIUM", True, None, rule_high)
+    assert not ai.incident_due("CRITICAL", False, None, rule_high), "unverified events never open incidents"
+    assert ai.incident_due("MEDIUM", True, _zone(alert_policy="INCIDENT"), {"incident_risk_level": "CRITICAL"})
+    assert not ai.incident_due("CRITICAL", True, _zone(alert_policy="NONE"), rule_high)
+    assert ai.incident_due("HIGH", True, None, ai.rule_for(None, None, "intrusion")), "no profile: HIGH, like a rule"
+    assert not ai.incident_due("MEDIUM", True, None, ai.rule_for(None, None, "intrusion"))

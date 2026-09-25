@@ -48,6 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.crypto import decrypt_secret
 from app.services import drone_ai_pipeline as ai_pipeline
 from app.services import drone_cctv_correlation as cctv_corr
+from app.services import drone_response as response
 from app.services import drone_flight_plan as fp
 from app.services import drone_schedule as sched
 from app.services import drone_sessions as ds
@@ -440,12 +441,32 @@ async def watch_edge_sessions(factory, pub: Publisher | None, tenant_id: str, no
     return counts
 
 
+async def process_verifications(factory, pub: Publisher | None, tenant_id: str, now: datetime) -> dict:
+    """Verify-with-drone requests: before the commands, so a resume queued here
+    is carried out in the same tick."""
+    out = ds.Announcements()
+    async with factory() as db:
+        try:
+            await _scope(db, tenant_id)
+            counts = await response.advance_verifications(db, now, out)
+            await db.commit()
+            await _announce(pub, tenant_id, out)
+            return {k: v for k, v in counts.items() if v}
+        except Exception:
+            await db.rollback()
+            logger.exception("drone runner: verifications failed for tenant %s", tenant_id)
+            return {}
+
+
 async def run_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:
     """Commands first — an abort must not wait behind a flight tick."""
     now = _utc(now)
     totals: dict[str, Any] = {"tenants": 0, "commands": {}, "sessions": {}, "edge": {}}
     for tid in await _tenants(factory):
         totals["tenants"] += 1
+        for k, v in (await process_verifications(factory, pub, tid, now)).items():
+            totals.setdefault("verifications", {})
+            totals["verifications"][k] = totals["verifications"].get(k, 0) + v
         for k, v in (await process_commands(factory, pub, tid, now)).items():
             totals["commands"][k] = totals["commands"].get(k, 0) + v
         for k, v in (await advance_flights(factory, pub, tid, now)).items():
@@ -655,7 +676,8 @@ async def process_ai(factory, pub: Publisher | None, tenant_id: str, now: dateti
     """Read each flight's new detections from its drone's camera and turn them
     into drone events (drone_ai_pipeline) — one flight per transaction — then
     close sightings that were never confirmed."""
-    counts = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0, "correlated": 0}
+    counts = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0, "correlated": 0,
+              "resolved": 0}
     async with factory() as db:
         await _scope(db, tenant_id)
         sessions = await ai_pipeline.sessions_to_read(db, now)
@@ -676,6 +698,7 @@ async def process_ai(factory, pub: Publisher | None, tenant_id: str, now: dateti
         try:
             await _scope(db, tenant_id)
             counts["closed"] = await ai_pipeline.close_unconfirmed(db, now, out)
+            counts["resolved"] = await response.sync_resolutions(db, now, out)
             await db.commit()
             await _announce(pub, tenant_id, out)
         except Exception:
@@ -705,7 +728,8 @@ async def process_ai(factory, pub: Publisher | None, tenant_id: str, now: dateti
 
 async def run_ai_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:
     now = _utc(now)
-    totals = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0, "correlated": 0}
+    totals = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0, "correlated": 0,
+              "resolved": 0}
     for tid in await _tenants(factory):
         for k, v in (await process_ai(factory, pub, tid, now)).items():
             totals[k] += v

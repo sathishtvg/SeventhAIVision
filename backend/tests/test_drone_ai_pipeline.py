@@ -66,11 +66,12 @@ async def _world(*, rules: list[tuple] | None = None, zone_type: str = "RESTRICT
         ("INSERT INTO drone_provider_configs (id, tenant_id, name, provider_key, config) "
          "VALUES (:i,:t,'Sim','simulator','{\"speed_factor\": 50}')", {"i": w["provider"], "t": w["tenant"]}),
         ("INSERT INTO drone_security_zones (id, tenant_id, site_id, name, zone_type, shape, polygon, severity, "
-         "   allowed_vehicle_plates, allowed_role_ids) "
+         "   allowed_vehicle_plates, allowed_role_ids, alert_policy) "
          "VALUES (:i,:t,:s,'Loading Bay',:zt,'POLYGON',CAST(:p AS jsonb),'MEDIUM',:plates,"
-         "        CAST(:roles AS smallint[]))",
+         "        CAST(:roles AS smallint[]), :policy)",
          {"i": w["zone"], "t": w["tenant"], "s": w["site"], "zt": zone_type, "p": json.dumps(ZONE_SQUARE),
-          "plates": list(zx.get("allowed_vehicle_plates", [])), "roles": list(zx.get("allowed_role_ids", []))}),
+          "plates": list(zx.get("allowed_vehicle_plates", [])), "roles": list(zx.get("allowed_role_ids", [])),
+          "policy": zx.get("alert_policy", "ALERT")}),
     ]
     if camera:
         stmts.append(("INSERT INTO cameras (id, tenant_id, site_id, name, ai_modules_enabled) "
@@ -96,10 +97,13 @@ async def _world(*, rules: list[tuple] | None = None, zone_type: str = "RESTRICT
     if rules is not None:
         stmts.append(("INSERT INTO drone_security_profiles (id, tenant_id, name, min_confidence, verify_min_seconds) "
                       "VALUES (:i,:t,'Night',0.5,3)", {"i": w["profile"], "t": w["tenant"]}))
-        for module, sev, conf in rules:
-            stmts.append(("INSERT INTO drone_profile_rules (tenant_id, profile_id, module_type, base_severity, "
-                          "min_confidence) VALUES (:t,:p,:m,:s,:c)",
-                          {"t": w["tenant"], "p": w["profile"], "m": module, "s": sev.upper(), "c": conf}))
+        for module, sev, conf, *incident in rules:
+            # No incident level given: leave the column to its default, as the API does.
+            cols, vals = ("incident_risk_level, ", ":inc, ") if incident else ("", "")
+            stmts.append((f"INSERT INTO drone_profile_rules (tenant_id, profile_id, module_type, base_severity, "
+                          f"{cols}min_confidence) VALUES (:t,:p,:m,:s,{vals}:c)",
+                          {"t": w["tenant"], "p": w["profile"], "m": module, "s": sev.upper(), "c": conf,
+                           **({"inc": incident[0]} if incident else {})}))
     stmts.append(("INSERT INTO drone_missions (id, tenant_id, site_id, drone_id, route_id, security_profile_id, name) "
                   "VALUES (:i,:t,:s,:d,:r,:p,'Night Watch')",
                   {"i": w["mission"], "t": w["tenant"], "s": w["site"], "d": w["drone"], "r": w["route"],
@@ -118,6 +122,9 @@ async def _world(*, rules: list[tuple] | None = None, zone_type: str = "RESTRICT
 async def _flying(w: dict, at: datetime, *, ended: bool = False) -> str:
     """A flight over the zone around `at`: a real session, launched two minutes
     before, with telemetry placing the drone over the zone."""
+    # The drone has just reported: a slow machine must not fail pre-flight's
+    # heartbeat check between building the world and launching.
+    await _sql("UPDATE drones SET last_heartbeat_at = now() WHERE id = :d", {"d": w["drone"]})
     async with _client() as c:
         r = await c.post(f"/api/v1/drone-missions/{w['mission']}/run", headers=w["h_admin"])
     assert r.status_code == 201 and r.json()["session"]["status"] == "READY", r.json()

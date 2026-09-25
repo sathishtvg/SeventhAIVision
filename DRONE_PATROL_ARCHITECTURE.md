@@ -4,8 +4,9 @@
 Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
 pre-flight, the command queue and the drone runner (migration `0124`); and
 Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
-security event (migration `0126`); and Phase 7, CCTV correlation (migration
-`0127`). 80 operations, described in
+security event (migration `0126`); Phase 7, CCTV correlation (migration
+`0127`); and Phase 8, incident response (migration `0128`). 86 operations,
+described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
 aircraft in `DRONE_PATROL_PROVIDER_INTEGRATION.md`.
@@ -102,7 +103,7 @@ marked `PROJECTED`.
 
 ## Tenant isolation
 
-All 22 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
+All 23 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
 other table in the system:
 `tenant_id = current_setting('app.current_tenant', true)::uuid`. On the
 partitioned telemetry table the parent's policy governs every partition.
@@ -282,9 +283,32 @@ corroboration, the related detection, the recording and offset, online) and
 `cctv_correlated_at` / `cctv_final` on `drone_events`. Drone-owned only;
 `cameras`, `streams`, `recordings`, `detections` and `alerts` are only read.
 
+## Incident response (Phase 8)
+
+`services/drone_response.py` takes a drone event the rest of the way:
+**incident** (a row in the platform's `incidents`, with `incident_notes` and
+`incident_status_history` — no parallel incident system), **guard** (on shift at
+the site, free, nearest by last known position, dispatched through the existing
+`dispatch_guard`), **resolution** (an incident resolved or closed resolves its
+drone event) and **verify with drone** (an officer's request, checked against the
+flight and queued as an ordinary pause and resume).
+
+The pipeline calls `on_assessed()` after every assessment, so an incident opens
+the moment the rules call for one and its severity follows the event's risk.
+The drone alert's realtime payload carries the command-centre card.
+
+Two facts about the existing incident system shape this, and are left as they
+are: incidents have **no site column** — they take their site from their camera,
+so a drone incident is linked to the drone's camera; and they have **no number**
+— the drone module gives each a display reference in `message_params`.
+
+**Migration `0128`** adds `drone_verification_requests` (one active per flight).
+Drone-owned only; incidents, notes, status history and dispatch are used through
+their own tables and functions.
+
 ## Not built yet
 
-incident integration (8), screens (9), mobile
+screens (9), mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.
