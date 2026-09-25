@@ -19,6 +19,7 @@ scheduler's once-a-minute tick.
 | Commands, launches and live flights | every 2 s | `DRONE_RUNNER_TICK_SECONDS` |
 | Drone health polls, then the lost-link sweep | every 15 s | `DRONE_RUNNER_HEALTH_SECONDS` |
 | Sessions owed by schedules | every 30 s | `DRONE_RUNNER_SCHEDULE_SECONDS` |
+| Flights' new AI detections into drone events; closing unconfirmed sightings | every 3 s | `DRONE_RUNNER_AI_SECONDS` |
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d drone-runner
@@ -103,10 +104,13 @@ once per outage).
 | `drone.flight_fault` | medium | A flight completed its patrol but reported a fault |
 | `drone.command_failed` | **critical** | An abort or return-to-home could not be delivered — take manual control |
 | `drone.gateway_offline` | high | A site edge gateway was silent past its heartbeat timeout. One per outage, for the site — its drones are not alerted one by one |
+| `drone.<module>` (e.g. `drone.intrusion`, `drone.lpr`) | medium / high / critical | A verified drone event whose risk earned an alert that no worker alert already covers (`DRONE_PATROL_AI.md`) |
+| `drone.<module>`, titled "Unconfirmed — …" | low | A sighting that would have been high or critical risk but was never confirmed — review it |
 
 Realtime events for screens, on `tenant_events:<tenant>`: `drone_session_updated`,
 `drone_telemetry` (latest position each tick), `drone_status_changed`,
-`drone_command_processed`, and from edge gateways `drone_gateway_status_changed`,
+`drone_command_processed`, `drone_event_created`, `drone_event_updated` (risk or
+verification changed), and from edge gateways `drone_gateway_status_changed`,
 `drone_sync_completed`, `drone_event_created`, `drone_media_recorded`,
 `drone_media_synced`.
 
@@ -123,6 +127,9 @@ Realtime events for screens, on `tenant_events:<tenant>`: `drone_session_updated
 | Gateway `DEGRADED` | Clock more than 30 s out, backlog older than 5 min, or under 10% storage | `health.problems` on the gateway says which. Fix the clock (NTP) first — every time it reports depends on it |
 | Edge session `MISSED` / `EDGE_NOT_CLAIMED` | The gateway was offline, or its drone was busy, when the run was due | Gateways do not start new flights without the centre. Check the gateway, then run the mission again |
 | Items refused in a sync | Something the gateway sent can never be accepted | `GET /drones/edge-gateways/{id}/sync-receipts` lists each with the reason; the gateway keeps them in its local `rejected` table |
+| No drone events from a flight | No camera linked, the camera does not run the profile's modules, or intrusion has no zone on the camera's picture | Pre-flight's `AI_*` warnings say which. People need a full-frame restricted zone on the drone's camera |
+| Mission `BLOCKED` by `AI_TAMPERING` | The drone's camera has tampering detection on | Turn tampering off for that camera: on a moving camera it alerts at every change of view |
+| An event stays `OBSERVING` | Seen fewer than 3 times, for less than the profile's verification time | After 30 s of quiet it closes `UNVERIFIED`; if it looked high risk, a low "Unconfirmed" alert asks for review |
 
 ## Simulator settings
 

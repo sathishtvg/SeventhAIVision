@@ -248,7 +248,7 @@ async def test_an_event_and_its_snapshot_recorded_offline_arrive_once_and_the_fi
     for _ in range(3):
         t += timedelta(seconds=2)
         await agent.cycle(t)
-    assert await _sql("SELECT 1 FROM drone_events WHERE client_ref = :r", {"r": uuid.UUID(ev)}) == []
+    assert await _sql("SELECT 1 FROM drone_observations WHERE client_ref = :r", {"r": uuid.UUID(ev)}) == []
 
     link.up = True
     stored = None
@@ -288,7 +288,10 @@ async def test_a_malformed_item_is_set_aside_and_everything_else_is_delivered(tm
         if agent.store.depth()[0] == 0:
             break
     assert agent.store.depth()[0] == 0
-    arrived = await _sql("SELECT client_ref::text AS r FROM drone_events WHERE drone_id = :d", {"d": w["drone"]})
+    arrived = await _sql("SELECT client_ref::text AS r FROM drone_observations WHERE drone_id = :d",
+                         {"d": w["drone"]})
     assert {r["r"] for r in arrived} == set(good)
+    events = await _sql("SELECT detection_count FROM drone_events WHERE drone_id = :d", {"d": w["drone"]})
+    assert [e["detection_count"] for e in events] == [2], "two sightings of one fire are one event"
     rejected = agent.store.rejected()
     assert [r["ref"] for r in rejected] == [bad] and "Invalid" in rejected[0]["reason"]

@@ -46,6 +46,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import decrypt_secret
+from app.services import drone_ai_pipeline as ai_pipeline
 from app.services import drone_flight_plan as fp
 from app.services import drone_schedule as sched
 from app.services import drone_sessions as ds
@@ -643,6 +644,52 @@ async def check_health(factory, pub: Publisher | None, tenant_id: str, now: date
             await db.rollback()
             logger.exception("drone runner: heartbeat sweep failed for tenant %s", tenant_id)
     return counts
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# AI: detections into drone security events
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def process_ai(factory, pub: Publisher | None, tenant_id: str, now: datetime) -> dict:
+    """Read each flight's new detections from its drone's camera and turn them
+    into drone events (drone_ai_pipeline) — one flight per transaction — then
+    close sightings that were never confirmed."""
+    counts = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0}
+    async with factory() as db:
+        await _scope(db, tenant_id)
+        sessions = await ai_pipeline.sessions_to_read(db, now)
+        await db.rollback()
+        for s in sessions:
+            out = ds.Announcements()
+            try:
+                await _scope(db, tenant_id)
+                got = await ai_pipeline.read_detections(db, s, s["camera_id"], now, out)
+                await db.commit()
+                await _announce(pub, tenant_id, out)
+                for k, v in got.items():
+                    counts[k] += v
+            except Exception:
+                await db.rollback()
+                logger.exception("drone runner: AI read for session %s failed", s["id"])
+        out = ds.Announcements()
+        try:
+            await _scope(db, tenant_id)
+            counts["closed"] = await ai_pipeline.close_unconfirmed(db, now, out)
+            await db.commit()
+            await _announce(pub, tenant_id, out)
+        except Exception:
+            await db.rollback()
+            logger.exception("drone runner: closing unconfirmed events failed for tenant %s", tenant_id)
+    return counts
+
+
+async def run_ai_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:
+    now = _utc(now)
+    totals = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0}
+    for tid in await _tenants(factory):
+        for k, v in (await process_ai(factory, pub, tid, now)).items():
+            totals[k] += v
+    return totals
 
 
 async def run_health_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:

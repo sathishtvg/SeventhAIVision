@@ -404,7 +404,8 @@ class EdgeAgent:
                      drone_latitude: float | None = None, drone_longitude: float | None = None,
                      drone_altitude_m: float | None = None, waypoint_sequence: int | None = None,
                      observed_seconds: float | None = None, detection_ref: str | None = None,
-                     now: datetime | None = None) -> str:
+                     label: str | None = None, watchlist: str | None = None,
+                     attributes: dict | None = None, now: datetime | None = None) -> str:
         """Record something seen during a flight. Kept here until the centre has
         it, however long that takes. Returns its client_ref."""
         ref = str(uuid.uuid4())
@@ -413,7 +414,8 @@ class EdgeAgent:
             "module_type": module_type, "detected_at": detected_at.isoformat(), "ai_confidence": ai_confidence,
             "drone_latitude": drone_latitude, "drone_longitude": drone_longitude,
             "drone_altitude_m": drone_altitude_m, "waypoint_sequence": waypoint_sequence,
-            "observed_seconds": observed_seconds, "detection_ref": detection_ref}, _utc(now))
+            "observed_seconds": observed_seconds, "detection_ref": detection_ref, "label": label,
+            "watchlist": watchlist, "attributes": attributes or {}}, _utc(now))
         return ref
 
     def record_media(self, data: bytes, *, media_kind: str, captured_at: datetime,

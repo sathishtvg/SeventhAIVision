@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from app.services.drone_ai import SUITABILITY, UNRELIABLE
 from app.services.drone_flight_plan import RESERVE_PCT, Estimate
 
 BLOCK, WARN = "BLOCK", "WARN"
@@ -44,6 +45,14 @@ class PreflightFacts:
     profile: dict | None = None
     drone_in_flight: bool = False
     estimate: Estimate | None = None
+    #: The AI checks run only when these were loaded (a pure caller may skip them).
+    ai_checked: bool = False
+    #: The drone's camera row: {name, ai_modules_enabled, is_active}.
+    camera: dict | None = None
+    #: Modules the flight's profile looks for (None: no profile — all, at defaults).
+    profile_modules: list[str] | None = None
+    #: Zones drawn on the camera's picture: {"restricted": n, "crowd": n}.
+    camera_image_zones: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -172,8 +181,44 @@ def evaluate(f: PreflightFacts) -> PreflightResult:
               "The mission's security profile is missing or disabled.", f"Profile: {(prof or {}).get('name')}.")
     else:
         check("SECURITY_PROFILE", "Security profile", False,
-              "No security profile: the flight will record, but detections will not be assessed.",
+              "No security profile: detections are assessed with the default rules for every module.",
               severity=WARN)
+
+    # ── What the AI can see ──────────────────────────────────────────────────
+    if f.ai_checked and d is not None:
+        cam = f.camera
+        check("AI_CAMERA", "Camera linked for AI", cam is not None,
+              f"No camera is linked to {d['name']}: no AI runs on this flight.",
+              f"{(cam or {}).get('name')} carries the AI.", severity=WARN)
+        if cam is not None:
+            on = set(cam.get("ai_modules_enabled") or [])
+            check("AI_TAMPERING", "No tampering detection on a moving camera", "tampering" not in on,
+                  f"{cam['name']} has tampering detection enabled. On a moving camera it raises a tampering "
+                  "alert and incident at every change of view — turn it off for this camera.",
+                  "Tampering detection is off.")
+            shaky = sorted(m for m in on if SUITABILITY.get(m, ("",))[0] == UNRELIABLE and m != "tampering")
+            check("AI_UNRELIABLE", "AI modules suited to a moving camera", not shaky,
+                  f"{', '.join(shaky)} on {cam['name']} are not reliable on a moving camera; their "
+                  "detections are ignored.", "Every module on the camera works on a moving camera.",
+                  severity=WARN)
+            wanted = (set(f.profile_modules) if f.profile_modules is not None
+                      else {m for m, (k, _) in SUITABILITY.items() if k != UNRELIABLE})
+            wanted = {m for m in wanted if SUITABILITY.get(m, ("",))[0] != UNRELIABLE}
+            if f.profile_modules is not None:
+                missing = sorted(wanted - on)
+                check("AI_MODULES", "Camera runs the profile's AI", not missing,
+                      f"{cam['name']} does not run {', '.join(missing)}, which the security profile looks for. "
+                      "Enable them on the camera or this flight cannot see them.",
+                      "The camera runs every module the profile looks for.", severity=WARN)
+            blind = []
+            if "intrusion" in on and "intrusion" in wanted and not f.camera_image_zones.get("restricted"):
+                blind.append("intrusion needs a restricted zone drawn on the camera's picture "
+                             "(a full-frame zone makes it report every person in view)")
+            if "crowd" in on and "crowd" in wanted and not f.camera_image_zones.get("crowd"):
+                blind.append("crowd needs a crowd zone drawn on the camera's picture")
+            check("AI_IMAGE_ZONES", "Image zones for zone-based AI", not blind,
+                  f"On {cam['name']}: " + "; ".join(blind) + ". Without one, it reports nothing.",
+                  "Zone-based modules have zones on the camera.", severity=WARN)
 
     passed = not any((not c["passed"]) and c["severity"] == BLOCK for c in checks)
     return PreflightResult(passed=passed, checks=checks)

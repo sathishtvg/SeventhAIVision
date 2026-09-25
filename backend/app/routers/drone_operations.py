@@ -33,6 +33,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids
 from app.dependencies.tenant import get_db_with_tenant
+from app.services import drone_ai as ai
 from app.services.drone_access import assert_site_visible, audit, scope_sql
 from app.services.drone_providers import Capability, capabilities_of
 
@@ -340,8 +341,15 @@ async def list_events(
 async def get_event(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
                     allowed: list[str] | None = Depends(get_allowed_site_ids)):
     """Everything an investigator needs on one screen: the event, its media,
-    the fixed cameras correlated with it, and the alert and incident it fed."""
+    the detections it rests on, the fixed cameras correlated with it, and the
+    alert and incident it fed."""
     event = await _event_or_404(db, event_id, allowed)
+    observations = (await db.execute(text("""
+        SELECT id, source, detection_id, module_type, label, ai_confidence, detected_at,
+               drone_latitude, drone_longitude, drone_altitude_m, attributes
+          FROM drone_observations WHERE event_id = CAST(:id AS uuid)
+         ORDER BY detected_at LIMIT 200
+    """), {"id": str(event_id)})).mappings().all()
     media = (await db.execute(text("""
         SELECT id, media_kind, storage_location, sync_state, checksum_sha256, size_bytes,
                duration_seconds, captured_at, telemetry_snapshot
@@ -364,7 +372,8 @@ async def get_event(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_
         alert = (await db.execute(text(
             "SELECT id, title, severity, status, created_at FROM alerts WHERE id = CAST(:id AS uuid)"),
             {"id": str(event["alert_id"])})).mappings().first()
-    return {**event, "media": [dict(m) for m in media], "cameras": [dict(c) for c in cameras],
+    return {**event, "media": [dict(m) for m in media], "observations": [dict(o) for o in observations],
+            "cameras": [dict(c) for c in cameras],
             "incident": dict(incident) if incident else None, "alert": dict(alert) if alert else None}
 
 
@@ -485,6 +494,23 @@ async def mark_false_positive(
         sets=(", false_positive_reason = :reason, resolved_by_user_id = CAST(:by AS uuid), "
               "  resolved_at = now()"),
         extra={"by": token.user_id, "reason": body.reason}, detail={"reason": body.reason})
+
+
+@router.get("/drone-ai/modules", dependencies=[_READ])
+async def ai_modules():
+    """What each existing AI module can do on a drone's moving camera, and how
+    risk is weighed — for the profile editor and anyone asking why an event
+    scored what it did."""
+    return {
+        "modules": [{"module_type": m, "suitability": k, "note": note,
+                     "default_base_severity": ai.DEFAULT_BASE_SEVERITY.get(m)}
+                    for m, (k, note) in ai.SUITABILITY.items()],
+        "risk_levels": [{"level": lvl, "from_score": ai.THRESHOLDS.get(lvl, 0)} for lvl in ai.LEVELS],
+        "verification": {"detections": ai.VERIFY_DETECTIONS, "default_seconds": ai.DEFAULT_VERIFY_SECONDS,
+                         "grouping_window_seconds": int(ai.GROUPING_WINDOW.total_seconds()),
+                         "immediate_modules": sorted(ai.IMMEDIATE_MODULES),
+                         "immediate_confidence": ai.IMMEDIATE_CONFIDENCE},
+    }
 
 
 # ═════════════════════════════════════════════════════════════════════════════

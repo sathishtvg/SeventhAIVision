@@ -220,7 +220,8 @@ def snapshot_config(*, mission: dict, route: dict, waypoints: Sequence[dict], dr
                             "incident_risk_level")) for r in rules],
         "zones": [clean(z, ("id", "name", "zone_type", "shape", "polygon", "center_latitude",
                             "center_longitude", "radius_m", "severity", "active_from", "active_to",
-                            "active_weekdays", "alert_policy", "detection_threshold")) for z in zones],
+                            "active_weekdays", "alert_policy", "detection_threshold", "allowed_vehicle_plates",
+                            "allowed_user_ids", "allowed_role_ids", "is_active")) for z in zones],
         "estimate": {"duration_s": est.duration_s, "distance_m": est.distance_m,
                      "battery_needed_pct": est.battery_needed_pct},
     }
