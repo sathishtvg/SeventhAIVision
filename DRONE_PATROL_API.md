@@ -1,12 +1,11 @@
 # Drone Patrol — API
 
-**As of:** 2026-09-25 · **Built:** Phases 3–7 — 80 operations across fleet, planning,
-flying, operations, AI and CCTV correlation, the site edge gateway and platform
-licensing. The endpoint tables below were extracted from the router source, not
-written from memory.
+**As of:** 2026-09-25 · **Built:** Phases 3–8 — 86 operations across fleet, planning,
+flying, operations, AI and CCTV correlation, incident response, the site edge
+gateway and platform licensing. The endpoint tables below were extracted from the
+router source, not written from memory.
 
-**Not yet built:** incidents from drone events (Phase 8); report downloads
-(Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
+**Not yet built:** report downloads (Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
 against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 `DRONE_PATROL_EDGE.md`.
 
@@ -188,6 +187,12 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | GET | `/drone-events/{event_id}` | `drone:event:read` | |
 | GET | `/drone-events/{event_id}/cctv` | `drone:event:read` | |
 | POST | `/drone-events/{event_id}/correlate` | `drone:event:investigate` | |
+| GET | `/drone-events/{event_id}/card` | `drone:event:read` | |
+| POST | `/drone-events/{event_id}/incident` | `incident:create` | |
+| GET | `/drone-events/{event_id}/guards` | `incident:dispatch` | |
+| POST | `/drone-events/{event_id}/dispatch` | `incident:dispatch` | |
+| POST | `/drone-events/{event_id}/verify-with-drone` | `drone:operate` | |
+| GET | `/drone-events/{event_id}/verifications` | `drone:event:read` | |
 | POST | `/drone-events/{event_id}/acknowledge` | `drone:event:acknowledge` | |
 | POST | `/drone-events/{event_id}/investigate` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/escalate` | `drone:event:investigate` | |
@@ -227,6 +232,38 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   address or credential is ever returned. **Correlate** runs it again now and
   returns the same view; not licence-gated. Event detail's `cameras` carry the
   same correlation fields.
+- **Card** is the command-centre alert card: headline, site, area, drone,
+  mission and session, site-time timestamp, AI confidence and risk (kept apart),
+  verification, the related cameras, the incident with its guard and SLA — and
+  `actions`: every action an operator can take (acknowledge, open incident, view
+  drone, view CCTV, view map, dispatch guard, verify with drone, escalate, mark
+  false positive, resolve, view incident), each with its method, path and the
+  permission it needs.
+- **Incident** opens the event's incident in the platform's own incident system
+  (`/api/v1/incidents`), or returns the one it already has (`created: false`).
+  Optional `reason`. The incident is linked to the drone's camera (so the
+  existing lists show its site and apply site access), carries the event's
+  alert, `alert_code` `drone.<module>`, a description with every fact, and
+  `message_params` including `drone_event_id` and a display `incident_ref`
+  (`INC-YYYYMMDD-XXXXXXXX`). If the worker that detected the thing already opened
+  an incident, that one is linked instead. Incidents also open **automatically**
+  — see `DRONE_PATROL_AI.md`.
+- **Guards** lists guards on shift at the event's site, free before busy and
+  nearest first, each with `distance_m`, the `position_source` (latest checkpoint
+  scan, incident status update, or shift check-in) and its age — where the guard
+  was, not where they are.
+- **Dispatch** dispatches the named guard, or the nearest free one, through the
+  platform's own dispatch (`/api/v1/dispatch`): SLA deadline, status, notes and
+  the mobile flow are the existing ones. It opens the event's incident first if
+  there is none. **409** when no guard is free and none was named.
+- **Verify with drone** asks the drone that saw the event to hold where it is and
+  look again, for `hold_seconds` (5–120, default 30). Checked first — the flight
+  `ACTIVE`, the drone within 75 m of the spot, the provider able to pause and
+  resume, at least 30% battery, no abort or return pending, no verification
+  already running on the flight — and every refusal is a **409** with the reason.
+  Then an ordinary `PAUSE` is queued; the runner resumes the flight when the hold
+  is over and records what was seen (`verifications`: detections added, risk
+  before and after). It cannot steer the aircraft, and is not licence-gated.
 - **AI modules** lists what each existing AI module can do on a drone's moving
   camera (`SUPPORTED`, `NEEDS_IMAGE_ZONE`, `UNRELIABLE`, with why), the risk
   level thresholds and the verification rules.

@@ -354,5 +354,26 @@ def alert_severity(level: str, verified: bool, zone: dict | None) -> str | None:
     return ALERT_SEVERITY[level]
 
 
+LEVEL_RANK = {lvl: i for i, lvl in enumerate(LEVELS)}
+#: The incident level when a flight has no security profile — the same default
+#: every profile rule gets (drone_profile_rules.incident_risk_level), so "not
+#: configured" means one thing everywhere.
+DEFAULT_INCIDENT_LEVEL = "HIGH"
+INCIDENT_SEVERITY = {"INFO": "low", "LOW": "low", "MEDIUM": "medium", "HIGH": "high", "CRITICAL": "critical"}
+
+
+def incident_due(level: str, verified: bool, zone: dict | None, rule: dict | None) -> bool:
+    """Whether a drone event becomes an incident. Only verified events; never
+    in a zone whose policy is NONE. A zone whose policy is INCIDENT makes every
+    alertable event (MEDIUM and above) an incident; otherwise the profile
+    rule's incident_risk_level decides (HIGH by default, as for every rule)."""
+    if not verified or (zone is not None and zone.get("alert_policy") == "NONE"):
+        return False
+    if zone is not None and zone.get("alert_policy") == "INCIDENT" and LEVEL_RANK[level] >= LEVEL_RANK["MEDIUM"]:
+        return True
+    threshold = ((rule or {}).get("incident_risk_level") or DEFAULT_INCIDENT_LEVEL).upper()
+    return LEVEL_RANK[level] >= LEVEL_RANK.get(threshold, LEVEL_RANK[DEFAULT_INCIDENT_LEVEL])
+
+
 def local(dt: datetime, tz) -> datetime:
     return dt.astimezone(tz)

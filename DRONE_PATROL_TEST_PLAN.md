@@ -1,6 +1,6 @@
 # Drone Patrol — Test Plan
 
-**As of:** 2026-09-25 · Phases 1–7. **247 drone tests**, all passing, plus the
+**As of:** 2026-09-25 · Phases 1–8. **261 drone tests**, all passing, plus the
 platform's repository-inspection suites (1,111) and the neighbouring suites the
 drone module touches (204). This describes the tests that exist, what they prove,
 and what no test here can prove.
@@ -58,16 +58,22 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `test_drone_edge_store.py` | 21 | pure | Phase 5 gateway store: ordered numbering, one-transaction record-and-queue, restart survival, the open batch re-offered unchanged, sample limits, refused items kept with reasons; the credential format; recording-policy rules; upload windows |
 | `test_drone_edge_sync.py` | 25 | API | The gateway API: credential refusals indistinguishable, rotation, claiming with pre-flight, the runner keeping out, ordered and duplicate updates, resent batches, one bad item not blocking the rest, the EDGE_UNREACHABLE verdict corrected, command relay, health, events, file policy and uploads (checksum, format, not-asked-for), gateway offline with one alert, clock skew |
 | `test_drone_edge_agent.py` | 9 | E2E | The real gateway: a whole patrol, drone health, flying through an outage and catching up exactly once, no new flight without the centre, restart mid-flight, a lost answer resent as the same batch, an operator's abort, an offline sighting and its snapshot uploaded, a malformed item set aside |
-| `test_drone_ai.py` | 23 | pure | Phase 6 rules: the brief's two examples (HIGH at night in a restricted zone; LOW by day with a guard on duty), zones' hours and precedence, thresholds, unreliable modules, authorisation, verification, CCTV as a factor, levels and what alerts |
+| `test_drone_ai.py` | 24 | pure | Phase 6 rules: the brief's two examples (HIGH at night in a restricted zone; LOW by day with a guard on duty), zones' hours and precedence, thresholds, unreliable modules, authorisation, verification, CCTV as a factor, levels, what alerts and what becomes an incident |
 | `test_drone_ai_pipeline.py` | 11 | DB | Detections written as the workers write them become events: verification over several frames, unconfirmed sightings closed with a review alert, profile gating, worker alerts linked not repeated, context escalating past a worker's alert, allowed and blocklisted plates, re-reading adds nothing, detections after landing, pre-flight AI checks, gateway sightings |
 | `test_drone_cctv.py` | 14 | pure | Phase 7 geometry: bearings, sectors and polygons, covering before nearby, facing-away cameras left out, what corroborates what |
+| `test_drone_incidents.py` | 13 | DB + API | Phase 8: an incident in the platform's own system at the profile's level, at HIGH with no profile, from an `INCIDENT` zone; a worker's incident linked not duplicated; severity rising with risk; an officer's incident; the command card and the alert carrying it; guards ranked free and nearest first with the source of each position; dispatch through the existing dispatch; no free guard; resolution flowing back; verify with drone on a real simulated flight — pause, hold, three new detections, resume — and its refusals |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
 
 Beyond the drone suites: migration round trips (each drone migration down and up
 on the test database), process smoke tests (the runner and the gateway start,
 loop and stop cleanly; the gateway refuses to start without a credential), and
 the neighbouring suites — alerts, alert rules, licences, billing, platform
-licences, tenants, Virtual Patrolling, cameras, recording policy, evidence.
+licences, tenants, Virtual Patrolling, cameras, recording policy, evidence,
+incidents and dispatch.
+
+**The repository-inspection run is not safe alongside a database run either:**
+it loads the same `conftest.py`, whose end-of-session sweep deletes every tenant
+created while it ran — including another run's.
 
 ## What no test here can prove
 
