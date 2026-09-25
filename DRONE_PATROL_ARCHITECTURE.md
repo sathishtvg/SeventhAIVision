@@ -1,7 +1,11 @@
 # Drone Patrol — Architecture
 
-**As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`), and
-Phase 3, the API — 61 operations, described in `DRONE_PATROL_API.md`.
+**As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`);
+Phase 3, the API; and Phase 4, flying — the provider abstraction, the simulator,
+pre-flight, the command queue and the drone runner (migration `0124`). 69
+operations, described in `DRONE_PATROL_API.md`; running it is in
+`DRONE_PATROL_OPERATIONS.md`, adding a real aircraft in
+`DRONE_PATROL_PROVIDER_INTEGRATION.md`.
 This document describes what exists. Anything not yet built is listed at the end
 and is not described as if it were. The analysis behind the design is
 `DRONE_PATROL_GAP_ANALYSIS.md`.
@@ -85,12 +89,14 @@ marked `PROJECTED`.
 |---|---|
 | Scheduler restart, two workers, a retry | `uq_dps_execution (schedule_id, scheduled_for)` |
 | Starting a drone that is already flying | `uq_dps_one_flight_per_drone` (partial, in-flight states) |
+| A command pressed twice, or by two operators | `uq_dcmd_one_pending (session_id, command)` (partial, pending) |
+| Two runners, or a runner restart | Sessions and commands claimed `FOR UPDATE SKIP LOCKED`; flight state lives on the session |
 | Edge resending a session, event or media file | `client_ref` unique on each |
 | Edge resending a telemetry sample | `(drone_id, recorded_at)` unique |
 
 ## Tenant isolation
 
-All 18 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
+All 19 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
 other table in the system:
 `tenant_id = current_setting('app.current_tenant', true)::uuid`. On the
 partitioned telemetry table the parent's policy governs every partition.
@@ -134,7 +140,7 @@ enabled and unexpired. The entitlement deliberately does **not** live in
 | Planning | `routers/drone_planning.py` | Zones, security profiles, routes and waypoints, missions, schedules |
 | Operations | `routers/drone_operations.py` | Sessions, flight tracks, events and the decisions on them |
 | Platform | `routers/platform_drone_licenses.py` | Super Admin grants the licence per tenant |
-| Schedules | `services/drone_schedule.py` | Pure occurrence logic in the schedule's own timezone; used by the preview now and the scheduler in Phase 4 |
+| Schedules | `services/drone_schedule.py` | Pure occurrence logic in the schedule's own timezone; used by the preview and by the drone runner |
 | Geometry | `services/drone_geometry.py` | Zone shapes, point-in-zone, route length, off-site waypoints — on top of `geofence.py` |
 | Provider catalogue | `services/drone_provider_registry.py` | Which providers exist and what their settings are; the simulator only |
 | Shared | `services/drone_access.py` | Site visibility (404 outside), scoping clauses, audit |
@@ -147,12 +153,62 @@ Two rules shape every endpoint:
   a query after `commit()` runs with no tenant and fails. Every endpoint reads its
   response inside the transaction, then commits.
 
-The only change to an existing file is registration: 11 added lines in `main.py`
-(imports, `include_router` calls and tag descriptions). Nothing existing changed.
+The only changes to existing files are registration: 11 added lines in `main.py`
+(imports, `include_router` calls and tag descriptions), and the new
+`drone-runner` service in `docker/docker-compose.yml`. Nothing existing changed.
+
+## Flying (Phase 4)
+
+```mermaid
+flowchart LR
+  API[API: run / commands] -->|session READY| S[(drone_patrol_sessions)]
+  API -->|queued| C[(drone_session_commands)]
+  R[drone runner] --> S
+  R --> C
+  R -->|FlightContext| P[provider adapter]
+  P -->|FlightUpdate| R
+  R --> TEL[(drone_telemetry)]
+  R --> AL[(alerts)]
+  R -->|after commit| BUS[tenant_events]
+```
+
+| Piece | Where | Does |
+|---|---|---|
+| Flight plan | `services/drone_flight_plan.py` | Pure: builds the plan from a route and its waypoints, the timeline of takeoff, legs, dwells and landing, the estimate (duration, distance, battery), and the frozen configuration snapshot |
+| Providers | `services/drone_providers/` | The `DroneProvider` interface, declared capabilities, and the adapters. Only `simulator` exists |
+| Simulator | `services/drone_providers/simulator.py` | Flies the plan in simulated time: battery drain, pause, return home, low-battery return at 20%, lost link, motor fault. Failures are chosen by hashing the session id, so every flight replays exactly |
+| Pre-flight | `services/drone_preflight.py` | Pure: 18 blocking checks and 3 warnings, every one with a reason a person can act on |
+| Sessions | `services/drone_sessions.py` | Loading a mission, creating a session with its snapshot, recording what a provider reports, raising alerts once |
+| Runner | `services/drone_runner.py`, `drone_runner_main.py` | Carries out commands, launches ready sessions, flies live ones, creates scheduled sessions, polls drone health |
+
+**The runner is its own process** (`drone-runner` in compose). The scheduler's
+60-second loop also escalates man-down SOS; a slow drone provider must never
+delay that, and an abort must be carried out in seconds, not at the next minute.
+
+**A session flies its snapshot.** The plan comes from the configuration frozen
+when the session was created, never the live tables, so editing a route while a
+drone flies it changes nothing mid-air — and the launch-time pre-flight re-check
+is against the frozen route too.
+
+**Every provider call has a 10-second timeout.** A flight that has not been heard
+from for 10 minutes is closed as `FAILED` and alerted, whatever the provider
+thinks.
+
+**Alerts go through the existing pipeline.** Drone alerts are rows in `alerts`
+(module `drone_patrol`) announced as `alert_created` after the transaction
+commits, so notification rules, push, webhooks and every alert screen handle them
+unchanged, and nothing is announced that was then rolled back.
+
+**Migration `0124`** adds `drone_session_commands`, five columns on
+`drone_patrol_sessions` (`provider_state`, `last_tick_at`, `landed_at`,
+`comms_lost_at`, `failure_code`), `drones.comms_alerted_at`, and
+`drone_runner_tenants()` — a `SECURITY DEFINER` function that tells the runner
+which tenants have work (licensed, flying, or with commands waiting) without the
+runner bypassing row-level security. All drone-owned; nothing existing changed.
 
 ## Not built yet
 
-Everything that *flies*: the provider abstraction and simulator (4), the edge service (5), AI context and
-risk (6), CCTV correlation (7), incident integration (8), screens (9), mobile
+The edge service (5), AI context and risk (6), CCTV correlation (7), incident integration (8), screens (9), mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
-connected, and none will be claimed until it is.
+connected, and none will be claimed until it is: every flight so far is the
+simulator's.

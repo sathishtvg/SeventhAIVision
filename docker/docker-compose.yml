@@ -363,6 +363,27 @@ services:
       - backups_data:/data/backups
     restart: unless-stopped
 
+  # The drone runner: carries out queued flight commands, launches and advances
+  # drone patrol sessions, polls drone health and sweeps for lost links. Its own
+  # process so a slow drone provider can never delay the scheduler's man-down
+  # escalation. Light (no ML imports); runs the simulator until real hardware
+  # is connected.
+  drone-runner:
+    build: { context: .., dockerfile: docker/backend.Dockerfile }
+    command: ["python", "-m", "app.drone_runner_main"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      DRONE_RUNNER_TICK_SECONDS: "${DRONE_RUNNER_TICK_SECONDS:-2}"
+      DRONE_RUNNER_HEALTH_SECONDS: "${DRONE_RUNNER_HEALTH_SECONDS:-15}"
+      DRONE_RUNNER_SCHEDULE_SECONDS: "${DRONE_RUNNER_SCHEDULE_SECONDS:-30}"
+    volumes:
+      - evidence_data:/data/evidence
+    restart: unless-stopped
+
   frontend:
     build:
       context: ..
