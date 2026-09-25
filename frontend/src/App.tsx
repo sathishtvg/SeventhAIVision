@@ -81,6 +81,14 @@ import AccessControlPage from '@/pages/AccessControl'
 import TrainingPage from '@/pages/Training'
 import EmergencyBroadcastPage from '@/pages/EmergencyBroadcast'
 import VisitorPreRegPage from '@/pages/VisitorPreReg'
+import DroneDashboard from '@/pages/drones/DroneDashboard'
+import DroneMissions from '@/pages/drones/DroneMissions'
+import MissionDesigner from '@/pages/drones/MissionDesigner'
+import DronePatrols from '@/pages/drones/DronePatrols'
+import DronePatrol from '@/pages/drones/DronePatrol'
+import DroneEvents from '@/pages/drones/DroneEvents'
+import DroneEvent from '@/pages/drones/DroneEvent'
+import DroneZones from '@/pages/drones/DroneZones'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -219,6 +227,16 @@ export default function App() {
         <Route path="scheduled-reports" element={<ScheduledReports />} />
         <Route path="alert-dedup" element={<AlertDedup />} />
         <Route path="developer" element={<Developer />} />
+        {/* Drone Patrol (Phase 9): flat paths, like the API's, so the sidebar's
+            prefix highlighting marks one drone entry at a time. */}
+        <Route path="drones" element={<DroneDashboard />} />
+        <Route path="drone-missions" element={<DroneMissions />} />
+        <Route path="drone-missions/:id" element={<MissionDesigner />} />
+        <Route path="drone-patrols" element={<DronePatrols />} />
+        <Route path="drone-patrols/:id" element={<DronePatrol />} />
+        <Route path="drone-events" element={<DroneEvents />} />
+        <Route path="drone-events/:id" element={<DroneEvent />} />
+        <Route path="drone-zones" element={<DroneZones />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

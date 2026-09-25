@@ -79,6 +79,9 @@ class DroneCreate(BaseModel):
     site_id: uuid.UUID | None = None
     provider_config_id: uuid.UUID | None = None
     edge_gateway_id: uuid.UUID | None = None
+    #: The camera that stands for this drone's video (decision D1): the AI
+    #: workers process it like any camera, and drone events are read from it.
+    camera_id: uuid.UUID | None = None
     manufacturer: str | None = Field(None, max_length=120)
     model: str | None = Field(None, max_length=120)
     serial_number: str | None = Field(None, max_length=120)
@@ -100,6 +103,7 @@ class DroneUpdate(BaseModel):
     site_id: uuid.UUID | None = None
     provider_config_id: uuid.UUID | None = None
     edge_gateway_id: uuid.UUID | None = None
+    camera_id: uuid.UUID | None = None
     manufacturer: str | None = Field(None, max_length=120)
     model: str | None = Field(None, max_length=120)
     serial_number: str | None = Field(None, max_length=120)
@@ -181,9 +185,21 @@ async def _drone_or_404(db: AsyncSession, drone_id: uuid.UUID,
     return dict(row)
 
 
-async def _check_references(db: AsyncSession, *, site_id, provider_config_id, edge_gateway_id) -> None:
-    """The provider and gateway a drone points at must exist, and a gateway
-    serves one site — a drone on site A cannot report through site B's."""
+async def _check_references(db: AsyncSession, *, site_id, provider_config_id, edge_gateway_id,
+                            camera_id=None) -> None:
+    """The provider, gateway and camera a drone points at must exist; a gateway
+    serves one site — a drone on site A cannot report through site B's — and so
+    does a camera, whose site is where its events and incidents belong."""
+    if camera_id is not None:
+        cam = (await db.execute(text("SELECT site_id FROM cameras WHERE id = CAST(:id AS uuid)"),
+                                {"id": str(camera_id)})).first()
+        if cam is None:
+            raise HTTPException(422, "Camera not found.")
+        if cam[0] is not None and (site_id is None or str(cam[0]) != str(site_id)):
+            raise HTTPException(422, "The drone's camera must be at the drone's site.")
+        if (await db.execute(text("SELECT 1 FROM drone_camera_coverage WHERE camera_id = CAST(:id AS uuid)"),
+                             {"id": str(camera_id)})).first():
+            raise HTTPException(409, "That camera has fixed coverage recorded; a drone's camera moves.")
     if provider_config_id is not None:
         ok = (await db.execute(text(
             "SELECT 1 FROM drone_provider_configs WHERE id = CAST(:id AS uuid)"),
@@ -203,6 +219,8 @@ async def _check_references(db: AsyncSession, *, site_id, provider_config_id, ed
 def _conflict_message(exc: IntegrityError) -> str | None:
     if unique_violation(exc, "uq_drones_code"):
         return "Another drone already uses this code."
+    if unique_violation(exc, "uq_drones_camera"):
+        return "That camera already stands for another drone."
     if unique_violation(exc, "uq_drones_serial"):
         return "Another drone already has this serial number."
     return None
@@ -719,22 +737,23 @@ async def create_drone(
         # they could never see it again.
         raise HTTPException(422, "Choose a site for this drone.")
     await _check_references(db, site_id=body.site_id, provider_config_id=body.provider_config_id,
-                            edge_gateway_id=body.edge_gateway_id)
+                            edge_gateway_id=body.edge_gateway_id, camera_id=body.camera_id)
     await enforce_drone_limit(db, ent)
     await enforce_site_limit(db, ent, body.site_id)
 
     values = body.model_dump()
-    for k in ("site_id", "provider_config_id", "edge_gateway_id"):
+    for k in ("site_id", "provider_config_id", "edge_gateway_id", "camera_id"):
         values[k] = str(values[k]) if values[k] else None
     try:
         row = (await db.execute(text("""
             INSERT INTO drones
-                (tenant_id, site_id, provider_config_id, edge_gateway_id, name, code,
+                (tenant_id, site_id, provider_config_id, edge_gateway_id, camera_id, name, code,
                  manufacturer, model, serial_number, firmware_version, drone_type, camera_type,
                  communication_type, provider_drone_ref, heartbeat_timeout_seconds,
                  maintenance_interval_hours, next_maintenance_at, created_by_user_id, updated_by_user_id)
             VALUES (current_setting('app.current_tenant')::uuid, CAST(:site_id AS uuid),
-                    CAST(:provider_config_id AS uuid), CAST(:edge_gateway_id AS uuid), :name, :code,
+                    CAST(:provider_config_id AS uuid), CAST(:edge_gateway_id AS uuid),
+                    CAST(:camera_id AS uuid), :name, :code,
                     :manufacturer, :model, :serial_number, :firmware_version, :drone_type, :camera_type,
                     :communication_type, :provider_drone_ref, :heartbeat_timeout_seconds,
                     :maintenance_interval_hours, :next_maintenance_at, CAST(:by AS uuid), CAST(:by AS uuid))
@@ -800,9 +819,13 @@ async def update_drone(
         db, site_id=site_id,
         provider_config_id=changes.get("provider_config_id", existing["provider_config_id"]),
         edge_gateway_id=changes.get("edge_gateway_id", existing["edge_gateway_id"]),
+        # Checked only when the camera or the site changes: an unrelated edit
+        # must not fail over a link that was valid when it was made.
+        camera_id=(changes.get("camera_id", existing["camera_id"])
+                   if ("camera_id" in changes or "site_id" in changes) else None),
     )
     params = {k: (str(v) if isinstance(v, uuid.UUID) else v) for k, v in changes.items()}
-    casts = {"site_id", "provider_config_id", "edge_gateway_id"}
+    casts = {"site_id", "provider_config_id", "edge_gateway_id", "camera_id"}
     sets = ", ".join(f"{k} = CAST(:{k} AS uuid)" if k in casts else f"{k} = :{k}" for k in params)
     try:
         await db.execute(text(

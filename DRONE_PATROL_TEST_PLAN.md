@@ -25,6 +25,12 @@ docker run --rm --network docker_default -v "$PWD:/app" -w /app -e DATABASE_URL=
 created; two runs against the same test database delete each other's data and
 fail for reasons that have nothing to do with the code.
 
+The screens' tests run with the frontend's own tooling:
+
+```bash
+cd frontend && npx vitest run src/pages/drones src/components/layout/Sidebar.test.tsx
+```
+
 CI (`.github/workflows/ci.yml`) runs every backend test, the repository
 inspection, and the frontend and mobile checks on every push; nothing merges to
 `main` without it.
@@ -62,6 +68,9 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `test_drone_ai_pipeline.py` | 11 | DB | Detections written as the workers write them become events: verification over several frames, unconfirmed sightings closed with a review alert, profile gating, worker alerts linked not repeated, context escalating past a worker's alert, allowed and blocklisted plates, re-reading adds nothing, detections after landing, pre-flight AI checks, gateway sightings |
 | `test_drone_cctv.py` | 14 | pure | Phase 7 geometry: bearings, sectors and polygons, covering before nearby, facing-away cameras left out, what corroborates what |
 | `test_drone_incidents.py` | 13 | DB + API | Phase 8: an incident in the platform's own system at the profile's level, at HIGH with no profile, from an `INCIDENT` zone; a worker's incident linked not duplicated; severity rising with risk; an officer's incident; the command card and the alert carrying it; guards ranked free and nearest first with the source of each position; dispatch through the existing dispatch; no free guard; resolution flowing back; verify with drone on a real simulated flight — pause, hold, three new detections, resume — and its refusals |
+| `test_drone_camera_link.py` | 3 | API | Phase 9: a drone linked to its camera on create and update; the camera at the drone's site and in this organisation; one drone per camera, never a camera with fixed coverage |
+| `frontend/src/pages/drones/drones.test.tsx` | 12 | UI | Phase 9 screens, API mocked: route length and zone drafts; events list with risk and AI confidence apart; the investigation offering each action only to a role that may take it, and a false positive needing a reason; the patrol list and its export gated; a blocked flight shown as a replay with why; live controls while flying; a new mission needing a site |
+| `frontend/src/components/layout/Sidebar.test.tsx` | +1 | UI | The Drone Patrol section: every entry for an admin, only events for a guard |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
 
 Beyond the drone suites: migration round trips (each drone migration down and up
@@ -83,4 +92,6 @@ created while it ran — including another run's.
   proven with detections in the workers' exact shape, not produced by the models.
 - Site hardware: the gateway on real edge devices and networks.
 - Load: fleet-scale telemetry and detection volumes (Phase 13).
-- The screens (Phase 9) and mobile (Phase 10).
+- The screens in a browser against a live flight: their tests mock the API and
+  stub the map, so they prove what each screen shows and offers, not the drawing.
+- Mobile (Phase 10).

@@ -115,6 +115,11 @@ const ALL_PERMISSIONS = [
   'webhook:read',
   'support:manage',
   'platform:read',
+  // Drone Patrol (migration 0123)
+  'drone:read', 'drone:create', 'drone:update', 'drone:delete', 'drone:operate',
+  'drone:mission:create', 'drone:mission:update', 'drone:mission:execute', 'drone:mission:abort',
+  'drone:event:read', 'drone:event:acknowledge', 'drone:event:investigate',
+  'drone:maintenance:read', 'drone:maintenance:manage', 'drone:report:read', 'drone:report:export',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -218,6 +223,10 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'scan:create',
     'webhook:manage',
     'webhook:read',
+    // Drone Patrol (migration 0123)
+    'drone:read', 'drone:operate', 'drone:mission:create', 'drone:mission:update', 'drone:mission:execute',
+    'drone:mission:abort', 'drone:event:read', 'drone:event:acknowledge', 'drone:event:investigate',
+    'drone:maintenance:read', 'drone:report:read', 'drone:report:export',
   ],
   4: [ // operator
     'camera:read',
@@ -259,6 +268,9 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'parking:write',
     'scan:create',
     'webhook:read',
+    // Drone Patrol (migration 0123)
+    'drone:read', 'drone:operate', 'drone:mission:execute', 'drone:mission:abort', 'drone:event:read',
+    'drone:event:acknowledge', 'drone:event:investigate', 'drone:report:read',
   ],
   5: [ // security_guard
     'camera:read',
@@ -289,6 +301,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'iot:read',
     'parking:read',
     'scan:create',
+    'drone:event:read', // Drone Patrol (migration 0123)
   ],
   6: [ // viewer
     'camera:read',
@@ -320,6 +333,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'gps:read',
     'iot:read',
     'parking:read',
+    'drone:read', 'drone:event:read', 'drone:report:read', // Drone Patrol (migration 0123)
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

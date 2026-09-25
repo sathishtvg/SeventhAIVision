@@ -62,6 +62,7 @@ import PersonPinIcon from '@mui/icons-material/PersonPin'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import RuleIcon from '@mui/icons-material/Rule'
 import CableIcon from '@mui/icons-material/Cable'
+import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -244,6 +245,18 @@ const NAV_SECTIONS: {
       { label: 'Equipment',        path: '/equipment',   icon: <InventoryIcon fontSize="small" />,    permission: 'equipment:read' },
       { label: 'Handovers',        path: '/handovers',   icon: <SwapHorizIcon fontSize="small" />,    permission: 'handover:read' },
       { label: 'Man Down',         path: '/man-down',    icon: <PersonOffIcon fontSize="small" />,    permission: 'mandown:read' },
+    ],
+  },
+  {
+    // Drone Patrol module (Phase 9). Its screens share their own tab bar
+    // (pages/drones/DroneNav), so these are the entry points, not a menu tree.
+    title: 'Drone Patrol',
+    items: [
+      { label: 'Drone Fleet',     path: '/drones',         icon: <FlightTakeoffIcon fontSize="small" />, permission: 'drone:read' },
+      { label: 'Drone Missions',  path: '/drone-missions', icon: <RouteIcon fontSize="small" />,         permission: 'drone:read' },
+      { label: 'Drone Patrols',   path: '/drone-patrols',  icon: <HistoryIcon fontSize="small" />,       permission: 'drone:read' },
+      { label: 'Drone Events',    path: '/drone-events',   icon: <WarningAmberIcon fontSize="small" />,  permission: 'drone:event:read' },
+      { label: 'Drone Zones',     path: '/drone-zones',    icon: <LocationOnIcon fontSize="small" />,    permission: 'drone:read' },
     ],
   },
   {

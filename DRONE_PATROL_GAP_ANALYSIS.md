@@ -468,3 +468,28 @@ how the existing code treats them.
 - Adjacent existing suites (licences, billing, platform licences, tenants,
   certification): 120 passed. Migration-safety and secret-scanning repo suites:
   142 passed.
+
+## 20. Addendum — found while building Phase 9
+
+### 20.1 The API could not set a drone's camera
+
+`drones.camera_id` has existed since `0123`, and Phases 6–8 read events from it,
+but the create and update bodies never accepted it — only a database write could
+link one. Added to the module's own router (`routers/drones.py`) with its checks
+(`DRONE_PATROL_API.md`, Camera link); no schema change.
+
+### 20.2 Drone media takes its token in a header only
+
+The existing image and video endpoints (evidence, streams) accept `?token=` so an
+`<img>` or `<video>` can load them; the drone media endpoint does not. Rather than
+widen its authentication, the screens fetch the file and show it from memory. The
+same for playing a fixed camera's recording at the moment of an event.
+
+### 20.3 Registration in existing files
+
+Three existing frontend files gained lines, nothing changed: eight routes in
+`App.tsx`, a "Drone Patrol" section in `Sidebar.tsx`, the drone permission codes
+in `usePermission.ts`'s fallback matrix (the backend's `/me/permissions` remains
+the source). One test added to `Sidebar.test.tsx`. Drone cameras stay visible in
+the fixed-camera screens, per §3; naming them clearly on the fleet screen is the
+recommended practice.

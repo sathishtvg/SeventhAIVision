@@ -192,6 +192,24 @@ describe('Sidebar', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
 
+  it('Drone Patrol: an admin sees every entry, a guard only the events', () => {
+    mockUser(2)
+    const { unmount } = render(<Sidebar />)
+    expandAllSections()
+    for (const label of ['Drone Fleet', 'Drone Missions', 'Drone Patrols', 'Drone Events', 'Drone Zones']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    unmount()
+    localStorage.clear()
+
+    mockUser(5) // security_guard: drone:event:read only (migration 0123)
+    render(<Sidebar />)
+    expandAllSections()
+    expect(screen.getByText('Drone Events')).toBeInTheDocument()
+    expect(screen.queryByText('Drone Fleet')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drone Missions')).not.toBeInTheDocument()
+  })
+
   it('a folded group hides its items until it is expanded', () => {
     mockUser(2)
     render(<Sidebar />)

@@ -5,7 +5,8 @@ Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
 pre-flight, the command queue and the drone runner (migration `0124`); and
 Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
 security event (migration `0126`); Phase 7, CCTV correlation (migration
-`0127`); and Phase 8, incident response (migration `0128`). 86 operations,
+`0127`); Phase 8, incident response (migration `0128`); and Phase 9, the web
+screens (no migration). 86 operations,
 described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
@@ -306,9 +307,38 @@ so a drone incident is linked to the drone's camera; and they have **no number**
 Drone-owned only; incidents, notes, status history and dispatch are used through
 their own tables and functions.
 
+## Screens (Phase 9)
+
+Eight routes in the existing web app, built from its own parts — `GlassCard`,
+`PageHeader`, the MUI theme, the map tiles the Site Map uses (`VITE_MAP_TILE_URL`),
+the Live Wall's `HlsPlayer` and the realtime store — so they look and behave like
+the Command Center rather than a separate product.
+
+| Route | Screen | What it does |
+|---|---|---|
+| `/drones` | Drone dashboard | Fleet KPIs; drones with health, battery and heartbeat; providers from the catalogue; edge gateways (credential shown once); a drone's camera link |
+| `/drone-missions` | Missions | Each mission's drone, route, profile, schedules, last and next run; enable; run now |
+| `/drone-missions/new`, `/:id` | Mission designer | Route drawn on the map (click to add, drag to move, launch point), waypoint hover/observe/snapshot, zones overlaid, AI profile, recording policy, battery floor, schedules in the site's zone, pre-flight with every failing check and the estimate |
+| `/drone-zones` | Zones & AI profiles | Zones drawn as polygon, rectangle or circle with type, severity, alert policy, hours, days, allowed plates; profiles as a module-by-module table |
+| `/drone-patrols` | Patrols & reports | Every flight, filtered by site, drone, status and dates; period totals; CSV export (`drone:report:export`) |
+| `/drone-patrols/:id` | Live mission / replay | While it flies: the drone camera's live video, position, telemetry, waypoint progress, events, and pause / resume / return home / abort / cancel. After: the flown track on a timeline, events marked, telemetry at any moment |
+| `/drone-events` | Events | Open events first; risk and AI confidence always shown as two numbers |
+| `/drone-events/:id` | Investigation | Snapshots and clips, the spot on the map, the risk factors, detections, fixed cameras (live or the recording at the event), the incident and its guard; acknowledge, investigate, escalate, open incident, dispatch a guard, verify with drone, resolve, false positive |
+
+Each action is shown only to a role that may take it; the API still decides.
+Screens refresh on the drone realtime announcements and poll as a fallback.
+Drone media is fetched with the session's token and shown from memory, because
+the media endpoint takes the token in a header, not the URL.
+
+Registration touched three existing frontend files, additively: `App.tsx` (the
+routes), `Sidebar.tsx` (a "Drone Patrol" section) and `hooks/usePermission.ts`
+(the drone codes in the fallback matrix, mirroring migration `0123`'s grants).
+The paths are flat (`/drone-events`, not `/drones/events`) because the sidebar
+highlights by prefix.
+
 ## Not built yet
 
-screens (9), mobile
+mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.
