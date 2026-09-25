@@ -70,6 +70,10 @@ from app.routers import (
     nvr,
     patrols,
     virtual_patrol,
+    drones,
+    drone_planning,
+    drone_operations,
+    platform_drone_licenses,
     payroll,
     pdpa,
     platform_licenses,
@@ -288,6 +292,9 @@ _TAGS = [
     {"name": "shifts",           "description": "Guard shift scheduling and handover"},
     {"name": "patrols",          "description": "Patrol routes, checkpoint scans, SOS alerts"},
     {"name": "virtual-patrol",   "description": "Scheduled camera inspections: schedules, sessions, evidence, reports"},
+    {"name": "drones",           "description": "Drone fleet: aircraft, providers, edge gateways, health, maintenance, telemetry"},
+    {"name": "drone-planning",   "description": "Drone mission planning: security zones, profiles, routes, missions, schedules"},
+    {"name": "drone-operations", "description": "Drone patrol sessions and the security events they raise"},
     {"name": "dispatch",         "description": "Task dispatch, SLA tracking, evidence custody chain"},
     {"name": "visitors",         "description": "Visitor management and pre-registration"},
     {"name": "reports",          "description": "PDF report generation and download"},
@@ -348,6 +355,10 @@ app.include_router(scim.router)
 app.include_router(branding.router)
 app.include_router(command_centre.router)
 app.include_router(virtual_patrol.router)
+app.include_router(drones.router)
+app.include_router(drone_planning.router)
+app.include_router(drone_operations.router)
+app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)
 app.include_router(cameras.router)
 app.include_router(settings_router.router)
