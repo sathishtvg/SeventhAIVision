@@ -1,7 +1,7 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** Phases 1–6 complete (analysis, data model, API, flying on the simulator, site edge gateway, AI to security event). Decisions D1–D7 approved 2026-09-24.
+**Status:** Phases 1–7 complete (analysis, data model, API, flying on the simulator, site edge gateway, AI to security event, CCTV correlation). Decisions D1–D7 approved 2026-09-24.
 No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
@@ -360,7 +360,7 @@ The prompt's 14 phases hold, with these adjustments.
 | 4 | Provider abstraction and simulator | **Done** — migration 0124, the drone runner, pre-flight, the command queue; capability flags per adapter, the simulator the only one. See `DRONE_PATROL_OPERATIONS.md` and `DRONE_PATROL_PROVIDER_INTEGRATION.md` |
 | 5 | Edge integration | **Done** — migration 0125, the isolated `drone-edge` service (§1.3) and its sync API, exercised against the simulator. The recording columns 0079 designed for edge sync are used as designed. Offline, a gateway finishes flights in the air but starts none; see `DRONE_PATROL_EDGE.md`, "Decision for the owner" |
 | 6 | AI integration | **Done** — migration 0126 and the context and risk engine; no worker changed. §1.2's open question answered by reading every worker: six work frame by frame, intrusion and crowd need an image zone (a full-frame zone makes intrusion the drone's person detector), behaviour, abandoned and tampering are unreliable on a moving camera. Workers still alert on their own — a decision for the owner in `DRONE_PATROL_AI.md` |
-| 7 | CCTV correlation | Distance-based "nearby" first; "covering" only if D2 is approved |
+| 7 | CCTV correlation | **Done** — migration 0127. Nearby by distance; covering from the optional surveyed coverage (D2); corroboration by a matching fixed-camera detection verifies the event; operator view with live and playback paths, no stream addresses |
 | 8 | Incident integration | Through the existing tables and dispatch endpoint |
 | 9 | Frontend | Needs a map-drawing capability (§7) |
 | 10 | Mobile and desktop | Mobile: alerts, incident, snapshot, clip, acknowledge, escalate. Desktop: nothing separate |
@@ -376,7 +376,7 @@ The prompt's 14 phases hold, with these adjustments.
 `drone_event_cameras`. Every one points at existing rows; no existing table gained
 a column.
 
-**Deferred to the phase that needs them:** `drone_camera_coverage` (Phase 7, optional), `drone_reports`,
+**Deferred to the phase that needs them:** `drone_reports`,
 `drone_report_recipients` and `drone_report_email_queue` (Phase 11).
 
 ## 16. Risks and technical dependencies

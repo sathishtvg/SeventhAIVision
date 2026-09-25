@@ -87,7 +87,8 @@ For every detection the pipeline establishes:
   is a safety matter whoever it is.
 - **What else is happening** — other modules on this flight in the last two
   minutes; drone events in the same zone and incidents at the site in 30 days.
-- **CCTV confirmation** — not yet (Phase 7).
+- **CCTV confirmation** — a fixed camera near the spot that detected the same
+  kind of thing in the event's window (see *CCTV correlation* below).
 
 ## Grouping and verification
 
@@ -97,8 +98,8 @@ are **grouped**: same flight, same module, same zone, same plate or face, within
 two people seen together.
 
 An event is **OBSERVING** until it is **VERIFIED**: seen 3 times, or for the
-profile's `verify_min_seconds` (default 3 s). A weapon or fire seen at confidence
-≥ 0.8 is verified on first sight. An event that goes quiet for 30 s without being
+profile's `verify_min_seconds` (default 3 s), or confirmed by a fixed camera
+(Phase 7). A weapon or fire seen at confidence ≥ 0.8 is verified on first sight. An event that goes quiet for 30 s without being
 verified is closed **UNVERIFIED**.
 
 ## Risk
@@ -117,6 +118,7 @@ point written down in `risk_factors`.
 | Verification | verified +10 · seen once −10 · 5 or more detections +5 |
 | Concurrent | another module on this flight in the last 2 minutes +10 |
 | History | 3+ drone events here in 30 days +5 (5+: +10) · any incident at the site in 30 days +5 |
+| CCTV | a fixed camera's own detection agrees +10 (and verifies the event) |
 
 Levels start at: LOW 15 · MEDIUM 35 · HIGH 55 · CRITICAL 80.
 
@@ -143,6 +145,38 @@ are constants.
   dropped: it raises a `low` "Unconfirmed — …" alert asking a person to review it.
 - The zone's `INCIDENT` policy and the rule's `incident_risk_level` are for
   Phase 8, which creates incidents.
+
+## CCTV correlation (Phase 7)
+
+For every drone event: where the drone was, which of the site's fixed cameras
+could have seen that spot, what they detected and recorded in the event's window,
+and whether any of them agrees.
+
+- **Which cameras.** The site's fixed cameras with a position — never a drone's
+  own camera. A camera with surveyed coverage (a sector of heading, field of view
+  and range, or an explicit polygon — `drone_camera_coverage`, decision D2)
+  **covers** the spot only if the spot is inside it; one facing away is left out
+  even if it is close, and one whose view reaches the spot from further away is
+  kept. A camera with no coverage recorded is merely **nearby**: within 150 m.
+  Covering cameras come first, then nearby ones, each by distance; at most 8.
+- **The window.** From the site's `clip_pre_seconds` before the first sighting to
+  `clip_post_seconds` after the last (20 s and 60 s when the site has no policy).
+- **Per camera:** its bearing to the spot, how many detections it made in the
+  window, the one most relevant (a matching one nearest in time, else its most
+  confident), its most serious alert, the recording that covers the moment and
+  the offset into it, and whether its stream is online.
+- **Corroboration** is a matching detection on that camera in the window: a person
+  for a person (intrusion, crowd, face, behaviour, fall, PPE), the same plate for
+  a plate, fire for fire, a weapon for a weapon. It verifies the event and adds
+  the CCTV risk factor — a second, independent sensor agreeing.
+- **Refreshed** at most every 15 s while the event grows, and **settled** once its
+  window has closed and 30 s more have passed for late detections. An operator can
+  correlate again at any time — after surveying a camera, say.
+- **The operator's view** (`GET /drone-events/{id}/cctv`) gives, per camera, the
+  live and HLS paths and the recording to play back at the offset — this API's own
+  paths, which check access themselves. Stream addresses and credentials are
+  never included.
+- The spot is the **drone's** position, not the object's; correlation says so.
 
 ## Decision for the owner
 

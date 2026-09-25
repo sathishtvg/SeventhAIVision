@@ -34,6 +34,10 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids
 from app.dependencies.tenant import get_db_with_tenant
 from app.services import drone_ai as ai
+from app.services import drone_ai_pipeline as ai_pipeline
+from app.services import drone_cctv_correlation as cctv_corr
+from app.services.drone_runner import RedisPublisher, announce
+from app.services.drone_sessions import Announcements, utcnow
 from app.services.drone_access import assert_site_visible, audit, scope_sql
 from app.services.drone_providers import Capability, capabilities_of
 
@@ -356,10 +360,12 @@ async def get_event(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_
           FROM drone_event_media WHERE event_id = CAST(:id AS uuid) ORDER BY captured_at
     """), {"id": str(event_id)})).mappings().all()
     cameras = (await db.execute(text("""
-        SELECT id, camera_id, camera_name, distance_m, correlation_method, related_detection_id,
-               related_alert_id, window_start, window_end
+        SELECT id, camera_id, camera_name, distance_m, correlation_method, bearing_deg, in_coverage,
+               corroborates, related_detection_count, related_detection_id, related_module_type,
+               related_detected_at, related_alert_id, recording_id, recording_offset_s, camera_online,
+               rank, window_start, window_end
           FROM drone_event_cameras WHERE event_id = CAST(:id AS uuid)
-         ORDER BY distance_m NULLS LAST
+         ORDER BY rank NULLS LAST, distance_m NULLS LAST
     """), {"id": str(event_id)})).mappings().all()
     incident = None
     if event["incident_id"]:
@@ -494,6 +500,41 @@ async def mark_false_positive(
         sets=(", false_positive_reason = :reason, resolved_by_user_id = CAST(:by AS uuid), "
               "  resolved_at = now()"),
         extra={"by": token.user_id, "reason": body.reason}, detail={"reason": body.reason})
+
+
+@router.get("/drone-events/{event_id}/cctv", dependencies=[_EVENT_READ])
+async def event_cctv(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                     allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """The fixed cameras that could have seen this, best first: covering, then
+    nearby. For each, where to watch it live, where to play back the moment
+    (recording and offset), what it detected in the window and whether that
+    agrees with the drone. Stream addresses and credentials are never
+    included — the paths are this API's own, which check access themselves."""
+    event = await _event_or_404(db, event_id, allowed)
+    return await cctv_corr.view(db, event)
+
+
+@router.post("/drone-events/{event_id}/correlate", dependencies=[_INVESTIGATE])
+async def correlate_event(event_id: uuid.UUID, request: Request,
+                          db: AsyncSession = Depends(get_db_with_tenant),
+                          token: TokenPayload = Depends(get_token_payload),
+                          allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Correlate again now — after a camera's coverage was surveyed, say. Not
+    licence-gated: it is part of investigating an event already raised."""
+    await _event_or_404(db, event_id, allowed)
+    now = utcnow()
+    out = Announcements()
+    got = await cctv_corr.correlate(db, event_id, now, out)
+    if got and got["corroboration_changed"]:
+        await ai_pipeline.reassess(db, event_id, now, out)
+    await audit(db, request, token, "drone.event.correlate", "drone_event", event_id,
+                {"cameras": got["cameras"] if got else 0})
+    event = await _event_or_404(db, event_id, allowed)
+    result = await cctv_corr.view(db, event)
+    await db.commit()
+    redis = getattr(request.app.state, "redis", None)
+    await announce(RedisPublisher(redis) if redis is not None else None, token.tenant_id, out)
+    return result
 
 
 @router.get("/drone-ai/modules", dependencies=[_READ])

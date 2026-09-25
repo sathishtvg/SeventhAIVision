@@ -47,6 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import decrypt_secret
 from app.services import drone_ai_pipeline as ai_pipeline
+from app.services import drone_cctv_correlation as cctv_corr
 from app.services import drone_flight_plan as fp
 from app.services import drone_schedule as sched
 from app.services import drone_sessions as ds
@@ -654,7 +655,7 @@ async def process_ai(factory, pub: Publisher | None, tenant_id: str, now: dateti
     """Read each flight's new detections from its drone's camera and turn them
     into drone events (drone_ai_pipeline) — one flight per transaction — then
     close sightings that were never confirmed."""
-    counts = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0}
+    counts = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0, "correlated": 0}
     async with factory() as db:
         await _scope(db, tenant_id)
         sessions = await ai_pipeline.sessions_to_read(db, now)
@@ -680,12 +681,31 @@ async def process_ai(factory, pub: Publisher | None, tenant_id: str, now: dateti
         except Exception:
             await db.rollback()
             logger.exception("drone runner: closing unconfirmed events failed for tenant %s", tenant_id)
+
+        # CCTV correlation for events not yet settled — each in its own
+        # transaction; a fixed camera newly agreeing re-assesses the event.
+        await _scope(db, tenant_id)
+        due = await cctv_corr.correlate_due(db, now)
+        await db.rollback()
+        for eid in due:
+            out = ds.Announcements()
+            try:
+                await _scope(db, tenant_id)
+                got = await cctv_corr.correlate(db, eid, now, out)
+                if got and got["corroboration_changed"]:
+                    await ai_pipeline.reassess(db, eid, now, out)
+                await db.commit()
+                await _announce(pub, tenant_id, out)
+                counts["correlated"] += 1
+            except Exception:
+                await db.rollback()
+                logger.exception("drone runner: CCTV correlation for event %s failed", eid)
     return counts
 
 
 async def run_ai_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:
     now = _utc(now)
-    totals = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0}
+    totals = {"accepted": 0, "duplicate": 0, "ignored": 0, "failed": 0, "closed": 0, "correlated": 0}
     for tid in await _tenants(factory):
         for k, v in (await process_ai(factory, pub, tid, now)).items():
             totals[k] += v

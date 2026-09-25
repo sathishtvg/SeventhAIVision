@@ -122,6 +122,8 @@ class Situation:
     history_events: int = 0
     #: Incidents raised at this site in the last 30 days.
     history_incidents: int = 0
+    #: Fixed cameras whose own detection agrees with the drone's (phase 7).
+    cctv: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -253,8 +255,11 @@ def authorisation(s: Sighting, zone: dict | None, on_duty: list[dict]) -> tuple[
 # ── Verification ─────────────────────────────────────────────────────────────
 
 def is_verified(module: str, detection_count: int, observed_seconds: float, max_confidence: float | None,
-                profile: dict | None) -> bool:
-    """Seen repeatedly, or for long enough — or a weapon or fire seen clearly."""
+                profile: dict | None, corroborated: bool = False) -> bool:
+    """Seen repeatedly, or for long enough — or a weapon or fire seen clearly —
+    or seen by a fixed camera too: a second, independent sensor agreeing."""
+    if corroborated:
+        return True
     if module in IMMEDIATE_MODULES and (max_confidence or 0) >= IMMEDIATE_CONFIDENCE:
         return True
     need = (profile or {}).get("verify_min_seconds")
@@ -331,6 +336,9 @@ def assess(s: Sighting, rule: dict, situation: Situation) -> Risk:
         add("HISTORY", 5, f"{situation.history_events} drone events here in 30 days")
     if situation.history_incidents:
         add("HISTORY", 5, f"{situation.history_incidents} incident(s) at this site in 30 days")
+
+    if situation.cctv:
+        add("CCTV", 10, "also detected by fixed camera " + ", ".join(situation.cctv))
 
     score = max(0, min(100, sum(f["points"] for f in factors)))
     return Risk(score=score, level=level_of(score), factors=factors, authorisation=verdict)

@@ -43,6 +43,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids
 from app.dependencies.tenant import get_db_with_tenant
 from app.services import drone_provider_registry as registry
+from app.services.drone_geometry import GeometryError, normalize_zone
 from app.services.drone_access import (
     assert_site_visible, audit, scope_sql, site_or_404, unique_violation,
 )
@@ -566,6 +567,114 @@ async def list_sync_receipts(
                            for x in (res.get(k) or {}).get("rejected", [])]
         out.append(r)
     return out
+
+
+# ── Fixed-camera coverage (for CCTV correlation) ─────────────────────────────
+#
+# Optional (decision D2). A camera with none is correlated by distance and
+# called NEARBY; one with surveyed coverage is called COVERING only when the
+# drone's spot falls inside what it can see.
+
+class CoverageIn(BaseModel):
+    heading_deg: float | None = Field(None, ge=0, lt=360)
+    fov_deg: float | None = Field(None, gt=0, le=360)
+    range_m: float | None = Field(None, gt=0, le=5000)
+    coverage_polygon: list | None = Field(None, max_length=200)
+    notes: str | None = Field(None, max_length=2000)
+
+
+_COVERAGE_SELECT = """
+    SELECT cov.id, cov.camera_id, c.name AS camera_name, c.site_id, s.name AS site_name,
+           c.latitude, c.longitude, cov.heading_deg, cov.fov_deg, cov.range_m, cov.coverage_polygon,
+           cov.notes, cov.updated_at
+      FROM drone_camera_coverage cov
+      JOIN cameras c ON c.id = cov.camera_id
+      LEFT JOIN sites s ON s.id = c.site_id
+"""
+
+
+async def _fixed_camera_or_404(db: AsyncSession, camera_id: uuid.UUID, allowed) -> dict:
+    cam = (await db.execute(text(
+        "SELECT id, name, site_id, latitude, longitude FROM cameras WHERE id = CAST(:id AS uuid)"),
+        {"id": str(camera_id)})).mappings().first()
+    if cam is None:
+        raise HTTPException(404, "Camera not found")
+    assert_site_visible(allowed, cam["site_id"], "Camera")
+    return dict(cam)
+
+
+@router.get("/camera-coverage", dependencies=[_READ])
+async def list_camera_coverage(
+    site_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    params: dict = {"site": str(site_id) if site_id else None}
+    scope = scope_sql(allowed, "c.site_id", params)
+    rows = (await db.execute(text(_COVERAGE_SELECT + f"""
+         WHERE (CAST(:site AS uuid) IS NULL OR c.site_id = CAST(:site AS uuid)) {scope}
+         ORDER BY s.name, c.name"""), params)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.put("/camera-coverage/{camera_id}", dependencies=[_UPDATE, _LICENSED])
+async def set_camera_coverage(
+    camera_id: uuid.UUID, body: CoverageIn, request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What a fixed camera can see: a sector (heading, field of view, range) or
+    an explicit polygon on the map. Replaces what was there."""
+    cam = await _fixed_camera_or_404(db, camera_id, allowed)
+    if cam["latitude"] is None or cam["longitude"] is None:
+        raise HTTPException(422, "The camera has no position; set its latitude and longitude first.")
+    if (await db.execute(text("SELECT 1 FROM drones WHERE camera_id = CAST(:id AS uuid)"),
+                         {"id": str(camera_id)})).first():
+        raise HTTPException(409, "That is a drone's camera; it moves, so it has no fixed coverage.")
+    polygon = None
+    if body.coverage_polygon is not None:
+        try:
+            polygon = normalize_zone("POLYGON", body.coverage_polygon)["polygon"]
+        except GeometryError as exc:
+            raise HTTPException(422, f"Coverage polygon: {exc}") from exc
+    elif None in (body.heading_deg, body.fov_deg, body.range_m):
+        raise HTTPException(422, "Give either a coverage polygon, or all of heading_deg, fov_deg and range_m.")
+    await db.execute(text("""
+        INSERT INTO drone_camera_coverage
+            (tenant_id, camera_id, heading_deg, fov_deg, range_m, coverage_polygon, notes, updated_by_user_id)
+        VALUES (current_setting('app.current_tenant')::uuid, CAST(:c AS uuid), :h, :f, :r, CAST(:p AS jsonb),
+                :n, CAST(:by AS uuid))
+        ON CONFLICT (camera_id) DO UPDATE SET
+            heading_deg = EXCLUDED.heading_deg, fov_deg = EXCLUDED.fov_deg, range_m = EXCLUDED.range_m,
+            coverage_polygon = EXCLUDED.coverage_polygon, notes = EXCLUDED.notes,
+            updated_by_user_id = EXCLUDED.updated_by_user_id, updated_at = now()
+    """), {"c": str(camera_id), "h": body.heading_deg, "f": body.fov_deg, "r": body.range_m,
+           "p": json.dumps(polygon) if polygon is not None else None, "n": body.notes, "by": token.user_id})
+    await audit(db, request, token, "drone.camera_coverage.set", "camera", camera_id,
+                {"heading_deg": body.heading_deg, "fov_deg": body.fov_deg, "range_m": body.range_m,
+                 "polygon_points": len(polygon) if polygon else 0})
+    row = (await db.execute(text(_COVERAGE_SELECT + " WHERE cov.camera_id = CAST(:c AS uuid)"),
+                            {"c": str(camera_id)})).mappings().first()
+    await db.commit()
+    return dict(row)
+
+
+@router.delete("/camera-coverage/{camera_id}", dependencies=[_UPDATE, _LICENSED])
+async def delete_camera_coverage(
+    camera_id: uuid.UUID, request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    await _fixed_camera_or_404(db, camera_id, allowed)
+    gone = (await db.execute(text("DELETE FROM drone_camera_coverage WHERE camera_id = CAST(:c AS uuid) "
+                                  "RETURNING id"), {"c": str(camera_id)})).first()
+    if gone is None:
+        raise HTTPException(404, "That camera has no coverage recorded.")
+    await audit(db, request, token, "drone.camera_coverage.delete", "camera", camera_id)
+    await db.commit()
+    return {"deleted": str(camera_id)}
 
 
 # ── Drones ───────────────────────────────────────────────────────────────────

@@ -3,8 +3,9 @@
 **As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`);
 Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
 pre-flight, the command queue and the drone runner (migration `0124`); and
-Phase 5, the site edge gateway (migration `0125`); and Phase 6, detection to
-security event (migration `0126`). 75 operations, described in
+Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
+security event (migration `0126`); and Phase 7, CCTV correlation (migration
+`0127`). 80 operations, described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
 aircraft in `DRONE_PATROL_PROVIDER_INTEGRATION.md`.
@@ -101,7 +102,7 @@ marked `PROJECTED`.
 
 ## Tenant isolation
 
-All 21 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
+All 22 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
 other table in the system:
 `tenant_id = current_setting('app.current_tenant', true)::uuid`. On the
 partitioned telemetry table the parent's policy governs every partition.
@@ -266,9 +267,24 @@ on `drone_events` (`label`, `last_detected_at`, `detection_count`, `attributes`,
 `verified_at`, `risk_evaluated_at`, `source`) and `drone_patrol_sessions.
 ai_watermark_at`. Drone-owned only.
 
+## CCTV correlation (Phase 7)
+
+For each drone event the runner's AI job finds the site's fixed cameras that
+could have seen the spot (`drone_cctv.py`, pure) and, per camera, what it detected,
+alerted and recorded in the event's window (`drone_cctv_correlation.py`), writing
+one `drone_event_cameras` row per camera. A fixed camera whose own detection
+matches the drone's corroborates the event: `drone_ai_pipeline.reassess()` scores
+it again, and a second sensor agreeing verifies it.
+
+**Migration `0127`** adds `drone_camera_coverage` (optional surveyed coverage,
+decision D2), correlation columns on `drone_event_cameras` (bearing, coverage,
+corroboration, the related detection, the recording and offset, online) and
+`cctv_correlated_at` / `cctv_final` on `drone_events`. Drone-owned only;
+`cameras`, `streams`, `recordings`, `detections` and `alerts` are only read.
+
 ## Not built yet
 
-CCTV correlation (7), incident integration (8), screens (9), mobile
+incident integration (8), screens (9), mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.

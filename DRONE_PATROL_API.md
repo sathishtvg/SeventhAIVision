@@ -1,11 +1,12 @@
 # Drone Patrol — API
 
-**As of:** 2026-09-25 · **Built:** Phases 3–6 — 75 operations across fleet, planning,
-flying, operations, AI, the site edge gateway and platform licensing. The endpoint
-tables below were extracted from the router source, not written from memory.
+**As of:** 2026-09-25 · **Built:** Phases 3–7 — 80 operations across fleet, planning,
+flying, operations, AI and CCTV correlation, the site edge gateway and platform
+licensing. The endpoint tables below were extracted from the router source, not
+written from memory.
 
-**Not yet built:** CCTV correlation (Phase 7); incidents from drone events
-(Phase 8); report downloads (Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
+**Not yet built:** incidents from drone events (Phase 8); report downloads
+(Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
 against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 `DRONE_PATROL_EDGE.md`.
 
@@ -41,6 +42,9 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | PUT | `/drones/edge-gateways/{gateway_id}` | `drone:update` | ✓ |
 | DELETE | `/drones/edge-gateways/{gateway_id}` | `drone:delete` | ✓ |
 | GET | `/drones/edge-gateways/{gateway_id}/sync-receipts` | `drone:read` | |
+| GET | `/drones/camera-coverage` | `drone:read` | |
+| PUT | `/drones/camera-coverage/{camera_id}` | `drone:update` | ✓ |
+| DELETE | `/drones/camera-coverage/{camera_id}` | `drone:update` | ✓ |
 | GET | `/drones` | `drone:read` | |
 | POST | `/drones` | `drone:create` | ✓ |
 | GET | `/drones/{drone_id}` | `drone:read` | |
@@ -70,6 +74,11 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   long it may be silent before it is marked `OFFLINE`. A gateway still flying a
   mission cannot be deleted. **Sync receipts** list the last week of batches it
   sent, newest first, with every item refused and the reason.
+- **Camera coverage** is what a fixed camera can see, for CCTV correlation:
+  either `coverage_polygon` (3+ points) or all of `heading_deg` (0–360, 0 =
+  north), `fov_deg` (up to 360) and `range_m` (up to 5,000). The camera needs a
+  position; a drone's own camera is refused (409). Optional — a camera without it
+  is correlated by distance. `site_id` filters the list.
 - **Deleting a drone** is refused once it has flown or while an enabled mission
   uses it; disable it instead. Disabling is refused while it is on a mission.
   Enabling returns it to `OFFLINE` until its next heartbeat.
@@ -177,6 +186,8 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | GET | `/drone-patrols/{session_id}/commands` | `drone:read` | |
 | GET | `/drone-events` | `drone:event:read` | |
 | GET | `/drone-events/{event_id}` | `drone:event:read` | |
+| GET | `/drone-events/{event_id}/cctv` | `drone:event:read` | |
+| POST | `/drone-events/{event_id}/correlate` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/acknowledge` | `drone:event:acknowledge` | |
 | POST | `/drone-events/{event_id}/investigate` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/escalate` | `drone:event:investigate` | |
@@ -207,6 +218,15 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   `UNVERIFIED` (never confirmed). `detection_count`, `last_detected_at`,
   `observed_seconds`, `label` (a plate, a weapon class) and `attributes`
   (the watchlist verdict, the authorisation found) describe the sighting.
+- **CCTV** is the operator's view of the fixed cameras that could have seen the
+  event, covering first then nearby: per camera its distance and bearing, whether
+  it covers the spot, whether it corroborates the drone, what it detected and its
+  alert in the window, `streams` (live and HLS paths) and `playback` (the recording
+  and the offset into it, and its download path). The event's `location` says it is
+  the drone's position, and `window` gives the time span searched. No stream
+  address or credential is ever returned. **Correlate** runs it again now and
+  returns the same view; not licence-gated. Event detail's `cameras` carry the
+  same correlation fields.
 - **AI modules** lists what each existing AI module can do on a drone's moving
   camera (`SUPPORTED`, `NEEDS_IMAGE_ZONE`, `UNRELIABLE`, with why), the risk
   level thresholds and the verification rules.
