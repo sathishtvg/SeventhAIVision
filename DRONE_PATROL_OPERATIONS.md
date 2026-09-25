@@ -19,7 +19,7 @@ scheduler's once-a-minute tick.
 | Commands, launches and live flights | every 2 s | `DRONE_RUNNER_TICK_SECONDS` |
 | Drone health polls, then the lost-link sweep | every 15 s | `DRONE_RUNNER_HEALTH_SECONDS` |
 | Sessions owed by schedules | every 30 s | `DRONE_RUNNER_SCHEDULE_SECONDS` |
-| Flights' new AI detections into drone events; closing unconfirmed sightings | every 3 s | `DRONE_RUNNER_AI_SECONDS` |
+| Flights' new AI detections into drone events; closing unconfirmed sightings; CCTV correlation | every 3 s | `DRONE_RUNNER_AI_SECONDS` |
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d drone-runner
@@ -110,7 +110,8 @@ once per outage).
 Realtime events for screens, on `tenant_events:<tenant>`: `drone_session_updated`,
 `drone_telemetry` (latest position each tick), `drone_status_changed`,
 `drone_command_processed`, `drone_event_created`, `drone_event_updated` (risk or
-verification changed), and from edge gateways `drone_gateway_status_changed`,
+verification changed), `drone_event_cctv_updated` (related cameras or
+corroboration changed), and from edge gateways `drone_gateway_status_changed`,
 `drone_sync_completed`, `drone_event_created`, `drone_media_recorded`,
 `drone_media_synced`.
 
@@ -129,6 +130,8 @@ verification changed), and from edge gateways `drone_gateway_status_changed`,
 | Items refused in a sync | Something the gateway sent can never be accepted | `GET /drones/edge-gateways/{id}/sync-receipts` lists each with the reason; the gateway keeps them in its local `rejected` table |
 | No drone events from a flight | No camera linked, the camera does not run the profile's modules, or intrusion has no zone on the camera's picture | Pre-flight's `AI_*` warnings say which. People need a full-frame restricted zone on the drone's camera |
 | Mission `BLOCKED` by `AI_TAMPERING` | The drone's camera has tampering detection on | Turn tampering off for that camera: on a moving camera it alerts at every change of view |
+| An event lists no related CCTV | No fixed camera at the site has a position within 150 m, or every surveyed one faces away | Give cameras their positions; survey coverage (`PUT /drones/camera-coverage/{camera_id}`), then `POST /drone-events/{id}/correlate` |
+| A camera that clearly sees the spot is called only "nearby" | Its coverage has not been surveyed | Record its heading, field of view and range, or draw its coverage polygon |
 | An event stays `OBSERVING` | Seen fewer than 3 times, for less than the profile's verification time | After 30 s of quiet it closes `UNVERIFIED`; if it looked high risk, a low "Unconfirmed" alert asks for review |
 
 ## Simulator settings

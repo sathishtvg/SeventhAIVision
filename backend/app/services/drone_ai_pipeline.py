@@ -246,8 +246,11 @@ async def evaluate(db: AsyncSession, event: dict, sighting: ai.Sighting, rule: d
     """Score the event as it now stands, verify it, and alert if it has earned it."""
     count, observed = int(event["detection_count"]), float(event["observed_seconds"] or 0)
     max_conf = float(event["ai_confidence"]) if event["ai_confidence"] is not None else None
+    cctv = [r[0] for r in (await db.execute(text(
+        "SELECT camera_name FROM drone_event_cameras WHERE event_id = :e AND corroborates ORDER BY rank"),
+        {"e": event["id"]})).all()]
     verified = event["verification_state"] == "VERIFIED" or ai.is_verified(
-        event["module_type"], count, observed, max_conf, profile)
+        event["module_type"], count, observed, max_conf, profile, corroborated=bool(cctv))
     concurrent = set((await db.execute(text("""
         SELECT DISTINCT module_type FROM drone_events
          WHERE drone_id = :d AND id <> :id AND last_detected_at >= :since
@@ -269,7 +272,8 @@ async def evaluate(db: AsyncSession, event: dict, sighting: ai.Sighting, rule: d
     situation = ai.Situation(
         local_time=local, zone=zone, on_duty=await _on_duty(db, site_id, event["last_detected_at"]),
         detection_count=count, observed_seconds=observed, max_confidence=max_conf, verified=verified,
-        concurrent_modules=concurrent, history_events=int(history or 0), history_incidents=int(incidents or 0))
+        concurrent_modules=concurrent, history_events=int(history or 0), history_incidents=int(incidents or 0),
+        cctv=cctv)
     risk = ai.assess(sighting, rule, situation)
 
     state = "VERIFIED" if verified else "OBSERVING"
@@ -302,6 +306,30 @@ async def evaluate(db: AsyncSession, event: dict, sighting: ai.Sighting, rule: d
 
 def _s(v) -> str | None:
     return str(v) if v is not None else None
+
+
+async def reassess(db: AsyncSession, event_id, now: datetime, out: ds.Announcements) -> None:
+    """Score an event again as it stands — after CCTV correlation found (or lost)
+    a fixed camera that agrees with it. Same rules, rebuilt from the event and
+    the flight it belongs to."""
+    e = (await db.execute(text("SELECT * FROM drone_events WHERE id = :id FOR UPDATE"),
+                          {"id": event_id})).mappings().first()
+    if e is None:
+        return
+    e = dict(e)
+    probe = ObservationIn(source=e["source"], module_type=e["module_type"], detected_at=e["detected_at"],
+                          drone_id=str(e["drone_id"]), session_id=_s(e["session_id"]))
+    session, drone, zones, profile, rules = await _flight(db, probe)
+    zone = next((z for z in zones if str(z.get("id")) == str(e["security_zone_id"])), None)
+    rule = ai.rule_for(rules, profile, e["module_type"]) or ai.rule_for(None, None, e["module_type"])
+    attrs = e["attributes"] or {}
+    sighting = ai.Sighting(module_type=e["module_type"], detected_at=e["detected_at"],
+                           confidence=float(e["ai_confidence"]) if e["ai_confidence"] is not None else None,
+                           label=e["label"], latitude=e["drone_latitude"], longitude=e["drone_longitude"],
+                           watchlist=attrs.get("watchlist"), attributes=attrs)
+    tz = await tenant_tz(db)
+    await evaluate(db, e, sighting, rule, profile, zone, (session or drone)["site_id"],
+                   e["last_detected_at"].astimezone(tz), now, out, created=False)
 
 
 async def _alert(db: AsyncSession, event: dict, severity: str | None, risk: ai.Risk, zone: dict | None,
