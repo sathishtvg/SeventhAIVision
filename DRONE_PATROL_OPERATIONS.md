@@ -131,6 +131,25 @@ corroboration changed), and from edge gateways `drone_gateway_status_changed`,
    incident flow. When the incident is resolved or closed, the drone event is
    resolved too.
 
+## The screens
+
+In the web app's sidebar, **Drone Patrol**: the fleet (`/drones`), missions,
+patrols and reports, events, and zones and AI profiles; every drone screen has
+the same tab bar. The screen for each step:
+
+| To | Go to |
+|---|---|
+| Register a drone, its provider, gateway and camera | Drone Fleet → Register drone; the Providers and Edge gateways tabs |
+| Draw a route, choose the profile and recording policy, schedule it, check pre-flight | Drone Missions → New mission, or open one |
+| Draw zones and set what each AI module is worth | Drone Zones → Security zones / AI security profiles |
+| Watch a flight and pause, bring home or abort it | Drone Patrols → the flight while it is live |
+| Replay a flight | Drone Patrols → the flight after it has landed |
+| Investigate, open the incident, send a guard, ask for a second look | Drone Events → the event |
+| Export the flights for a period | Drone Patrols → filters → Export CSV |
+
+A drone with no camera linked flies and reports telemetry, but its live view says
+so and the AI has nothing to read: link its camera on the fleet screen.
+
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |

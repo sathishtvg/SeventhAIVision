@@ -73,6 +73,11 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   long it may be silent before it is marked `OFFLINE`. A gateway still flying a
   mission cannot be deleted. **Sync receipts** list the last week of batches it
   sent, newest first, with every item refused and the reason.
+- **Camera link.** `camera_id` on create and update names the camera that
+  stands for the drone's video (decision D1), as `camera_name` shows. It must be
+  in this organisation and at the drone's site (**422**), must not have fixed
+  coverage recorded (**409**) and may stand for one drone only (**409**). An
+  update re-checks it only when the camera or the site changes.
 - **Camera coverage** is what a fixed camera can see, for CCTV correlation:
   either `coverage_polygon` (3+ points) or all of `heading_deg` (0–360, 0 =
   north), `fov_deg` (up to 360) and `range_m` (up to 5,000). The camera needs a
