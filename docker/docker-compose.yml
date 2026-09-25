@@ -384,6 +384,29 @@ services:
       - evidence_data:/data/evidence
     restart: unless-stopped
 
+  # The drone site edge gateway: the service that runs AT A SITE, next to its
+  # drones — flies them with the provider adapter installed there, keeps
+  # flying and recording through a lost link, and syncs to the central API
+  # when it can. It never touches the central database. In production it runs
+  # on site hardware; here it is opt-in, for development against the
+  # simulator:  docker compose --profile drone-edge up -d drone-edge
+  # DRONE_EDGE_KEY is the credential shown once when the gateway is registered.
+  drone-edge:
+    profiles: ["drone-edge"]
+    build: { context: .., dockerfile: docker/backend.Dockerfile }
+    command: ["python", "-m", "app.drone_edge_main"]
+    depends_on:
+      api: { condition: service_started }
+    environment:
+      DRONE_EDGE_KEY: "${DRONE_EDGE_KEY:-}"
+      DRONE_EDGE_CENTRAL_URL: "${DRONE_EDGE_CENTRAL_URL:-http://api:8000}"
+      DRONE_EDGE_DATA_DIR: /data/drone-edge
+      DRONE_EDGE_TICK_SECONDS: "${DRONE_EDGE_TICK_SECONDS:-2}"
+      DRONE_EDGE_HEALTH_SECONDS: "${DRONE_EDGE_HEALTH_SECONDS:-15}"
+    volumes:
+      - drone_edge_data:/data/drone-edge
+    restart: unless-stopped
+
   frontend:
     build:
       context: ..
@@ -430,3 +453,4 @@ volumes:
   minio_data: {}
   certs_data: {}    # TLS certificate — auto-populated with self-signed on first boot
   backups_data: {}  # Daily pg_dump backups; keep last BACKUP_KEEP_DAILY (default 7)
+  drone_edge_data: {}  # A development site edge gateway's store and recordings

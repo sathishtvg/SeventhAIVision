@@ -39,9 +39,9 @@ def _worth_logging(name: str, r: dict) -> bool:
     if name == "tick":
         # Not "sessions": every airborne flight ticks every two seconds, and its
         # changes are already announced and recorded on the session itself.
-        return bool(r.get("commands"))
+        return bool(r.get("commands") or any((r.get("edge") or {}).values()))
     if name == "health":
-        return bool(r.get("recovered") or r.get("lost"))
+        return bool(r.get("recovered") or r.get("lost") or r.get("gateways_offline"))
     return bool(r.get("ready") or r.get("blocked") or r.get("missed"))
 
 

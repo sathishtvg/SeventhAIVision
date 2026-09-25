@@ -22,6 +22,14 @@ tick, not the runner.
 ROWS ARE LOCKED WITH SKIP LOCKED, so a second runner instance works on different
 sessions rather than flying the same one twice.
 
+DRONES BEHIND A SITE EDGE GATEWAY ARE NOT FLOWN FROM HERE. A session that carries
+an edge_gateway_id is claimed and flown by that gateway, which reports through
+the edge sync (services/drone_edge_sync.py). The runner only watches over those
+sessions: one never picked up is recorded as missed, and one whose gateway has
+been silent for EDGE_STALE_AFTER is closed as failed — a verdict the gateway's
+own record corrects if it catches up later. Commands for a claimed edge session
+are left for the gateway to collect.
+
 ANNOUNCED AFTER COMMIT. Alerts and realtime updates are published only once the
 transaction that produced them has committed.
 """
@@ -55,6 +63,14 @@ PROVIDER_TIMEOUT_S = 10.0
 #: An airborne session nobody has heard from for this long is closed as failed,
 #: so it stops holding the drone's one-flight lock and a person is told.
 STALE_AFTER = timedelta(minutes=10)
+#: A ready edge session its gateway has not claimed within this long is missed.
+EDGE_CLAIM_WINDOW = timedelta(minutes=10)
+#: An edge gateway keeps flying through an outage, so its silence is given far
+#: longer than a directly connected drone's before the flight is given up on.
+EDGE_STALE_AFTER = timedelta(minutes=60)
+#: Sync receipts exist to replay an answer to a resent batch; a week is far
+#: longer than any gateway retries for.
+RECEIPT_RETENTION = timedelta(days=7)
 LIVE_SQL = ", ".join(f"'{s}'" for s in ds.IN_FLIGHT)
 AIRBORNE_SQL = ", ".join(f"'{s}'" for s in ds.AIRBORNE)
 #: Statuses in which a drone is expected to be heard from.
@@ -99,6 +115,10 @@ async def _announce(pub: Publisher | None, tenant_id, out: ds.Announcements) -> 
             # The row is committed; a missed realtime nudge is recovered by the
             # next poll. Never let publishing undo or block the work.
             logger.exception("drone runner: publish %s failed", event_type)
+
+
+#: Public name for the edge router, which announces the same way.
+announce = _announce
 
 
 async def _scope(db: AsyncSession, tenant_id) -> None:
@@ -159,20 +179,7 @@ async def _load_drone_and_provider(db: AsyncSession, drone_id) -> tuple[dict | N
     return dict(d), (dict(p) if p else None)
 
 
-async def _end_session(db: AsyncSession, session: dict, status: str, now: datetime, out: ds.Announcements,
-                       *, reason: str | None = None, blocked: bool = False, preflight: dict | None = None) -> None:
-    await db.execute(text("""
-        UPDATE drone_patrol_sessions
-           SET status = :st, ended_at = :now, updated_at = now(),
-               blocked_reason = CASE WHEN CAST(:blocked AS boolean) THEN :reason ELSE blocked_reason END,
-               failure_reason = CASE WHEN CAST(:blocked AS boolean) THEN failure_reason
-                                     ELSE COALESCE(:reason, failure_reason) END,
-               preflight_result = COALESCE(CAST(:pre AS jsonb), preflight_result)
-         WHERE id = :id
-    """), {"st": status, "now": now, "blocked": blocked, "reason": reason, "id": session["id"],
-           "pre": json.dumps(preflight) if preflight else None})
-    out.add("drone_session_updated", {"session_id": str(session["id"]), "status": status,
-                                      "previous_status": session["status"], "reason": reason})
+_end_session = ds.end_session
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -227,8 +234,11 @@ async def process_commands(factory, pub: Publisher | None, tenant_id: str, now: 
     counts = {"done": 0, "rejected": 0, "failed": 0}
     async with factory() as db:
         await _scope(db, tenant_id)
+        # A claimed edge session's commands are the gateway's to collect.
         ids = (await db.execute(text(
-            "SELECT id FROM drone_session_commands WHERE status = 'PENDING' ORDER BY requested_at"
+            "SELECT c.id FROM drone_session_commands c JOIN drone_patrol_sessions s ON s.id = c.session_id "
+            " WHERE c.status = 'PENDING' AND (s.edge_gateway_id IS NULL OR s.edge_claimed_at IS NULL) "
+            " ORDER BY c.requested_at"
         ))).scalars().all()
         await db.rollback()
         for cid in ids:
@@ -242,6 +252,13 @@ async def process_commands(factory, pub: Publisher | None, tenant_id: str, now: 
                     await db.rollback()
                     continue
                 cmd = dict(cmd)
+                claimed = (await db.execute(text(
+                    "SELECT edge_claimed_at IS NOT NULL AND edge_gateway_id IS NOT NULL "
+                    "  FROM drone_patrol_sessions WHERE id = :id FOR UPDATE"), {"id": cmd["session_id"]})).scalar()
+                if claimed:
+                    # Claimed by its gateway since the list was read.
+                    await db.rollback()
+                    continue
                 try:
                     status, result = await _process_command(db, cmd, now, out)
                 except CapabilityNotSupported as exc:
@@ -249,22 +266,7 @@ async def process_commands(factory, pub: Publisher | None, tenant_id: str, now: 
                 except (ProviderError, asyncio.TimeoutError) as exc:
                     status = "FAILED"
                     result = str(exc) or "The provider did not respond in time."
-                    if cmd["command"] in ("ABORT", "RETURN_TO_HOME"):
-                        # The one failure that must reach a person at once.
-                        s = (await db.execute(text("SELECT site_id, drone_id, mission_name, drone_name "
-                                                   "FROM drone_patrol_sessions WHERE id = :id"),
-                                              {"id": cmd["session_id"]})).mappings().first() or {}
-                        await ds.raise_alert(
-                            db, out, code="drone.command_failed", severity="critical",
-                            site_id=s.get("site_id"), session_id=cmd["session_id"], drone_id=s.get("drone_id"),
-                            title=f"{cmd['command'].replace('_', ' ').title()} failed: {s.get('drone_name') or 'drone'}",
-                            message=f"The {cmd['command'].lower().replace('_', ' ')} command could not be "
-                                    f"delivered: {result}. Take manual control if you can.")
-                await db.execute(text(
-                    "UPDATE drone_session_commands SET status = :st, result = :r, processed_at = :now "
-                    " WHERE id = :id"), {"st": status, "r": result, "now": now, "id": cid})
-                out.add("drone_command_processed", {"command_id": str(cid), "session_id": str(cmd["session_id"]),
-                                                    "command": cmd["command"], "status": status, "result": result})
+                await ds.finish_command(db, cmd, status, result, now, out)
                 await db.commit()
                 await _announce(pub, tenant_id, out)
                 counts[status.lower()] = counts.get(status.lower(), 0) + 1
@@ -280,22 +282,8 @@ async def process_commands(factory, pub: Publisher | None, tenant_id: str, now: 
 
 async def _launch(db: AsyncSession, session: dict, now: datetime, out: ds.Announcements) -> str:
     """Re-check with fresh facts against the FROZEN route, then launch."""
-    bundle = await ds.load_bundle(db, session["mission_id"]) if session["mission_id"] else None
-    if bundle is None:
-        await _end_session(db, session, "BLOCKED", now, out, blocked=True,
-                           reason="The mission was deleted before launch.")
-        return "BLOCKED"
-    snap = session.get("config_snapshot") or {}
-    bundle.route = snap.get("route") or bundle.route
-    bundle.waypoints = snap.get("waypoints") or bundle.waypoints
-    result = await ds.preflight(db, bundle, now, exclude_session_id=session["id"])
-    if not result.passed:
-        await _end_session(db, session, "BLOCKED", now, out, blocked=True, reason=result.reason(),
-                           preflight=result.as_json())
-        await ds.raise_alert(db, out, code="drone.preflight_blocked", severity="medium",
-                             site_id=session["site_id"], session_id=session["id"], drone_id=session["drone_id"],
-                             title=f"Drone mission blocked: {session.get('mission_name')}",
-                             message=f"{session.get('mission_name')} did not launch. {result.reason()}")
+    result = await ds.recheck_before_launch(db, session, now, out)
+    if result is None:
         return "BLOCKED"
 
     drone, provider = await _load_drone_and_provider(db, session["drone_id"])
@@ -329,7 +317,8 @@ async def advance_flights(factory, pub: Publisher | None, tenant_id: str, now: d
     async with factory() as db:
         await _scope(db, tenant_id)
         ids = (await db.execute(text(
-            f"SELECT id FROM drone_patrol_sessions WHERE status IN ({LIVE_SQL}) ORDER BY created_at"
+            f"SELECT id FROM drone_patrol_sessions WHERE status IN ({LIVE_SQL}) "
+            f"   AND edge_gateway_id IS NULL ORDER BY created_at"
         ))).scalars().all()
         await db.rollback()
         for sid in ids:
@@ -339,7 +328,7 @@ async def advance_flights(factory, pub: Publisher | None, tenant_id: str, now: d
                 s = (await db.execute(text(
                     "SELECT * FROM drone_patrol_sessions WHERE id = :id FOR UPDATE SKIP LOCKED"),
                     {"id": sid})).mappings().first()
-                if s is None or s["status"] not in ds.IN_FLIGHT:
+                if s is None or s["status"] not in ds.IN_FLIGHT or s["edge_gateway_id"] is not None:
                     await db.rollback()
                     continue
                 s = dict(s)
@@ -387,16 +376,80 @@ async def advance_flights(factory, pub: Publisher | None, tenant_id: str, now: d
     return counts
 
 
+async def watch_edge_sessions(factory, pub: Publisher | None, tenant_id: str, now: datetime) -> dict:
+    """The only things the runner does to a session a gateway flies: give up on
+    one never picked up, and on one whose gateway has gone silent for too long."""
+    counts = {"missed": 0, "unreachable": 0}
+    async with factory() as db:
+        await _scope(db, tenant_id)
+        ids = (await db.execute(text(f"""
+            SELECT s.id FROM drone_patrol_sessions s
+             WHERE s.edge_gateway_id IS NOT NULL AND s.status IN ({LIVE_SQL})
+               AND ((s.edge_claimed_at IS NULL AND s.created_at < CAST(:claim AS timestamptz))
+                 OR (s.edge_claimed_at IS NOT NULL
+                     AND COALESCE(s.last_tick_at, s.edge_claimed_at) < CAST(:stale AS timestamptz)))
+        """), {"claim": now - EDGE_CLAIM_WINDOW, "stale": now - EDGE_STALE_AFTER})).scalars().all()
+        await db.rollback()
+        for sid in ids:
+            out = ds.Announcements()
+            try:
+                await _scope(db, tenant_id)
+                s = (await db.execute(text("""
+                    SELECT s.*, g.name AS gateway_name FROM drone_patrol_sessions s
+                      LEFT JOIN drone_edge_gateways g ON g.id = s.edge_gateway_id
+                     WHERE s.id = :id FOR UPDATE OF s SKIP LOCKED"""), {"id": sid})).mappings().first()
+                if s is None or s["status"] not in ds.IN_FLIGHT:
+                    await db.rollback()
+                    continue
+                s = dict(s)
+                gw = s.get("gateway_name") or "the site edge gateway"
+                if s["edge_claimed_at"] is None:
+                    if s["created_at"] >= now - EDGE_CLAIM_WINDOW:
+                        await db.rollback()
+                        continue
+                    mins = int(EDGE_CLAIM_WINDOW.total_seconds() // 60)
+                    reason = f"{gw} did not pick the mission up within {mins} minutes."
+                    await _end_session(db, s, "MISSED", now, out, reason=reason, failure_code="EDGE_NOT_CLAIMED")
+                    await ds.raise_alert(db, out, code="drone.mission_missed", severity="medium",
+                                         site_id=s["site_id"], session_id=s["id"], drone_id=s["drone_id"],
+                                         title=f"Drone mission missed: {s.get('mission_name')}",
+                                         message=f"{s.get('mission_name')} did not start: {reason}")
+                    counts["missed"] += 1
+                else:
+                    heard = s.get("last_tick_at") or s["edge_claimed_at"]
+                    if heard >= now - EDGE_STALE_AFTER:
+                        await db.rollback()
+                        continue
+                    mins = int(EDGE_STALE_AFTER.total_seconds() // 60)
+                    reason = (f"Nothing has been heard from {gw} about this flight for {mins} minutes. "
+                              "If the gateway reconnects, its own record of the flight replaces this one.")
+                    await _end_session(db, s, "FAILED", now, out, reason=reason, failure_code="EDGE_UNREACHABLE")
+                    await ds.raise_alert(db, out, code="drone.mission_failed", severity="high",
+                                         site_id=s["site_id"], session_id=s["id"], drone_id=s["drone_id"],
+                                         title=f"Drone flight out of contact: {s.get('drone_name') or 'drone'}",
+                                         message=f"{s.get('mission_name')}: {reason} Locate the aircraft.",
+                                         params={"failure_code": "EDGE_UNREACHABLE"})
+                    counts["unreachable"] += 1
+                await db.commit()
+                await _announce(pub, tenant_id, out)
+            except Exception:
+                await db.rollback()
+                logger.exception("drone runner: edge session %s watch failed", sid)
+    return counts
+
+
 async def run_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:
     """Commands first — an abort must not wait behind a flight tick."""
     now = _utc(now)
-    totals: dict[str, Any] = {"tenants": 0, "commands": {}, "sessions": {}}
+    totals: dict[str, Any] = {"tenants": 0, "commands": {}, "sessions": {}, "edge": {}}
     for tid in await _tenants(factory):
         totals["tenants"] += 1
         for k, v in (await process_commands(factory, pub, tid, now)).items():
             totals["commands"][k] = totals["commands"].get(k, 0) + v
         for k, v in (await advance_flights(factory, pub, tid, now)).items():
             totals["sessions"][k] = totals["sessions"].get(k, 0) + v
+        for k, v in (await watch_edge_sessions(factory, pub, tid, now)).items():
+            totals["edge"][k] = totals["edge"].get(k, 0) + v
     return totals
 
 
@@ -499,13 +552,14 @@ async def run_schedule_tick(factory, pub: Publisher | None = None, now: datetime
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def check_health(factory, pub: Publisher | None, tenant_id: str, now: datetime) -> dict:
-    counts = {"polled": 0, "recovered": 0, "lost": 0}
+    counts = {"polled": 0, "recovered": 0, "lost": 0, "gateways_offline": 0}
     async with factory() as db:
         await _scope(db, tenant_id)
         drones = [dict(r) for r in (await db.execute(text(f"""
             SELECT d.*, p.provider_key, p.config, p.secret_encrypted, p.is_active AS provider_active
               FROM drones d JOIN drone_provider_configs p ON p.id = d.provider_config_id
              WHERE d.status NOT IN ('DISABLED','MAINTENANCE') AND p.is_active
+               AND d.edge_gateway_id IS NULL
                AND NOT EXISTS (SELECT 1 FROM drone_patrol_sessions s
                                 WHERE s.drone_id = d.id AND s.status IN ({AIRBORNE_SQL}))
         """))).mappings().all()]
@@ -521,27 +575,9 @@ async def check_health(factory, pub: Publisher | None, tenant_id: str, now: date
                     continue
                 h = await _call(adapter.get_status(_drone_ref(d), now))
                 await _scope(db, tenant_id)
-                # A drone that answers is, by definition, not lost. Its status
-                # follows what it reports, except where a person set it.
-                new_status = h.status_hint or d["status"]
-                if d["status"] not in ("OFFLINE", "COMMUNICATION_LOST", "READY", "CHARGING", "STANDBY"):
-                    new_status = d["status"]
-                await db.execute(text("""
-                    UPDATE drones SET status = :st, battery_level = COALESCE(:bat, battery_level),
-                           battery_health = COALESCE(:bh, battery_health),
-                           gps_status = :gps, communication_status = :comms, camera_status = :cam,
-                           storage_status = :sto, temperature_c = COALESCE(:temp, temperature_c),
-                           last_heartbeat_at = :at, comms_alerted_at = NULL, updated_at = now()
-                     WHERE id = :id
-                """), {"st": new_status, "bat": round(h.battery_level) if h.battery_level is not None else None,
-                       "bh": round(h.battery_health) if h.battery_health is not None else None,
-                       "gps": h.gps_status, "comms": h.communication_status, "cam": h.camera_status,
-                       "sto": h.storage_status, "temp": h.temperature_c, "at": h.observed_at, "id": d["id"]})
-                if d["status"] != new_status:
-                    out.add("drone_status_changed", {"drone_id": str(d["id"]), "status": new_status,
-                                                     "previous_status": d["status"]})
-                    if d["status"] == "COMMUNICATION_LOST":
-                        counts["recovered"] += 1
+                new_status = await ds.apply_health(db, d, h, out)
+                if d["status"] != new_status and d["status"] == "COMMUNICATION_LOST":
+                    counts["recovered"] += 1
                 await db.commit()
                 await _announce(pub, tenant_id, out)
                 counts["polled"] += 1
@@ -554,10 +590,31 @@ async def check_health(factory, pub: Publisher | None, tenant_id: str, now: date
     # The sweep: anyone expected to be heard from, who has not been, within
     # their own timeout. One alert per outage — comms_alerted_at is cleared
     # when the drone is heard from again.
+    #
+    # Gateways first. A drone behind a gateway that has gone silent is marked
+    # lost like any other, but the gateway's one alert speaks for all of them:
+    # one broken site link is one thing to fix, not one alarm per aircraft.
     out = ds.Announcements()
     async with factory() as db:
         try:
             await _scope(db, tenant_id)
+            gone = (await db.execute(text("""
+                UPDATE drone_edge_gateways SET status = 'OFFLINE', offline_alerted_at = :now, updated_at = now()
+                 WHERE is_active AND status <> 'OFFLINE' AND offline_alerted_at IS NULL
+                   AND last_seen_at IS NOT NULL
+                   AND last_seen_at < CAST(:now AS timestamptz) - make_interval(secs => heartbeat_timeout_seconds)
+                RETURNING id, name, site_id, status,
+                          (SELECT count(*) FROM drones d WHERE d.edge_gateway_id = drone_edge_gateways.id) AS drones
+            """), {"now": now})).mappings().all()
+            for g in gone:
+                await ds.raise_alert(db, out, code="drone.gateway_offline", severity="high", site_id=g["site_id"],
+                                     title=f"Drone edge gateway offline: {g['name']}",
+                                     message=f"Nothing has been heard from {g['name']} within its heartbeat "
+                                             f"timeout. Its {g['drones']} drone(s) cannot be seen or commanded "
+                                             "from here; flights in progress continue under the gateway's "
+                                             "control and catch up when it reconnects.",
+                                     gateway_id=g["id"])
+                out.add("drone_gateway_status_changed", {"gateway_id": str(g["id"]), "status": "OFFLINE"})
             heard = ", ".join(f"'{s}'" for s in HEARD_FROM)
             lost = (await db.execute(text(f"""
                 UPDATE drones SET status = 'COMMUNICATION_LOST', communication_status = 'FAULT',
@@ -565,17 +622,23 @@ async def check_health(factory, pub: Publisher | None, tenant_id: str, now: date
                  WHERE status IN ({heard}) AND comms_alerted_at IS NULL
                    AND last_heartbeat_at IS NOT NULL
                    AND last_heartbeat_at < CAST(:now AS timestamptz) - make_interval(secs => heartbeat_timeout_seconds)
-                RETURNING id, name, site_id, status
+                RETURNING id, name, site_id, status,
+                          EXISTS (SELECT 1 FROM drone_edge_gateways g
+                                   WHERE g.id = drones.edge_gateway_id AND g.status = 'OFFLINE') AS behind_offline
             """), {"now": now})).mappings().all()
             for d in lost:
-                await ds.raise_alert(db, out, code="drone.comms_lost", severity="high", site_id=d["site_id"],
-                                     drone_id=d["id"], title=f"Drone not responding: {d['name']}",
-                                     message=f"Nothing has been heard from {d['name']} within its heartbeat "
-                                             "timeout. Check its power and link.")
+                if not d["behind_offline"]:
+                    await ds.raise_alert(db, out, code="drone.comms_lost", severity="high", site_id=d["site_id"],
+                                         drone_id=d["id"], title=f"Drone not responding: {d['name']}",
+                                         message=f"Nothing has been heard from {d['name']} within its heartbeat "
+                                                 "timeout. Check its power and link.")
                 out.add("drone_status_changed", {"drone_id": str(d["id"]), "status": "COMMUNICATION_LOST"})
+            await db.execute(text("DELETE FROM drone_sync_receipts WHERE received_at < :cut"),
+                             {"cut": now - RECEIPT_RETENTION})
             await db.commit()
             await _announce(pub, tenant_id, out)
             counts["lost"] = len(lost)
+            counts["gateways_offline"] = len(gone)
         except Exception:
             await db.rollback()
             logger.exception("drone runner: heartbeat sweep failed for tenant %s", tenant_id)
@@ -584,8 +647,8 @@ async def check_health(factory, pub: Publisher | None, tenant_id: str, now: date
 
 async def run_health_tick(factory, pub: Publisher | None = None, now: datetime | None = None) -> dict:
     now = _utc(now)
-    totals = {"polled": 0, "recovered": 0, "lost": 0}
+    totals = {"polled": 0, "recovered": 0, "lost": 0, "gateways_offline": 0}
     for tid in await _tenants(factory):
         for k, v in (await check_health(factory, pub, tid, now)).items():
-            totals[k] += v
+            totals[k] = totals.get(k, 0) + v
     return totals

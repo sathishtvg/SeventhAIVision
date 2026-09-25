@@ -1,10 +1,11 @@
 # Drone Patrol — Architecture
 
 **As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`);
-Phase 3, the API; and Phase 4, flying — the provider abstraction, the simulator,
-pre-flight, the command queue and the drone runner (migration `0124`). 69
-operations, described in `DRONE_PATROL_API.md`; running it is in
-`DRONE_PATROL_OPERATIONS.md`, adding a real aircraft in
+Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
+pre-flight, the command queue and the drone runner (migration `0124`); and
+Phase 5, the site edge gateway (migration `0125`). 74 operations, described in
+`DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
+gateway in `DRONE_PATROL_EDGE.md`, adding a real aircraft in
 `DRONE_PATROL_PROVIDER_INTEGRATION.md`.
 This document describes what exists. Anything not yet built is listed at the end
 and is not described as if it were. The analysis behind the design is
@@ -90,13 +91,15 @@ marked `PROJECTED`.
 | Scheduler restart, two workers, a retry | `uq_dps_execution (schedule_id, scheduled_for)` |
 | Starting a drone that is already flying | `uq_dps_one_flight_per_drone` (partial, in-flight states) |
 | A command pressed twice, or by two operators | `uq_dcmd_one_pending (session_id, command)` (partial, pending) |
+| A gateway resending a flight update | `edge_seq` on the session: only a higher update number is applied |
+| A gateway resending a whole batch | `uq_dsr_batch (gateway_id, batch_id)`: the stored answer is replayed |
 | Two runners, or a runner restart | Sessions and commands claimed `FOR UPDATE SKIP LOCKED`; flight state lives on the session |
 | Edge resending a session, event or media file | `client_ref` unique on each |
 | Edge resending a telemetry sample | `(drone_id, recorded_at)` unique |
 
 ## Tenant isolation
 
-All 19 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
+All 20 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
 other table in the system:
 `tenant_id = current_setting('app.current_tenant', true)::uuid`. On the
 partitioned telemetry table the parent's policy governs every partition.
@@ -206,9 +209,42 @@ unchanged, and nothing is announced that was then rolled back.
 which tenants have work (licensed, flying, or with commands waiting) without the
 runner bypassing row-level security. All drone-owned; nothing existing changed.
 
+## The site edge gateway (Phase 5)
+
+A drone registered with an edge gateway is flown **at its site**, by the
+`drone-edge` service, with the provider adapter installed there — provider code
+stays out of the central API. The session records its gateway when it is created;
+the central runner then only watches over it.
+
+| Piece | Where | Does |
+|---|---|---|
+| Wire format | `services/drone_edge_wire.py` | The batch, its bounds, and FlightUpdate to JSON and back — imported by both ends |
+| Central side | `services/drone_edge_sync.py`, `routers/drone_edge.py` | Recognises a gateway by its credential under its tenant's RLS; applies its batch item by item in savepoints; hands it its work; accepts the files the policy asks for |
+| The gateway | `drone_edge/agent.py`, `store.py`, `central.py`, `drone_edge_main.py` | Flies, buffers in a local SQLite outbox, syncs, claims, uploads; no database, no web framework |
+| Watching over it | `services/drone_runner.py` | An unclaimed edge session is missed after 10 minutes; a silent one is failed after 60 as `EDGE_UNREACHABLE`; a silent gateway is marked `OFFLINE` with one alert |
+
+**Shared rules.** Pre-flight before launch, recording a flight update, health,
+closing a command and ending a session are the same functions whether the central
+runner or a gateway flew the drone (`drone_sessions.recheck_before_launch`,
+`record_update`, `apply_health`, `finish_command`, `end_session`), so where a drone
+was flown from never changes its record.
+
+**A late record corrects a guess.** A flight the runner closed as
+`EDGE_UNREACHABLE` is replaced by the gateway's own record when it reconnects. No
+other ended session is reopened.
+
+**Migration `0125`** adds `drone_sync_receipts`, the gateway's reported health on
+`drone_edge_gateways`, `edge_seq` and `edge_claimed_at` on sessions,
+`delivered_at` on commands and `edge_gateway_id` on media, and widens
+`drone_runner_tenants()` to tenants with a gateway that has not gone offline.
+Drone-owned only.
+
+The two changes outside the drone module are registration again: the edge router
+in `main.py` (3 lines) and the opt-in `drone-edge` compose service with its volume.
+
 ## Not built yet
 
-The edge service (5), AI context and risk (6), CCTV correlation (7), incident integration (8), screens (9), mobile
+AI context and risk (6), CCTV correlation (7), incident integration (8), screens (9), mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.

@@ -1,9 +1,10 @@
 # Drone Patrol — Operations
 
-**As of:** 2026-09-25 · Covers Phase 4: the drone runner, the flight lifecycle,
-commands, alerts and what to do when something goes wrong. Only the simulator
-provider exists; every flight described here is simulated until hardware is
-connected.
+**As of:** 2026-09-25 · Covers Phases 4–5: the drone runner, the flight lifecycle,
+commands, alerts, site edge gateways and what to do when something goes wrong.
+Only the simulator provider exists; every flight described here is simulated until
+hardware is connected. The edge gateway itself is described in
+`DRONE_PATROL_EDGE.md`.
 
 ## The drone runner
 
@@ -31,6 +32,14 @@ recovered.
 It is safe to run more than one: sessions and commands are locked with
 `SKIP LOCKED`, so two runners never fly the same session. It is safe to restart:
 flight state lives on the session, and a flight resumes where it was.
+
+**Drones behind a site edge gateway are not flown by the runner.** Their gateway
+claims and flies their sessions and collects their commands. The runner only
+watches: an edge session nobody claims within 10 minutes is recorded `MISSED`
+(`EDGE_NOT_CLAIMED`); one whose gateway is silent for 60 minutes is closed
+`FAILED` (`EDGE_UNREACHABLE`) — corrected if the gateway later reports the real
+flight. Its health tick also marks a silent gateway `OFFLINE` and deletes sync
+receipts older than a week.
 
 ## A flight, start to finish
 
@@ -93,10 +102,13 @@ once per outage).
 | `drone.mission_failed` | high | A flight ends `FAILED`, cannot launch, or has been out of contact for 10 minutes |
 | `drone.flight_fault` | medium | A flight completed its patrol but reported a fault |
 | `drone.command_failed` | **critical** | An abort or return-to-home could not be delivered — take manual control |
+| `drone.gateway_offline` | high | A site edge gateway was silent past its heartbeat timeout. One per outage, for the site — its drones are not alerted one by one |
 
 Realtime events for screens, on `tenant_events:<tenant>`: `drone_session_updated`,
 `drone_telemetry` (latest position each tick), `drone_status_changed`,
-`drone_command_processed`.
+`drone_command_processed`, and from edge gateways `drone_gateway_status_changed`,
+`drone_sync_completed`, `drone_event_created`, `drone_media_recorded`,
+`drone_media_synced`.
 
 ## When something goes wrong
 
@@ -107,6 +119,10 @@ Realtime events for screens, on `tenant_events:<tenant>`: `drone_session_updated
 | Scheduled runs never appear | The runner isn't running, or the tenant's licence has lapsed | `docker compose ps drone-runner`; `GET /drones/entitlement` |
 | Session stuck `ACTIVE` | The provider stopped answering | It closes itself as `FAILED` after 10 minutes of silence, and alerts |
 | `drone.command_failed` | The abort or return-to-home didn't reach the drone | Use the manufacturer's own controller. The command's `result` has the provider's error |
+| `drone.gateway_offline` | The site's link, power or gateway host is down | Flights in the air continue under the gateway and catch up when it returns. Check the site's network and the `drone-edge` service |
+| Gateway `DEGRADED` | Clock more than 30 s out, backlog older than 5 min, or under 10% storage | `health.problems` on the gateway says which. Fix the clock (NTP) first — every time it reports depends on it |
+| Edge session `MISSED` / `EDGE_NOT_CLAIMED` | The gateway was offline, or its drone was busy, when the run was due | Gateways do not start new flights without the centre. Check the gateway, then run the mission again |
+| Items refused in a sync | Something the gateway sent can never be accepted | `GET /drones/edge-gateways/{id}/sync-receipts` lists each with the reason; the gateway keeps them in its local `rejected` table |
 
 ## Simulator settings
 
