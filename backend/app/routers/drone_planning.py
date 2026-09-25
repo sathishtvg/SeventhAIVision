@@ -40,6 +40,7 @@ from app.dependencies.sites import get_allowed_site_ids
 from app.dependencies.tenant import get_db_with_tenant
 from app.services import drone_geometry as geo
 from app.services import drone_schedule as sched
+from app.services import drone_sessions as dsess
 from app.services.drone_access import (
     assert_site_visible, audit, scope_sql, site_or_404, unique_violation,
 )
@@ -49,6 +50,7 @@ router = APIRouter(prefix="/api/v1", tags=["drone-planning"])
 _READ = Depends(require_permission("drone:read"))
 _CREATE = Depends(require_permission("drone:mission:create"))
 _UPDATE = Depends(require_permission("drone:mission:update"))
+_EXECUTE = Depends(require_permission("drone:mission:execute"))
 _LICENSED = Depends(require_drone_module)
 
 ZoneType = Literal["NORMAL", "RESTRICTED", "CRITICAL", "VEHICLE_RESTRICTED",
@@ -1005,6 +1007,54 @@ async def delete_mission(
                 {"name": mission["name"]})
     await db.commit()
     return {"deleted": str(mission_id)}
+
+
+@router.get("/drone-missions/{mission_id}/preflight", dependencies=[_READ])
+async def preview_preflight(mission_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                            allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Would this mission launch right now, and if not, why not — without
+    creating anything. The same checks a launch runs."""
+    await _mission_or_404(db, mission_id, allowed)
+    bundle = await dsess.load_bundle(db, mission_id)
+    now = datetime.now(timezone.utc)
+    result = await dsess.preflight(db, bundle, now)
+    _, est = dsess.plan_of(bundle)
+    return {"mission_id": str(mission_id), "checked_at": now, **result.as_json(),
+            "estimate": ({"duration_s": est.duration_s, "distance_m": est.distance_m,
+                          "battery_needed_pct": est.battery_needed_pct} if est else None)}
+
+
+@router.post("/drone-missions/{mission_id}/run", status_code=status.HTTP_201_CREATED,
+             dependencies=[_EXECUTE, _LICENSED])
+async def run_mission(
+    mission_id: uuid.UUID, request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Start this mission now. Pre-flight runs first: if it passes the session is
+    READY and the drone runner launches it within seconds (re-checking with the
+    freshest health first); if it fails the session is recorded as BLOCKED with
+    every reason, so the attempt is on the record either way."""
+    mission = await _mission_or_404(db, mission_id, allowed)
+    bundle = await dsess.load_bundle(db, mission_id)
+    now = datetime.now(timezone.utc)
+    result = await dsess.preflight(db, bundle, now)
+    status_ = "READY" if result.passed else "BLOCKED"
+    try:
+        sid = await dsess.create_session(db, bundle, now=now, trigger="MANUAL", status=status_,
+                                         user_id=token.user_id, result=result)
+    except IntegrityError as exc:
+        if unique_violation(exc, "uq_dps_one_flight_per_drone"):
+            raise HTTPException(409, "This drone is already committed to another flight.") from exc
+        raise
+    await audit(db, request, token, "drone.mission.run", "drone_patrol_session", sid,
+                {"mission_id": str(mission_id), "status": status_,
+                 "blocking": [c["code"] for c in result.blocking]})
+    session = dict((await db.execute(text(
+        "SELECT * FROM drone_patrol_sessions WHERE id = :id"), {"id": sid})).mappings().first())
+    await db.commit()
+    return {"session": session, "preflight": result.as_json(), "mission_name": mission["name"]}
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -31,6 +31,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids
 from app.dependencies.tenant import get_db_with_tenant
 from app.services.drone_access import assert_site_visible, audit, scope_sql
+from app.services.drone_providers import Capability, capabilities_of
 
 router = APIRouter(prefix="/api/v1", tags=["drone-operations"])
 
@@ -38,6 +39,8 @@ _READ = Depends(require_permission("drone:read"))
 _EVENT_READ = Depends(require_permission("drone:event:read"))
 _ACK = Depends(require_permission("drone:event:acknowledge"))
 _INVESTIGATE = Depends(require_permission("drone:event:investigate"))
+_OPERATE = Depends(require_permission("drone:operate"))
+_ABORT = Depends(require_permission("drone:mission:abort"))
 
 OPEN = ("NEW", "ACKNOWLEDGED", "INVESTIGATING", "ESCALATED")
 CLOSED = ("RESOLVED", "FALSE_POSITIVE")
@@ -139,6 +142,131 @@ async def session_track(session_id: uuid.UUID, db: AsyncSession = Depends(get_db
     """), {"id": str(session_id), "step": step, "total": total})).mappings().all()
     return {"session_id": str(session_id), "drone_id": session["drone_id"],
             "total_samples": total, "returned": len(rows), "points": [dict(r) for r in rows]}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Flight commands
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Queued, not executed here: the drone runner carries each out within a couple
+# of seconds and records the result on the command. Nothing in this module talks
+# to a drone.
+#
+# NOT LICENCE-GATED. A licence that lapses mid-flight must never stop anyone
+# pausing, aborting or bringing a drone home. Only starting a flight is gated.
+
+_BEFORE_LAUNCH = ("SCHEDULED", "PRECHECK", "READY")
+_TERMINAL = ("COMPLETED", "FAILED", "ABORTED", "CANCELLED", "BLOCKED", "MISSED")
+_NEEDS = {"PAUSE": Capability.PAUSE, "RESUME": Capability.RESUME, "ABORT": Capability.ABORT,
+          "RETURN_TO_HOME": Capability.RETURN_TO_HOME}
+
+
+class CommandIn(BaseModel):
+    reason: str | None = Field(None, max_length=2000)
+
+
+def _command_allowed(command: str, status: str) -> str | None:
+    """Why this command cannot apply to a session in this state, or None."""
+    if status in _TERMINAL:
+        return f"The session has already ended ({status.lower()})."
+    if command == "CANCEL" and status not in _BEFORE_LAUNCH:
+        return "The drone has already launched; abort it or return it home instead."
+    if command == "PAUSE" and status != "ACTIVE":
+        return f"Only an active mission can be paused (it is {status.lower()})."
+    if command == "RESUME" and status != "PAUSED":
+        return "The mission is not paused."
+    return None
+
+
+async def _queue(db: AsyncSession, request: Request, token: TokenPayload, session_id: uuid.UUID,
+                 allowed, command: str, reason: str | None) -> dict:
+    session = await _session_or_404(db, session_id, allowed)
+    problem = _command_allowed(command, session["status"])
+    if problem:
+        raise HTTPException(409, problem)
+    need = _NEEDS.get(command)
+    # Before launch, abort and return-home simply cancel: no drone is involved.
+    if need and session["status"] not in _BEFORE_LAUNCH:
+        key = ((session.get("config_snapshot") or {}).get("drone") or {}).get("provider_key")
+        if need not in capabilities_of(key):
+            verb = command.lower().replace("_", " ")
+            raise HTTPException(409, f"The drone's provider ({key or 'none'}) cannot {verb}.")
+    row = (await db.execute(text("""
+        INSERT INTO drone_session_commands
+            (tenant_id, session_id, command, reason, requested_by_user_id)
+        VALUES (current_setting('app.current_tenant')::uuid, :s, :c, :r, CAST(:u AS uuid))
+        ON CONFLICT (session_id, command) WHERE status = 'PENDING' DO NOTHING
+        RETURNING *
+    """), {"s": session_id, "c": command, "r": reason, "u": token.user_id})).mappings().first()
+    created = row is not None
+    if not created:
+        # The same command is already waiting: one press, or two operators at
+        # once, is one command.
+        row = (await db.execute(text(
+            "SELECT * FROM drone_session_commands WHERE session_id = :s AND command = :c "
+            " AND status = 'PENDING'"), {"s": session_id, "c": command})).mappings().first()
+    else:
+        await audit(db, request, token, f"drone.command.{command.lower()}", "drone_patrol_session",
+                    session_id, {"reason": reason} if reason else None)
+    result = {"command": dict(row), "queued": created, "session_status": session["status"]}
+    await db.commit()
+    return result
+
+
+@router.post("/drone-patrols/{session_id}/pause", status_code=202, dependencies=[_OPERATE])
+async def pause_session(session_id: uuid.UUID, request: Request, body: CommandIn | None = None,
+                        db: AsyncSession = Depends(get_db_with_tenant),
+                        token: TokenPayload = Depends(get_token_payload),
+                        allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    return await _queue(db, request, token, session_id, allowed, "PAUSE", (body or CommandIn()).reason)
+
+
+@router.post("/drone-patrols/{session_id}/resume", status_code=202, dependencies=[_OPERATE])
+async def resume_session(session_id: uuid.UUID, request: Request, body: CommandIn | None = None,
+                         db: AsyncSession = Depends(get_db_with_tenant),
+                         token: TokenPayload = Depends(get_token_payload),
+                         allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    return await _queue(db, request, token, session_id, allowed, "RESUME", (body or CommandIn()).reason)
+
+
+@router.post("/drone-patrols/{session_id}/abort", status_code=202, dependencies=[_ABORT])
+async def abort_session(session_id: uuid.UUID, request: Request, body: CommandIn | None = None,
+                        db: AsyncSession = Depends(get_db_with_tenant),
+                        token: TokenPayload = Depends(get_token_payload),
+                        allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """End the mission now; the drone follows its provider's safe behaviour
+    home. Before launch, this cancels."""
+    return await _queue(db, request, token, session_id, allowed, "ABORT", (body or CommandIn()).reason)
+
+
+@router.post("/drone-patrols/{session_id}/return-to-home", status_code=202, dependencies=[_ABORT])
+async def return_session_home(session_id: uuid.UUID, request: Request, body: CommandIn | None = None,
+                              db: AsyncSession = Depends(get_db_with_tenant),
+                              token: TokenPayload = Depends(get_token_payload),
+                              allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    return await _queue(db, request, token, session_id, allowed, "RETURN_TO_HOME",
+                        (body or CommandIn()).reason)
+
+
+@router.post("/drone-patrols/{session_id}/cancel", status_code=202, dependencies=[_ABORT])
+async def cancel_session(session_id: uuid.UUID, request: Request, body: CommandIn | None = None,
+                         db: AsyncSession = Depends(get_db_with_tenant),
+                         token: TokenPayload = Depends(get_token_payload),
+                         allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    return await _queue(db, request, token, session_id, allowed, "CANCEL", (body or CommandIn()).reason)
+
+
+@router.get("/drone-patrols/{session_id}/commands", dependencies=[_READ])
+async def list_commands(session_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                        allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """Every command given to this flight, who gave it, and what became of it."""
+    await _session_or_404(db, session_id, allowed)
+    rows = (await db.execute(text("""
+        SELECT c.*, u.full_name AS requested_by_name FROM drone_session_commands c
+          LEFT JOIN users u ON u.id = c.requested_by_user_id
+         WHERE c.session_id = :s ORDER BY c.requested_at
+    """), {"s": session_id})).mappings().all()
+    return [dict(r) for r in rows]
 
 
 # ═════════════════════════════════════════════════════════════════════════════

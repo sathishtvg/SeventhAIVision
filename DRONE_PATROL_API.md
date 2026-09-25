@@ -1,13 +1,13 @@
 # Drone Patrol — API
 
-**As of:** 2026-09-25 · **Built:** Phase 3 — 61 operations across fleet, planning,
-operations and platform licensing. The endpoint tables below were extracted from
-the router source, not written from memory.
+**As of:** 2026-09-25 · **Built:** Phases 3–4 — 69 operations across fleet, planning,
+flying, operations and platform licensing. The endpoint tables below were
+extracted from the router source, not written from memory.
 
-**Not yet built:** starting, pausing and aborting flights and pre-flight checks
-(Phase 4); telemetry and event *ingestion* from drones and edge gateways
-(Phases 4–5); report downloads (Phase 11). Sessions and events are readable and
-events are fully actionable now; they are created by later phases.
+**Not yet built:** telemetry and event *ingestion* from edge gateways (Phase 5);
+AI events raised during a flight (Phase 6); report downloads (Phase 11). Flights
+are flown by the drone runner against the simulator provider — see
+`DRONE_PATROL_OPERATIONS.md`.
 
 ## Conventions
 
@@ -15,7 +15,7 @@ events are fully actionable now; they are created by later phases.
 |---|---|
 | Base path | `/api/v1` |
 | Auth | `Authorization: Bearer <access token>`. Every operation also requires the permission shown |
-| Licence | Every operation that creates, changes or removes something requires the tenant's Drone Patrol licence (**Gated** column) and answers **403** with a reason when it is missing or expired. Reads and event decisions are never gated — history stays readable and an open event can always be closed |
+| Licence | Every operation that creates, changes or removes something, or starts a flight, requires the tenant's Drone Patrol licence (**Gated** column) and answers **403** with a reason when it is missing or expired. Reads, event decisions and flight commands are never gated — history stays readable, an open event can always be closed, and a drone in the air can always be brought down |
 | Site scoping | Users restricted to sites see only those sites' drones, routes, zones, missions, sessions and events. Anything outside answers **404**, not 403, so its existence is not revealed |
 | Tenant isolation | Row-level security on every drone table; another tenant's IDs answer **404** |
 | IDs | UUIDs. A malformed ID answers **422** before touching the database |
@@ -128,6 +128,33 @@ events are fully actionable now; they are created by later phases.
   Every problem with a schedule is reported at once. `next_runs` give each launch
   in UTC and in local time.
 
+## Flying — pre-flight and manual runs
+
+| Method | Path | Permission | Gated |
+|---|---|---|:-:|
+| GET | `/drone-missions/{mission_id}/preflight` | `drone:read` | |
+| POST | `/drone-missions/{mission_id}/run` | `drone:mission:execute` | ✓ |
+
+- **Pre-flight** runs every check a launch runs and creates nothing. It returns
+  `passed`, `blocking` and `warnings` (each check with a `code` and a reason a
+  person can act on) and the flight `estimate`: duration, distance and the
+  battery it needs.
+- **Blocking checks:** licence, mission enabled, site active, drone assigned,
+  enabled and available (not in flight, not in maintenance), communication
+  (heard from within its heartbeat timeout), battery (at least the mission
+  minimum **and** the estimated need plus a 20% reserve), GPS, camera, storage,
+  maintenance due, provider configured and able to fly missions, edge gateway
+  online (if the drone uses one), route active with waypoints, estimated duration
+  within the mission's limit, security profile active. **Warnings** — do not
+  block: storage low, waypoints outside the site's geofence, no security profile.
+- **Run** answers **201** either way. The session is `READY` (the runner launches
+  it within seconds, re-checking with the freshest health first) or `BLOCKED`
+  with every reason, so the attempt is on the record. **409** if the drone is
+  already committed to another flight.
+- A session freezes the mission, route, waypoints, drone, profile and zones as
+  they were at the moment it was created. Editing the mission afterwards changes
+  the next flight, never this one.
+
 ## Operations — sessions and events
 
 | Method | Path | Permission | Gated |
@@ -135,6 +162,12 @@ events are fully actionable now; they are created by later phases.
 | GET | `/drone-patrols` | `drone:read` | |
 | GET | `/drone-patrols/{session_id}` | `drone:read` | |
 | GET | `/drone-patrols/{session_id}/track` | `drone:read` | |
+| POST | `/drone-patrols/{session_id}/pause` | `drone:operate` | |
+| POST | `/drone-patrols/{session_id}/resume` | `drone:operate` | |
+| POST | `/drone-patrols/{session_id}/abort` | `drone:mission:abort` | |
+| POST | `/drone-patrols/{session_id}/return-to-home` | `drone:mission:abort` | |
+| POST | `/drone-patrols/{session_id}/cancel` | `drone:mission:abort` | |
+| GET | `/drone-patrols/{session_id}/commands` | `drone:read` | |
 | GET | `/drone-events` | `drone:event:read` | |
 | GET | `/drone-events/{event_id}` | `drone:event:read` | |
 | POST | `/drone-events/{event_id}/acknowledge` | `drone:event:acknowledge` | |
@@ -143,6 +176,17 @@ events are fully actionable now; they are created by later phases.
 | POST | `/drone-events/{event_id}/resolve` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/false-positive` | `drone:event:investigate` | |
 
+- **Flight commands** are queued, not carried out in the request: they answer
+  **202** with `{command, queued, session_status}` and the drone runner carries
+  them out within about two seconds, recording the outcome on the command
+  (`DONE`, `REJECTED` or `FAILED`, with a `result`). The body is an optional
+  `reason`. **409** when the session's state doesn't allow the command (pause
+  needs `ACTIVE`, resume needs `PAUSED`, cancel only before launch, nothing once
+  it has ended) or when the drone's provider cannot do it. Before launch, abort
+  and return-to-home simply cancel. The same command pressed twice — or by two
+  operators at once — is one command: the second answers `queued: false` with
+  the first. **Never licence-gated.**
+- **Commands** lists every command for the session in the order given, with who asked.
 - **Track** returns the flown path for replay, thinned evenly to at most 2,000
   points, always keeping the first and last sample.
 - **Event detail** includes its media (without storage paths — media is served,
