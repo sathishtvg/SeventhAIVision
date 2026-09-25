@@ -1,8 +1,8 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** Phase 1 — repository analysis only. No code, schema, configuration or
-data was changed to produce this document.
+**Status:** Phase 1 complete. Decisions D1–D7 approved 2026-09-24; Phase 2 under way.
+No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
 - **Additive only.** Nothing already built is changed (owner's instruction,
@@ -91,9 +91,10 @@ attached to cameras. `services/licensing.py` is Ed25519 licence-key verification
 for on-premise installs, not per-tenant entitlement.
 
 The prompt requires that a tenant without the module cannot register drones or
-create missions. That needs a **new dependency, applied only to drone routers**,
-that reads `tenant_module_licenses`. It changes nothing for the 20 existing
-modules.
+create missions. That needs a **new dependency, applied only to drone routers**.
+It reads `drone_module_licenses`, not `tenant_module_licenses` — see §19.1 for
+why the obvious home turned out to be unsafe. It changes nothing for the 20
+existing modules.
 
 ### 1.5 Evidence retention would destroy incident evidence
 
@@ -169,7 +170,7 @@ alternative, and the recommendation is the alternative unless stated.
 | Would change | Why it would be needed | Additive alternative | Recommendation |
 |---|---|---|---|
 | Camera list, Live Wall and camera-count screens | Hide drone cameras from fixed-camera views | Leave them visible and clearly named (e.g. "Drone D-01 camera") | Alternative — revisit after Phase 9 |
-| `tenant_module_licenses` (new limit columns) | Max drones / missions / sites | New `drone_module_limits` table keyed by tenant | Alternative |
+| `tenant_module_licenses` (new limit columns) | Max drones / missions / sites | New `drone_module_licenses` table keyed by tenant, holding the entitlement as well as the limits (§19.1) | Alternative |
 | `purge_expired_evidence()` | Legal hold for evidence linked to an open incident | Drone media in a module-owned table outside the purge (as Virtual Patrolling did) | Alternative by default; the legal-hold fix is worth a separate decision because it protects every incident, not only drone ones |
 | Incident detail page and router | Show drone, mission, waypoint and telemetry on the incident | `drone_events.incident_id` links back; a drone investigation page is the rich view; the incident title and description name the drone and mission | Alternative |
 | Command Centre board | A drone panel alongside Virtual Patrolling | Drone alerts already appear in every existing alert feed because they are `alerts` rows; the fleet view lives on a new Drone Dashboard | Alternative — a panel is a small, clearly scoped change if wanted later |
@@ -354,7 +355,7 @@ The prompt's 14 phases hold, with these adjustments.
 | Phase | Scope | Adjustment from the prompt |
 |---|---|---|
 | 1 | Repository analysis | **This document** |
-| 2 | Database and domain | All tables `drone_`-prefixed; `drone_telemetry` partitioned via pg_partman; `drone_patrol` seeded into `product_modules` and `billing_modules`; permissions seeded |
+| 2 | Database and domain | **Done** — migration 0123. All tables `drone_`-prefixed; `drone_telemetry` partitioned via pg_partman; `drone_patrol` listed in `billing_modules` only, as `virtual_patrol` is; permissions seeded |
 | 3 | Backend APIs | Plus the drone-only module gate (§1.4) |
 | 4 | Provider abstraction and simulator | Capability flags per adapter; the simulator is the only adapter until hardware is chosen |
 | 5 | Edge integration | A new service (§1.3), exercised against the simulator |
@@ -365,17 +366,19 @@ The prompt's 14 phases hold, with these adjustments.
 | 10 | Mobile and desktop | Mobile: alerts, incident, snapshot, clip, acknowledge, escalate. Desktop: nothing separate |
 | 11–14 | Reporting, analytics, hardening, final validation | As in the prompt |
 
-**Proposed new tables** (final names settled in Phase 2): `drones`,
-`drone_provider_configs`, `drone_maintenance_logs`, `drone_routes`,
-`drone_waypoints`, `drone_security_zones`, `drone_security_profiles`,
-`drone_profile_rules`, `drone_missions`, `drone_schedules`,
-`drone_patrol_sessions` (unique `(schedule_id, scheduled_for)`),
+**Built in Phase 2 (migration 0123), 18 tables:** `drone_module_licenses`,
+`drone_provider_configs`, `drone_edge_gateways`, `drones`,
+`drone_maintenance_logs`, `drone_security_zones`, `drone_security_profiles`,
+`drone_profile_rules`, `drone_routes`, `drone_waypoints`, `drone_missions`,
+`drone_schedules`, `drone_patrol_sessions` (unique `(schedule_id, scheduled_for)`),
 `drone_session_waypoints`, `drone_telemetry` (partitioned), `drone_events`
-(→ `detections`, `alerts`, `incidents`), `drone_event_media`,
-`drone_event_cameras`, `drone_sync_receipts`, `drone_reports`,
-`drone_report_recipients`, `drone_report_email_queue`, `drone_module_limits`, and
-optionally `drone_camera_coverage`. Every one points at existing rows; no existing
-table gains a column.
+(→ `alerts`, `incidents`; `detection_id` without an FK, §19.3), `drone_event_media`,
+`drone_event_cameras`. Every one points at existing rows; no existing table gained
+a column.
+
+**Deferred to the phase that needs them:** `drone_sync_receipts` (Phase 5),
+`drone_camera_coverage` (Phase 7, optional), `drone_reports`,
+`drone_report_recipients` and `drone_report_email_queue` (Phase 11).
 
 ## 16. Risks and technical dependencies
 
@@ -393,11 +396,15 @@ table gains a column.
 
 ## 17. Decisions needed before Phase 2
 
+**Approved by the owner on 2026-09-24: all seven recommendations, as written.**
+The system-wide evidence legal hold (D5) was not taken up; drone media stays
+outside the purge in a drone-owned table.
+
 | # | Decision | Recommendation |
 |---|---|---|
 | D1 | How drone video reaches the AI (§1.1) | Represent each drone's camera as a `cameras` + `streams` row; accept that it shows in camera lists |
 | D2 | Camera coverage geometry (§1.6) | Add an optional `drone_camera_coverage` table; correlate by distance until it is filled in |
-| D3 | Module limits (§3) | New `drone_module_limits` table |
+| D3 | Module limits (§3) | New `drone_module_limits` table — built as `drone_module_licenses`, holding the entitlement too (§19.1) |
 | D4 | Billing unit | `per_site`, matching `virtual_patrol` |
 | D5 | Evidence retention (§1.5) | Module-owned media table now; decide the system-wide legal hold separately |
 | D6 | Mobile maps | Coordinates plus "open in maps" link for now; add a map library only if wanted |
@@ -410,3 +417,55 @@ controller and dock (if autonomous launch is wanted); the camera stream format t
 aircraft actually emits; site edge hardware and network; and the operator's
 aviation permits and site-specific flight configuration. Until those exist, the
 module will be complete **against the simulator** and will say so.
+
+---
+
+## 19. Addendum — found while building Phase 2
+
+### 19.1 The drone entitlement cannot live in `tenant_module_licenses`
+
+`/api/v1/licenses/me/enabled-modules` and `cameras._check_module_licenses` both
+treat a tenant with **no** licence rows as licensed for **every** AI module — the
+fallback that keeps fresh and test tenants working. Writing a `drone_patrol` row
+for such a tenant gives it exactly one row, which switches the fallback off and
+silently removes all eleven AI modules from it. `demo` and `seventhaivision`
+each have their 11 rows, so they would not have been hit; a tenant created any
+other way would have been.
+
+So the entitlement (`is_enabled`, `expires_at`) and the limits live together in
+`drone_module_licenses`, which nothing outside this module reads. D3 is built
+that way.
+
+Consequence for billing: the pricing engine's `platform_tenant_billable_modules()`
+bills modules it finds in `tenant_module_licenses`, so `drone_patrol` is listed in
+the catalogue (per site, priced at zero, like `virtual_patrol`) but will not
+appear on an invoice. `virtual_patrol` is in the same position today. Charging for
+either is a commercial and billing decision to take separately.
+
+### 19.2 The existing licence screen cannot enable `drone_patrol`
+
+`licenses.py` rejects any module not in its hard-coded `ALL_MODULES` list.
+Enabling drone patrol for a tenant therefore needs its own small platform
+endpoint in Phase 3, writing `drone_module_licenses` — not an edit to
+`licenses.py`.
+
+### 19.3 No foreign key can point at `detections` or `evidence`
+
+Both are partitioned with the timestamp in the primary key, so an FK on `id`
+alone is impossible. `drone_events.detection_id` and
+`drone_event_cameras.related_detection_id` are plain references, which is also
+how the existing code treats them.
+
+### 19.4 Verified
+
+- Upgrade on the development database (existing install) and the test database;
+  downgrade to 0122 removes all 18 tables, the partitions, 16 permissions, 56
+  grants, the billing entry and the pg_partman registration; re-upgrade restores
+  them exactly. CI proves the fresh install.
+- `backend/tests/test_drone_schema.py`: 22 tests, all passing — one flight per
+  drone, one session per scheduled run, telemetry dedup and partition routing,
+  zone geometry, deferred waypoint reordering, deletion that never blocks, and
+  tenant isolation tested as `svc_app` after asserting it cannot bypass RLS.
+- Adjacent existing suites (licences, billing, platform licences, tenants,
+  certification): 120 passed. Migration-safety and secret-scanning repo suites:
+  142 passed.
