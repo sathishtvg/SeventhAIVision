@@ -1,6 +1,7 @@
 # Drone Patrol — Architecture
 
-**As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`).
+**As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`), and
+Phase 3, the API — 61 operations, described in `DRONE_PATROL_API.md`.
 This document describes what exists. Anything not yet built is listed at the end
 and is not described as if it were. The analysis behind the design is
 `DRONE_PATROL_GAP_ANALYSIS.md`.
@@ -124,10 +125,34 @@ price is set). A tenant has the module when its `drone_module_licenses` row is
 enabled and unexpired. The entitlement deliberately does **not** live in
 `tenant_module_licenses`; see the gap analysis §19.1.
 
+## API layer
+
+| Piece | Where | Does |
+|---|---|---|
+| Licence gate | `dependencies/drone_module.py` | Refuses creating, changing and flying without an enabled, unexpired `drone_module_licenses` row; counts limits under a per-tenant advisory lock so two requests cannot both take the last slot |
+| Fleet | `routers/drones.py` | Drones, provider configs, edge gateways, maintenance, telemetry reads, dashboard, entitlement |
+| Planning | `routers/drone_planning.py` | Zones, security profiles, routes and waypoints, missions, schedules |
+| Operations | `routers/drone_operations.py` | Sessions, flight tracks, events and the decisions on them |
+| Platform | `routers/platform_drone_licenses.py` | Super Admin grants the licence per tenant |
+| Schedules | `services/drone_schedule.py` | Pure occurrence logic in the schedule's own timezone; used by the preview now and the scheduler in Phase 4 |
+| Geometry | `services/drone_geometry.py` | Zone shapes, point-in-zone, route length, off-site waypoints — on top of `geofence.py` |
+| Provider catalogue | `services/drone_provider_registry.py` | Which providers exist and what their settings are; the simulator only |
+| Shared | `services/drone_access.py` | Site visibility (404 outside), scoping clauses, audit |
+
+Two rules shape every endpoint:
+
+- **Reads and event decisions are never licence-gated.** A lapsed licence must not
+  hide evidence or stop an operator closing an event raised before it lapsed.
+- **Nothing is read after a commit.** The tenant setting is transaction-local, so
+  a query after `commit()` runs with no tenant and fails. Every endpoint reads its
+  response inside the transaction, then commits.
+
+The only change to an existing file is registration: 11 added lines in `main.py`
+(imports, `include_router` calls and tag descriptions). Nothing existing changed.
+
 ## Not built yet
 
-Everything that *does* anything: the APIs and the licence gate (Phase 3), the
-provider abstraction and simulator (4), the edge service (5), AI context and
+Everything that *flies*: the provider abstraction and simulator (4), the edge service (5), AI context and
 risk (6), CCTV correlation (7), incident integration (8), screens (9), mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is.
