@@ -200,13 +200,20 @@ async def create_session(db: AsyncSession, b: MissionBundle, *, now: datetime, t
 # ── Alerts ───────────────────────────────────────────────────────────────────
 
 async def raise_alert(db: AsyncSession, out: Announcements, *, code: str, severity: str, title: str,
-                      message: str, site_id=None, session_id=None, drone_id=None,
+                      message: str, site_id=None, session_id=None, drone_id=None, gateway_id=None,
                       params: dict | None = None) -> str | None:
-    """One alert per (code, session) — or per (code, drone) outside a flight —
-    however many ticks notice the same thing."""
-    key_col, key_val = ("session_id", str(session_id)) if session_id else ("drone_id", str(drone_id))
+    """One alert per (code, session) — or per (code, drone), or (code, gateway),
+    while one is open outside a flight — however many ticks notice the same thing."""
+    if session_id:
+        key_col, key_val = "session_id", str(session_id)
+    elif drone_id:
+        key_col, key_val = "drone_id", str(drone_id)
+    else:
+        key_col, key_val = "gateway_id", str(gateway_id)
     body = {"session_id": str(session_id) if session_id else None,
             "drone_id": str(drone_id) if drone_id else None, **(params or {})}
+    if gateway_id:
+        body["gateway_id"] = str(gateway_id)
     row = (await db.execute(text("""
         INSERT INTO alerts (tenant_id, camera_id, site_id, module_type, severity, alert_code,
                             message_params, title, message, status)
@@ -363,6 +370,104 @@ async def record_update(db: AsyncSession, session: dict, up: FlightUpdate, now: 
                                           "status": status, "previous_status": session["status"],
                                           "failure_code": up.failure_code, "comms_lost": comms_lost})
     return status
+
+
+# ── Shared by the central runner and the edge sync ───────────────────────────
+#
+# A drone flown by the central runner and one flown by a site edge gateway are
+# judged, recorded and alerted on by the same functions, so where a drone is
+# flown from never changes what its record says.
+
+async def end_session(db: AsyncSession, session: dict, status: str, now: datetime, out: Announcements,
+                      *, reason: str | None = None, blocked: bool = False, preflight: dict | None = None,
+                      failure_code: str | None = None) -> None:
+    await db.execute(text("""
+        UPDATE drone_patrol_sessions
+           SET status = :st, ended_at = :now, updated_at = now(),
+               blocked_reason = CASE WHEN CAST(:blocked AS boolean) THEN :reason ELSE blocked_reason END,
+               failure_reason = CASE WHEN CAST(:blocked AS boolean) THEN failure_reason
+                                     ELSE COALESCE(:reason, failure_reason) END,
+               failure_code = COALESCE(CAST(:fcode AS text), failure_code),
+               preflight_result = COALESCE(CAST(:pre AS jsonb), preflight_result)
+         WHERE id = :id
+    """), {"st": status, "now": now, "blocked": blocked, "reason": reason, "id": session["id"],
+           "pre": json.dumps(preflight) if preflight else None, "fcode": failure_code})
+    out.add("drone_session_updated", {"session_id": str(session["id"]), "status": status,
+                                      "previous_status": session["status"], "reason": reason})
+
+
+async def recheck_before_launch(db: AsyncSession, session: dict, now: datetime,
+                                out: Announcements) -> PreflightResult | None:
+    """Pre-flight again, with the freshest facts, against the session's FROZEN
+    route. Returns the passing result, or None after recording the session as
+    BLOCKED and alerting."""
+    bundle = await load_bundle(db, session["mission_id"]) if session["mission_id"] else None
+    if bundle is None:
+        await end_session(db, session, "BLOCKED", now, out, blocked=True,
+                          reason="The mission was deleted before launch.")
+        return None
+    snap = session.get("config_snapshot") or {}
+    bundle.route = snap.get("route") or bundle.route
+    bundle.waypoints = snap.get("waypoints") or bundle.waypoints
+    result = await preflight(db, bundle, now, exclude_session_id=session["id"])
+    if result.passed:
+        return result
+    await end_session(db, session, "BLOCKED", now, out, blocked=True, reason=result.reason(),
+                      preflight=result.as_json())
+    await raise_alert(db, out, code="drone.preflight_blocked", severity="medium",
+                      site_id=session["site_id"], session_id=session["id"], drone_id=session["drone_id"],
+                      title=f"Drone mission blocked: {session.get('mission_name')}",
+                      message=f"{session.get('mission_name')} did not launch. {result.reason()}")
+    return None
+
+
+async def apply_health(db: AsyncSession, drone: dict, h, out: Announcements) -> str:
+    """Record a drone's reported health — its heartbeat. A drone that answers
+    is, by definition, not lost; its status follows what it reports, except
+    where a person set it. Returns the drone's new status."""
+    new_status = h.status_hint or drone["status"]
+    if drone["status"] not in ("OFFLINE", "COMMUNICATION_LOST", "READY", "CHARGING", "STANDBY"):
+        new_status = drone["status"]
+    await db.execute(text("""
+        UPDATE drones SET status = :st, battery_level = COALESCE(:bat, battery_level),
+               battery_health = COALESCE(:bh, battery_health),
+               gps_status = :gps, communication_status = :comms, camera_status = :cam,
+               storage_status = :sto, temperature_c = COALESCE(:temp, temperature_c),
+               current_latitude = COALESCE(:lat, current_latitude),
+               current_longitude = COALESCE(:lng, current_longitude),
+               current_altitude_m = COALESCE(:alt, current_altitude_m),
+               last_heartbeat_at = :at, comms_alerted_at = NULL, updated_at = now()
+         WHERE id = :id
+    """), {"st": new_status, "bat": round(h.battery_level) if h.battery_level is not None else None,
+           "bh": round(h.battery_health) if h.battery_health is not None else None,
+           "gps": h.gps_status, "comms": h.communication_status, "cam": h.camera_status,
+           "sto": h.storage_status, "temp": h.temperature_c, "lat": h.latitude, "lng": h.longitude,
+           "alt": h.altitude_m, "at": h.observed_at, "id": drone["id"]})
+    if drone["status"] != new_status:
+        out.add("drone_status_changed", {"drone_id": str(drone["id"]), "status": new_status,
+                                         "previous_status": drone["status"]})
+    return new_status
+
+
+async def finish_command(db: AsyncSession, cmd: dict, status: str, result: str, now: datetime,
+                         out: Announcements) -> None:
+    """Close a command with its outcome. An abort or return-home that could not
+    be delivered is the one failure that must reach a person at once."""
+    if status == "FAILED" and cmd["command"] in ("ABORT", "RETURN_TO_HOME"):
+        s = (await db.execute(text("SELECT site_id, drone_id, mission_name, drone_name "
+                                   "FROM drone_patrol_sessions WHERE id = :id"),
+                              {"id": cmd["session_id"]})).mappings().first() or {}
+        await raise_alert(
+            db, out, code="drone.command_failed", severity="critical",
+            site_id=s.get("site_id"), session_id=cmd["session_id"], drone_id=s.get("drone_id"),
+            title=f"{cmd['command'].replace('_', ' ').title()} failed: {s.get('drone_name') or 'drone'}",
+            message=f"The {cmd['command'].lower().replace('_', ' ')} command could not be "
+                    f"delivered: {result}. Take manual control if you can.")
+    await db.execute(text(
+        "UPDATE drone_session_commands SET status = :st, result = :r, processed_at = :now "
+        " WHERE id = :id"), {"st": status, "r": result, "now": now, "id": cmd["id"]})
+    out.add("drone_command_processed", {"command_id": str(cmd["id"]), "session_id": str(cmd["session_id"]),
+                                        "command": cmd["command"], "status": status, "result": result})
 
 
 def utcnow() -> datetime:

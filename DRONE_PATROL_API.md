@@ -1,13 +1,13 @@
 # Drone Patrol — API
 
-**As of:** 2026-09-25 · **Built:** Phases 3–4 — 69 operations across fleet, planning,
-flying, operations and platform licensing. The endpoint tables below were
-extracted from the router source, not written from memory.
+**As of:** 2026-09-25 · **Built:** Phases 3–5 — 74 operations across fleet, planning,
+flying, operations, the site edge gateway and platform licensing. The endpoint
+tables below were extracted from the router source, not written from memory.
 
-**Not yet built:** telemetry and event *ingestion* from edge gateways (Phase 5);
-AI events raised during a flight (Phase 6); report downloads (Phase 11). Flights
-are flown by the drone runner against the simulator provider — see
-`DRONE_PATROL_OPERATIONS.md`.
+**Not yet built:** AI events raised during a flight (Phase 6); report downloads
+(Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
+against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
+`DRONE_PATROL_EDGE.md`.
 
 ## Conventions
 
@@ -40,6 +40,7 @@ are flown by the drone runner against the simulator provider — see
 | POST | `/drones/edge-gateways/{gateway_id}/rotate-credential` | `drone:update` | ✓ |
 | PUT | `/drones/edge-gateways/{gateway_id}` | `drone:update` | ✓ |
 | DELETE | `/drones/edge-gateways/{gateway_id}` | `drone:delete` | ✓ |
+| GET | `/drones/edge-gateways/{gateway_id}/sync-receipts` | `drone:read` | |
 | GET | `/drones` | `drone:read` | |
 | POST | `/drones` | `drone:create` | ✓ |
 | GET | `/drones/{drone_id}` | `drone:read` | |
@@ -62,7 +63,13 @@ are flown by the drone runner against the simulator provider — see
   its stored value. Only the simulator is catalogued until real hardware is chosen.
 - **Edge gateways.** The access credential is returned **once**, on creation or
   rotation, and stored only as a SHA-256. Rotation invalidates the previous one.
-  A drone may use only its own site's gateway.
+  A drone may use only its own site's gateway. The gateway record shows what the
+  gateway last reported: `last_seen_at`, `last_sync_at`, `buffer_depth`,
+  `oldest_buffered_at`, `storage_free_pct`, `clock_offset_s`, and `health.problems`
+  when it is `DEGRADED`. `heartbeat_timeout_seconds` (10–3600, default 90) is how
+  long it may be silent before it is marked `OFFLINE`. A gateway still flying a
+  mission cannot be deleted. **Sync receipts** list the last week of batches it
+  sent, newest first, with every item refused and the reason.
 - **Deleting a drone** is refused once it has flown or while an enabled mission
   uses it; disable it instead. Disabling is refused while it is on a mission.
   Enabling returns it to `OFFLINE` until its next heartbeat.
@@ -175,6 +182,7 @@ are flown by the drone runner against the simulator provider — see
 | POST | `/drone-events/{event_id}/escalate` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/resolve` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/false-positive` | `drone:event:investigate` | |
+| GET | `/drone-media/{media_id}/file` | `drone:event:read` | |
 
 - **Flight commands** are queued, not carried out in the request: they answer
   **202** with `{command, queued, session_status}` and the drone runner carries
@@ -200,6 +208,50 @@ are flown by the drone runner against the simulator provider — see
   update, so two operators cannot both win. A false positive requires a reason.
 - Filters: sessions by site, drone, mission, status and `from`/`to`; events by
   site, session, drone, status, `open_only`, `risk_level` and `from`/`to`.
+- **Media file** returns the central copy of a snapshot or clip. A file the
+  recording policy keeps at the site answers **409** naming the gateway that holds
+  it and whether an upload is pending — not a broken link.
+
+## Edge gateway — `/api/v1/drone-edge`
+
+Called by site edge gateways only, authenticated by the gateway's credential in
+`X-Gateway-Key`. A user's token is not accepted here and a gateway credential is
+accepted nowhere else. See `DRONE_PATROL_EDGE.md` for the whole protocol.
+
+| Method | Path | Authentication | Gated |
+|---|---|---|:-:|
+| POST | `/drone-edge/sync` | gateway credential | |
+| POST | `/drone-edge/sessions/{session_id}/claim` | gateway credential | via pre-flight |
+| PUT | `/drone-edge/media/{client_ref}` | gateway credential | |
+
+- **Credential.** Missing, malformed, wrong secret or another tenant's: one
+  identical **401**. A disabled gateway: **403**. The tenant is named in the
+  credential, so the lookup runs under that tenant's row-level security.
+- **Sync** takes one batch — `health` (idle drones), `updates` (numbered flight
+  updates per session), `commands` (outcomes), `events`, `media` (file
+  descriptions), plus the gateway's `state` (backlog, free storage) — and answers
+  with per-kind `accepted`, `duplicates` and `rejected` (each with a reason), the
+  sessions `corrected_sessions` whose `EDGE_UNREACHABLE` verdict its record
+  replaced, `media_upload_requested`, and the gateway's `assignment`: its drones,
+  the sessions it flies or may claim, pending commands for its flights, the
+  recording policy and `uploads_wanted`. An empty batch is the heartbeat. A
+  resent batch (same `batch_id`) gets its first answer back with
+  `duplicate_batch: true`. Bounds: 500 updates, 6,000 samples, 500 events and
+  500 files per batch; anything the database would refuse is refused per item.
+  A malformed batch as a whole answers **422**. Never licence-gated.
+- **Claim** re-runs pre-flight against the session's frozen route with the
+  gateway's latest health. Passed: **200**, the session is `LAUNCHING`, and the
+  answer carries the frozen configuration to fly. Refused: **409** with the
+  reason and the checks, and the session is recorded `BLOCKED` and alerted.
+  **409** also when an operator's cancel or abort is waiting, or the session is
+  not ready. Another gateway's session: **404**. Claiming again returns the same
+  claim.
+- **Media** takes the raw bytes with `X-Checksum-Sha256`. Accepted only if they
+  are exactly the file described (size and SHA-256 — else **422**), in a format
+  its kind allows (JPEG/PNG snapshot, MP4 clip — else **415**), and the centre
+  asked for it (else **409**). A stored file sent again is a no-op. Stored in the
+  evidence store under `drone/<tenant>/<date>/`.
+- Rate limits per address: sync 600/min, claim 120/min, upload 300/min.
 
 ## Platform — licensing (Super Admin)
 

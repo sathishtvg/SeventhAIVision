@@ -1,7 +1,7 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** Phases 1–4 complete (analysis, data model, API, flying on the simulator). Decisions D1–D7 approved 2026-09-24.
+**Status:** Phases 1–5 complete (analysis, data model, API, flying on the simulator, site edge gateway). Decisions D1–D7 approved 2026-09-24.
 No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
@@ -358,7 +358,7 @@ The prompt's 14 phases hold, with these adjustments.
 | 2 | Database and domain | **Done** — migration 0123. All tables `drone_`-prefixed; `drone_telemetry` partitioned via pg_partman; `drone_patrol` listed in `billing_modules` only, as `virtual_patrol` is; permissions seeded |
 | 3 | Backend APIs | **Done** — 61 operations and the drone-only licence gate (§1.4); see `DRONE_PATROL_API.md` |
 | 4 | Provider abstraction and simulator | **Done** — migration 0124, the drone runner, pre-flight, the command queue; capability flags per adapter, the simulator the only one. See `DRONE_PATROL_OPERATIONS.md` and `DRONE_PATROL_PROVIDER_INTEGRATION.md` |
-| 5 | Edge integration | A new service (§1.3), exercised against the simulator |
+| 5 | Edge integration | **Done** — migration 0125, the isolated `drone-edge` service (§1.3) and its sync API, exercised against the simulator. The recording columns 0079 designed for edge sync are used as designed. Offline, a gateway finishes flights in the air but starts none; see `DRONE_PATROL_EDGE.md`, "Decision for the owner" |
 | 6 | AI integration | Starts by verifying which workers produce usable detections on a moving camera (§1.2) |
 | 7 | CCTV correlation | Distance-based "nearby" first; "covering" only if D2 is approved |
 | 8 | Incident integration | Through the existing tables and dispatch endpoint |
@@ -376,8 +376,7 @@ The prompt's 14 phases hold, with these adjustments.
 `drone_event_cameras`. Every one points at existing rows; no existing table gained
 a column.
 
-**Deferred to the phase that needs them:** `drone_sync_receipts` (Phase 5),
-`drone_camera_coverage` (Phase 7, optional), `drone_reports`,
+**Deferred to the phase that needs them:** `drone_camera_coverage` (Phase 7, optional), `drone_reports`,
 `drone_report_recipients` and `drone_report_email_queue` (Phase 11).
 
 ## 16. Risks and technical dependencies

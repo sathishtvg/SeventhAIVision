@@ -78,11 +78,17 @@ than no pause.
 3. **Secrets never travel with config.** Mark credential fields `secret=True` in
    the catalogue: they are encrypted at rest, never returned by the API, and arrive
    in the adapter as `self.secrets`.
-4. **Provider code runs in the drone runner, never in a web request.** For
-   aircraft reached through a site edge gateway, the adapter belongs in the edge
-   service (Phase 5), with the runner relaying commands.
+4. **Provider code runs in the drone runner or a site edge gateway, never in a
+   web request.** For aircraft reached through a gateway, the same adapter runs in
+   the `drone-edge` service at the site; the centre relays commands to it and it
+   reports back (see `DRONE_PATROL_EDGE.md`). Its credentials are installed on the
+   gateway (`DRONE_EDGE_PROVIDER_SECRETS`) — the centre never sends them.
 5. **Label simulated behaviour.** Anything not driven by a real aircraft must say
    so — `simulated: True` in the catalogue.
+6. **`start_mission` must be safe to call twice for one session.** A gateway that
+   crashes between launching and recording the launch calls it again after
+   restarting. Key the vendor's mission on the session id, or ask the aircraft
+   whether it is already flying it.
 
 ## Testing a new provider
 

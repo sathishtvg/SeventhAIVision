@@ -147,6 +147,7 @@ class GatewayCreate(BaseModel):
 class GatewayUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=120)
     is_active: bool | None = None
+    heartbeat_timeout_seconds: int | None = Field(None, ge=10, le=3600)
 
 
 # ── Shared lookups ───────────────────────────────────────────────────────────
@@ -400,6 +401,8 @@ _GATEWAY_SELECT = """
     SELECT g.id, g.site_id, s.name AS site_name, g.name, g.code, g.status, g.last_seen_at,
            g.software_version, g.credential_prefix, g.credential_rotated_at,
            (g.credential_hash IS NOT NULL) AS has_credential,
+           g.last_sync_at, g.buffer_depth, g.oldest_buffered_at, g.storage_free_pct, g.clock_offset_s,
+           g.health, g.heartbeat_timeout_seconds,
            g.is_active, g.created_at, g.updated_at,
            (SELECT count(*) FROM drones d WHERE d.edge_gateway_id = g.id) AS drone_count
       FROM drone_edge_gateways g
@@ -527,12 +530,42 @@ async def delete_gateway(
     gw = await _gateway_or_404(db, gateway_id, allowed)
     if gw["drone_count"]:
         raise HTTPException(409, f"{gw['drone_count']} drone(s) report through this gateway. Move them first.")
+    flying = (await db.execute(text(
+        f"SELECT count(*) FROM drone_patrol_sessions WHERE edge_gateway_id = CAST(:id AS uuid) "
+        f"   AND status IN ({_IN_FLIGHT_SQL})"), {"id": str(gateway_id)})).scalar()
+    if flying:
+        raise HTTPException(409, f"This gateway is flying {flying} mission(s). Let them finish first.")
     await db.execute(text("DELETE FROM drone_edge_gateways WHERE id = CAST(:id AS uuid)"),
                      {"id": str(gateway_id)})
     await audit(db, request, token, "drone.gateway.delete", "drone_edge_gateway", gateway_id,
                 {"code": gw["code"]})
     await db.commit()
     return {"deleted": str(gateway_id)}
+
+
+@router.get("/edge-gateways/{gateway_id}/sync-receipts", dependencies=[_READ])
+async def list_sync_receipts(
+    gateway_id: uuid.UUID, limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What the gateway has sent lately, newest first: how much, how much was
+    new, and every item refused with the reason. Kept for a week."""
+    await _gateway_or_404(db, gateway_id, allowed)
+    rows = (await db.execute(text("""
+        SELECT id, batch_id, received_at, edge_sent_at, clock_offset_s, item_count, accepted,
+               duplicates, rejected, result
+          FROM drone_sync_receipts WHERE gateway_id = CAST(:id AS uuid)
+         ORDER BY received_at DESC LIMIT :n
+    """), {"id": str(gateway_id), "n": limit})).mappings().all()
+    out = []
+    for r in rows:
+        r = dict(r)
+        res = r.pop("result") or {}
+        r["rejections"] = [{"kind": k, **x} for k in ("health", "updates", "commands", "events", "media")
+                           for x in (res.get(k) or {}).get("rejected", [])]
+        out.append(r)
+    return out
 
 
 # ── Drones ───────────────────────────────────────────────────────────────────

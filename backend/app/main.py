@@ -73,6 +73,7 @@ from app.routers import (
     drones,
     drone_planning,
     drone_operations,
+    drone_edge,
     platform_drone_licenses,
     payroll,
     pdpa,
@@ -295,6 +296,7 @@ _TAGS = [
     {"name": "drones",           "description": "Drone fleet: aircraft, providers, edge gateways, health, maintenance, telemetry"},
     {"name": "drone-planning",   "description": "Drone mission planning: security zones, profiles, routes, missions, schedules"},
     {"name": "drone-operations", "description": "Drone patrol sessions and the security events they raise"},
+    {"name": "drone-edge",       "description": "Called by site edge gateways only (X-Gateway-Key): sync, claim, media upload"},
     {"name": "dispatch",         "description": "Task dispatch, SLA tracking, evidence custody chain"},
     {"name": "visitors",         "description": "Visitor management and pre-registration"},
     {"name": "reports",          "description": "PDF report generation and download"},
@@ -358,6 +360,7 @@ app.include_router(virtual_patrol.router)
 app.include_router(drones.router)
 app.include_router(drone_planning.router)
 app.include_router(drone_operations.router)
+app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)
 app.include_router(cameras.router)

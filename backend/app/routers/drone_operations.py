@@ -18,13 +18,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.pagination import paginate
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
@@ -482,3 +485,41 @@ async def mark_false_positive(
         sets=(", false_positive_reason = :reason, resolved_by_user_id = CAST(:by AS uuid), "
               "  resolved_at = now()"),
         extra={"by": token.user_id, "reason": body.reason}, detail={"reason": body.reason})
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Media
+# ═════════════════════════════════════════════════════════════════════════════
+
+@router.get("/drone-media/{media_id}/file", dependencies=[_EVENT_READ])
+async def get_media_file(media_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                         allowed: list[str] | None = Depends(get_allowed_site_ids)):
+    """The file itself, if the centre holds a copy. Footage the recording policy
+    keeps at the site is answered 409 with where it is, not a broken link."""
+    m = (await db.execute(text("""
+        SELECT m.*, COALESCE(e.site_id, s.site_id) AS owner_site_id, g.name AS gateway_name
+          FROM drone_event_media m
+          LEFT JOIN drone_events e ON e.id = m.event_id
+          LEFT JOIN drone_patrol_sessions s ON s.id = m.session_id
+          LEFT JOIN drone_edge_gateways g ON g.id = m.edge_gateway_id
+         WHERE m.id = CAST(:id AS uuid)
+    """), {"id": str(media_id)})).mappings().first()
+    if m is None:
+        raise HTTPException(404, "Drone media not found")
+    assert_site_visible(allowed, m["owner_site_id"], "Drone media")
+    if m["storage_location"] == "local":
+        where = m["gateway_name"] or "the site's edge gateway"
+        state = {"pending": "An upload has been requested.", "failed": "Its last upload failed; it will be retried.",
+                 "uploading": "It is being uploaded."}.get(m["sync_state"],
+                                                          "The recording policy keeps it at the site.")
+        raise HTTPException(409, f"This file is held at {where} and has not been uploaded. {state}")
+    image = m["media_kind"] == "SNAPSHOT"
+    if settings.STORAGE_BACKEND == "s3":
+        from app.core.object_store import presign_url
+        return RedirectResponse(await presign_url(m["storage_path"], settings.S3_PRESIGN_TTL_SECONDS), 307)
+    root = Path(settings.EVIDENCE_ROOT).resolve()
+    path = (root / m["storage_path"]).resolve()
+    if root not in path.parents or not path.is_file():
+        raise HTTPException(404, "The file is not in central storage.")
+    return FileResponse(str(path), media_type="image/jpeg" if image else "video/mp4")
+
