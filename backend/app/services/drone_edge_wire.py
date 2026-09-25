@@ -150,6 +150,19 @@ class EventIn(_Strict):
     waypoint_sequence: int | None = Field(None, ge=0, le=100_000)
     observed_seconds: float | None = Field(None, ge=0, le=99999)
     detection_ref: uuid.UUID | None = None
+    #: What was seen, where the model says: a plate, a weapon class, a face's
+    #: watchlist entry. Same meaning as a central detection's.
+    label: str | None = Field(None, max_length=80)
+    #: The edge AI's own watchlist verdict, if it has one.
+    watchlist: Literal["allow", "block"] | None = None
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("attributes")
+    @classmethod
+    def _small_attributes(cls, v: dict) -> dict:
+        if len(json.dumps(v, default=str)) > 8 * 1024:
+            raise ValueError("attributes are larger than 8 KB")
+        return v
 
 
 class MediaIn(_Strict):

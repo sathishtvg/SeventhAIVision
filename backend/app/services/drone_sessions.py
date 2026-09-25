@@ -64,6 +64,8 @@ class MissionBundle:
     profile: dict | None
     rules: list[dict]
     zones: list[dict]
+    camera: dict | None = None
+    camera_image_zones: dict = field(default_factory=dict)
 
 
 # ── Loading ──────────────────────────────────────────────────────────────────
@@ -104,9 +106,18 @@ async def load_bundle(db: AsyncSession, mission_id) -> MissionBundle | None:
     zones = [dict(z) for z in (await one(
         "SELECT * FROM drone_security_zones WHERE site_id = :id AND is_active ORDER BY name",
         {"id": m["site_id"]})).mappings().all()]
+    camera, image_zones = None, {}
+    if drone and drone["camera_id"]:
+        camera = (await one("SELECT id, name, ai_modules_enabled, is_active FROM cameras WHERE id = :id",
+                            {"id": drone["camera_id"]})).mappings().first()
+        if camera is not None:
+            image_zones = dict((await one("""
+                SELECT (SELECT count(*) FROM restricted_zones WHERE camera_id = :id AND is_active) AS restricted,
+                       (SELECT count(*) FROM crowd_zones WHERE camera_id = :id AND is_active) AS crowd
+            """, {"id": camera["id"]})).mappings().first())
     as_dict = lambda r: dict(r) if r is not None else None  # noqa: E731
     return MissionBundle(m, as_dict(site), as_dict(drone), as_dict(provider), as_dict(gateway),
-                         as_dict(route), waypoints, as_dict(profile), rules, zones)
+                         as_dict(route), waypoints, as_dict(profile), rules, zones, as_dict(camera), image_zones)
 
 
 def plan_of(b: MissionBundle) -> tuple[fp.MissionPlan | None, fp.Estimate | None]:
@@ -134,6 +145,9 @@ async def preflight(db: AsyncSession, b: MissionBundle, now: datetime,
         provider_capabilities=frozenset(c.value for c in capabilities_of((b.provider or {}).get("provider_key"))),
         gateway=b.gateway, route=b.route, waypoint_count=len(b.waypoints), outside_site=outside,
         profile=b.profile, drone_in_flight=bool(in_flight), estimate=est,
+        ai_checked=True, camera=b.camera, camera_image_zones=b.camera_image_zones,
+        profile_modules=([r["module_type"] for r in b.rules if r.get("is_enabled", True)]
+                         if b.mission.get("security_profile_id") else None),
     ))
 
 

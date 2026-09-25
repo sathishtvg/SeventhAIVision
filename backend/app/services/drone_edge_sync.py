@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.drone_module import entitlement_problem, load_entitlement
 from app.services import drone_flight_plan as fp
+from app.services import drone_ai_pipeline as pipeline
 from app.services import drone_sessions as ds
 from app.services import recording_policy
 from app.services.drone_edge_wire import SyncBatch, parse_key, to_flight_update  # noqa: F401  (parse_key re-exported)
@@ -128,8 +129,13 @@ class _Duplicate(Exception):
     """An item already applied. The gateway drops it."""
 
 
+class _Ignored(Exception):
+    """Received and judged not worth recording — a sighting the flight's
+    security profile does not look for. Not an error; the reason is returned."""
+
+
 def _blank() -> dict:
-    return {"accepted": 0, "duplicates": 0, "rejected": []}
+    return {"accepted": 0, "duplicates": 0, "rejected": [], "ignored": []}
 
 
 async def _item(db: AsyncSession, out: ds.Announcements, tally: dict, ref: dict, fn) -> None:
@@ -143,6 +149,8 @@ async def _item(db: AsyncSession, out: ds.Announcements, tally: dict, ref: dict,
         out.extend(mine)
     except _Duplicate:
         tally["duplicates"] += 1
+    except _Ignored as exc:
+        tally.setdefault("ignored", []).append({**ref, "reason": str(exc)})
     except _Rejected as exc:
         tally["rejected"].append({**ref, "reason": str(exc)})
     except (IntegrityError, DataError) as exc:
@@ -176,7 +184,7 @@ async def process_batch(db: AsyncSession, gw: dict, batch: SyncBatch, now: datet
                     lambda o, c=c: _apply_command(db, gw, c, o))
     for e in batch.events:
         await _item(db, out, result["events"], {"client_ref": str(e.client_ref)},
-                    lambda o, e=e: _apply_event(db, gw, e, o))
+                    lambda o, e=e: _apply_event(db, gw, e, o, now))
     for m in batch.media:
         await _item(db, out, result["media"], {"client_ref": str(m.client_ref)},
                     lambda o, m=m: _apply_media(db, gw, m, o, result["media_upload_requested"]))
@@ -317,43 +325,41 @@ async def _owned_drone(db: AsyncSession, gw: dict, drone_id, session_id) -> tupl
     return dict(drone), session
 
 
-async def _apply_event(db: AsyncSession, gw: dict, e, out: ds.Announcements) -> None:
-    drone, session = await _owned_drone(db, gw, e.drone_id, e.session_id)
-    row = (await db.execute(text("""
-        INSERT INTO drone_events
-            (tenant_id, site_id, session_id, drone_id, detection_id, module_type, waypoint_sequence,
-             detected_at, drone_latitude, drone_longitude, drone_altitude_m, location_method,
-             ai_confidence, observed_seconds, client_ref)
-        VALUES (current_setting('app.current_tenant')::uuid, :site, :s, :d, :det, :mod, :wp,
-                :at, :lat, :lng, :alt, 'DRONE_POSITION', :conf, :obs, :ref)
-        ON CONFLICT (client_ref) DO NOTHING
-        RETURNING id
-    """), {"site": (session or drone)["site_id"], "s": e.session_id, "d": e.drone_id, "det": e.detection_ref,
-           "mod": e.module_type, "wp": e.waypoint_sequence, "at": e.detected_at, "lat": e.drone_latitude,
-           "lng": e.drone_longitude, "alt": e.drone_altitude_m, "conf": e.ai_confidence,
-           "obs": e.observed_seconds, "ref": e.client_ref})).first()
-    if row is None:
-        mine = (await db.execute(text("SELECT 1 FROM drone_events WHERE client_ref = :r"),
-                                 {"r": e.client_ref})).first()
-        if mine:
-            raise _Duplicate()
-        raise _Rejected("That client_ref is already used by another record.")
-    if e.session_id is not None:
-        await db.execute(text("UPDATE drone_patrol_sessions SET event_count = event_count + 1, "
-                              "updated_at = now() WHERE id = :s"), {"s": e.session_id})
-    out.add("drone_event_created", {"event_id": str(row[0]), "session_id": str(e.session_id) if e.session_id else None,
-                                    "drone_id": str(e.drone_id), "module_type": e.module_type,
-                                    "detected_at": e.detected_at.isoformat(), "source": "edge"})
+async def _apply_event(db: AsyncSession, gw: dict, e, out: ds.Announcements, now: datetime) -> None:
+    """A sighting from the site goes through the same context, risk and
+    verification as a central detection (drone_ai_pipeline)."""
+    await _owned_drone(db, gw, e.drone_id, e.session_id)
+    if (await db.execute(text("SELECT 1 FROM drone_events WHERE client_ref = :r"), {"r": e.client_ref})).first():
+        raise _Duplicate()           # recorded before phase 6, as its own event
+    attrs = dict(e.attributes or {})
+    if e.detection_ref is not None:
+        attrs["edge_detection_ref"] = str(e.detection_ref)
+    if e.observed_seconds is not None:
+        attrs["edge_observed_seconds"] = e.observed_seconds
+    outcome, _, why = await pipeline.observe(db, pipeline.ObservationIn(
+        source="EDGE", module_type=e.module_type, detected_at=e.detected_at, drone_id=str(e.drone_id),
+        confidence=e.ai_confidence, label=e.label, watchlist=e.watchlist, attributes=attrs,
+        session_id=str(e.session_id) if e.session_id else None, client_ref=str(e.client_ref),
+        latitude=e.drone_latitude, longitude=e.drone_longitude, altitude_m=e.drone_altitude_m,
+        waypoint_sequence=e.waypoint_sequence), now, out)
+    if outcome == "duplicate":
+        raise _Duplicate()
+    if outcome == "ignored":
+        raise _Ignored(f"Not recorded: {why}.")
 
 
 async def _apply_media(db: AsyncSession, gw: dict, m, out: ds.Announcements, wanted_refs: list) -> None:
     event_id, session_id, drone_id = None, m.session_id, None
     if m.event_client_ref is not None:
+        # The gateway names the sighting; the sighting belongs to an event.
         ev = (await db.execute(text(
-            "SELECT id, session_id, drone_id FROM drone_events WHERE client_ref = :r"),
+            "SELECT e.id, e.session_id, e.drone_id FROM drone_observations o "
+            "  JOIN drone_events e ON e.id = o.event_id WHERE o.client_ref = :r "
+            "UNION ALL SELECT id, session_id, drone_id FROM drone_events WHERE client_ref = :r LIMIT 1"),
             {"r": m.event_client_ref})).mappings().first()
         if ev is None:
-            raise _Rejected("The event this file belongs to has not been received.")
+            raise _Rejected("No event was recorded for the sighting this file belongs to "
+                            "(not received yet, or not recorded — see the events' answer).")
         event_id, drone_id = ev["id"], ev["drone_id"]
         session_id = session_id or ev["session_id"]
     if drone_id is None and session_id is not None:

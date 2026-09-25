@@ -1,11 +1,11 @@
 # Drone Patrol — API
 
-**As of:** 2026-09-25 · **Built:** Phases 3–5 — 74 operations across fleet, planning,
-flying, operations, the site edge gateway and platform licensing. The endpoint
+**As of:** 2026-09-25 · **Built:** Phases 3–6 — 75 operations across fleet, planning,
+flying, operations, AI, the site edge gateway and platform licensing. The endpoint
 tables below were extracted from the router source, not written from memory.
 
-**Not yet built:** AI events raised during a flight (Phase 6); report downloads
-(Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
+**Not yet built:** CCTV correlation (Phase 7); incidents from drone events
+(Phase 8); report downloads (Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
 against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 `DRONE_PATROL_EDGE.md`.
 
@@ -183,6 +183,7 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | POST | `/drone-events/{event_id}/resolve` | `drone:event:investigate` | |
 | POST | `/drone-events/{event_id}/false-positive` | `drone:event:investigate` | |
 | GET | `/drone-media/{media_id}/file` | `drone:event:read` | |
+| GET | `/drone-ai/modules` | `drone:read` | |
 
 - **Flight commands** are queued, not carried out in the request: they answer
   **202** with `{command, queued, session_status}` and the drone runner carries
@@ -198,8 +199,17 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 - **Track** returns the flown path for replay, thinned evenly to at most 2,000
   points, always keeping the first and last sample.
 - **Event detail** includes its media (without storage paths — media is served,
-  not exposed), the correlated fixed cameras with distances, and the alert and
-  incident it fed.
+  not exposed), its `observations` (every detection or gateway sighting it rests
+  on, up to 200), the correlated fixed cameras with distances, and the alert and
+  incident it fed. Events are made by the AI pipeline (`DRONE_PATROL_AI.md`):
+  `ai_confidence` is the worker's, `risk_score` / `risk_level` / `risk_factors`
+  the drone's judgement, and `verification_state` is `OBSERVING`, `VERIFIED` or
+  `UNVERIFIED` (never confirmed). `detection_count`, `last_detected_at`,
+  `observed_seconds`, `label` (a plate, a weapon class) and `attributes`
+  (the watchlist verdict, the authorisation found) describe the sighting.
+- **AI modules** lists what each existing AI module can do on a drone's moving
+  camera (`SUPPORTED`, `NEEDS_IMAGE_ZONE`, `UNRELIABLE`, with why), the risk
+  level thresholds and the verification rules.
 - **Event decisions.** An event moves `NEW → ACKNOWLEDGED → INVESTIGATING /
   ESCALATED → RESOLVED`, or to `FALSE_POSITIVE` from any open state. Investigate
   and escalate also acknowledge, if nobody had. A closed event (`RESOLVED`,
@@ -238,6 +248,11 @@ accepted nowhere else. See `DRONE_PATROL_EDGE.md` for the whole protocol.
   resent batch (same `batch_id`) gets its first answer back with
   `duplicate_batch: true`. Bounds: 500 updates, 6,000 samples, 500 events and
   500 files per batch; anything the database would refuse is refused per item.
+  **Events** are sightings: they go through the same AI pipeline as central
+  detections, may carry `label`, `watchlist` (`allow` / `block`) and
+  `attributes`, and are grouped into events — so a file names its sighting by the
+  sighting's `client_ref`. A sighting the flight's profile does not look for is
+  answered under `ignored`, with the reason; it is not an error.
   A malformed batch as a whole answers **422**. Never licence-gated.
 - **Claim** re-runs pre-flight against the session's frozen route with the
   gateway's latest health. Passed: **200**, the session is `LAUNCHING`, and the

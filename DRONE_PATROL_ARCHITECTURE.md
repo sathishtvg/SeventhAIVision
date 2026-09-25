@@ -3,10 +3,11 @@
 **As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`);
 Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
 pre-flight, the command queue and the drone runner (migration `0124`); and
-Phase 5, the site edge gateway (migration `0125`). 74 operations, described in
+Phase 5, the site edge gateway (migration `0125`); and Phase 6, detection to
+security event (migration `0126`). 75 operations, described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
-gateway in `DRONE_PATROL_EDGE.md`, adding a real aircraft in
-`DRONE_PATROL_PROVIDER_INTEGRATION.md`.
+gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
+aircraft in `DRONE_PATROL_PROVIDER_INTEGRATION.md`.
 This document describes what exists. Anything not yet built is listed at the end
 and is not described as if it were. The analysis behind the design is
 `DRONE_PATROL_GAP_ANALYSIS.md`.
@@ -93,13 +94,14 @@ marked `PROJECTED`.
 | A command pressed twice, or by two operators | `uq_dcmd_one_pending (session_id, command)` (partial, pending) |
 | A gateway resending a flight update | `edge_seq` on the session: only a higher update number is applied |
 | A gateway resending a whole batch | `uq_dsr_batch (gateway_id, batch_id)`: the stored answer is replayed |
+| Reading a flight's detections again, or a sighting resent | `uq_dobs_detection`, `uq_dobs_client_ref` on `drone_observations` |
 | Two runners, or a runner restart | Sessions and commands claimed `FOR UPDATE SKIP LOCKED`; flight state lives on the session |
 | Edge resending a session, event or media file | `client_ref` unique on each |
 | Edge resending a telemetry sample | `(drone_id, recorded_at)` unique |
 
 ## Tenant isolation
 
-All 20 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
+All 21 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
 other table in the system:
 `tenant_id = current_setting('app.current_tenant', true)::uuid`. On the
 partitioned telemetry table the parent's policy governs every partition.
@@ -242,9 +244,31 @@ Drone-owned only.
 The two changes outside the drone module are registration again: the edge router
 in `main.py` (3 lines) and the opt-in `drone-edge` compose service with its volume.
 
+## AI: detection to security event (Phase 6)
+
+The AI workers are not changed: a drone's camera is a camera, and its detections
+are ordinary `detections` rows. The drone runner's AI job reads each flying
+drone's new detections (with the module's own row — plate, watchlist verdict —
+and the worker's own alert, if any), and `drone_ai_pipeline.observe()` takes each
+through context, grouping, risk, verification and alerting. A sighting from a
+site edge gateway enters the same function. The rules themselves are pure
+(`drone_ai.py`).
+
+Every detection that feeds an event is kept in `drone_observations`, unique on
+`detection_id` and on the gateway's `client_ref`, so re-reading is harmless and
+an event shows what it rests on. Alerts go into the existing `alerts` table as
+`drone.<module>`; a worker's alert that is already as serious is linked instead,
+never repeated. The workers still alert on their own — a decision for the owner,
+in `DRONE_PATROL_AI.md`.
+
+**Migration `0126`** adds `drone_observations`, grouping and verification columns
+on `drone_events` (`label`, `last_detected_at`, `detection_count`, `attributes`,
+`verified_at`, `risk_evaluated_at`, `source`) and `drone_patrol_sessions.
+ai_watermark_at`. Drone-owned only.
+
 ## Not built yet
 
-AI context and risk (6), CCTV correlation (7), incident integration (8), screens (9), mobile
+CCTV correlation (7), incident integration (8), screens (9), mobile
 (10), reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.

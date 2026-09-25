@@ -1,7 +1,7 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** Phases 1–5 complete (analysis, data model, API, flying on the simulator, site edge gateway). Decisions D1–D7 approved 2026-09-24.
+**Status:** Phases 1–6 complete (analysis, data model, API, flying on the simulator, site edge gateway, AI to security event). Decisions D1–D7 approved 2026-09-24.
 No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
@@ -359,7 +359,7 @@ The prompt's 14 phases hold, with these adjustments.
 | 3 | Backend APIs | **Done** — 61 operations and the drone-only licence gate (§1.4); see `DRONE_PATROL_API.md` |
 | 4 | Provider abstraction and simulator | **Done** — migration 0124, the drone runner, pre-flight, the command queue; capability flags per adapter, the simulator the only one. See `DRONE_PATROL_OPERATIONS.md` and `DRONE_PATROL_PROVIDER_INTEGRATION.md` |
 | 5 | Edge integration | **Done** — migration 0125, the isolated `drone-edge` service (§1.3) and its sync API, exercised against the simulator. The recording columns 0079 designed for edge sync are used as designed. Offline, a gateway finishes flights in the air but starts none; see `DRONE_PATROL_EDGE.md`, "Decision for the owner" |
-| 6 | AI integration | Starts by verifying which workers produce usable detections on a moving camera (§1.2) |
+| 6 | AI integration | **Done** — migration 0126 and the context and risk engine; no worker changed. §1.2's open question answered by reading every worker: six work frame by frame, intrusion and crowd need an image zone (a full-frame zone makes intrusion the drone's person detector), behaviour, abandoned and tampering are unreliable on a moving camera. Workers still alert on their own — a decision for the owner in `DRONE_PATROL_AI.md` |
 | 7 | CCTV correlation | Distance-based "nearby" first; "covering" only if D2 is approved |
 | 8 | Incident integration | Through the existing tables and dispatch endpoint |
 | 9 | Frontend | Needs a map-drawing capability (§7) |

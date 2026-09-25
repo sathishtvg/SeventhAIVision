@@ -206,8 +206,10 @@ able to cancel. Not built until you choose it.
 ## Not built yet
 
 - Uploading a `manual`-policy file on request (with the media screens, phase 9).
-- Edge AI (phase 6) — the gateway already takes events and files through
-  `report_event` / `record_media`; nothing produces them yet.
+- Edge AI — the gateway takes sightings and files through `report_event` /
+  `record_media`, and from Phase 6 every sighting goes through the same context,
+  risk and verification as a central detection (`DRONE_PATROL_AI.md`); nothing at
+  the site produces sightings yet.
 - Event clip cutting from a continuous local recording — it needs a provider that
   records, which the simulator does not.
 - Anything on real site hardware.
