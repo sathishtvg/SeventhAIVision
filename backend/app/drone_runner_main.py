@@ -27,7 +27,7 @@ from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.services import drone_runner
+from app.services import drone_platform_health, drone_runner
 
 logger = logging.getLogger("drone_runner")
 
@@ -53,13 +53,26 @@ def _worth_logging(name: str, r: dict) -> bool:
     return bool(r.get("ready") or r.get("blocked") or r.get("missed"))
 
 
-async def _guarded(name: str, coro) -> None:
+async def _guarded(name: str, coro) -> bool:
+    """Run one job; a failure is logged and costs this pass only. Says whether
+    it ran clean, which is what the heartbeat reports."""
     try:
         result = await coro
         if isinstance(result, dict) and _worth_logging(name, result):
             logger.info("%s: %s", name, result)
+        return True
     except Exception:
         logger.exception("%s failed", name)
+        return False
+
+
+async def _beat(redis, tick_ok: bool) -> None:
+    """Tell the platform console the runner is alive. Never worth a flight: a
+    Redis that will not take the key is logged once a pass and nothing more."""
+    try:
+        await drone_platform_health.write_heartbeat(redis, tick_ok)
+    except Exception as exc:
+        logger.warning("drone runner heartbeat not written: %s", type(exc).__name__)
 
 
 async def main() -> None:
@@ -87,7 +100,8 @@ async def main() -> None:
             if now - last_schedule >= SCHEDULE_SECONDS:
                 await _guarded("schedule", drone_runner.run_schedule_tick(AsyncSessionLocal, pub))
                 last_schedule = now
-            await _guarded("tick", drone_runner.run_tick(AsyncSessionLocal, pub))
+            tick_ok = await _guarded("tick", drone_runner.run_tick(AsyncSessionLocal, pub))
+            await _beat(redis, tick_ok)
             if now - last_ai >= AI_SECONDS:
                 await _guarded("ai", drone_runner.run_ai_tick(AsyncSessionLocal, pub))
                 last_ai = now

@@ -576,7 +576,9 @@ export async function blobApiError(err: unknown): Promise<string> {
 
 /** A readable message from an API error: the backend's own reason when it gave one. */
 export function apiError(err: unknown): string {
-  const e = err as { response?: { data?: { detail?: unknown } }; message?: string }
+  const e = err as { response?: { status?: number; data?: { detail?: unknown } }; message?: string }
+  // The rate limiter answers in its own shape, with no `detail` to show.
+  if (e?.response?.status === 429) return 'Too many requests in a short time. Wait a minute and try again.'
   const d = e?.response?.data?.detail
   if (typeof d === 'string') return d
   if (Array.isArray(d)) return d.map((x: { msg?: string }) => x.msg ?? String(x)).join('; ')

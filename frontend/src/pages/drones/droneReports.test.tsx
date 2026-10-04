@@ -201,4 +201,16 @@ describe("a flight's report", () => {
     expect(await screen.findByText('LIVE')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Report PDF' })).not.toBeInTheDocument()
   })
+
+  it('says to wait when the server limits how many reports one person takes', async () => {
+    // The limiter's refusal has no `detail`, and on a download it arrives as a Blob.
+    vi.mocked(api.downloadSessionReport).mockRejectedValue({
+      response: { status: 429, data: new Blob(['{"error":"Rate limit exceeded: 30 per 1 minute"}']) },
+      message: 'Request failed with status code 429',
+    })
+    renderAt('/drone-patrols/p1', '/drone-patrols/:id', <DronePatrol />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Report PDF' }))
+    expect(await screen.findByText(/Wait a minute and try again/)).toBeInTheDocument()
+    expect(screen.queryByText(/status code 429/)).not.toBeInTheDocument()
+  })
 })

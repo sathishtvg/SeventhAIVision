@@ -11,12 +11,17 @@ flight ended is the proof that a report existed then (its checksum is listed
 here); the download is always built fresh, so an officer's later action or a
 late upload from the site is in it.
 
+TAKING ONE OUT IS RECORDED AND LIMITED. Each PDF or workbook handed over is in
+the audit log with the checksum of the exact bytes, and one person may take
+thirty a minute across the three exports (services/drone_access.py).
+
 NOT LICENCE-GATED TO READ OR TO STOP. History stays readable after a licence
 lapses, and a recipient can always be paused or removed. Only adding one needs
 the module.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import uuid
 from datetime import date, datetime, timezone
@@ -29,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.core.pagination import paginate
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.drone_module import require_drone_module
@@ -37,7 +43,8 @@ from app.dependencies.sites import get_allowed_site_ids, is_site_allowed
 from app.dependencies.tenant import get_db_with_tenant
 from app.services import drone_report_delivery as delivery
 from app.services import drone_reports as reports
-from app.services.drone_access import assert_site_visible, audit, scope_sql, site_or_404, unique_violation
+from app.services.drone_access import (EXPORT_LIMIT, EXPORT_SCOPE, assert_site_visible, audit, caller_key,
+                                       scope_sql, site_or_404, unique_violation)
 
 router = APIRouter(prefix="/api/v1", tags=["drone-reports"])
 
@@ -50,6 +57,16 @@ Frequency = Literal["IMMEDIATE", "DAILY", "WEEKLY", "MONTHLY"]
 #: The longest period one summary may cover.
 MAX_SUMMARY_DAYS = 92
 MAX_RECIPIENTS = 200
+
+
+async def _exported(db: AsyncSession, request: Request, token: TokenPayload, resource_type: str,
+                    resource_id, detail: dict, payload: bytes) -> None:
+    """A report leaving the system is in the audit log - who took it, which one,
+    in what format, and the SHA-256 of the exact bytes they were given, so a
+    document produced later can be matched to the download that made it."""
+    await audit(db, request, token, "drone.report.export", resource_type, resource_id,
+                {**detail, "size_bytes": len(payload), "checksum_sha256": hashlib.sha256(payload).hexdigest()})
+    await db.commit()
 
 
 def _download(payload: bytes, media_type: str, filename: str) -> StreamingResponse:
@@ -89,18 +106,28 @@ async def session_report(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
 
 @router.get("/drone-patrols/{session_id}/report/pdf", dependencies=[_READ])
-async def session_report_pdf(session_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
-                             allowed: list[str] | None = Depends(get_allowed_site_ids)):
+@limiter.shared_limit(EXPORT_LIMIT, scope=EXPORT_SCOPE, key_func=caller_key)
+async def session_report_pdf(session_id: uuid.UUID, request: Request,
+                             db: AsyncSession = Depends(get_db_with_tenant),
+                             allowed: list[str] | None = Depends(get_allowed_site_ids),
+                             token: TokenPayload = Depends(get_token_payload)):
     session = await _session_or_404(db, session_id, allowed)
     pdf = await reports.build_pdf(db, session_id)
+    await _exported(db, request, token, "drone_patrol_session", session_id,
+                    {"format": "pdf", "session_number": session["session_number"]}, pdf)
     return _download(pdf, "application/pdf", f"drone-patrol-{session['session_number']}.pdf")
 
 
 @router.get("/drone-patrols/{session_id}/report/excel", dependencies=[_EXPORT])
-async def session_report_excel(session_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
-                               allowed: list[str] | None = Depends(get_allowed_site_ids)):
+@limiter.shared_limit(EXPORT_LIMIT, scope=EXPORT_SCOPE, key_func=caller_key)
+async def session_report_excel(session_id: uuid.UUID, request: Request,
+                               db: AsyncSession = Depends(get_db_with_tenant),
+                               allowed: list[str] | None = Depends(get_allowed_site_ids),
+                               token: TokenPayload = Depends(get_token_payload)):
     session = await _session_or_404(db, session_id, allowed)
     xlsx = await reports.build_xlsx(db, session_id)
+    await _exported(db, request, token, "drone_patrol_session", session_id,
+                    {"format": "xlsx", "session_number": session["session_number"]}, xlsx)
     return _download(xlsx, XLSX, f"drone-patrol-{session['session_number']}.xlsx")
 
 
@@ -146,14 +173,22 @@ async def period_summary(
 
 
 @router.get("/drone-reports/summary/excel", dependencies=[_EXPORT])
+@limiter.shared_limit(EXPORT_LIMIT, scope=EXPORT_SCOPE, key_func=caller_key)
 async def period_summary_excel(
+    request: Request,
     start: date = Query(..., alias="from"), end: date = Query(..., alias="to"),
     site_id: uuid.UUID | None = Query(None), mission_id: uuid.UUID | None = Query(None),
     db: AsyncSession = Depends(get_db_with_tenant),
     allowed: list[str] | None = Depends(get_allowed_site_ids),
+    token: TokenPayload = Depends(get_token_payload),
 ):
     data, label = await _period(db, allowed, start, end, site_id, mission_id)
     xlsx = reports.render_period_xlsx(data, scope_label=label)
+    await _exported(db, request, token, "drone_report_summary", None,
+                    {"format": "xlsx", "scope": label, "from": start.isoformat(), "to": end.isoformat(),
+                     "site_id": str(site_id) if site_id else None,
+                     "mission_id": str(mission_id) if mission_id else None,
+                     "flights": len(data["flights"])}, xlsx)
     return _download(xlsx, XLSX, f"drone-patrol-summary-{start:%Y%m%d}-{end:%Y%m%d}.xlsx")
 
 

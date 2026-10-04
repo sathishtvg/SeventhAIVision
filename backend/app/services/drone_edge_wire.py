@@ -179,6 +179,13 @@ class MediaIn(_Strict):
     duration_seconds: float | None = Field(None, ge=0, le=99999)
     telemetry_snapshot: dict[str, Any] | None = None
 
+    @field_validator("telemetry_snapshot")
+    @classmethod
+    def _small_snapshot(cls, v: dict | None) -> dict | None:
+        if v is not None and len(json.dumps(v, default=str)) > 8 * 1024:
+            raise ValueError("telemetry_snapshot is larger than 8 KB")
+        return v
+
     @model_validator(mode="after")
     def _owned(self) -> "MediaIn":
         if self.event_client_ref is None and self.session_id is None:

@@ -21,8 +21,9 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | IDs | UUIDs. A malformed ID answers **422** before touching the database |
 | Lists | `GET /drones`, `/drone-missions`, `/drone-patrols` and `/drone-events` are paginated (`limit` ≤ 200, `offset`) and return `{items, total, limit, offset, has_more}`. Other lists return a plain array |
 | Updates | `PUT` bodies are partial: a field sent as `null` is cleared, a field left out is left alone. Names, codes and required settings cannot be cleared |
-| Errors | `403` permission or licence · `404` not found or not visible · `409` conflict (duplicate name or code, in use, already decided) · `422` invalid input, with every problem stated |
-| Audit | Every change and every event decision is written to the tenant's hash-chained audit log with the user and address |
+| Errors | `403` permission or licence · `404` not found or not visible · `409` conflict (duplicate name or code, in use, already decided) · `422` invalid input, with every problem stated · `429` too many report exports in a minute (body `{"error": …}`, not `detail`) |
+| Audit | Every change and every event decision is written to the tenant's hash-chained audit log with the user and address. So is everything taken out: each file of evidence handed over (`drone.media.access`) and each report exported (`drone.report.export`, with the SHA-256 of the document) |
+| Unexpected failures | A bare `500` with no detail. The failure is recorded for the platform owner |
 
 ## Fleet — `/api/v1/drones`
 
@@ -316,6 +317,12 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   pictures. All times are the organisation's own zone, labelled.
 - **Downloads are rendered on request**, so an officer's later action is in them.
   Site scoping applies: a flight at a site the caller may not see answers 404.
+- **Each export is recorded and limited.** The PDF, the workbook and the period
+  workbook each write `drone.report.export` to the audit log, with the format and
+  the SHA-256 of the exact bytes handed over. One person may take 30 a minute
+  across the three; the next answers **429** before anything is rendered, and
+  takes nothing. Reading the JSON report is neither recorded as an export nor
+  counted.
 - **Summary** takes `from` and `to` (whole days in the organisation's zone, at
   most 92) and optionally `site_id` or `mission_id`. Someone restricted to certain
   sites gets those sites' totals.
@@ -417,7 +424,11 @@ accepted nowhere else. See `DRONE_PATROL_EDGE.md` for the whole protocol.
   its kind allows (JPEG/PNG snapshot, MP4 clip — else **415**), and the centre
   asked for it (else **409**). A stored file sent again is a no-op. Stored in the
   evidence store under `drone/<tenant>/<date>/`.
-- Rate limits per address: sync 600/min, claim 120/min, upload 300/min.
+- A file's `telemetry_snapshot` is a few readings: at most 8 KB, or the batch is
+  refused (**422**).
+- Rate limits, per address and URL, counted once the credential is accepted: sync
+  600/min, claim 120/min per session, upload 300/min per file. A wrong
+  credential is refused (401) before it is counted.
 
 ## Platform — licensing (Super Admin)
 
@@ -435,3 +446,17 @@ change is written to the **customer's** audit log.
 
 The entitlement lives in `drone_module_licenses`, not `tenant_module_licenses`;
 see `DRONE_PATROL_GAP_ANALYSIS.md` §19.1 for why.
+
+### Health
+
+The existing `GET /platform/health` (Super Admin) carries one more service row:
+
+```json
+{"service": "drone-patrol", "status": "ok", "detail": "runner alive; 2 flights in the air, 3 organisations licensed",
+ "licensed": 3, "live": 2, "commands_overdue": 0, "emails_overdue": 0, "heartbeat_age_seconds": 1}
+```
+
+`status` is `ok`, `degraded` (alive but its last pass failed, commands waiting
+over a minute, or report emails over 15 minutes late), `down` (no heartbeat for
+60 s while there is work) or `unknown` (could not be asked). Counts only — no
+organisation is named. With nobody licensed and nothing owed it is `ok`.

@@ -106,10 +106,16 @@ marked `PROJECTED`.
 
 ## Tenant isolation
 
-All 23 tables have `FORCE ROW LEVEL SECURITY` with the same policy text as every
-other table in the system:
-`tenant_id = current_setting('app.current_tenant', true)::uuid`. On the
-partitioned telemetry table the parent's policy governs every partition.
+Every drone table (26) has `FORCE ROW LEVEL SECURITY` with the same policy text
+as every other table in the system:
+`tenant_id = current_setting('app.current_tenant', true)::uuid`.
+
+Postgres does not pass a table's row security to its partitions, and a partition
+can be selected from by name — so each telemetry partition carries the policy
+itself. The platform's `apply_partition_rls()` puts it there: at migration (0130)
+for the partitions that exist, and daily from the scheduler for the ones
+pg_partman makes later. Until Phase 13 the drone migrations did not call it, and
+the partitions they created were open by name until the scheduler's next run.
 
 Deletion never blocks: every tenant foreign key cascades and every other foreign
 key sets NULL.
@@ -438,8 +444,46 @@ rather than a second axis, the risk map on the site map — and no chart library
 Registration: the router and its tag in `main.py`; a route, a tab and a sidebar
 entry in the web app.
 
+## Security review (Phase 13)
+
+The finished module, checked against the platform's own rules. Each property is
+pinned by a test that walks the application's route table rather than a list
+kept in the test, so an operation added later is covered — or fails — without
+anyone remembering it (`tests/test_drone_security.py`).
+
+| Property | How it holds | What the review changed |
+|---|---|---|
+| Tenant isolation | Row level security on every table and every partition; each request is scoped to the caller's tenant | Telemetry partitions had no policy of their own — fixed in migration 0130 |
+| Permissions | All 100 operations require a permission (97) or a gateway credential (3); nothing that changes data sits behind a read permission; a user with no drone permission is refused by every one | Nothing — verified |
+| Not found, not forbidden | Another tenant's ids answer 404 from all 66 id-addressed operations; another site's answer 404 to a supervisor of a different site; nothing of theirs is changed by the attempt | Nothing — verified |
+| Secrets | Provider secrets are write-only and encrypted; a gateway credential is stored as a hash; a camera's stream address never leaves the server | Nothing — verified across every GET and the gateway's sync answer |
+| Audit | Every operation that changes something writes to the hash-chained audit log | Evidence handed over (`drone.media.access`) and reports taken out (`drone.report.export`, with the document's SHA-256) left no trace — now they do |
+| Gateway sync | Credential compared in constant time with one identical refusal; every item tied to the gateway that sent it; a file accepted only if it is exactly the file described | A file's `telemetry_snapshot` had no size bound — now 8 KB |
+| Errors | An unexpected failure answers a bare 500 and is recorded for the platform owner | A failed report email stored the raw exception text where the organisation could read it — now only a mail server's own refusal is shown |
+| Rate limits | Gateway endpoints per address; report exports per person | Exports were unlimited — now 30 a minute per person across the three |
+| Platform health | The runner writes a heartbeat; the console counts across tenants through `platform_drone_health()` | The platform owner's console had no drone row — now it has one |
+| Performance | Period queries walk time indexes; lists page | Two indexes added from measurement; a year of a large fleet timed (gap analysis §24.7) |
+
+**The health row** (`services/drone_platform_health.py`) asks two things of two
+sources, because neither can answer both. Redis says whether the runner is alive
+— it writes `drone_runner:heartbeat` on every pass, with a 60-second expiry, so a
+stopped runner cannot leave a stale "alive" behind. The database says whether it
+is keeping up — flights in the air, commands owed for over a minute, report
+emails more than fifteen minutes late, counted across all tenants by a
+`SECURITY DEFINER` function that returns counts only. An installation where
+nobody is licensed and nothing is owed reads `ok` without a runner.
+
+**The export limit** is counted per signed-in person, not per address: an office
+behind one address is many people. It is counted inside the operation, after the
+permission check has verified the token.
+
+Two findings belong to the platform rather than the module and were reported,
+not changed: the scheduler's nightly partition maintenance is failing, and the
+platform-wide default rate limit is not being applied (gap analysis §24.6).
+
 ## Not built yet
 
-Hardening (13) and final validation (14) are still to come. No real drone, SDK or
-edge hardware is connected, and none will be claimed until it is: every flight so
-far is the simulator's.
+Final validation (14) is still to come. No real drone, SDK or edge hardware is
+connected, and none will be claimed until it is: every flight so far is the
+simulator's. How long drone footage and telemetry are kept is an open decision
+(gap analysis §24.8).

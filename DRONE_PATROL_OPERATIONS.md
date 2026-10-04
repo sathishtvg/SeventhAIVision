@@ -35,6 +35,11 @@ It is safe to run more than one: sessions and commands are locked with
 `SKIP LOCKED`, so two runners never fly the same session. It is safe to restart:
 flight state lives on the session, and a flight resumes where it was.
 
+After every pass it writes a heartbeat to Redis (`drone_runner:heartbeat`, expiring
+after 60 seconds) saying when, and whether the pass ran clean. That is what the
+platform owner's console reads; a Redis that will not take it is logged and never
+delays a flight.
+
 **Drones behind a site edge gateway are not flown by the runner.** Their gateway
 claims and flies their sessions and collects their commands. The runner only
 watches: an edge session nobody claims within 10 minutes is recorded `MISSED`
@@ -213,10 +218,46 @@ all of them.
 Marking false positives is what keeps all of this honest: an event nobody
 reviewed counts as real.
 
+## What the platform owner sees
+
+The platform console's health panel has a **drone-patrol** row. It answers the
+vendor's question — is the drone service keeping up for everybody? — and nothing
+about any one customer: a site's gateway being offline or a drone losing its link
+is that customer's alert, not this row.
+
+| Status | Meaning | Do |
+|---|---|---|
+| `ok` — "no organisation is licensed for drone patrol" | Nobody uses the module and nothing is owed. A runner is not needed | Nothing |
+| `ok` — "runner alive; N flights in the air…" | Working | Nothing |
+| `degraded` — "its last flight pass failed" | The runner is up but a pass raised an error | Read the runner's log; the failure is there with its traceback |
+| `degraded` — "N flight commands waiting over a minute" | The runner is not getting to commands it owes — a stuck provider call, or too much work for one runner | Read the log; a second runner can be started safely |
+| `degraded` — "N report emails more than 15 minutes late" | The report job is stuck or the mail server is slow | Check the mail server; the Deliveries tab shows each email's reason |
+| `down` — "has not reported for 60 s" | The runner is stopped, or stuck inside one pass | `docker compose ps drone-runner`; start it. Flights behind a site gateway carry on under their gateway |
+| `unknown` | Redis or the database could not be asked | Fix that first; the rows above it will say which |
+
+Unexpected errors in drone operations appear in the console's error list like any
+other, with the request id that is also in the API's log.
+
+## Who took what
+
+Every snapshot or clip handed over, and every report exported, is in the
+organisation's audit log (**Audit Logs** screen, or `GET /api/v1/audit`):
+
+| Action | Resource | Detail |
+|---|---|---|
+| `drone.media.access` | The media file | Kind, event, flight, the file's SHA-256 |
+| `drone.report.export` | The flight, or none for a period summary | Format, size, the document's SHA-256; for a summary its scope and dates |
+
+The checksum of an exported report is of the exact bytes that person was given:
+a document produced later can be matched to the download that made it. Emails are
+not in this list — they are in the Deliveries tab, with who they went to.
+
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |
 |---|---|---|
+| "Too many requests in a short time" on a report download | One person took 30 reports in a minute | Wait a minute. For many flights at once, use the period summary workbook |
+| Platform console shows `drone-patrol` `down` | The runner is not running | See *What the platform owner sees* |
 | Mission `BLOCKED` | A pre-flight check failed | Read `blocked_reason` or `preflight_result`; every failing check is listed. `GET /drone-missions/{id}/preflight` re-checks without creating anything |
 | Drone `COMMUNICATION_LOST` | No heartbeat within `heartbeat_timeout_seconds` | Check the aircraft's power and link. It recovers by itself the next time it answers |
 | Scheduled runs never appear | The runner isn't running, or the tenant's licence has lapsed | `docker compose ps drone-runner`; `GET /drones/entitlement` |

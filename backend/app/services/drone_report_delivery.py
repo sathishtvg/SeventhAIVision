@@ -268,6 +268,28 @@ async def smtp_deliver(recipients: list[str], subject: str, body: str, filename:
     )
 
 
+def delivery_error(exc: BaseException) -> str:
+    """What the organisation is shown when an email did not go.
+
+    A mail server's refusal is theirs to read and act on - a full mailbox, an
+    address that does not exist - so its own words are kept. Anything else is
+    this system's fault, and its text may hold a query, a file path or a host
+    name: that goes to the server log, and the screen is told only what kind of
+    failure it was."""
+    try:
+        from aiosmtplib import SMTPRecipientsRefused, SMTPResponseException
+    except ImportError:  # pragma: no cover - the mail library is always installed
+        SMTPRecipientsRefused = SMTPResponseException = ()  # type: ignore[assignment]
+    if isinstance(exc, SMTPRecipientsRefused):
+        refused = "; ".join(f"{r.recipient}: {r.code} {r.message}" for r in exc.recipients)
+        return f"The mail server refused the recipients: {refused}"[:500]
+    if isinstance(exc, SMTPResponseException):
+        return f"The mail server refused the message: {exc.code} {exc.message}"[:500]
+    if isinstance(exc, (OSError, asyncio.TimeoutError)) or type(exc).__module__.startswith("aiosmtplib"):
+        return "The mail server could not be reached."
+    return f"The report could not be prepared ({type(exc).__name__})."
+
+
 async def process_queue(db: AsyncSession, tenant_id: str, now: datetime, deliver: Deliver | None = None) -> dict:
     """Send what is due for one tenant. `deliver` is injectable so tests build
     the real documents and never touch a mail server.
@@ -320,7 +342,7 @@ async def process_queue(db: AsyncSession, tenant_id: str, now: datetime, deliver
             await db.execute(text("""
                 UPDATE drone_report_email_queue SET status = 'FAILED', last_error = :err, scheduled_at = :next
                  WHERE id = :id
-            """), {"id": row["id"], "err": str(exc)[:500], "next": next_attempt_at(attempts=attempts, now=now)})
+            """), {"id": row["id"], "err": delivery_error(exc), "next": next_attempt_at(attempts=attempts, now=now)})
             await db.commit()
             failed += 1
             logger.warning("drone report email %s failed (attempt %d of %d): %s",
