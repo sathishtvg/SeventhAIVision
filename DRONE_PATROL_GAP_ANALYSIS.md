@@ -362,8 +362,8 @@ The prompt's 14 phases hold, with these adjustments.
 | 6 | AI integration | **Done** — migration 0126 and the context and risk engine; no worker changed. §1.2's open question answered by reading every worker: six work frame by frame, intrusion and crowd need an image zone (a full-frame zone makes intrusion the drone's person detector), behaviour, abandoned and tampering are unreliable on a moving camera. Workers still alert on their own — a decision for the owner in `DRONE_PATROL_AI.md` |
 | 7 | CCTV correlation | **Done** — migration 0127. Nearby by distance; covering from the optional surveyed coverage (D2); corroboration by a matching fixed-camera detection verifies the event; operator view with live and playback paths, no stream addresses |
 | 8 | Incident integration | **Done** — migration 0128. Incidents, notes, status history and dispatch are the platform's own; nearest free guard from existing shift and position data; verify with drone as a checked pause and resume |
-| 9 | Frontend | Needs a map-drawing capability (§7) |
-| 10 | Mobile and desktop | Mobile: alerts, incident, snapshot, clip, acknowledge, escalate. Desktop: nothing separate |
+| 9 | Frontend | **Done** — eight routes in the existing web app; route and zone drawing by a small in-house editor on react-leaflet, no new dependency (§7, §20) |
+| 10 | Mobile and desktop | **Done** — the phone: drone events, snapshot, clip, location, acknowledge, escalate, open incident, dispatch a guard; incident update on the existing screens. Desktop: nothing separate — it is the web build (§21) |
 | 11–14 | Reporting, analytics, hardening, final validation | As in the prompt |
 
 **Built in Phase 2 (migration 0123), 18 tables:** `drone_module_licenses`,
@@ -493,3 +493,42 @@ in `usePermission.ts`'s fallback matrix (the backend's `/me/permissions` remains
 the source). One test added to `Sidebar.test.tsx`. Drone cameras stay visible in
 the fixed-camera screens, per §3; naming them clearly on the fleet screen is the
 recommended practice.
+
+## 21. Addendum — found while building Phase 10
+
+### 21.1 An alert does not say which drone event raised it
+
+The alert list returns no `message_params`, so a client holding a drone alert
+could not reach its event. The drone event list now filters by `alert_id` and
+`incident_id` (the module's own router; no schema change, and the existing
+alerts endpoint is untouched).
+
+### 21.2 The phone has no video player and no map
+
+Expo SDK 51 here ships neither `expo-av` nor a map library, and adding native
+dependencies means a new build of the app. A clip therefore plays in the web
+view the app already uses for live video, and location is the coordinates with a
+hand-off to the phone's own maps app. Both avoid a new dependency; neither has
+been seen on a device (see the test plan).
+
+### 21.3 A worker's own alert on a drone camera has no link on the phone
+
+The link from an alert to its event is offered on alerts the drone module raised
+(`module_type = drone_patrol`). When the pipeline links a worker's alert instead
+of raising its own, that alert opens as an ordinary alert; the event is still in
+More → Drone Events. This is the phone-side face of the open decision on whether
+workers should alert at all on drone cameras (`DRONE_PATROL_AI.md`).
+
+### 21.4 The existing dispatch screen cannot name a guard
+
+`DispatchScreen` has no guard picker and posts an empty `guard_user_id` (its own
+comment says the picker "would come … in a full impl"), so the phone's general
+dispatch cannot name anyone. Left as found; dispatch from a drone event uses the
+drone endpoint, which lists the guards on shift or picks the nearest free one.
+Worth fixing separately.
+
+### 21.5 Registration in existing files
+
+Four existing mobile files gained lines, nothing changed: the navigator, the More
+menu, the alert detail screen and the Alerts module filter. The desktop app
+needed none.

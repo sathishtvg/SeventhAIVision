@@ -31,6 +31,12 @@ The screens' tests run with the frontend's own tooling:
 cd frontend && npx vitest run src/pages/drones src/components/layout/Sidebar.test.tsx
 ```
 
+And the phone's, with its own:
+
+```bash
+cd mobile && npx jest src/api/drones.test.ts src/lib/droneEvents.test.ts __tests__/droneEventScreen.test.tsx
+```
+
 CI (`.github/workflows/ci.yml`) runs every backend test, the repository
 inspection, and the frontend and mobile checks on every push; nothing merges to
 `main` without it.
@@ -71,6 +77,11 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `test_drone_camera_link.py` | 3 | API | Phase 9: a drone linked to its camera on create and update; the camera at the drone's site and in this organisation; one drone per camera, never a camera with fixed coverage |
 | `frontend/src/pages/drones/drones.test.tsx` | 12 | UI | Phase 9 screens, API mocked: route length and zone drafts; events list with risk and AI confidence apart; the investigation offering each action only to a role that may take it, and a false positive needing a reason; the patrol list and its export gated; a blocked flight shown as a replay with why; live controls while flying; a new mission needing a site |
 | `frontend/src/components/layout/Sidebar.test.tsx` | +1 | UI | The Drone Patrol section: every entry for an admin, only events for a guard |
+| `test_drone_event_lookup.py` | 2 | API | Phase 10: an alert and an incident each lead to their drone event; the lookup stays inside site scoping and the tenant |
+| `test_drone_clients.py` | 6 | repo | Every drone call in the web and mobile clients is an operation the API serves, with that method (and the scanner proven on each shape it reads); the event list accepts the clients' filters; the desktop content policy allows what the drone screens load; the phone registers its drone screens behind `drone:event:read` |
+| `mobile/src/api/drones.test.ts` | 15 | unit | The phone's calls on the wire: paths, bodies, the paginated list unwrapped, a false positive refused without a reason before the round trip, "nearest guard" sent as null, media addressed to the signed-in server with the token in a header |
+| `mobile/src/lib/droneEvents.test.ts` | 15 | unit | Which actions each role is offered (operator, guard, viewer; closed events; no second acknowledge, escalation or incident), wording, the maps link, which announcements refresh the screens, and the clip player page — token in a header, inputs unable to break out of it |
+| `mobile/__tests__/droneEventScreen.test.tsx` | 6 | UI | The event screen mounted: the response in front of an operator, one-tap acknowledge, a false positive held until a reason is typed, a guard offered only the incident, a viewer told why there are no buttons, the link to the incident |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
 
 Beyond the drone suites: migration round trips (each drone migration down and up
@@ -94,4 +105,8 @@ created while it ran — including another run's.
 - Load: fleet-scale telemetry and detection volumes (Phase 13).
 - The screens in a browser against a live flight: their tests mock the API and
   stub the map, so they prove what each screen shows and offers, not the drawing.
-- Mobile (Phase 10).
+- The phone on a device: its tests run under jest with native modules stubbed.
+  Not proven: a clip playing in the web view on Android and iOS, a snapshot
+  loading over a real network, the maps hand-off, a push for a drone alert
+  arriving. The desktop app was not rebuilt and opened for this phase; it is
+  covered by the web tests and the content-policy check.

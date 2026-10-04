@@ -309,6 +309,8 @@ async def list_events(
     site_id: uuid.UUID | None = Query(None),
     session_id: uuid.UUID | None = Query(None),
     drone_id: uuid.UUID | None = Query(None),
+    alert_id: uuid.UUID | None = Query(None, description="The event this alert was raised for"),
+    incident_id: uuid.UUID | None = Query(None, description="The events behind this incident"),
     status_filter: str | None = Query(None, alias="status"),
     open_only: bool = Query(False, description="Only NEW, ACKNOWLEDGED, INVESTIGATING or ESCALATED"),
     risk_level: Risk | None = Query(None),
@@ -322,12 +324,15 @@ async def list_events(
         "site": str(site_id) if site_id else None, "session": str(session_id) if session_id else None,
         "drone": str(drone_id) if drone_id else None, "status": status_filter, "open": open_only,
         "risk": risk_level, "since": since, "until": until,
+        "alert": str(alert_id) if alert_id else None, "incident": str(incident_id) if incident_id else None,
     }
     scope = scope_sql(allowed, "e.site_id", params)
     where = f"""
          WHERE (CAST(:site AS uuid) IS NULL OR e.site_id = CAST(:site AS uuid))
            AND (CAST(:session AS uuid) IS NULL OR e.session_id = CAST(:session AS uuid))
            AND (CAST(:drone AS uuid) IS NULL OR e.drone_id = CAST(:drone AS uuid))
+           AND (CAST(:alert AS uuid) IS NULL OR e.alert_id = CAST(:alert AS uuid))
+           AND (CAST(:incident AS uuid) IS NULL OR e.incident_id = CAST(:incident AS uuid))
            AND (CAST(:status AS text) IS NULL OR e.status = CAST(:status AS text))
            AND (NOT CAST(:open AS boolean) OR e.status IN ('NEW','ACKNOWLEDGED','INVESTIGATING','ESCALATED'))
            AND (CAST(:risk AS text) IS NULL OR e.risk_level = CAST(:risk AS text))

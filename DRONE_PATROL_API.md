@@ -279,7 +279,9 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   refused: the **409** names who acted first. The check is repeated inside the
   update, so two operators cannot both win. A false positive requires a reason.
 - Filters: sessions by site, drone, mission, status and `from`/`to`; events by
-  site, session, drone, status, `open_only`, `risk_level` and `from`/`to`.
+  site, session, drone, status, `open_only`, `risk_level` and `from`/`to`, and
+  by `alert_id` or `incident_id` — how a client holding an alert or an incident
+  finds the drone event behind it.
 - **Media file** returns the central copy of a snapshot or clip. A file the
   recording policy keeps at the site answers **409** naming the gateway that holds
   it and whether an upload is pending — not a broken link.

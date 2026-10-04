@@ -4,9 +4,13 @@ import {
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRoute, type RouteProp } from '@react-navigation/native'
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import { getAlerts, acknowledgeAlert, markFalsePositive, type Alert } from '@/api/alerts'
+import { findDroneEventForAlert } from '@/api/drones'
+import { canSee } from '@/lib/access'
+import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -35,6 +39,20 @@ export function AlertDetailScreen() {
   })
 
   const alert = alerts.find((a: Alert) => a.id === params.alertId)
+
+  // A drone alert is the headline of a drone event, which holds the picture,
+  // the place and the response actions. Looked up only for drone alerts, and
+  // only for a role that may open the event.
+  const nav = useNavigation<NativeStackNavigationProp<AlertsStackParamList>>()
+  const permissions = useAuthStore((s) => s.permissions)
+  const roleId = useAuthStore((s) => s.user?.roleId)
+  const isDroneAlert = alert?.module_type === 'drone_patrol'
+    && canSee({ permission: 'drone:event:read' }, permissions, roleId)
+  const { data: droneEvent } = useQuery({
+    queryKey: ['drone-event-for-alert', params.alertId],
+    queryFn: () => findDroneEventForAlert(params.alertId),
+    enabled: isDroneAlert,
+  })
 
   const { mutate: ack, isPending } = useMutation({
     mutationFn: () => acknowledgeAlert(params.alertId),
@@ -116,6 +134,13 @@ export function AlertDetailScreen() {
           />
         )}
       </Card>
+
+      {droneEvent && (
+        <Pressable style={styles.droneBtn} onPress={() => nav.navigate('AlertDroneEvent', { eventId: droneEvent.id })}>
+          <Ionicons name="airplane-outline" size={18} color={colors.info} />
+          <Text style={styles.droneBtnText}>View the drone event</Text>
+        </Pressable>
+      )}
 
       {(alert.status === 'open' || alert.status === 'acknowledged') && (
         <View style={styles.actionRow}>
@@ -256,5 +281,20 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: fontSize.md,
     color: colors.textSecondary,
+  },
+  droneBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.info,
+    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  droneBtnText: {
+    color: colors.info,
+    fontWeight: '700',
+    fontSize: fontSize.md,
   },
 })

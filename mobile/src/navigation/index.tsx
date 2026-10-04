@@ -55,6 +55,8 @@ import { HandoverScreen }             from '@/screens/HandoverScreen'
 import { MyScheduleScreen }            from '@/screens/MyScheduleScreen'
 import { ActionCenterScreen }          from '@/screens/ActionCenterScreen'
 import { AttendanceScreen }            from '@/screens/AttendanceScreen'
+import { DroneEventsScreen }           from '@/screens/DroneEventsScreen'
+import { DroneEventDetailScreen }      from '@/screens/DroneEventDetailScreen'
 import { useAuthStore }                from '@/store/auth'
 import { colors }                      from '@/theme'
 
@@ -65,6 +67,9 @@ export type RootStackParamList = { Auth: undefined; Main: undefined }
 export type AlertsStackParamList = {
   AlertsList:  undefined
   AlertDetail: { alertId: string }
+  /** The drone event behind a drone alert — the same screen More → Drone
+   *  Events opens, mounted here so Back returns to the alert. */
+  AlertDroneEvent: { eventId: string }
 }
 
 export type IncidentsStackParamList = {
@@ -120,6 +125,8 @@ export type MoreStackParamList = {
   MySchedule:    undefined
   ActionCenter:  undefined
   Attendance:    undefined
+  DroneEvents:      undefined
+  DroneEventDetail: { eventId: string }
 }
 
 export type MainTabParamList = {
@@ -156,6 +163,7 @@ function AlertsNavigator() {
     <AlertsStack.Navigator screenOptions={screenOptions}>
       <AlertsStack.Screen name="AlertsList"  component={AlertsScreen}      options={{ title: 'Alerts' }} />
       <AlertsStack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert Detail' }} />
+      <AlertsStack.Screen name="AlertDroneEvent" component={DroneEventDetailScreen} options={{ title: 'Drone Event', headerBackTitle: 'Back' }} />
     </AlertsStack.Navigator>
   )
 }
@@ -231,6 +239,10 @@ function MoreNavigator() {
       {/* Leave has its own row now: it worked all along behind the second tab
           of My Record, where nobody looked for it. */}
       <MoreStack.Screen name="Leave"         component={LeaveScreen}                options={{ title: 'Leave' }} />
+      {/* Drone Patrol: the events and the field response. Planning and flying
+          stay on the web. */}
+      <MoreStack.Screen name="DroneEvents"      component={DroneEventsScreen}       options={{ title: 'Drone Events' }} />
+      <MoreStack.Screen name="DroneEventDetail" component={DroneEventDetailScreen}  options={{ title: 'Drone Event', headerBackTitle: 'Back' }} />
     </MoreStack.Navigator>
   )
 }
