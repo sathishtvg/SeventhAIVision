@@ -17,6 +17,8 @@ import HomeIcon from '@mui/icons-material/Home'
 import StopIcon from '@mui/icons-material/Stop'
 import CancelIcon from '@mui/icons-material/Cancel'
 import VideocamOffIcon from '@mui/icons-material/VideocamOff'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import DownloadIcon from '@mui/icons-material/Download'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleMarker, Marker, Polyline, Tooltip as MapTooltip } from 'react-leaflet'
 import Stack from '@/components/common/Stack'
@@ -28,7 +30,8 @@ import { useAuthStore } from '@/store/auth'
 import { useWsStore } from '@/store/websocket'
 import { getStreams } from '@/api/cameras'
 import {
-  AIRBORNE, IN_FLIGHT, apiError, getDrone, getSession, getTrack, listCommands, listEvents, mediaUrl, sendCommand,
+  AIRBORNE, IN_FLIGHT, apiError, blobApiError, downloadSessionReport, getDrone, getSession, getTrack, listCommands,
+  listEvents, mediaUrl, sendCommand,
 } from '@/api/drones'
 import type { CommandKind, LatLng, Session, TrackPoint } from '@/api/drones'
 import { BatteryBar, DroneMap, FitTo, LicenceBanner, RiskChip, SessionStatusChip } from '@/components/drones/droneUi'
@@ -81,7 +84,9 @@ export default function DronePatrol() {
     <Box sx={{ p: 3 }}>
       <PageHeader title={`${session.mission_name ?? 'Drone patrol'} · ${session.session_number}`}
                   subtitle={`${session.site_name ?? ''} · ${session.drone_name ?? 'no drone'} · ${pretty(session.triggered_by)}`}
-                  action={<SessionStatusChip status={session.status} />} />
+                  action={<Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {!live && <ReportButtons sessionId={session.id} />}
+                    <SessionStatusChip status={session.status} /></Stack>} />
       <DroneNav />
       <LicenceBanner />
       {session.blocked_reason && <Alert severity="error" sx={{ mb: 2 }}>Blocked: {session.blocked_reason}</Alert>}
@@ -91,6 +96,33 @@ export default function DronePatrol() {
         ? <LiveView session={session} points={points} now={now} events={events?.items ?? []} />
         : <Replay session={session} points={points} events={events?.items ?? []} />}
     </Box>
+  )
+}
+
+// ── The flight's report ─────────────────────────────────────────────────────
+
+/** The PDF for anyone who may read reports, the workbook for those who may
+ *  export. Offered once the flight has ended: a report of half a flight is not
+ *  a report. Both are built on request from the flight's own record. */
+function ReportButtons({ sessionId }: { sessionId: string }) {
+  const canRead = usePermission('drone:report:read')
+  const canExport = usePermission('drone:report:export')
+  const get = useMutation({
+    // A refused download carries its reason as a Blob; read it into the error.
+    mutationFn: (format: 'pdf' | 'excel') =>
+      downloadSessionReport(sessionId, format).catch(async (e) => { throw new Error(await blobApiError(e)) }),
+  })
+  if (!canRead) return null
+  return (
+    <>
+      {get.error && <Typography variant="caption" color="error">{apiError(get.error)}</Typography>}
+      <Button size="small" variant="outlined" startIcon={<PictureAsPdfIcon />} disabled={get.isPending}
+              onClick={() => get.mutate('pdf')}>Report PDF</Button>
+      {canExport && (
+        <Button size="small" variant="outlined" startIcon={<DownloadIcon />} disabled={get.isPending}
+                onClick={() => get.mutate('excel')}>Excel</Button>
+      )}
+    </>
   )
 }
 

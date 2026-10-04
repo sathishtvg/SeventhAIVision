@@ -11,6 +11,7 @@ Cadence, each overridable by environment:
   DRONE_RUNNER_HEALTH_SECONDS   15   drone heartbeats, then the lost-link sweep
   DRONE_RUNNER_SCHEDULE_SECONDS 30   sessions the schedules owe
   DRONE_RUNNER_AI_SECONDS        3   flights' new AI detections into drone events
+  DRONE_RUNNER_REPORT_SECONDS   60   finished flights' reports, and the report emails
 
 Everything it does is also a function in services/drone_runner.py that tests call
 directly, with a fixed clock.
@@ -34,6 +35,7 @@ TICK_SECONDS = float(os.environ.get("DRONE_RUNNER_TICK_SECONDS", "2"))
 HEALTH_SECONDS = float(os.environ.get("DRONE_RUNNER_HEALTH_SECONDS", "15"))
 SCHEDULE_SECONDS = float(os.environ.get("DRONE_RUNNER_SCHEDULE_SECONDS", "30"))
 AI_SECONDS = float(os.environ.get("DRONE_RUNNER_AI_SECONDS", "3"))
+REPORT_SECONDS = float(os.environ.get("DRONE_RUNNER_REPORT_SECONDS", "60"))
 
 
 def _worth_logging(name: str, r: dict) -> bool:
@@ -46,6 +48,8 @@ def _worth_logging(name: str, r: dict) -> bool:
         return bool(r.get("recovered") or r.get("lost") or r.get("gateways_offline"))
     if name == "ai":
         return bool(r.get("accepted") or r.get("failed"))
+    if name == "reports":
+        return any(r.values())
     return bool(r.get("ready") or r.get("blocked") or r.get("missed"))
 
 
@@ -70,9 +74,10 @@ async def main() -> None:
         except NotImplementedError:  # not available on every platform
             pass
 
-    logger.info("drone runner started: tick %.1fs, health %.0fs, schedule %.0fs, ai %.0fs",
-                TICK_SECONDS, HEALTH_SECONDS, SCHEDULE_SECONDS, AI_SECONDS)
-    last_health = last_schedule = last_ai = float("-inf")
+    logger.info("drone runner started: tick %.1fs, health %.0fs, schedule %.0fs, ai %.0fs, reports %.0fs",
+                TICK_SECONDS, HEALTH_SECONDS, SCHEDULE_SECONDS, AI_SECONDS, REPORT_SECONDS)
+    last_health = last_schedule = last_ai = last_reports = float("-inf")
+    report_task: asyncio.Task | None = None
     try:
         while not stop.is_set():
             now = loop.time()
@@ -86,12 +91,23 @@ async def main() -> None:
             if now - last_ai >= AI_SECONDS:
                 await _guarded("ai", drone_runner.run_ai_tick(AsyncSessionLocal, pub))
                 last_ai = now
+            # Beside the loop, not in it: building a PDF or waiting on a mail
+            # server must never sit in front of a flight command. One at a time —
+            # a slow run is not joined by a second.
+            if now - last_reports >= REPORT_SECONDS and (report_task is None or report_task.done()):
+                report_task = asyncio.create_task(
+                    _guarded("reports", drone_runner.run_report_tick(AsyncSessionLocal)))
+                last_reports = now
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
             except asyncio.TimeoutError:
                 pass
     finally:
         logger.info("drone runner stopping")
+        if report_task is not None and not report_task.done():
+            # A row it had claimed stays PROCESSING and is taken again later.
+            report_task.cancel()
+            await asyncio.gather(report_task, return_exceptions=True)
         await redis.aclose()
 
 
