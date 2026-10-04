@@ -817,8 +817,11 @@ async def test_the_console_shows_the_drone_service_and_only_as_counts():
     assert len(rows) == 1
     row = rows[0]
     assert row["status"] in ("ok", "degraded", "down", "unknown") and row["detail"]
-    assert set(row) <= {"service", "status", "detail", "licensed", "live", "commands_overdue",
-                        "emails_overdue", "heartbeat_age_seconds"}
+    # The counts are there, so the database was really asked through the console's
+    # own session — not answered "unknown" because the probe could not run.
+    counts = {"licensed", "live", "commands_overdue", "emails_overdue"}
+    assert counts <= set(row) and all(isinstance(row[k], int) for k in counts), row
+    assert set(row) <= counts | {"service", "status", "detail", "heartbeat_age_seconds"}
 
 
 # ═════════════════════════════════════════════════════════════════════════════
