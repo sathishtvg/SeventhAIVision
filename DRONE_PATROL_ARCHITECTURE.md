@@ -7,7 +7,8 @@ Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
 security event (migration `0126`); Phase 7, CCTV correlation (migration
 `0127`); Phase 8, incident response (migration `0128`); Phase 9, the web
 screens; Phase 10, the phone and the desktop app (no migration for either); and
-Phase 11, reports (migration `0129`). 97 operations,
+Phase 11, reports (migration `0129`); and Phase 12, analytics (no migration).
+100 operations,
 described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
@@ -407,8 +408,38 @@ The web's **Patrols & reports** screen gained three tabs — Summary, Report
 recipients, Email deliveries — and a finished flight offers **Report PDF** and
 **Excel**.
 
+## Analytics (Phase 12)
+
+`services/drone_analytics.py` answers three questions from the rows already
+recorded — nothing is stored, modelled or trained, and the same rows always give
+the same answer.
+
+- **How are the patrols going?** Flights and mission success, events and their
+  trend by day, suspicious events by hour and weekday, detection types, each
+  mission and drone, the false-positive rate and the incident conversion rate.
+  Hours and days are the organisation's own.
+- **Where are the drones finding things?** Each area's events, weighted by how
+  serious each was assessed to be, per week: an analytical score with a level.
+  Hot spots are events gridded to about 28 m; repeated intrusion locations are
+  the cells where intrusion keeps being seen. A false positive weighs nothing —
+  a place is not risky because the AI was wrong there.
+- **What might be worth doing?** Six fixed rules over those same aggregates, each
+  producing a suggestion with the observation and the numbers it rests on.
+
+The score and the suggestions are labelled as what they are wherever they appear:
+the score is not a prediction, and a suggestion is not a conclusion. Both labels
+travel in the API response itself, so a client cannot show one without having the
+other to hand.
+
+Aggregation is in SQL over the existing time and site indexes, bounded to a year;
+no migration was needed. The web's **Drone Analytics** screen draws it with the
+app's own layout boxes — stat tiles, single-hue bars, separate small charts
+rather than a second axis, the risk map on the site map — and no chart library.
+Registration: the router and its tag in `main.py`; a route, a tab and a sidebar
+entry in the web app.
+
 ## Not built yet
 
-analytics (12). No real drone, SDK or edge hardware is
-connected, and none will be claimed until it is: every flight so far is the
-simulator's.
+Hardening (13) and final validation (14) are still to come. No real drone, SDK or
+edge hardware is connected, and none will be claimed until it is: every flight so
+far is the simulator's.

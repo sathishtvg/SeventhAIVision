@@ -191,6 +191,28 @@ again**. Mail uses the platform's `SMTP_*` settings, on the `drone-runner`
 service — if that service is not running, reports are neither stored nor sent,
 and catch up (for flights of the last seven days) when it starts.
 
+## Reading the analytics
+
+**Drone Analytics** in the sidebar, for the last 7, 30 or 90 days and one site or
+all of them.
+
+- **Mission success** is flights completed out of those that should have flown to
+  the end. A cancelled flight is not counted against it; a blocked, missed, failed
+  or aborted one is — and the reasons are listed.
+- **Suspicious** means assessed MEDIUM risk or above and not marked a false
+  positive. **False-positive rate** and **incident conversion** are shares of all
+  events in the period.
+- **The risk map** ranks areas by an analytical score: weighted events per week.
+  It shows where the drones have been finding things. It is not a forecast, and a
+  quiet area is not a safe one — it may simply not be patrolled.
+- **Recommendations** are suggestions the system generates from fixed thresholds
+  (three suspicious night events in an area, intrusion three times at one spot on
+  two days, under 80% of a mission's flights completing, and so on). Each says
+  what it saw. They are prompts to look, not instructions.
+
+Marking false positives is what keeps all of this honest: an event nobody
+reviewed counts as real.
+
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |

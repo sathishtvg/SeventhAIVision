@@ -196,7 +196,8 @@ describe('Sidebar', () => {
     mockUser(2)
     const { unmount } = render(<Sidebar />)
     expandAllSections()
-    for (const label of ['Drone Fleet', 'Drone Missions', 'Drone Patrols', 'Drone Events', 'Drone Zones']) {
+    for (const label of ['Drone Fleet', 'Drone Missions', 'Drone Patrols', 'Drone Events', 'Drone Zones',
+                         'Drone Analytics']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
     unmount()
@@ -208,6 +209,7 @@ describe('Sidebar', () => {
     expect(screen.getByText('Drone Events')).toBeInTheDocument()
     expect(screen.queryByText('Drone Fleet')).not.toBeInTheDocument()
     expect(screen.queryByText('Drone Missions')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drone Analytics')).not.toBeInTheDocument()
   })
 
   it('a folded group hides its items until it is expanded', () => {

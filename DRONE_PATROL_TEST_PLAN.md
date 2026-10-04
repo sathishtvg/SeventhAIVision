@@ -84,6 +84,8 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `mobile/__tests__/droneEventScreen.test.tsx` | 6 | UI | The event screen mounted: the response in front of an operator, one-tap acknowledge, a false positive held until a reason is typed, a guard offered only the incident, a viewer told why there are no buttons, the link to the incident |
 | `test_drone_reports.py` | 19 | DB + API | Phase 11, as the application's database user: the report as the flight's own record (unchanged by renaming the mission or route), the stored picture in the PDF and a plain statement when it is missing, held at the site, or the AI worker's; the workbook carrying the same numbers; a flight that never launched; stored once with a checksum matching the file, not before it has settled; the immediate email to those whose scope covers the flight and not to those added later; failure retried with backoff then left failed with its reason, and sent again on request; a claim abandoned mid-send taken again; summaries once per scope for a closed period with flights in it; the organisation's day, not UTC's, deciding the period; two tenants kept apart and a lapsed licence still served; who may read, export and choose recipients |
 | `frontend/src/pages/drones/droneReports.test.tsx` | 11 | UI | The report tabs for those who may read reports and not for a guard; recipients listed with scope and frequency, paused, added only with a real address, read-only without export; a failed email with its reason and **Send again**; the period summary; the PDF and workbook offered once a flight has ended, the workbook only to those who may export |
+| `test_drone_analytics.py` | 10 | pure + API | Phase 12: the score as weighted events per week, capped and levelled; nothing recommended below the thresholds, and each recommendation stating what it saw and marked system-generated; patrol statistics, mission success (cancelled and in-flight flights neither), the false-positive and incident-conversion rates; hours, weekdays and the daily trend in the organisation's own zone; areas ranked with false positives weighing nothing; hot spots and repeated intrusion locations; permission, site scope, tenant isolation; an empty period as zeros and no rate, not an error |
+| `frontend/src/pages/drones/droneAnalytics.test.tsx` | 9 | UI | Equal values drawn as equal bars with only the largest labelled; headline numbers each saying what they are a share of; trends as separate charts; the risk map labelled as an analytical score with every level written, not only coloured; recommendations marked system-generated; the period control; the Analytics tab offered to those who may read reports |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
 
 Beyond the drone suites: migration round trips (each drone migration down and up
@@ -107,6 +109,10 @@ created while it ran — including another run's.
 - Load: fleet-scale telemetry and detection volumes (Phase 13).
 - The screens in a browser against a live flight: their tests mock the API and
   stub the map, so they prove what each screen shows and offers, not the drawing.
+- Analytics at scale: correct on the rows the tests write, unmeasured on a year
+  of a busy fleet's events (Phase 13). And whether the score's weights and the
+  recommendation thresholds suit a real site is a judgement no test makes — they
+  are stated in the API response so they can be argued with.
 - Mail actually leaving: the report tests build every real document and hand it
   to a sender that records instead of sending. The SMTP hand-off itself, a real
   mail server's limits on attachment size, and how a client displays the PDF are

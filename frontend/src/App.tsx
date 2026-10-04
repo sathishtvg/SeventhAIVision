@@ -89,6 +89,7 @@ import DronePatrol from '@/pages/drones/DronePatrol'
 import DroneEvents from '@/pages/drones/DroneEvents'
 import DroneEvent from '@/pages/drones/DroneEvent'
 import DroneZones from '@/pages/drones/DroneZones'
+import DroneAnalytics from '@/pages/drones/DroneAnalytics'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -237,6 +238,7 @@ export default function App() {
         <Route path="drone-events" element={<DroneEvents />} />
         <Route path="drone-events/:id" element={<DroneEvent />} />
         <Route path="drone-zones" element={<DroneZones />} />
+        <Route path="drone-analytics" element={<DroneAnalytics />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

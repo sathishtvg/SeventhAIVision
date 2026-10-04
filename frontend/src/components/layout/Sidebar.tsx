@@ -257,6 +257,7 @@ const NAV_SECTIONS: {
       { label: 'Drone Patrols',   path: '/drone-patrols',  icon: <HistoryIcon fontSize="small" />,       permission: 'drone:read' },
       { label: 'Drone Events',    path: '/drone-events',   icon: <WarningAmberIcon fontSize="small" />,  permission: 'drone:event:read' },
       { label: 'Drone Zones',     path: '/drone-zones',    icon: <LocationOnIcon fontSize="small" />,    permission: 'drone:read' },
+      { label: 'Drone Analytics', path: '/drone-analytics', icon: <BarChartIcon fontSize="small" />,     permission: 'drone:report:read' },
     ],
   },
   {
