@@ -6,14 +6,22 @@ site has drones. "Forbidden" would confirm it exists.
 
 AUDIT GOES THROUGH services.audit.write_audit_log, the hash-chained log, with the
 caller's address. Every create, change, delete, licence change and event decision
-in the drone module is written there.
+in the drone module is written there - and every piece of evidence or report
+that is taken out.
+
+EXPORTS ARE LIMITED PER PERSON. A report is a document rendered by the same
+service that carries flight commands. One person asking for a few is normal; a
+loop asking for hundreds must not be what slows an abort.
 """
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 from typing import Any
 
 from fastapi import HTTPException, Request
+from slowapi.util import get_remote_address
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +29,26 @@ from app.dependencies.auth import TokenPayload
 from app.dependencies.sites import is_site_allowed, site_scope_clause
 from app.dependencies.tenant import _client_ip
 from app.services.audit import write_audit_log
+
+
+#: Report documents one person may take in a minute, across all three exports.
+EXPORT_LIMIT = "30/minute"
+EXPORT_SCOPE = "drone-report-export"
+
+
+def caller_key(request: Request) -> str:
+    """Whose request this is, for a limit counted per person rather than per
+    address - an office behind one address is many people.
+
+    The limit is counted inside the operation, after its permission check has
+    verified the token, so the subject can be read here without checking the
+    signature a second time. Anything unreadable falls back to the address."""
+    try:
+        payload = request.headers["authorization"].split(" ", 1)[1].split(".")[1]
+        subject = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["sub"]
+        return f"user:{subject}"
+    except Exception:
+        return get_remote_address(request)
 
 
 def scope_sql(allowed: list[str] | None, column: str, params: dict) -> str:

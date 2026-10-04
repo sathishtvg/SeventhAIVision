@@ -236,7 +236,13 @@ async def collect(session) -> dict:
         check_recording(session),
         return_exceptions=False,
     )
-    services = [db, redis_status, *workers, *check_storage(), recording]
+    # The drone module's own row (services/drone_platform_health.py). After the
+    # others rather than beside them: it asks the same session, and it reports
+    # `ok` when nobody is licensed, so an installation without the module reads
+    # as it did before.
+    from app.services.drone_platform_health import check_drone_patrol
+    drone = await check_drone_patrol(session)
+    services = [db, redis_status, *workers, *check_storage(), recording, drone]
     return {
         "status": worst([s["status"] for s in services]),
         "services": services,

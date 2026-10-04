@@ -603,3 +603,136 @@ risk map carries a legend and a table.
 `main.py` gained the router and its tag. In the web app: one route in `App.tsx`,
 one sidebar entry, one tab in the drone screens' own tab bar, and an optional
 prop on the drone map so a page scroll does not zoom it. Nothing else changed.
+
+## 24. Addendum — found in the Phase 13 security review
+
+### 24.1 The telemetry partitions had no row security
+
+`drone_telemetry` has had forced row security since Phase 2, and the Phase 2 test
+checked every drone *table*. Postgres does not pass row security to partitions,
+a partition is an ordinary table, and the test skipped them: a session scoped to
+one tenant that selected from `drone_telemetry_p20261001` by name saw every
+tenant's flight track. Nothing in the application names a partition, so nothing
+leaked through the API — what was missing was the guarantee the rest of the
+system rests on.
+
+The platform already had the cure — `apply_partition_rls()` (migration 0083),
+run daily by the scheduler. The drone migrations never called it for the
+partitions they created, which left them open until the scheduler's next daily
+run; on the development machine, which is switched off at night, that run had
+not happened since the table was created and all eight were open. Migration 0130
+calls it. The test now checks partitions, selects from one by name as the
+application's own role, and proves the daily sweep protects a partition made
+later.
+
+### 24.2 Taking evidence, or a report, left no trace
+
+The brief requires "evidence accessed", "evidence exported" and "report
+exported" in the audit log. Every operation that changes something was audited;
+the two that take something *out* were not, because they are GETs. Now:
+
+| Action | When | Detail |
+|---|---|---|
+| `drone.media.access` | A snapshot or clip is handed over | Its kind, event, flight and stored SHA-256 |
+| `drone.report.export` | A flight's PDF or workbook, or a period workbook, is handed over | Format, flight or period and scope, size, and the SHA-256 of the exact bytes |
+
+A refusal — held at the site, not found, over the limit — took nothing and
+records nothing. Reading a report on screen is not an export. The platform's own
+evidence and report downloads are not audited either; that is outside this
+module and was left alone.
+
+### 24.3 A failed email could show this system's own error
+
+A report email that failed stored the exception's text as `last_error`, which the
+Deliveries tab shows. For a mail server's refusal that is right — a full mailbox
+is the organisation's to fix. For a failure of this system the text could hold a
+query, a file path or the mail host's name. Now a mail server's own answer is
+shown as it gave it; anything else is "could not be reached" or "could not be
+prepared", and the full text goes to the server log.
+
+### 24.4 The platform owner could not see the drone service
+
+Phase 1 planned for Super Admin to see drone service health through the existing
+console. Nothing had been built: a stopped runner showed nowhere. The console now
+has a `drone-patrol` row (architecture, *Security review*). It reads `ok` on an
+installation that does not use the module, so nothing changes for one.
+
+### 24.5 Rate limits: what is actually in force
+
+Checked by sending the requests rather than by reading the configuration.
+
+- **Gateway endpoints.** The explicit limits work, counted per address and exact
+  URL: 600 a minute on sync; 120 a minute per session on claim; 300 a minute per
+  file on upload. They are counted inside the operation, so a request with a
+  wrong credential is refused before it is counted. The limit therefore caps a
+  working gateway that floods; it is not what stops guessing — the credential's
+  256 random bits are. A lockout on wrong credentials was considered and left
+  out: on the path a site uses to report an emergency, one misconfigured device
+  locking out its neighbours is the worse failure.
+- **Report exports.** Were unlimited. Rendering runs in the service that carries
+  flight commands, so they are now limited to 30 a minute per person across the
+  three exports.
+- **Everything else** relies on the platform's default limit — which is not
+  being applied (§24.6).
+
+### 24.6 Found in the platform, reported, not changed
+
+Both are outside the module and changing them would change existing behaviour,
+so they were written up for a decision rather than fixed here.
+
+1. **Nightly partition maintenance is failing.** The scheduler's
+   `run_maintenance_proc()` aborts at its first table with `invalid input syntax
+   for type uuid: ""`: pg_partman reads a partition by name, the partition's
+   policy casts the tenant setting, and on a pooled connection that setting is an
+   empty string. It is logged as a warning and skipped. On the development
+   database the newest partition of `audit_logs`, `detections` and the others is
+   September's, so October's rows are in the default partitions. `drone_telemetry`
+   has partitions to December only because its migration created them recently.
+2. **The default rate limit of 100 a minute is not applied.** On this FastAPI
+   version the limiter's middleware cannot match a request to its handler and
+   exempts every route that is not explicitly limited: 115 requests in a few
+   seconds to one route were all answered. Only the nine decorated endpoints are
+   limited. The platform's own test for this sends five requests and so cannot
+   fail.
+
+### 24.7 Measured: a year of a large fleet
+
+Phase 12 deferred this to measurement. One tenant, 20 drones flying 12 times a
+day for a year — 87,600 flights and 262,800 events — on the 7.7 GB development
+machine, as the application's database role, best of three:
+
+| Query | Time |
+|---|---:|
+| Analytics overview, one year | 1.5 s |
+| Analytics overview, 30 days (the screen's default) | 0.24 s |
+| Risk map, one year | 0.74 s |
+| Risk map, 30 days | 0.07 s |
+| Recommendations, one year (recomputes both) | 3.8 s |
+| Report summary, 92 days (22,000 flights listed) | 1.2 s |
+| Report summary, 7 days | 0.06 s |
+| Event list, first 50 | 0.04–0.09 s |
+| Flight list, first 25 | 0.12 s → 0.02 s with the new index |
+| Fleet dashboard | 0.08–0.14 s |
+
+Counting on request holds; no summary table is needed at this size. The one
+change made was the index the flight list was missing
+(`idx_dps_tenant_created`). The year view of recommendations is the slowest thing
+on any drone screen and is the first candidate if a larger fleet makes it
+matter. Telemetry volume was not measured: nothing was flown at that scale.
+
+### 24.8 Open: how long drone footage is kept
+
+The brief asks for retention to follow the platform's policy. Drone media was
+deliberately kept out of the platform's evidence purge (§1.5, D5), because that
+purge deletes evidence linked to open incidents. The consequence is that nothing
+deletes drone snapshots, clips, stored reports or telemetry at all: they are kept
+until someone decides otherwise, and the organisation's `evidence.retention_days`
+does not apply to them. Deleting evidence cannot be undone, so no purge was built
+on a guess. The decision needed: whether drone media not linked to an incident
+should follow the organisation's evidence retention, and how long telemetry is
+kept.
+
+### 24.9 Registration in existing files
+
+`services/platform_health.py` gained one probe in `collect()` — the drone row,
+asked after the existing ones. Nothing else outside the module changed.

@@ -738,10 +738,16 @@ async def ai_modules():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @router.get("/drone-media/{media_id}/file", dependencies=[_EVENT_READ])
-async def get_media_file(media_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
-                         allowed: list[str] | None = Depends(get_allowed_site_ids)):
+async def get_media_file(media_id: uuid.UUID, request: Request,
+                         db: AsyncSession = Depends(get_db_with_tenant),
+                         allowed: list[str] | None = Depends(get_allowed_site_ids),
+                         token: TokenPayload = Depends(get_token_payload)):
     """The file itself, if the centre holds a copy. Footage the recording policy
-    keeps at the site is answered 409 with where it is, not a broken link."""
+    keeps at the site is answered 409 with where it is, not a broken link.
+
+    Every file handed over is in the audit log: who took which piece of evidence,
+    and when. Recorded only once there is a file to hand over - a refusal gave
+    nothing away."""
     m = (await db.execute(text("""
         SELECT m.*, COALESCE(e.site_id, s.site_id) AS owner_site_id, g.name AS gateway_name
           FROM drone_event_media m
@@ -760,12 +766,20 @@ async def get_media_file(media_id: uuid.UUID, db: AsyncSession = Depends(get_db_
                                                           "The recording policy keeps it at the site.")
         raise HTTPException(409, f"This file is held at {where} and has not been uploaded. {state}")
     image = m["media_kind"] == "SNAPSHOT"
+    accessed = {"media_kind": m["media_kind"], "event_id": str(m["event_id"]) if m["event_id"] else None,
+                "session_id": str(m["session_id"]) if m["session_id"] else None,
+                "checksum_sha256": m["checksum_sha256"]}
     if settings.STORAGE_BACKEND == "s3":
         from app.core.object_store import presign_url
-        return RedirectResponse(await presign_url(m["storage_path"], settings.S3_PRESIGN_TTL_SECONDS), 307)
+        url = await presign_url(m["storage_path"], settings.S3_PRESIGN_TTL_SECONDS)
+        await audit(db, request, token, "drone.media.access", "drone_event_media", media_id, accessed)
+        await db.commit()
+        return RedirectResponse(url, 307)
     root = Path(settings.EVIDENCE_ROOT).resolve()
     path = (root / m["storage_path"]).resolve()
     if root not in path.parents or not path.is_file():
         raise HTTPException(404, "The file is not in central storage.")
+    await audit(db, request, token, "drone.media.access", "drone_event_media", media_id, accessed)
+    await db.commit()
     return FileResponse(str(path), media_type="image/jpeg" if image else "video/mp4")
 

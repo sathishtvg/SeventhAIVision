@@ -49,7 +49,7 @@ class Outbox:
 
     async def __call__(self, recipients, subject, body, filename, payload, subtype):
         if self.down:
-            raise RuntimeError("Connection refused by mail server")
+            raise ConnectionRefusedError("Connection refused by mail server")
         self.sent.append({"to": recipients, "subject": subject, "body": body, "filename": filename,
                           "payload": payload, "subtype": subtype})
 
@@ -359,7 +359,7 @@ async def test_a_send_that_fails_is_retried_with_backoff_and_then_left_failed_wi
     first = await _tick(w, now, out)
     assert first["queued"] == 1 and first["failed"] == 1
     [row] = await _queue(w)
-    assert row["status"] == "FAILED" and row["attempts"] == 1 and "refused" in row["last_error"]
+    assert row["status"] == "FAILED" and row["attempts"] == 1 and "could not be reached" in row["last_error"]
     # The platform's own backoff, shared with Virtual Patrolling: five minutes
     # after the first failure, then fifteen, an hour, four hours.
     assert row["scheduled_at"] == now + timedelta(minutes=5)
