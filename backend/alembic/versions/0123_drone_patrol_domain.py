@@ -902,3 +902,7 @@ def downgrade() -> None:
     op.execute("DELETE FROM public.part_config WHERE parent_table = 'public.drone_telemetry'")
     for table in reversed(TENANT_TABLES):
         op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+    # pg_partman's own template for the telemetry partitions. Not one of ours,
+    # so the loop above does not know it; left behind it is the one trace of the
+    # module after a full downgrade (0001 and 0002 drop theirs for the same reason).
+    op.execute("DROP TABLE IF EXISTS public.template_public_drone_telemetry")

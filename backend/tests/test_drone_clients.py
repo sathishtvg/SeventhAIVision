@@ -10,6 +10,8 @@ does nothing on the other, found by an officer rather than by a build.
   B — The event list accepts the filters the clients send
   C — The desktop shell's content policy allows what the drone screens load
   D — The phone registers the drone screens behind the permission they need
+  E — The API document lists exactly the operations the application serves,
+      each with the permission the code requires
 
 Read from the working tree, so it runs with the repository-inspection suites.
 """
@@ -31,6 +33,7 @@ MOBILE_CLIENT = REPO_ROOT / "mobile" / "src" / "api" / "drones.ts"
 DESKTOP_CSP = REPO_ROOT / "desktop" / "electron" / "csp.js"
 MOBILE_NAV = REPO_ROOT / "mobile" / "src" / "navigation" / "index.tsx"
 MOBILE_MENU = REPO_ROOT / "mobile" / "src" / "screens" / "MoreMenuScreen.tsx"
+API_DOC = REPO_ROOT / "DRONE_PATROL_API.md"
 
 _CALL = re.compile(r"apiClient\s*\.\s*(get|post|put|patch|delete)\b")
 _CONST = re.compile(r"^const\s+([A-Z_]+)\s*=\s*'([^']+)'", re.M)
@@ -148,3 +151,60 @@ def test_the_phone_registers_the_drone_screens():
     assert "permission: 'drone:event:read'" in row
     # Not an oversight screen: a guard holds drone:event:read and is who walks over.
     assert "audience: 'ops'" not in row
+
+
+# ─── E. The API document ─────────────────────────────────────────────────────
+
+def _served_operations() -> dict[tuple[str, str], set[str]]:
+    """(METHOD, path) -> the permissions its dependencies require, for every
+    drone operation, read from the application's own route table."""
+    def permissions(route) -> set[str]:
+        found: set[str] = set()
+
+        def walk(dep):
+            name = getattr(dep.call, "__qualname__", "")
+            if "require_permission" in name:
+                found.update(c.cell_contents for c in (dep.call.__closure__ or ())
+                             if isinstance(c.cell_contents, str))
+            for sub in dep.dependencies:
+                walk(sub)
+
+        for d in route.dependant.dependencies:
+            walk(d)
+        return found
+
+    out = {}
+    for r in app.routes:
+        contexts = getattr(r, "effective_route_contexts", None)
+        inner = [r] if contexts is None else (contexts() if callable(contexts) else contexts)
+        for route in inner:
+            if "drone" in getattr(route, "path", "") and hasattr(route, "dependant"):
+                for method in route.methods - {"HEAD"}:
+                    out[(method, route.path.removeprefix("/api/v1"))] = permissions(route)
+    return out
+
+
+def _documented_operations() -> dict[tuple[str, str], set[str]]:
+    """The rows of the document's operation tables: | METHOD | `path` | permission |."""
+    rows = {}
+    for line in API_DOC.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"\|\s*(GET|POST|PUT|PATCH|DELETE)\s*\|\s*`([^`]+)`\s*\|([^|]*)\|", line)
+        if m:
+            path = m.group(2).strip().split("?")[0]          # a query string shown in the path is not part of it
+            rows[(m.group(1), path)] = set(re.findall(r"`([a-z_0-9]+(?::[a-z_0-9]+)+)`", m.group(3)))
+    return rows
+
+
+def test_the_api_document_lists_exactly_what_is_served():
+    served, documented = _served_operations(), _documented_operations()
+    assert len(served) >= 100, "the route walk found too little to compare"
+    assert sorted(set(served) - set(documented)) == [], "served, but not in DRONE_PATROL_API.md"
+    assert sorted(set(documented) - set(served)) == [], "in DRONE_PATROL_API.md, but not served"
+
+
+def test_the_api_document_states_the_permission_the_code_requires():
+    served, documented = _served_operations(), _documented_operations()
+    wrong = [f"{method} {path}: code {sorted(served[(method, path)])}, document {sorted(written)}"
+             for (method, path), written in sorted(documented.items())
+             if (method, path) in served and served[(method, path)] and written != served[(method, path)]]
+    assert wrong == []

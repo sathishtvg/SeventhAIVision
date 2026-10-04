@@ -1,7 +1,7 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** Phases 1–8 complete (analysis, data model, API, flying on the simulator, site edge gateway, AI to security event, CCTV correlation, incident response). Decisions D1–D7 approved 2026-09-24.
+**Status:** All 14 phases complete as of 2026-10-04 — on the simulator; no physical aircraft has been connected. Decisions D1–D7 approved 2026-09-24; three later decisions are open (§24.8, §25.6). What was built is summarised in `DRONE_PATROL_IMPLEMENTATION.md`.
 No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
@@ -366,7 +366,8 @@ The prompt's 14 phases hold, with these adjustments.
 | 10 | Mobile and desktop | **Done** — the phone: drone events, snapshot, clip, location, acknowledge, escalate, open incident, dispatch a guard; incident update on the existing screens. Desktop: nothing separate — it is the web build (§21) |
 | 11 | Reporting | **Done** — migration 0129. PDF and workbook per flight, stored with a checksum; immediate, daily, weekly and monthly emails through a retrying queue run by the drone runner (§22) |
 | 12 | Analytics | **Done** — no migration. Patrol statistics, the analytical risk map, recurring locations, trends, mission success, false-positive and incident-conversion rates, and rule-based recommendations, all counted on request (§23) |
-| 13–14 | Hardening, final validation | As in the prompt |
+| 13 | Security and hardening | **Done** — migration 0130. A review against the platform's own rules, each property pinned by a test that walks the route table; what it found and changed is §24 |
+| 14 | Final validation | **Done** — every suite, build, lint and type check, the migrations down to before the module and back, one patrol flown by the real runner process, and the security checks the repository has. What it found is §25 |
 
 **Built in Phase 2 (migration 0123), 18 tables:** `drone_module_licenses`,
 `drone_provider_configs`, `drone_edge_gateways`, `drones`,
@@ -736,3 +737,77 @@ kept.
 
 `services/platform_health.py` gained one probe in `collect()` — the drone row,
 asked after the existing ones. Nothing else outside the module changed.
+
+## 25. Addendum — found in the Phase 14 final validation
+
+### 25.1 A flight never recorded how far it flew
+
+Found by flying a patrol with the real runner process and reading the session it
+left: `distance_m` was empty. Nothing in the flight code wrote it. The tests that
+show a distance — the report, the period summary, the analytics — had each set
+the column by hand, so every one passed while every real flight would have shown
+"—" on the flight page, in its PDF and in the totals.
+
+Now the distance is the length of the recorded track. It grows as positions
+arrive (counting only samples later than the last one stored, so a resent sample
+adds nothing) and is taken again from the whole stored track when the flight
+ends. The first version of that final sum added half the Earth's circumference
+to every flight: SQL's `LEAST` skips a NULL, and the first sample has no
+predecessor. The test that caught it works the track length out independently.
+
+### 25.2 Rolling the module back left one table behind
+
+Downgrading the eight drone migrations removed every table, function, permission
+and billing row — and left `template_public_drone_telemetry`, the template
+pg_partman makes for a partitioned table. The platform's own migrations drop
+theirs; 0123's downgrade now does too. Checked by downgrading the test database
+to 0122, finding nothing with "drone" in its name, and upgrading again.
+
+### 25.3 The runner logged every pass
+
+The runner is meant to log only when something happens. Its test for "something
+happened" on the flight pass asked whether the tally of commands existed, not
+whether any count in it was above zero — so with one licensed organisation it
+logged every two seconds, 43,000 lines a day. Seen in the real process's log;
+fixed.
+
+### 25.4 Small things
+
+Six unused imports (two in the module, four in its tests), found by a static
+pass written for the purpose because no linter is installed here. Removed.
+
+### 25.5 Found in the platform, reported, not changed
+
+Outside the module, and present before it:
+
+- `scripts/migrate/check-migration-safety.sh --check` fails on migration 0104
+  (`DROP TABLE` in an upgrade without the annotation the policy requires). The
+  eight drone migrations pass, and the chain check passes for all 130.
+- `scripts/security/check-container-hardening.sh --check` fails on
+  `frontend.Dockerfile` (no non-root `USER`). The module added no Dockerfile; its
+  two compose services are unprivileged, publish no ports and use the default
+  network.
+- `npm audit` on production dependencies: the web app has 3 high advisories
+  (axios, react-router), the desktop 1 high (js-yaml), the phone 1 critical and
+  48 high, nearly all in Expo and React Native build tooling. The module added no
+  dependency to any of the four manifests.
+- The two from Phase 13 (§24.6): nightly partition maintenance failing, and the
+  default rate limit not applied.
+
+No Python linter, type checker, dependency audit or secret scanner is installed
+on this machine or in the backend image, and none was installed to run once.
+Their place was taken by a standard-library static pass over the module's 67
+Python files (compiles; no unused imports; no `eval`, `exec`, `pickle`, shell
+calls or disabled certificate checks; every value interpolated into SQL is a
+module constant or a clause built from bind parameters) and a pattern scan of
+every line the module added for credentials (none).
+
+### 25.6 The desktop release does not contain the drone screens
+
+The desktop app is the web build inside an Electron shell, bundled at build time.
+The released 1.0.1 installers were built on 2026-09-24, before the screens
+existed, and contain none of them. The current code packages correctly — an
+unpacked build made in a scratch folder contains the drone screens — but it was
+not released: a release needs a version number and, when the owner is ready, the
+code-signing certificate. Until then the drone screens are in the web app and on
+the phone, not on the desktop.

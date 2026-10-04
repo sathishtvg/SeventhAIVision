@@ -361,6 +361,37 @@ async def test_a_user_with_no_drone_permission_is_refused_everywhere(evidence):
     assert await _fingerprint(w["tenant"]) == before
 
 
+REQUEST_MODELS = ("app.routers.drones", "app.routers.drone_planning", "app.routers.drone_operations",
+                  "app.routers.drone_reports", "app.routers.drone_analytics", "app.routers.drone_edge",
+                  "app.routers.platform_drone_licenses", "app.services.drone_edge_wire")
+
+
+@pytest.mark.asyncio
+async def test_a_request_body_cannot_name_a_column_it_was_not_given():
+    """Several updates build their SET list from the body's own field names. That
+    is only safe while a body can hold nothing but its declared fields - so no
+    drone request model may accept extras, and an undeclared key, whatever it
+    spells, is dropped before any SQL is written."""
+    import importlib
+
+    from pydantic import BaseModel
+
+    models = [obj for name in REQUEST_MODELS for obj in vars(importlib.import_module(name)).values()
+              if isinstance(obj, type) and issubclass(obj, BaseModel) and obj.__module__ == name]
+    assert len(models) >= 40, len(models)
+    assert [m.__name__ for m in models if m.model_config.get("extra") == "allow"] == []
+
+    w = await _ai_world()
+    smuggled = "status = 'DISABLED', name"
+    async with _client() as c:
+        r = await c.put(f"/api/v1/drones/{w['drone']}", headers=w["h_admin"],
+                        json={"name": "Renamed", smuggled: "x", "tenant_id": str(uuid.uuid4())})
+        assert r.status_code in (200, 422), r.text
+    drone = (await _sql("SELECT name, status, tenant_id FROM drones WHERE id = :d", {"d": w["drone"]}))[0]
+    assert drone["status"] == "READY" and drone["tenant_id"] == w["tenant"]
+    assert drone["name"] == ("Renamed" if r.status_code == 200 else "Drone One")
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # C. Another tenant's ids, and another site's
 # ═════════════════════════════════════════════════════════════════════════════

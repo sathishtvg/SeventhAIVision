@@ -252,10 +252,19 @@ The checksum of an exported report is of the exact bytes that person was given:
 a document produced later can be matched to the download that made it. Emails are
 not in this list — they are in the Deliveries tab, with who they went to.
 
+## Releasing the desktop app with the drone screens
+
+The desktop app bundles the web build when it is built, so the drone screens
+reach desktop users only in a new release — the 1.0.1 installers predate them.
+Bump `version` in `desktop/package.json` (never `appId` or the MSI upgrade code),
+then `cd desktop && npm run dist`. Until then desktop users can use the web app
+in a browser.
+
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |
 |---|---|---|
+| A finished flight shows no distance | It was flown before the fix in Phase 14, or it never left the ground | Older flights keep an empty distance; their track is still stored |
 | "Too many requests in a short time" on a report download | One person took 30 reports in a minute | Wait a minute. For many flights at once, use the period summary workbook |
 | Platform console shows `drone-patrol` `down` | The runner is not running | See *What the platform owner sees* |
 | Mission `BLOCKED` | A pre-flight check failed | Read `blocked_reason` or `preflight_result`; every failing check is listed. `GET /drone-missions/{id}/preflight` re-checks without creating anything |

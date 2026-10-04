@@ -1,14 +1,9 @@
 # Drone Patrol — Architecture
 
-**As of:** 2026-09-25 · **Built so far:** Phase 2, the data model (migration `0123`);
-Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
-pre-flight, the command queue and the drone runner (migration `0124`); and
-Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
-security event (migration `0126`); Phase 7, CCTV correlation (migration
-`0127`); Phase 8, incident response (migration `0128`); Phase 9, the web
-screens; Phase 10, the phone and the desktop app (no migration for either); and
-Phase 11, reports (migration `0129`); and Phase 12, analytics (no migration).
-100 operations,
+**As of:** 2026-10-04 · **All 14 phases built**, on the simulator: the data model
+(migrations `0123`–`0130`), the API, flying, the site edge gateway, detection to
+security event, CCTV correlation, incident response, the web screens, the phone,
+reports, analytics, the security review and the final validation. 100 operations,
 described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
@@ -481,9 +476,20 @@ Two findings belong to the platform rather than the module and were reported,
 not changed: the scheduler's nightly partition maintenance is failing, and the
 platform-wide default rate limit is not being applied (gap analysis §24.6).
 
-## Not built yet
+## A flight's distance
 
-Final validation (14) is still to come. No real drone, SDK or edge hardware is
-connected, and none will be claimed until it is: every flight so far is the
-simulator's. How long drone footage and telemetry are kept is an open decision
-(gap analysis §24.8).
+`drone_patrol_sessions.distance_m` is the length of the flight's recorded track
+over the ground. It grows as positions arrive — only samples later than the last
+one stored count, so a resent or out-of-order sample is never added twice — and
+is taken again from the whole stored track when the flight ends, which is the
+figure reports and analytics use. A flight that never left the ground has none.
+
+## Not built
+
+No real drone, manufacturer SDK or edge hardware is connected, and none is
+claimed: every flight so far is the simulator's, and no real video has passed
+through the module. What a real aircraft needs is in
+`DRONE_PATROL_PROVIDER_INTEGRATION.md` and summarised in
+`DRONE_PATROL_IMPLEMENTATION.md`. How long drone footage and telemetry are kept
+is an open decision (gap analysis §24.8), and the desktop release that would
+carry the drone screens has not been made (§25.6).

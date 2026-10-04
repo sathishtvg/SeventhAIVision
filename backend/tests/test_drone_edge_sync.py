@@ -15,7 +15,6 @@ pinned on its own; test_drone_edge_agent.py runs the real gateway end to end.
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
@@ -332,6 +331,8 @@ async def test_a_whole_flight_reported_by_the_gateway_is_recorded_like_a_central
     done = await _session(s["id"])
     assert done["status"] == "COMPLETED" and done["edge_seq"] == len(updates)
     assert done["launched_at"] and done["landed_at"] and done["provider_mission_ref"].startswith("sim-")
+    # The route is a square of about 111 m sides, flown out and back.
+    assert 400 < float(done["distance_m"]) < 480, done["distance_m"]
     wps = await _sql("SELECT status FROM drone_session_waypoints WHERE session_id = :s ORDER BY sequence",
                      {"s": uuid.UUID(s["id"])})
     assert [x["status"] for x in wps] == ["OBSERVED"] * 3

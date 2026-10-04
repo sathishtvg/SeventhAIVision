@@ -6,7 +6,7 @@ with an authorised guard on duty is LOW.
 """
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 import pytest

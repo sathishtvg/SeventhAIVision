@@ -9,7 +9,6 @@ real local store, talking to the real API over a link these tests can cut.
 """
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import timedelta
 from pathlib import Path

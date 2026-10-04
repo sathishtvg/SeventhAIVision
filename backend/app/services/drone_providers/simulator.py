@@ -23,7 +23,6 @@ from __future__ import annotations
 import copy
 import hashlib
 from datetime import datetime, timedelta
-from typing import Any
 
 from app.services.drone_flight_plan import (
     DRAIN_PCT_PER_S, MissionPlan, PlanPoint, Segment, heading_deg, legs_to, position_at, timeline,
