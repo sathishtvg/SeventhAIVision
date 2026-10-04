@@ -9,13 +9,173 @@ from app import scheduler_main
 from app.core.config import settings
 
 
+# ─── Partition maintenance ───────────────────────────────────────────────────
+#
+# These pass the superuser session, as run_once does. The function used to take
+# none and run on the app connection, where it could never add a partition; the
+# only test of it called it and checked that nothing was raised - which was
+# true, because the failure was caught and logged.
+
+async def _partitions(admin, parent: str) -> dict[str, dict]:
+    rows = (await admin.execute(text("""
+        SELECT c.relname, c.relrowsecurity AND c.relforcerowsecurity AS protected,
+               (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+          FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+         WHERE i.inhparent = CAST(:p AS regclass)
+    """), {"p": parent})).mappings().all()
+    await admin.commit()
+    return {r["relname"]: dict(r) for r in rows}
+
+
+async def _where(admin, table: str, column: str, value) -> str | None:
+    """Which partition a row is in."""
+    found = await admin.scalar(text(f"SELECT tableoid::regclass::text FROM {table} WHERE {column} = :v"), {"v": value})
+    await admin.commit()
+    return found
+
+
 @pytest.mark.asyncio
-async def test_run_partition_maintenance_does_not_raise():
-    """Confirms `CALL public.run_maintenance_proc()` actually executes
-    against the real pg_partman install (verified signature/schema location
-    during Task 3 — public, not partman) on an AUTOCOMMIT connection, rather
-    than assuming the SQL/isolation handling is correct."""
-    await scheduler_main.run_partition_maintenance()
+async def test_partition_maintenance_makes_the_months_ahead_and_protects_them(admin_session):
+    """The job's whole purpose, which it had never once achieved: a month that is
+    missing gets made, as the scheduler runs it, and arrives with row security."""
+    parent = "public.weapon_events"
+    before = await _partitions(admin_session, parent)
+    ahead = sorted(n for n in before if not n.endswith("_default"))[-2:]
+    for name in ahead:
+        assert await admin_session.scalar(text(f"SELECT count(*) FROM {name}")) == 0, f"{name} is not empty"
+        await admin_session.execute(text(f"DROP TABLE {name}"))
+    await admin_session.commit()
+    assert not set(ahead) & set(await _partitions(admin_session, parent)), "the months ahead were not removed"
+
+    result = await scheduler_main.run_partition_maintenance(admin_session)
+
+    assert result["failed"] == {}
+    after = await _partitions(admin_session, parent)
+    assert set(ahead) <= set(after), f"not made again: {sorted(set(ahead) - set(after))}"
+    assert set(ahead) <= set(result["created"])
+    unprotected = [n for n, row in after.items() if not (row["protected"] and row["policies"] == 1)]
+    assert unprotected == [], f"partitions without forced row security: {unprotected}"
+
+    # And every partitioned table, not only this one, has the month three ahead.
+    unready = (await admin_session.execute(text("""
+        SELECT pc.parent_table FROM public.part_config pc
+         WHERE NOT EXISTS (
+            SELECT 1 FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+             WHERE i.inhparent = pc.parent_table::regclass
+               AND c.relname = split_part(pc.parent_table, '.', 2) || '_p'
+                               || to_char(date_trunc('month', now()) + interval '3 months', 'YYYYMMDD'))
+    """))).scalars().all()
+    await admin_session.commit()
+    assert unready == []
+    assert await scheduler_main.secure_new_partitions() == 0, "maintenance left a partition for the sweep to secure"
+
+
+@pytest.mark.asyncio
+async def test_every_partitioned_table_keeps_getting_partitions_while_it_is_quiet(admin_session):
+    """pg_partman's default makes new partitions only while rows keep arriving. A
+    table that has been quiet for a season - weapon events, on a good year - would
+    have no partition for today. Checked for every set, so one registered by a
+    later migration without the setting fails here."""
+    stops = (await admin_session.execute(text(
+        "SELECT parent_table FROM public.part_config WHERE NOT infinite_time_partitions"))).scalars().all()
+    await admin_session.commit()
+    assert stops == []
+
+
+@pytest.mark.asyncio
+async def test_rows_stranded_in_a_default_partition_are_moved_with_everything_linked_to_them(admin_session):
+    """What an installation that ran out of partitions is left with: rows in the
+    default. The night the job first works it must move them to where they belong
+    - and not, as pg_partman's own move does, delete everything that referenced
+    them. A detection moved that way loses its plate row (ON DELETE CASCADE fires
+    on the delete half of the move); this is the test that it does not."""
+    when = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)      # before any month any installation has
+    tenant, camera, detection, audit = (uuid.uuid4() for _ in range(4))
+    made = ("lpr_events_p20250101", "audit_logs_p20250101", "detections_p20250101")
+    for stmt, params in (
+        ("INSERT INTO tenants (id, name, slug) VALUES (:t, 'Stranded', :s)", {"t": tenant, "s": f"str-{tenant.hex[:10]}"}),
+        ("INSERT INTO cameras (id, tenant_id, name) VALUES (:c, :t, 'Gate')", {"c": camera, "t": tenant}),
+        ("INSERT INTO detections (id, tenant_id, camera_id, module_type, confidence, bounding_box, raw_metadata, "
+         "detected_at) VALUES (:d, :t, :c, 'lpr', 0.9, '{}', '{}', :at)",
+         {"d": detection, "t": tenant, "c": camera, "at": when}),
+        ("INSERT INTO lpr_events (detection_id, detected_at, tenant_id, camera_id, plate_number) "
+         "VALUES (:d, :at, :t, :c, 'SBA1234A')", {"d": detection, "t": tenant, "c": camera, "at": when}),
+        ("INSERT INTO audit_logs (id, tenant_id, action, created_at, row_hash, prev_hash) "
+         "VALUES (:a, :t, 'test.stranded', :at, 'h1', 'h0')", {"a": audit, "t": tenant, "at": when}),
+    ):
+        await admin_session.execute(text(stmt), params)
+    await admin_session.commit()
+    try:
+        assert await _where(admin_session, "detections", "id", detection) == "detections_default"
+        assert await _where(admin_session, "lpr_events", "detection_id", detection) == "lpr_events_default"
+        assert await _where(admin_session, "audit_logs", "id", audit) == "audit_logs_default"
+        audit_before = await admin_session.scalar(text("SELECT md5(a::text) FROM audit_logs a WHERE id = :a"), {"a": audit})
+        await admin_session.commit()
+
+        result = await scheduler_main.run_partition_maintenance(admin_session)
+
+        assert result["failed"] == {}
+        for parent in ("public.detections", "public.lpr_events", "public.audit_logs"):
+            assert result["moved"].get(parent, 0) >= 1, result["moved"]
+        assert await _where(admin_session, "detections", "id", detection) == "detections_p20250101"
+        assert await _where(admin_session, "lpr_events", "detection_id", detection) == "lpr_events_p20250101", \
+            "the plate row did not survive its detection being moved"
+        assert await _where(admin_session, "audit_logs", "id", audit) == "audit_logs_p20250101"
+        audit_after = await admin_session.scalar(text("SELECT md5(a::text) FROM audit_logs a WHERE id = :a"), {"a": audit})
+        assert audit_after == audit_before, "the audit row changed while it was moved"
+        left = await admin_session.scalar(text(
+            "SELECT (SELECT count(*) FROM ONLY detections_default) + (SELECT count(*) FROM ONLY lpr_events_default) "
+            "     + (SELECT count(*) FROM ONLY audit_logs_default)"))
+        assert left == 0
+
+        # The months it made for them are protected like any other.
+        for parent, name in (("public.detections", made[2]), ("public.lpr_events", made[0]), ("public.audit_logs", made[1])):
+            row = (await _partitions(admin_session, parent))[name]
+            assert row["protected"] and row["policies"] == 1, name
+        # The triggers it suspended are back: the link still deletes with its parent.
+        assert await admin_session.scalar(text("SELECT current_setting('session_replication_role')")) == "origin"
+        await admin_session.execute(text("DELETE FROM detections WHERE id = :d"), {"d": detection})
+        await admin_session.commit()
+        assert await _where(admin_session, "lpr_events", "detection_id", detection) is None
+    finally:
+        await admin_session.rollback()
+        for stmt in ("DELETE FROM audit_logs WHERE tenant_id = :t", "DELETE FROM detections WHERE tenant_id = :t",
+                     "DELETE FROM cameras WHERE tenant_id = :t", "DELETE FROM tenants WHERE id = :t"):
+            await admin_session.execute(text(stmt), {"t": tenant})
+        await admin_session.commit()
+        # Leave the schema as it was. A partition of a referenced table has to be
+        # detached before it can be dropped.
+        for name in made:
+            parent = name.rsplit("_p", 1)[0]
+            exists = await admin_session.scalar(text("SELECT to_regclass(:n) IS NOT NULL"), {"n": f"public.{name}"})
+            if exists:
+                await admin_session.execute(text(f"ALTER TABLE public.{parent} DETACH PARTITION public.{name}"))
+                await admin_session.execute(text(f"DROP TABLE public.{name}"))
+        await admin_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_one_tables_trouble_is_that_tables_alone(admin_session, monkeypatch, caplog):
+    """Each table is maintained in its own transaction. One that cannot be - and
+    there will be one, some night - must not cost the others their partitions, and
+    must be reported as an error rather than a warning nobody reads."""
+    real = scheduler_main._move_stranded_rows
+
+    async def breaks_for_one(db, parent):
+        if parent == "public.crowd_events":
+            raise RuntimeError("no room on the disk")
+        return await real(db, parent)
+
+    monkeypatch.setattr(scheduler_main, "_move_stranded_rows", breaks_for_one)
+    with caplog.at_level("ERROR"):
+        result = await scheduler_main.run_partition_maintenance(admin_session)
+    assert list(result["failed"]) == ["public.crowd_events"]
+    assert "no room on the disk" in result["failed"]["public.crowd_events"]
+    assert any("partition maintenance FAILED for public.crowd_events" in r.getMessage() for r in caplog.records)
+    # The session is usable afterwards, and the other thirteen were done.
+    sets = await admin_session.scalar(text("SELECT count(*) FROM public.part_config WHERE automatic_maintenance = 'on'"))
+    await admin_session.commit()
+    assert sets >= 14
 
 
 @pytest.mark.asyncio
