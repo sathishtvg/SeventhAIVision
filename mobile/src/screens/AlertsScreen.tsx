@@ -33,6 +33,7 @@ const MODULE_FILTERS = [
   { key: 'tampering', label: 'Tampering' },
   { key: 'abandoned', label: 'Abandoned' },
   { key: 'fall', label: 'Fall' },
+  { key: 'drone_patrol', label: 'Drone' },
 ] as const
 
 function AlertRow({ item }: { item: Alert }) {

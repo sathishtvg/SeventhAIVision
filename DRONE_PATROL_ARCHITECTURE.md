@@ -5,8 +5,9 @@ Phase 3, the API; Phase 4, flying — the provider abstraction, the simulator,
 pre-flight, the command queue and the drone runner (migration `0124`); and
 Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
 security event (migration `0126`); Phase 7, CCTV correlation (migration
-`0127`); Phase 8, incident response (migration `0128`); and Phase 9, the web
-screens (no migration). 86 operations,
+`0127`); Phase 8, incident response (migration `0128`); Phase 9, the web
+screens; and Phase 10, the phone and the desktop app (no migration for either).
+86 operations,
 described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
@@ -336,9 +337,40 @@ routes), `Sidebar.tsx` (a "Drone Patrol" section) and `hooks/usePermission.ts`
 The paths are flat (`/drone-events`, not `/drones/events`) because the sidebar
 highlights by prefix.
 
+## Phone and desktop (Phase 10)
+
+**The phone** carries the response, not the planning: a route is not drawn with a
+thumb. Added to the existing Expo app, in its own patterns (`Card`, the theme,
+react-query, the realtime hook, the permission gate in `lib/access.ts`):
+
+| Where | What |
+|---|---|
+| More → Drone Events (`drone:event:read`) | Open events first; risk and AI confidence labelled apart on every row; refreshes on the drone announcements |
+| Drone Event | Snapshot (tap to enlarge) and clip, details in site time, the risk factors, coordinates with **Open in Maps**, the incident and its guard; **Acknowledge**, **Escalate**, **Open Incident**, **Dispatch Guard** (free guards nearest first, or "nearest available"), **Resolve**, **False Positive** (needs a reason) — each shown only to a role that may take it |
+| Alerts → a drone alert | **View the drone event**, found by `GET /drone-events?alert_id=` |
+| Incidents | Unchanged: a drone incident is a platform incident, so its status, notes and the guard's acknowledge-arrive-resolve flow are the existing screens; the event links to it |
+
+Drone alerts need nothing new to arrive: they are `alerts` rows announced as
+`alert_created`, so the existing push (sent for high and critical alerts), the
+Alerts tab and its new "Drone" filter chip already carry them. Snapshots load as images with the session token in a
+header. The app has no video player, so a clip plays in a web view that fetches
+the file with the same header and plays it from memory — the media endpoint's
+authentication is unchanged.
+
+Registration touched four existing mobile files, additively: the navigator (three
+screens), the More menu (one row), the alert detail screen (the link, on drone
+alerts only) and the Alerts module filter (one chip).
+
+**The desktop app** is the web build in an Electron shell with no API layer of its
+own, so it has every Phase 9 screen once rebuilt (`npm run dist` in `desktop/`):
+drone alerts and their native notifications, the live drone view, CCTV
+correlation, mission status, the incident workflow and replay. Nothing
+drone-specific was added to it. Its content policy already allows what the
+screens load — https map tiles, in-memory images and video, the API and its
+websocket — and a repository test now holds it to that.
+
 ## Not built yet
 
-mobile
-(10), reports (11), analytics (12). No real drone, SDK or edge hardware is
+reports (11), analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.

@@ -150,6 +150,17 @@ the same tab bar. The screen for each step:
 A drone with no camera linked flies and reports telemetry, but its live view says
 so and the AI has nothing to read: link its camera on the fleet screen.
 
+**On the phone.** A drone alert arrives like any alert (a push when it is high or
+critical, the Alerts tab, the "Drone" filter). Opening it offers **View the drone event**; More → Drone
+Events lists them all. From the event an officer sees the snapshot and clip,
+opens the location in the phone's maps app, acknowledges, escalates, opens the
+incident and dispatches a guard; the incident itself is updated on the existing
+Incidents screens. A guard's phone shows drone events and can open an incident,
+but not acknowledge or dispatch — that follows the roles in migration `0123`.
+
+**On the Windows app.** The same screens as the web, after the app is rebuilt
+from this version.
+
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |

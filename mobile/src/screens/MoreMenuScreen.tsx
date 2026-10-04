@@ -46,6 +46,7 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'Training',      label: 'My Training',        description: 'SOP courses and quizzes',            icon: 'school-outline',           color: colors.primary, permission: 'training:read' },
   { screen: 'Visitors',      label: 'Visitor Management', description: 'Check in/out and manage visitors',   icon: 'people-outline',           color: colors.info, permission: 'visitor:read' },
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary, permission: 'detection:read' },
+  { screen: 'DroneEvents',   label: 'Drone Events',       description: 'What the drones found, and the response', icon: 'airplane-outline',     color: colors.info, permission: 'drone:event:read' },
   { screen: 'Analytics',     label: 'Analytics',          description: 'Metrics, trends, and top cameras',   icon: 'bar-chart-outline',        color: colors.secondary, audience: 'ops' },
   { screen: 'Reports',       label: 'Reports',            description: 'Generate and download PDF reports',  icon: 'document-text-outline',    color: colors.warning, audience: 'ops' },
   { screen: 'Notifications', label: 'Notification Logs',  description: 'Email, SMS, and webhook history',    icon: 'notifications-outline',    color: colors.success, permission: 'notification:manage', audience: 'ops' },
