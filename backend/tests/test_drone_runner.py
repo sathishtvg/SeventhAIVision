@@ -29,7 +29,10 @@ from app.main import app
 from app.core.security import create_access_token
 from app.db.session import AsyncSessionLocal
 from app.services import drone_runner as runner
-from app.services.drone_providers import Capability, SimulatorProvider
+from app.services import drone_sessions as ds
+from app.services.drone_providers import Capability, FlightUpdate, SimulatorProvider
+from app.services.drone_providers.base import TelemetrySample
+from app.services.geofence import haversine_meters
 
 _app_db_url = os.environ.get("DATABASE_URL", "")
 _m = re.search(r"@([^:/]+):", _app_db_url)
@@ -176,6 +179,77 @@ async def test_a_manual_run_flies_the_whole_route_and_completes():
     assert d["status"] in ("READY", "CHARGING") and d["total_flight_seconds"] > 0 and d["last_flight_at"]
     types = [e[1] for e in pub.events]
     assert "drone_session_updated" in types and "drone_telemetry" in types
+
+
+async def _track_length(sid) -> float:
+    """The length of the flight's stored track, worked out here rather than by
+    the code under test."""
+    pts = await _sql("SELECT latitude, longitude FROM drone_telemetry WHERE session_id = :s ORDER BY recorded_at",
+                     {"s": uuid.UUID(str(sid))})
+    return sum(haversine_meters(float(a["latitude"]), float(a["longitude"]),
+                                float(b["latitude"]), float(b["longitude"])) for a, b in zip(pts, pts[1:]))
+
+
+@pytest.mark.asyncio
+async def test_a_flight_records_how_far_it_flew():
+    """Found by flying one with the real runner: nothing wrote the distance, so
+    every report and the analytics showed none. It is the length of the recorded
+    track - about the route out and back - and it grows while the flight is in
+    the air."""
+    w = await _world(speed=2)
+    async with _client() as c:
+        sid = (await _start(c, w))["session"]["id"]
+        assert (await _session(sid))["distance_m"] is None, "nothing flown yet"
+        s, t = await _fly_until(sid, _now(), until=("ACTIVE",))
+        s, t = await _fly_until(sid, t, until=TERMINAL, max_ticks=6)          # a few passes into the flight
+        midway = float(s["distance_m"])
+        assert s["status"] == "ACTIVE" and midway > 0
+        s, _ = await _fly_until(sid, t, max_ticks=200)
+    assert s["status"] == "COMPLETED"
+    flown = float(s["distance_m"])
+    assert flown > midway
+    assert flown == pytest.approx(await _track_length(sid), abs=0.5)
+    # Base -> three waypoints -> base is a square of about 111 m sides.
+    planned = sum(haversine_meters(*a, *b) for a, b in zip(
+        [(1.3, 103.8), (1.3010, 103.8000), (1.3010, 103.8010), (1.3000, 103.8010)],
+        [(1.3010, 103.8000), (1.3010, 103.8010), (1.3000, 103.8010), (1.3, 103.8)]))
+    assert flown == pytest.approx(planned, rel=0.05), (flown, planned)
+
+    async with _client() as c:
+        shown = (await c.get(f"/api/v1/drone-patrols/{sid}", headers=w["h_admin"])).json()
+        period = (await c.get("/api/v1/drone-reports/summary", headers=w["h_admin"],
+                              params={"from": _now().date().isoformat(), "to": _now().date().isoformat()})).json()
+    assert float(shown["distance_m"]) == flown
+    assert period["totals"]["distance_m"] == pytest.approx(flown, abs=0.1)
+
+
+@pytest.mark.asyncio
+async def test_a_sample_sent_twice_is_not_flown_twice():
+    w = await _world()
+    async with _client() as c:
+        sid = (await _start(c, w))["session"]["id"]
+    at = _now()
+
+    def sample(seconds: int, lat: float) -> TelemetrySample:
+        return TelemetrySample(recorded_at=at + timedelta(seconds=seconds), latitude=lat, longitude=103.8,
+                               altitude_m=40, heading_deg=0, speed_mps=8, battery_pct=90, mission_state="ACTIVE")
+
+    async def report(samples) -> float:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": str(w["tenant"])})
+            session = dict((await db.execute(text("SELECT * FROM drone_patrol_sessions WHERE id = :s"),
+                                             {"s": uuid.UUID(sid)})).mappings().first())
+            await ds.record_update(db, session, FlightUpdate(provider_state={}, phase="ACTIVE", samples=samples),
+                                   _now(), ds.Announcements())
+            await db.commit()
+        return float((await _session(sid))["distance_m"])
+
+    leg = haversine_meters(1.3000, 103.8, 1.3001, 103.8)                      # about 11 m
+    first = await report([sample(0, 1.3000), sample(1, 1.3001)])
+    assert first == pytest.approx(leg, abs=0.05)
+    assert await report([sample(0, 1.3000), sample(1, 1.3001)]) == first, "the same two samples again"
+    assert await report([sample(1, 1.3001), sample(2, 1.3002)]) == pytest.approx(2 * leg, abs=0.05), \
+        "one already recorded, one new: only the new leg"
 
 
 @pytest.mark.asyncio

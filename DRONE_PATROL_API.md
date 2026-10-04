@@ -315,6 +315,9 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   A snapshot still at the site, or no longer in storage, is said to be so. The
   workbook has five sheets — Summary, Waypoints, Events, Evidence, CCTV — and no
   pictures. All times are the organisation's own zone, labelled.
+- **Distance.** A flight's `distance_m` is the length of its recorded track over
+  the ground, in metres. It grows while the flight is in the air and is final
+  when it lands; a flight that never launched has `null`.
 - **Downloads are rendered on request**, so an officer's later action is in them.
   Site scoping applies: a flight at a site the caller may not see answers 404.
 - **Each export is recorded and limited.** The PDF, the workbook and the period

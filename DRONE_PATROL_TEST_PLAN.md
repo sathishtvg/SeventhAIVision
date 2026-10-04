@@ -1,9 +1,10 @@
 # Drone Patrol — Test Plan
 
-**As of:** 2026-09-25 · Phases 1–8. **261 drone tests**, all passing, plus the
-platform's repository-inspection suites (1,111) and the neighbouring suites the
-drone module touches (204). This describes the tests that exist, what they prove,
-and what no test here can prove.
+**As of:** 2026-10-04 · all 14 phases. **405 drone tests** — 335 backend, 34 web, 36 phone —
+all passing, inside a platform suite of 3,200 backend tests, 1,119
+repository-inspection tests, 132 web tests and 170 phone tests that CI runs on
+every push. This describes the tests that exist, what they prove, and what no
+test here can prove.
 
 ## How to run
 
@@ -66,7 +67,7 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `test_drone_geometry.py` | 15 | pure | Zone shapes, point-in-zone, route length, off-site waypoints |
 | `test_drone_simulator.py` | 21 | pure | The simulator flies the plan, pauses, aborts, returns home, handles low battery, lost link, motor and battery faults; deterministic per session; one long gap flies the same mission as many short ticks |
 | `test_drone_preflight.py` | 9 | pure | Every blocking check and warning, each with a reason; battery needs the estimate plus reserve |
-| `test_drone_runner.py` | 18 | DB | Phase 4 end to end: manual and scheduled runs, blocked runs, commands (pause, resume, abort, cancel, duplicates, capability refusals), licence lapse never stops a flight coming down, alerts announced after commit, lost links, two tenants |
+| `test_drone_runner.py` | 20 | DB | Phase 4 end to end: manual and scheduled runs, blocked runs, commands (pause, resume, abort, cancel, duplicates, capability refusals), licence lapse never stops a flight coming down, alerts announced after commit, lost links, two tenants; a flight's distance as the length of its recorded track, growing in the air, and a sample sent twice not flown twice |
 | `test_drone_edge_store.py` | 21 | pure | Phase 5 gateway store: ordered numbering, one-transaction record-and-queue, restart survival, the open batch re-offered unchanged, sample limits, refused items kept with reasons; the credential format; recording-policy rules; upload windows |
 | `test_drone_edge_sync.py` | 25 | API | The gateway API: credential refusals indistinguishable, rotation, claiming with pre-flight, the runner keeping out, ordered and duplicate updates, resent batches, one bad item not blocking the rest, the EDGE_UNREACHABLE verdict corrected, command relay, health, events, file policy and uploads (checksum, format, not-asked-for), gateway offline with one alert, clock skew |
 | `test_drone_edge_agent.py` | 9 | E2E | The real gateway: a whole patrol, drone health, flying through an outage and catching up exactly once, no new flight without the centre, restart mid-flight, a lost answer resent as the same batch, an operator's abort, an offline sighting and its snapshot uploaded, a malformed item set aside |
@@ -78,13 +79,13 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `frontend/src/pages/drones/drones.test.tsx` | 12 | UI | Phase 9 screens, API mocked: route length and zone drafts; events list with risk and AI confidence apart; the investigation offering each action only to a role that may take it, and a false positive needing a reason; the patrol list and its export gated; a blocked flight shown as a replay with why; live controls while flying; a new mission needing a site |
 | `frontend/src/components/layout/Sidebar.test.tsx` | +1 | UI | The Drone Patrol section: every entry for an admin, only events for a guard |
 | `test_drone_event_lookup.py` | 2 | API | Phase 10: an alert and an incident each lead to their drone event; the lookup stays inside site scoping and the tenant |
-| `test_drone_clients.py` | 6 | repo | Every drone call in the web and mobile clients is an operation the API serves, with that method (and the scanner proven on each shape it reads); the event list accepts the clients' filters; the desktop content policy allows what the drone screens load; the phone registers its drone screens behind `drone:event:read` |
+| `test_drone_clients.py` | 8 | repo | Every drone call in the web and mobile clients is an operation the API serves, with that method (and the scanner proven on each shape it reads); the event list accepts the clients' filters; the desktop content policy allows what the drone screens load; the phone registers its drone screens behind `drone:event:read`; the API document listing exactly the operations served, each with the permission the code requires |
 | `mobile/src/api/drones.test.ts` | 15 | unit | The phone's calls on the wire: paths, bodies, the paginated list unwrapped, a false positive refused without a reason before the round trip, "nearest guard" sent as null, media addressed to the signed-in server with the token in a header |
 | `mobile/src/lib/droneEvents.test.ts` | 15 | unit | Which actions each role is offered (operator, guard, viewer; closed events; no second acknowledge, escalation or incident), wording, the maps link, which announcements refresh the screens, and the clip player page — token in a header, inputs unable to break out of it |
 | `mobile/__tests__/droneEventScreen.test.tsx` | 6 | UI | The event screen mounted: the response in front of an operator, one-tap acknowledge, a false positive held until a reason is typed, a guard offered only the incident, a viewer told why there are no buttons, the link to the incident |
 | `test_drone_reports.py` | 19 | DB + API | Phase 11, as the application's database user: the report as the flight's own record (unchanged by renaming the mission or route), the stored picture in the PDF and a plain statement when it is missing, held at the site, or the AI worker's; the workbook carrying the same numbers; a flight that never launched; stored once with a checksum matching the file, not before it has settled; the immediate email to those whose scope covers the flight and not to those added later; failure retried with backoff then left failed with its reason, and sent again on request; a claim abandoned mid-send taken again; summaries once per scope for a closed period with flights in it; the organisation's day, not UTC's, deciding the period; two tenants kept apart and a lapsed licence still served; who may read, export and choose recipients |
 | `frontend/src/pages/drones/droneReports.test.tsx` | 12 | UI | The report tabs for those who may read reports and not for a guard; recipients listed with scope and frequency, paused, added only with a real address, read-only without export; a failed email with its reason and **Send again**; the period summary; the PDF and workbook offered once a flight has ended, the workbook only to those who may export; a refused export saying to wait, not "status code 429" |
-| `test_drone_security.py` | 29 | DB + API + pure | Phase 13, walking the application's own route table: every partition under forced row security, one read by name as the application's role, and a later one protected by the daily sweep; all 100 operations behind a permission or a gateway credential, none answering without credentials, a user with no drone permission refused by every one; another tenant's ids answering 404 from all 66 id-addressed operations and another site's hidden from a supervisor, with every row of the victim's unchanged; no response carrying a stored secret, a credential hash, a password hash or a stream address; evidence and reports taken out recorded with their checksums, and every changing operation writing an audit entry; what a gateway may send; an unexpected failure and a failed email saying nothing of this system; the platform health verdicts, the heartbeat, and the counts seeing every tenant; reports limited per person, not per address |
+| `test_drone_security.py` | 30 | DB + API + pure | Phase 13, walking the application's own route table: every partition under forced row security, one read by name as the application's role, and a later one protected by the daily sweep; all 100 operations behind a permission or a gateway credential, none answering without credentials, a user with no drone permission refused by every one; another tenant's ids answering 404 from all 66 id-addressed operations and another site's hidden from a supervisor, with every row of the victim's unchanged; no response carrying a stored secret, a credential hash, a password hash or a stream address; evidence and reports taken out recorded with their checksums, and every changing operation writing an audit entry; what a gateway may send; an unexpected failure and a failed email saying nothing of this system; the platform health verdicts, the heartbeat, and the counts seeing every tenant; reports limited per person, not per address; a request body unable to name a column it was not given |
 | `test_drone_analytics.py` | 10 | pure + API | Phase 12: the score as weighted events per week, capped and levelled; nothing recommended below the thresholds, and each recommendation stating what it saw and marked system-generated; patrol statistics, mission success (cancelled and in-flight flights neither), the false-positive and incident-conversion rates; hours, weekdays and the daily trend in the organisation's own zone; areas ranked with false positives weighing nothing; hot spots and repeated intrusion locations; permission, site scope, tenant isolation; an empty period as zeros and no rate, not an error |
 | `frontend/src/pages/drones/droneAnalytics.test.tsx` | 9 | UI | Equal values drawn as equal bars with only the largest labelled; headline numbers each saying what they are a share of; trends as separate charts; the risk map labelled as an analytical score with every level written, not only coloured; recommendations marked system-generated; the period control; the Analytics tab offered to those who may read reports |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
@@ -95,6 +96,27 @@ loop and stop cleanly; the gateway refuses to start without a credential), and
 the neighbouring suites — alerts, alert rules, licences, billing, platform
 licences, tenants, Virtual Patrolling, cameras, recording policy, evidence,
 incidents and dispatch.
+
+## Final validation (Phase 14)
+
+Run once, on 2026-10-04, on top of everything above. None of these is a test
+that runs again by itself, except where it says so.
+
+| Check | How | Result |
+|---|---|---|
+| The whole platform's tests | CI on the merged commit, on a database built from migration 0001 | Backend, repository inspection, web and phone all pass, 0 failed |
+| The module rolled back and re-applied | `alembic downgrade 0122`, look for anything named "drone", `alembic upgrade head` | Nothing left at 0122 (after one fix); 26 tables, 8 of 8 partitions protected, 16 permissions back at head |
+| One patrol flown by the real runner | `python -m app.drone_runner_main` as its own process against the test database, the API driven beside it | Launch, pause, four worker-shaped detections to one verified CRITICAL event with alert and incident, resume, landing; every announcement heard on the tenant's channel. Found the missing distance |
+| The gateway process | Started without a credential, and with one the centre does not know | Refuses to start; then says once that it was refused, keeps running, stops cleanly |
+| Web | `npm run typecheck`, `lint`, `test:run`, `build` | Clean; 0 errors; 132 passed; built |
+| Phone | `npm run ts`, `npm test -- --ci` | Clean; 170 passed |
+| Desktop | An unpacked package built into a scratch folder | Packages, and contains the drone screens; the released 1.0.1 does not |
+| Compose | `docker compose config` with the `drone-edge` profile | Parses; both services unprivileged, no published ports |
+| The API document | Its operation tables against the route table | 100 documented, 100 served, permissions as written — **now a test** |
+| Static pass | A standard-library scan of the module's 67 Python files | Compiles; no unused imports (after six removed); no risky calls; only constants and bind-parameter clauses interpolated into SQL |
+| Credentials | Every line the module added, scanned for key and token patterns | None |
+| The repository's own checks | Migration safety, migration chain, container hardening | The drone migrations pass and the chain is intact; the two failures are in platform files that predate the module (gap analysis §25.5) |
+| Dependencies | The four manifests, and `npm audit` on production dependencies | The module added none; the advisories found predate it (§25.5) |
 
 **The repository-inspection run is not safe alongside a database run either:**
 it loads the same `conftest.py`, whose end-of-session sweep deletes every tenant

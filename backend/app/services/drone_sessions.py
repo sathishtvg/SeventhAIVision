@@ -29,6 +29,7 @@ from app.dependencies.drone_module import entitlement_problem, load_entitlement
 from app.services import drone_flight_plan as fp
 from app.services import drone_geometry as geo
 from app.services.drone_preflight import PreflightFacts, PreflightResult, evaluate
+from app.services.geofence import haversine_meters
 from app.services.drone_providers import FlightUpdate, capabilities_of
 
 MODULE = "drone_patrol"
@@ -253,13 +254,57 @@ async def raise_alert(db: AsyncSession, out: Announcements, *, code: str, severi
 
 # ── Recording a flight ───────────────────────────────────────────────────────
 
+#: The ground distance of a flight: the length of its recorded track. The
+#: authoritative figure, taken from the stored samples when the flight ends.
+_FLOWN_SQL = """
+    SELECT round(sum(2 * 6371000 * asin(sqrt(least(1.0,
+               power(sin(radians(latitude - prev_latitude) / 2), 2)
+             + cos(radians(prev_latitude)) * cos(radians(latitude))
+               * power(sin(radians(longitude - prev_longitude) / 2), 2)))))::numeric, 1)
+      FROM (SELECT latitude, longitude,
+                   lag(latitude)  OVER (ORDER BY recorded_at) AS prev_latitude,
+                   lag(longitude) OVER (ORDER BY recorded_at) AS prev_longitude
+              FROM drone_telemetry
+             WHERE session_id = :s AND latitude IS NOT NULL AND longitude IS NOT NULL) track
+     -- The first sample has nothing before it. Left in, LEAST would skip its NULL
+     -- and answer 1: half the way round the Earth added to every flight.
+     WHERE prev_latitude IS NOT NULL
+"""
+
+
+async def _metres_added(db: AsyncSession, session_id, samples) -> float | None:
+    """How far these samples carry the flight beyond the last one already
+    recorded - the running figure a live screen shows.
+
+    Only samples later than the last stored one count, so a sample sent twice or
+    out of order can never be added twice. The total is taken again from the
+    whole stored track when the flight ends (`_FLOWN_SQL`), so anything this
+    left out is in the final figure."""
+    before = (await db.execute(text(
+        "SELECT recorded_at, latitude, longitude FROM drone_telemetry "
+        " WHERE session_id = :s AND latitude IS NOT NULL AND longitude IS NOT NULL "
+        " ORDER BY recorded_at DESC LIMIT 1"), {"s": session_id})).first()
+    path = [(before.latitude, before.longitude)] if before else []
+    cutoff = before.recorded_at if before else None
+    for x in sorted(samples, key=lambda x: x.recorded_at):
+        if x.latitude is None or x.longitude is None or (cutoff is not None and x.recorded_at <= cutoff):
+            continue
+        path.append((float(x.latitude), float(x.longitude)))
+        cutoff = x.recorded_at
+    if len(path) < 2:
+        return None
+    return round(sum(haversine_meters(float(a[0]), float(a[1]), b[0], b[1]) for a, b in zip(path, path[1:])), 2)
+
+
 async def record_update(db: AsyncSession, session: dict, up: FlightUpdate, now: datetime,
                         out: Announcements, *, launched: bool = False) -> str:
     """Persist one provider update: samples, waypoint progress, the session's and
     the drone's state, and — once it has landed — the outcome. Returns the
     session's new status."""
     sid, drone_id, tid = session["id"], session["drone_id"], session["tenant_id"]
+    flown = None
     if up.samples:
+        flown = await _metres_added(db, sid, up.samples)
         await db.execute(text("""
             INSERT INTO drone_telemetry
                 (tenant_id, drone_id, session_id, recorded_at, latitude, longitude, altitude_m,
@@ -298,7 +343,7 @@ async def record_update(db: AsyncSession, session: dict, up: FlightUpdate, now: 
         status = PHASE_TO_STATUS[up.phase]
 
     last = up.samples[-1] if up.samples else None
-    await db.execute(text("""
+    await db.execute(text(f"""
         UPDATE drone_patrol_sessions SET
             status = :status, provider_state = CAST(:ps AS jsonb), last_tick_at = CAST(:now AS timestamptz),
             provider_mission_ref = COALESCE(CAST(:ref AS text), provider_mission_ref),
@@ -310,6 +355,10 @@ async def record_update(db: AsyncSession, session: dict, up: FlightUpdate, now: 
             failure_code = COALESCE(CAST(:fcode AS text), failure_code),
             failure_reason = CASE WHEN CAST(:outcome AS text) IN ('FAILED') OR CAST(:fcode AS text) IS NOT NULL
                                   THEN COALESCE(CAST(:freason AS text), failure_reason) ELSE failure_reason END,
+            distance_m = CASE
+                WHEN CAST(:outcome AS text) IS NOT NULL THEN COALESCE(({_FLOWN_SQL}), distance_m)
+                WHEN CAST(:flown AS numeric) IS NOT NULL THEN COALESCE(distance_m, 0) + CAST(:flown AS numeric)
+                ELSE distance_m END,
             ended_at  = CASE WHEN CAST(:outcome AS text) IS NOT NULL THEN CAST(:now AS timestamptz) ELSE ended_at END,
             landed_at = CASE WHEN CAST(:outcome AS text) IS NOT NULL THEN COALESCE(CAST(:last_at AS timestamptz), CAST(:now AS timestamptz)) ELSE landed_at END,
             updated_at = now()
@@ -317,7 +366,7 @@ async def record_update(db: AsyncSession, session: dict, up: FlightUpdate, now: 
     """), {"status": status, "ps": json.dumps(fp.jsonable(up.provider_state)), "now": now,
            "ref": up.provider_mission_ref, "launched": launched, "s": sid, "lost": comms_lost,
            "fcode": up.failure_code, "freason": up.failure_reason, "outcome": up.outcome,
-           "last_at": last.recorded_at if last else None})
+           "last_at": last.recorded_at if last else None, "flown": flown})
 
     # The drone mirrors its flight. Receiving telemetry is hearing from it.
     if up.outcome:

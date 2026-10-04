@@ -31,7 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.drone_ai_pipeline import tenant_tz
-from app.services.drone_reports import MODULE_NAMES, RISK_LEVELS, SUSPICIOUS, period_bounds
+from app.services.drone_reports import MODULE_NAMES, RISK_LEVELS, period_bounds
 
 #: The longest period one analysis may cover.
 MAX_DAYS = 366
