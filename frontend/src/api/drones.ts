@@ -582,3 +582,103 @@ export function apiError(err: unknown): string {
   if (Array.isArray(d)) return d.map((x: { msg?: string }) => x.msg ?? String(x)).join('; ')
   return e?.message ?? 'Something went wrong.'
 }
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+export type ReportFrequency = 'IMMEDIATE' | 'DAILY' | 'WEEKLY' | 'MONTHLY'
+export const REPORT_FREQUENCIES: ReportFrequency[] = ['IMMEDIATE', 'DAILY', 'WEEKLY', 'MONTHLY']
+
+export interface ReportRecipient {
+  id: string
+  site_id: string | null
+  mission_id: string | null
+  email: string
+  frequency: ReportFrequency
+  is_active: boolean
+  /** Which flights: every one, one site's, or one mission's. */
+  scope: 'organisation' | 'site' | 'mission'
+  site_name: string | null
+  mission_name: string | null
+  created_by_name: string | null
+  created_at: string
+}
+
+export interface ReportDelivery {
+  id: string
+  session_id: string | null
+  session_number: string | null
+  site_name: string | null
+  scope_label: string | null
+  frequency: ReportFrequency
+  period_start: string | null
+  period_end: string | null
+  recipients: string[]
+  subject: string
+  status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED'
+  attempts: number
+  /** 0 on a failed email means it will not be tried again by itself. */
+  attempts_left: number
+  last_error: string | null
+  scheduled_at: string
+  sent_at: string | null
+  created_at: string
+}
+
+export interface PeriodSummary {
+  scope: string
+  from: string
+  to: string
+  timezone: string
+  totals: {
+    flights: number
+    completed: number
+    did_not_complete: number
+    by_status: Partial<Record<SessionStatus, number>>
+    flight_seconds: number
+    distance_m: number
+    events: number
+    suspicious: number
+    false_positives: number
+    incidents: number
+    by_risk: Record<RiskLevel, number>
+  }
+}
+
+export interface PeriodQuery { from: string; to: string; site_id?: string; mission_id?: string }
+
+/** Hand a downloaded file to the browser, named as the server named it. */
+function saveDownload(data: Blob, disposition: string | undefined, fallback: string) {
+  const match = /filename="?([^";]+)"?/.exec(disposition ?? '')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(data)
+  a.download = match?.[1] ?? fallback
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+/** A flight's report: the PDF needs drone:report:read, the workbook drone:report:export. */
+export const downloadSessionReport = (id: string, format: 'pdf' | 'excel') =>
+  apiClient.get<Blob>(`/api/v1/drone-patrols/${id}/report/${format}`, { responseType: 'blob' })
+    .then((r) => saveDownload(r.data, r.headers['content-disposition'], `drone-patrol.${format === 'pdf' ? 'pdf' : 'xlsx'}`))
+
+export const getPeriodSummary = (params: PeriodQuery) =>
+  apiClient.get<PeriodSummary>('/api/v1/drone-reports/summary', { params }).then((r) => r.data)
+export const downloadPeriodSummary = (params: PeriodQuery) =>
+  apiClient.get<Blob>('/api/v1/drone-reports/summary/excel', { params, responseType: 'blob' })
+    .then((r) => saveDownload(r.data, r.headers['content-disposition'], 'drone-patrol-summary.xlsx'))
+
+export const listRecipients = () =>
+  apiClient.get<ReportRecipient[]>('/api/v1/drone-report-recipients').then((r) => r.data)
+export const createRecipient = (body: { email: string; frequency: ReportFrequency; site_id?: string | null
+                                        mission_id?: string | null }) =>
+  apiClient.post<ReportRecipient>('/api/v1/drone-report-recipients', body).then((r) => r.data)
+export const updateRecipient = (id: string, body: { frequency?: ReportFrequency; is_active?: boolean }) =>
+  apiClient.put<ReportRecipient>(`/api/v1/drone-report-recipients/${id}`, body).then((r) => r.data)
+export const deleteRecipient = (id: string) =>
+  apiClient.delete(`/api/v1/drone-report-recipients/${id}`).then((r) => r.data)
+
+export const listDeliveries = (params: { status?: string; limit?: number; offset?: number } = {}) =>
+  apiClient.get<Paged<ReportDelivery>>('/api/v1/drone-report-deliveries', { params: { limit: 50, ...params } })
+    .then((r) => r.data)
+export const retryDelivery = (id: string) =>
+  apiClient.post(`/api/v1/drone-report-deliveries/${id}/retry`).then((r) => r.data)

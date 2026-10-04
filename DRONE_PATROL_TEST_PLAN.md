@@ -82,6 +82,8 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `mobile/src/api/drones.test.ts` | 15 | unit | The phone's calls on the wire: paths, bodies, the paginated list unwrapped, a false positive refused without a reason before the round trip, "nearest guard" sent as null, media addressed to the signed-in server with the token in a header |
 | `mobile/src/lib/droneEvents.test.ts` | 15 | unit | Which actions each role is offered (operator, guard, viewer; closed events; no second acknowledge, escalation or incident), wording, the maps link, which announcements refresh the screens, and the clip player page — token in a header, inputs unable to break out of it |
 | `mobile/__tests__/droneEventScreen.test.tsx` | 6 | UI | The event screen mounted: the response in front of an operator, one-tap acknowledge, a false positive held until a reason is typed, a guard offered only the incident, a viewer told why there are no buttons, the link to the incident |
+| `test_drone_reports.py` | 19 | DB + API | Phase 11, as the application's database user: the report as the flight's own record (unchanged by renaming the mission or route), the stored picture in the PDF and a plain statement when it is missing, held at the site, or the AI worker's; the workbook carrying the same numbers; a flight that never launched; stored once with a checksum matching the file, not before it has settled; the immediate email to those whose scope covers the flight and not to those added later; failure retried with backoff then left failed with its reason, and sent again on request; a claim abandoned mid-send taken again; summaries once per scope for a closed period with flights in it; the organisation's day, not UTC's, deciding the period; two tenants kept apart and a lapsed licence still served; who may read, export and choose recipients |
+| `frontend/src/pages/drones/droneReports.test.tsx` | 11 | UI | The report tabs for those who may read reports and not for a guard; recipients listed with scope and frequency, paused, added only with a real address, read-only without export; a failed email with its reason and **Send again**; the period summary; the PDF and workbook offered once a flight has ended, the workbook only to those who may export |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
 
 Beyond the drone suites: migration round trips (each drone migration down and up
@@ -105,6 +107,11 @@ created while it ran — including another run's.
 - Load: fleet-scale telemetry and detection volumes (Phase 13).
 - The screens in a browser against a live flight: their tests mock the API and
   stub the map, so they prove what each screen shows and offers, not the drawing.
+- Mail actually leaving: the report tests build every real document and hand it
+  to a sender that records instead of sending. The SMTP hand-off itself, a real
+  mail server's limits on attachment size, and how a client displays the PDF are
+  unproven. Reports with evidence in an S3-compatible store are written and read
+  by code paths no test here exercises.
 - The phone on a device: its tests run under jest with native modules stubbed.
   Not proven: a clip playing in the web view on Android and iOS, a snapshot
   loading over a real network, the maps hand-off, a push for a drone alert

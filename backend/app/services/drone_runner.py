@@ -50,6 +50,7 @@ from app.services import drone_ai_pipeline as ai_pipeline
 from app.services import drone_cctv_correlation as cctv_corr
 from app.services import drone_response as response
 from app.services import drone_flight_plan as fp
+from app.services import drone_report_delivery as report_delivery
 from app.services import drone_schedule as sched
 from app.services import drone_sessions as ds
 from app.services.drone_providers import (
@@ -742,4 +743,63 @@ async def run_health_tick(factory, pub: Publisher | None = None, now: datetime |
     for tid in await _tenants(factory):
         for k, v in (await check_health(factory, pub, tid, now)).items():
             totals[k] = totals.get(k, 0) + v
+    return totals
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Reports: store a finished flight's report, queue and send the emails
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def process_reports(factory, tenant_id: str, now: datetime,
+                          deliver: report_delivery.Deliver | None = None) -> dict:
+    """For one tenant: report the flights that have landed and settled, queue
+    the summaries whose period has closed, and send what is due. Each flight is
+    its own transaction, so one that cannot be reported does not hold back the
+    rest; a mail server that is down fails rows into backoff, not this job."""
+    counts = {"stored": 0, "queued": 0, "digests": 0, "sent": 0, "failed": 0}
+    async with factory() as db:
+        await _scope(db, tenant_id)
+        flights = await report_delivery.flights_to_report(db, now)
+        await db.rollback()
+        for sid in flights:
+            try:
+                await _scope(db, tenant_id)
+                got = await report_delivery.report_finished_flight(db, sid, now)
+                await db.commit()
+                counts["stored"] += got["stored"]
+                counts["queued"] += got["queued"]
+            except Exception:
+                await db.rollback()
+                logger.exception("drone runner: report for session %s failed", sid)
+        try:
+            await _scope(db, tenant_id)
+            counts["digests"] = (await report_delivery.enqueue_due_digests(db, now))["queued"]
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("drone runner: queueing report summaries failed for tenant %s", tenant_id)
+        try:
+            got = await report_delivery.process_queue(db, tenant_id, now, deliver)
+            counts["sent"], counts["failed"] = got["sent"], got["failed"]
+        except Exception:
+            await db.rollback()
+            logger.exception("drone runner: report email queue failed for tenant %s", tenant_id)
+    return counts
+
+
+async def _report_tenants(factory) -> list[str]:
+    async with factory() as db:
+        rows = (await db.execute(text("SELECT tenant_id FROM drone_report_tenants()"))).scalars().all()
+    return [str(r) for r in rows]
+
+
+async def run_report_tick(factory, now: datetime | None = None,
+                          deliver: report_delivery.Deliver | None = None) -> dict:
+    """Not the runner's usual tenant list: a summary is still owed to a tenant
+    whose licence has lapsed or whose fleet is on the ground."""
+    now = _utc(now)
+    totals = {"stored": 0, "queued": 0, "digests": 0, "sent": 0, "failed": 0}
+    for tid in await _report_tenants(factory):
+        for k, v in (await process_reports(factory, tid, now, deliver)).items():
+            totals[k] += v
     return totals

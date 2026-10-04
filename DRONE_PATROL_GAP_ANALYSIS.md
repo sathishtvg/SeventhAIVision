@@ -364,7 +364,8 @@ The prompt's 14 phases hold, with these adjustments.
 | 8 | Incident integration | **Done** — migration 0128. Incidents, notes, status history and dispatch are the platform's own; nearest free guard from existing shift and position data; verify with drone as a checked pause and resume |
 | 9 | Frontend | **Done** — eight routes in the existing web app; route and zone drawing by a small in-house editor on react-leaflet, no new dependency (§7, §20) |
 | 10 | Mobile and desktop | **Done** — the phone: drone events, snapshot, clip, location, acknowledge, escalate, open incident, dispatch a guard; incident update on the existing screens. Desktop: nothing separate — it is the web build (§21) |
-| 11–14 | Reporting, analytics, hardening, final validation | As in the prompt |
+| 11 | Reporting | **Done** — migration 0129. PDF and workbook per flight, stored with a checksum; immediate, daily, weekly and monthly emails through a retrying queue run by the drone runner (§22) |
+| 12–14 | Analytics, hardening, final validation | As in the prompt |
 
 **Built in Phase 2 (migration 0123), 18 tables:** `drone_module_licenses`,
 `drone_provider_configs`, `drone_edge_gateways`, `drones`,
@@ -376,8 +377,8 @@ The prompt's 14 phases hold, with these adjustments.
 `drone_event_cameras`. Every one points at existing rows; no existing table gained
 a column.
 
-**Deferred to the phase that needs them:** `drone_reports`,
-`drone_report_recipients` and `drone_report_email_queue` (Phase 11).
+**Built in Phase 11 (migration 0129), as deferred:** `drone_reports`,
+`drone_report_recipients` and `drone_report_email_queue`.
 
 ## 16. Risks and technical dependencies
 
@@ -532,3 +533,40 @@ Worth fixing separately.
 Four existing mobile files gained lines, nothing changed: the navigator, the More
 menu, the alert detail screen and the Alerts module filter. The desktop app
 needed none.
+
+## 22. Addendum — found while building Phase 11
+
+### 22.1 There is no shared email queue to reuse
+
+"Use the existing email/notification queue": the platform has two, and neither is
+general. `scheduled_reports` sends from the scheduler loop itself, for three fixed
+report types; Virtual Patrolling's `virtual_patrol_email_queue` is keyed to its own
+schedules and sessions. Extending either would change existing behaviour, so the
+drone module has its own queue table and reuses what *is* shared: Virtual
+Patrolling's backoff and period arithmetic (imported, not copied), the platform's
+SMTP settings, reportlab and openpyxl, and the evidence store.
+
+### 22.2 No new permission was needed
+
+`drone:report:read` and `drone:report:export` were seeded in 0123 for this. Export
+covers the workbook and choosing recipients — emailing a report to an outside
+address is exporting it — so no `…:email` permission was added, and no role grant
+changed.
+
+### 22.3 The object store has no read
+
+`core/object_store.py` can put, delete and presign, not get. With evidence in S3
+the report reads a snapshot through that module's client directly rather than
+adding a function to a core file. That path, and writing reports to S3, are not
+exercised by any test (see the test plan).
+
+### 22.4 The runner's tenant list would have dropped owed reports
+
+`drone_runner_tenants()` lists tenants with a live licence or a flight in the
+air. A weekly summary is owed after the week ends — possibly after the licence
+does. The report job has its own list, `drone_report_tenants()`.
+
+### 22.5 Registration in existing files
+
+`main.py` gained the router and its tag; the `drone-runner` service in
+`docker-compose.yml` gained one environment line. Nothing else existing changed.

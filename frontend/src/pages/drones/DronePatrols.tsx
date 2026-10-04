@@ -5,8 +5,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Alert, Box, Button, Grid, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
-  TablePagination, TableRow, TextField, Typography,
+  Alert, Box, Button, Grid, MenuItem, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead,
+  TablePagination, TableRow, Tabs, TextField, Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -21,6 +21,7 @@ import { LicenceBanner, SessionStatusChip } from '@/components/drones/droneUi'
 import { fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { formatDistance } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
+import { DeliveriesPanel, RecipientsPanel, SummaryPanel } from './DroneReportPanels'
 
 const STATUSES: SessionStatus[] = ['ACTIVE', 'RETURNING', 'PAUSED', 'EVENT_DETECTED', 'COMPLETED', 'FAILED',
                                    'ABORTED', 'CANCELLED', 'BLOCKED', 'MISSED', 'SCHEDULED']
@@ -41,7 +42,30 @@ function csvCell(v: unknown): string {
   return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
 }
 
+const TABS = ['Flights', 'Summary', 'Report recipients', 'Email deliveries']
+
 export default function DronePatrols() {
+  const [tab, setTab] = useState(0)
+  const canReport = usePermission('drone:report:read')
+  return (
+    <Box sx={{ p: 3 }}>
+      <PageHeader title="Patrols & Reports" subtitle="Every drone flight: what flew, where, what it found" />
+      <DroneNav />
+      <LicenceBanner />
+      {canReport && (
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }} variant="scrollable">
+          {TABS.map((t) => <Tab key={t} label={t} />)}
+        </Tabs>
+      )}
+      {tab === 0 && <Flights />}
+      {tab === 1 && <SummaryPanel />}
+      {tab === 2 && <RecipientsPanel />}
+      {tab === 3 && <DeliveriesPanel />}
+    </Box>
+  )
+}
+
+function Flights() {
   const navigate = useNavigate()
   const canExport = usePermission('drone:report:export')
   const [siteId, setSiteId] = useState('')
@@ -98,10 +122,7 @@ export default function DronePatrols() {
   })
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Patrols & Reports" subtitle="Every drone flight: what flew, where, what it found" />
-      <DroneNav />
-      <LicenceBanner />
+    <>
       <GlassCard sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField select size="small" label="Site" value={siteId} sx={{ minWidth: 180 }}
@@ -193,6 +214,6 @@ export default function DronePatrols() {
           <Typography variant="caption" color="text.secondary">Exported {exportCsv.data} flight(s).</Typography>
         )}
       </GlassCard>
-    </Box>
+    </>
   )
 }

@@ -6,8 +6,8 @@ pre-flight, the command queue and the drone runner (migration `0124`); and
 Phase 5, the site edge gateway (migration `0125`); Phase 6, detection to
 security event (migration `0126`); Phase 7, CCTV correlation (migration
 `0127`); Phase 8, incident response (migration `0128`); Phase 9, the web
-screens; and Phase 10, the phone and the desktop app (no migration for either).
-86 operations,
+screens; Phase 10, the phone and the desktop app (no migration for either); and
+Phase 11, reports (migration `0129`). 97 operations,
 described in
 `DRONE_PATROL_API.md`; running it is in `DRONE_PATROL_OPERATIONS.md`, the edge
 gateway in `DRONE_PATROL_EDGE.md`, the AI in `DRONE_PATROL_AI.md`, adding a real
@@ -369,8 +369,46 @@ drone-specific was added to it. Its content policy already allows what the
 screens load — https map tiles, in-memory images and video, the API and its
 websocket — and a repository test now holds it to that.
 
+## Reports (Phase 11)
+
+`services/drone_reports.py` loads a flight into one dictionary — mission, route,
+AI summary, events — and renders it three ways: the JSON endpoint, the PDF
+(reportlab) and the workbook (openpyxl). One loader, so a number cannot differ
+between them. It reads the session's frozen configuration, never the live
+tables; an event's picture is the file recorded with it (the gateway's upload,
+else the AI worker's own evidence, read only), never a fresh frame. The route is
+drawn from the waypoints and the telemetry, to scale, with no map tiles — the
+report builds with no network.
+
+`services/drone_report_delivery.py` decides who is sent what. A recipient covers
+the organisation, a site or a mission, at one of four frequencies. A flight that
+ended five minutes ago has its PDF and workbook written to the evidence store and
+recorded in `drone_reports` with their SHA-256, and — if anyone subscribed to
+"immediately" covers it — one row queued. A closed day, week or month with
+flights in it queues one summary per scope, computed in the organisation's zone.
+The queue is Virtual Patrolling's discipline, with its backoff and period
+arithmetic imported: claimed in a committed transaction before sending, built at
+send time, retried further apart each time, left `FAILED` with its reason after
+five attempts. Unique indexes make queueing idempotent.
+
+The runner's report job runs every 60 s **beside** the flight loop as its own
+task, never in it: a PDF or a slow mail server cannot delay a command. It visits
+the tenants `drone_report_tenants()` names, which — unlike the runner's usual
+list — includes a tenant whose licence lapsed while a report was still owed.
+Mail goes through the platform's SMTP settings.
+
+**Migration `0129`** adds `drone_reports`, `drone_report_recipients`,
+`drone_report_email_queue`, `drone_patrol_sessions.report_queued_at` and
+`drone_report_tenants()`. Drone-owned only; `evidence` is read, nothing else of
+the platform's is touched. Registration: the router and its tag in `main.py`, one
+environment line on the `drone-runner` service.
+
+The web's **Patrols & reports** screen gained three tabs — Summary, Report
+recipients, Email deliveries — and a finished flight offers **Report PDF** and
+**Excel**.
+
 ## Not built yet
 
-reports (11), analytics (12). No real drone, SDK or edge hardware is
+analytics (12). No real drone, SDK or edge hardware is
 connected, and none will be claimed until it is: every flight so far is the
 simulator's.

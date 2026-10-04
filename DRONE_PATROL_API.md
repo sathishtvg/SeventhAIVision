@@ -1,11 +1,11 @@
 # Drone Patrol — API
 
-**As of:** 2026-09-25 · **Built:** Phases 3–8 — 86 operations across fleet, planning,
-flying, operations, AI and CCTV correlation, incident response, the site edge
-gateway and platform licensing. The endpoint tables below were extracted from the
+**As of:** 2026-10-04 · **Built:** Phases 3–11 — 97 operations across fleet, planning,
+flying, operations, AI and CCTV correlation, incident response, reports, the site
+edge gateway and platform licensing. The endpoint tables below were extracted from the
 router source, not written from memory.
 
-**Not yet built:** report downloads (Phase 11). Flights are flown by the drone runner, or by a site edge gateway,
+Flights are flown by the drone runner, or by a site edge gateway,
 against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 `DRONE_PATROL_EDGE.md`.
 
@@ -285,6 +285,52 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 - **Media file** returns the central copy of a snapshot or clip. A file the
   recording policy keeps at the site answers **409** naming the gateway that holds
   it and whether an upload is pending — not a broken link.
+
+## Reports
+
+| Method | Path | Permission | Gated |
+|---|---|---|:-:|
+| GET | `/drone-patrols/{session_id}/report` | `drone:report:read` | |
+| GET | `/drone-patrols/{session_id}/report/pdf` | `drone:report:read` | |
+| GET | `/drone-patrols/{session_id}/report/excel` | `drone:report:export` | |
+| GET | `/drone-reports/summary` | `drone:report:read` | |
+| GET | `/drone-reports/summary/excel` | `drone:report:export` | |
+| GET | `/drone-report-recipients` | `drone:report:read` | |
+| POST | `/drone-report-recipients` | `drone:report:export` | ✓ |
+| PUT | `/drone-report-recipients/{recipient_id}` | `drone:report:export` | |
+| DELETE | `/drone-report-recipients/{recipient_id}` | `drone:report:export` | |
+| GET | `/drone-report-deliveries` | `drone:report:read` | |
+| POST | `/drone-report-deliveries/{delivery_id}/retry` | `drone:report:export` | |
+
+- **Reading and exporting are two permissions.** `drone:report:read` opens a
+  report and downloads its PDF; `drone:report:export` takes the data out as a
+  workbook and decides who is emailed.
+- **A flight's report** is one record in three forms. The JSON is exactly what the
+  PDF and the workbook are rendered from, plus `stored`: the copies written when
+  the flight ended, each with its size and SHA-256. Mission, route, drone and
+  profile names are the flight's own, frozen when it flew. The PDF carries the
+  route drawn to scale (planned and flown), the AI summary, and each event with
+  its snapshot, video reference, related CCTV, incident and what an officer did.
+  A snapshot still at the site, or no longer in storage, is said to be so. The
+  workbook has five sheets — Summary, Waypoints, Events, Evidence, CCTV — and no
+  pictures. All times are the organisation's own zone, labelled.
+- **Downloads are rendered on request**, so an officer's later action is in them.
+  Site scoping applies: a flight at a site the caller may not see answers 404.
+- **Summary** takes `from` and `to` (whole days in the organisation's zone, at
+  most 92) and optionally `site_id` or `mission_id`. Someone restricted to certain
+  sites gets those sites' totals.
+- **Recipients.** `email`, `frequency` (`IMMEDIATE`, `DAILY`, `WEEKLY`,
+  `MONTHLY`) and a scope: neither `site_id` nor `mission_id` for every flight in
+  the organisation, or one of them — never both (422). The same address may
+  appear once per scope and frequency (409). An address that could break a mail
+  header is refused (422). Someone restricted to sites can add and see only
+  recipients for those sites and their missions. `PUT` changes `frequency` or
+  `is_active`; address and scope are fixed. Adding needs the licence; pausing and
+  removing never do. At most 200 per organisation.
+- **Deliveries** lists every report email queued, newest first: `status`
+  (`PENDING`, `PROCESSING`, `SENT`, `FAILED`), `attempts`, `attempts_left`,
+  `last_error`. **Retry** puts a `FAILED` one back with its attempts reset;
+  anything else answers 409.
 
 ## Edge gateway — `/api/v1/drone-edge`
 

@@ -20,6 +20,7 @@ scheduler's once-a-minute tick.
 | Drone health polls, then the lost-link sweep | every 15 s | `DRONE_RUNNER_HEALTH_SECONDS` |
 | Sessions owed by schedules | every 30 s | `DRONE_RUNNER_SCHEDULE_SECONDS` |
 | Flights' new AI detections into drone events; closing unconfirmed sightings; CCTV correlation | every 3 s | `DRONE_RUNNER_AI_SECONDS` |
+| Finished flights' reports stored; report emails queued and sent | every 60 s, beside the loop | `DRONE_RUNNER_REPORT_SECONDS` |
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d drone-runner
@@ -160,6 +161,35 @@ but not acknowledge or dispatch — that follows the roles in migration `0123`.
 
 **On the Windows app.** The same screens as the web, after the app is rebuilt
 from this version.
+
+## Reports and their emails
+
+A flight is reported **five minutes after it ends** — long enough for the fixed
+cameras' corroboration and an officer's first action to be in it. The PDF and the
+workbook are written under `drone/<tenant>/reports/<date>/<session>/` in the
+evidence store and recorded with their checksums. Any flight's report can also be
+downloaded at any time from its page; that copy is built fresh.
+
+Emails are set up under **Patrols & reports → Report recipients**: an address, what
+it covers (all sites, one site, one mission) and how often.
+
+| Frequency | Sent | Attachment |
+|---|---|---|
+| After each flight | About five minutes after landing — including flights that were blocked, missed, failed or aborted | That flight's PDF |
+| Daily | After midnight, for yesterday | A workbook: summary, a row per flight, a row per event |
+| Weekly | Monday, for Monday–Sunday | The same |
+| Monthly | The 1st, for last month | The same |
+
+Days are the organisation's own (its timezone, set on the tenant). A period with
+no flights sends nothing. Someone added today is not sent the report of a flight that
+had already ended; a summary covers its whole period, whenever they were added.
+
+**Email deliveries** shows what became of each one. A failure is retried by
+itself after 5 minutes, then 15, an hour and four hours; after five attempts it
+stays **Failed** with the mail server's reason until someone presses **Send
+again**. Mail uses the platform's `SMTP_*` settings, on the `drone-runner`
+service — if that service is not running, reports are neither stored nor sent,
+and catch up (for flights of the last seven days) when it starts.
 
 ## When something goes wrong
 
