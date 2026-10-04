@@ -365,7 +365,8 @@ The prompt's 14 phases hold, with these adjustments.
 | 9 | Frontend | **Done** — eight routes in the existing web app; route and zone drawing by a small in-house editor on react-leaflet, no new dependency (§7, §20) |
 | 10 | Mobile and desktop | **Done** — the phone: drone events, snapshot, clip, location, acknowledge, escalate, open incident, dispatch a guard; incident update on the existing screens. Desktop: nothing separate — it is the web build (§21) |
 | 11 | Reporting | **Done** — migration 0129. PDF and workbook per flight, stored with a checksum; immediate, daily, weekly and monthly emails through a retrying queue run by the drone runner (§22) |
-| 12–14 | Analytics, hardening, final validation | As in the prompt |
+| 12 | Analytics | **Done** — no migration. Patrol statistics, the analytical risk map, recurring locations, trends, mission success, false-positive and incident-conversion rates, and rule-based recommendations, all counted on request (§23) |
+| 13–14 | Hardening, final validation | As in the prompt |
 
 **Built in Phase 2 (migration 0123), 18 tables:** `drone_module_licenses`,
 `drone_provider_configs`, `drone_edge_gateways`, `drones`,
@@ -570,3 +571,35 @@ does. The report job has its own list, `drone_report_tenants()`.
 
 `main.py` gained the router and its tag; the `drone-runner` service in
 `docker-compose.yml` gained one environment line. Nothing else existing changed.
+
+## 23. Addendum — found while building Phase 12
+
+### 23.1 No analytics tables, and no chart library
+
+The existing Analytics and Heatmap screens count from the live tables and draw
+with layout boxes; there is no summary table and no chart dependency to reuse or
+to break. The drone analytics do the same: aggregated in SQL when asked, drawn
+with boxes. If a year of a large fleet's events proves too slow to count on
+request, a summary table is the fix — a Phase 13 measurement, not a guess made now.
+
+### 23.2 "Risk" needed two honest limits
+
+The brief asks for a risk view "based on actual historical events and clearly
+labelled as an analytical score". Two things follow that the brief does not
+spell out. A false positive must weigh nothing, or the map would mark the places
+where the AI is most often wrong. And the score only knows where drones have
+looked: an area with no events may be safe or may be unpatrolled, and the
+operations guide says so.
+
+### 23.3 Risk colours are told apart by their labels
+
+The module's HIGH and CRITICAL colours (in use since Phase 9) are close enough
+that colour alone does not separate them reliably. They were left as they are;
+every level on the analytics screen is written out beside its colour, and the
+risk map carries a legend and a table.
+
+### 23.4 Registration in existing files
+
+`main.py` gained the router and its tag. In the web app: one route in `App.tsx`,
+one sidebar entry, one tab in the drone screens' own tab bar, and an optional
+prop on the drone map so a page scroll does not zoom it. Nothing else changed.

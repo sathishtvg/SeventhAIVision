@@ -682,3 +682,120 @@ export const listDeliveries = (params: { status?: string; limit?: number; offset
     .then((r) => r.data)
 export const retryDelivery = (id: string) =>
   apiClient.post(`/api/v1/drone-report-deliveries/${id}/retry`).then((r) => r.data)
+
+// ── Analytics ────────────────────────────────────────────────────────────────
+
+/** A share as a fraction, or null when there was nothing to take a share of. */
+export type Rate = number | null
+
+export interface AnalyticsGroup {
+  name: string
+  flights: number
+  completed: number
+  due: number
+  success_rate: Rate
+  common_reason: string | null
+  events: number
+  suspicious: number
+  with_incident: number
+}
+
+export interface AnalyticsOverview {
+  scope: string
+  from: string
+  to: string
+  days: number
+  timezone: string
+  flights: {
+    total: number
+    completed: number
+    /** Flights that should have flown to the end: cancelled and in-flight ones are neither. */
+    due: number
+    success_rate: Rate
+    by_status: Partial<Record<SessionStatus, number>>
+    flight_seconds: number
+    distance_m: number
+    did_not_complete: { status: SessionStatus; reason: string; flights: number }[]
+  }
+  events: {
+    total: number
+    suspicious: number
+    verified: number
+    open: number
+    unreviewed_over_a_day: number
+    by_risk: Record<RiskLevel, number>
+    false_positives: number
+    false_positive_rate: Rate
+    incidents: number
+    with_incident: number
+    incident_conversion_rate: Rate
+    per_flight: number | null
+  }
+  detection_types: { module_type: AiModule; name: string; events: number; suspicious: number
+                     false_positives: number; false_positive_rate: Rate; incident_conversion_rate: Rate }[]
+  missions: AnalyticsGroup[]
+  drones: AnalyticsGroup[]
+  suspicious_by_hour: { hour: number; events: number; night: boolean }[]
+  suspicious_by_weekday: { weekday: number; name: string; events: number }[]
+  daily: { day: string; flights: number; completed: number; events: number; suspicious: number
+           false_positives: number; incidents: number }[]
+}
+
+export type AreaLevel = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH'
+
+export interface RiskArea {
+  site_id: string | null
+  site_name: string | null
+  area: string
+  zone_type: ZoneType | null
+  zone_id: string | null
+  /** 0–100, analytical: weighted events per week. Not a prediction. */
+  score: number
+  level: AreaLevel
+  weighted_events: number
+  events: number
+  suspicious: number
+  night_suspicious: number
+  false_positives: number
+  incidents: number
+  suspicious_without_cctv: number
+  last_event_at: string | null
+}
+
+export interface RiskMap {
+  scope: string
+  from: string
+  to: string
+  days: number
+  timezone: string
+  disclaimer: string
+  method: { description: string; weights: Record<RiskLevel, number>; levels: Record<string, number>; cell_metres: number }
+  areas: RiskArea[]
+  hot_spots: { latitude: number; longitude: number; events: number; suspicious: number; weighted_events: number }[]
+  repeated_intrusion_locations: { latitude: number; longitude: number; zone_name: string | null
+                                  site_name: string | null; events: number; days: number; at_night: number
+                                  first_seen_at: string; last_seen_at: string }[]
+}
+
+export interface Recommendation {
+  code: string
+  subject: string
+  observation: string
+  suggestion: string
+  basis: Record<string, unknown>
+  system_generated: boolean
+}
+
+export interface Recommendations {
+  scope: string
+  disclaimer: string
+  rules: Record<string, number>
+  recommendations: Recommendation[]
+}
+
+export const getAnalyticsOverview = (params: PeriodQuery) =>
+  apiClient.get<AnalyticsOverview>('/api/v1/drone-analytics/overview', { params }).then((r) => r.data)
+export const getRiskMap = (params: Omit<PeriodQuery, 'mission_id'>) =>
+  apiClient.get<RiskMap>('/api/v1/drone-analytics/risk-map', { params }).then((r) => r.data)
+export const getRecommendations = (params: Omit<PeriodQuery, 'mission_id'>) =>
+  apiClient.get<Recommendations>('/api/v1/drone-analytics/recommendations', { params }).then((r) => r.data)

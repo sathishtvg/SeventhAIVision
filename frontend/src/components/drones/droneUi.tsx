@@ -106,12 +106,15 @@ export function FitTo({ points, padding = 40 }: { points: [number, number][]; pa
   return null
 }
 
-export function DroneMap({ children, height = 460, center }: { children: ReactNode; height?: number | string
-                                                              center?: [number, number] }) {
+/** `scrollZoom={false}` for a map part-way down a long page, where the wheel
+ *  is scrolling the page and must not zoom the map out from under the reader. */
+export function DroneMap({ children, height = 460, center, scrollZoom = true }: {
+  children: ReactNode; height?: number | string; center?: [number, number]; scrollZoom?: boolean
+}) {
   return (
     <Box sx={{ height, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)' }}>
       <MapContainer center={center ?? DEFAULT_CENTER} zoom={16} style={{ height: '100%', width: '100%' }}
-                    scrollWheelZoom>
+                    scrollWheelZoom={scrollZoom}>
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
         {children}
       </MapContainer>

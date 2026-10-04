@@ -1,8 +1,8 @@
 # Drone Patrol — API
 
-**As of:** 2026-10-04 · **Built:** Phases 3–11 — 97 operations across fleet, planning,
-flying, operations, AI and CCTV correlation, incident response, reports, the site
-edge gateway and platform licensing. The endpoint tables below were extracted from the
+**As of:** 2026-10-04 · **Built:** Phases 3–12 — 100 operations across fleet, planning,
+flying, operations, AI and CCTV correlation, incident response, reports, analytics,
+the site edge gateway and platform licensing. The endpoint tables below were extracted from the
 router source, not written from memory.
 
 Flights are flown by the drone runner, or by a site edge gateway,
@@ -331,6 +331,47 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
   (`PENDING`, `PROCESSING`, `SENT`, `FAILED`), `attempts`, `attempts_left`,
   `last_error`. **Retry** puts a `FAILED` one back with its attempts reset;
   anything else answers 409.
+
+## Analytics — `/api/v1/drone-analytics`
+
+| Method | Path | Permission | Gated |
+|---|---|---|:-:|
+| GET | `/drone-analytics/overview` | `drone:report:read` | |
+| GET | `/drone-analytics/risk-map` | `drone:report:read` | |
+| GET | `/drone-analytics/recommendations` | `drone:report:read` | |
+
+All three take `from` and `to` (whole days in the organisation's zone, at most
+366) and optionally `site_id`; the overview also takes `mission_id`. Someone
+restricted to certain sites gets those sites' figures. Nothing is stored: each
+answer is counted from the recorded events and flights when it is asked for.
+
+- **Overview.** Flights by status, `success_rate` (completed out of those that
+  should have flown to the end — cancelled and in-flight ones are neither), time
+  in the air, distance, and the commonest reasons a flight did not complete.
+  Events: total, `suspicious` (MEDIUM risk or above and not marked a false
+  positive), by risk level, `false_positive_rate` and `incident_conversion_rate`
+  (each a fraction of all events, or `null` when there were none — not zero).
+  `detection_types`, `missions` and `drones` break the same numbers down;
+  missions and drones are named as they were when they flew.
+  `suspicious_by_hour` (24 entries, each marked night or not),
+  `suspicious_by_weekday`, and `daily` with every day of the period, quiet ones
+  included.
+- **Risk map.** `areas`: each security zone events were seen in (and "Outside
+  any zone"), with `score` (0–100) and `level` (`LOW`, `MEDIUM`, `HIGH`).
+  The score is a rate — events weighted CRITICAL 10, HIGH 6, MEDIUM 3, LOW 1,
+  per week, times 5, capped — and `method` in the response says so. False
+  positives weigh nothing. `hot_spots`: where events cluster, on a grid of about
+  28 m. `repeated_intrusion_locations`: spots where intrusion was seen at least
+  twice, with how many days and how many at night. `disclaimer` states that the
+  score is analytical and not a prediction; anything that shows the score should
+  show that.
+- **Recommendations.** Each has `observation` (what was seen, with numbers),
+  `suggestion`, `basis` (the figures and the threshold crossed) and
+  `system_generated: true`; `rules` lists every threshold. They come from fixed
+  rules — night activity in an area, intrusion repeating at one spot, a mission
+  often not completing, suspicious events where no fixed camera could see, a
+  detection type mostly marked false positive, events left unreviewed — and are
+  suggestions for review, not conclusions.
 
 ## Edge gateway — `/api/v1/drone-edge`
 
