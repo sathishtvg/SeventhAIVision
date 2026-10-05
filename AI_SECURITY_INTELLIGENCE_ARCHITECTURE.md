@@ -1,7 +1,8 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–2 of 15 built**: the gap analysis, and the
-normalised security event pipeline (migration `0132`).
+**As of:** 2026-10-05 · **Phases 1–3 of 15 built**: the gap analysis, the
+normalised security event pipeline (migration `0132`), and the context engine
+with site and camera profiles (`0133`).
 
 This document describes what exists. What is not yet built is listed at the end
 and is not described as if it were. The analysis and the plan are in
@@ -35,7 +36,7 @@ existing sources                                   built?
    ▼
 NORMALISE ─► security_events                        yes  (phase 2)
    ▼
-CONTEXT                                             no   (phase 3)
+CONTEXT                                             yes  (phase 3) — on request; not yet stored
    ▼
 CORRELATE ─► situations                             no   (phase 4)
    ▼
@@ -52,8 +53,10 @@ HUMAN DECISION ─► ACTION                            no   (phase 7)
 |---|---|
 | `security_events` | One row per source record, in the common shape. Unique on `(tenant_id, source_table, source_id)`, so reading a source twice inserts nothing |
 | `security_ingest_cursors` | Per tenant and source: where reading starts, when it last ran, how many it has read, and the kind of the last error if there was one |
+| `security_site_profiles` | What an administrator says a site expects: business hours by weekday, time zone, whether it closes on public holidays, criticality. One per site |
+| `security_camera_profiles` | What a camera watches: an area name, criticality, whether it is a restricted area. One per camera; goes when the camera goes |
 
-Both have `FORCE ROW LEVEL SECURITY` with the platform's standard tenant policy.
+All have `FORCE ROW LEVEL SECURITY` with the platform's standard tenant policy.
 Foreign keys to sites, cameras, drones, alerts and incidents are `ON DELETE SET
 NULL`: removing a camera or an alert never removes the record that something
 was reported. `detection_id` is a reference without a key, because `detections`
@@ -92,8 +95,9 @@ a select that finds the rows not yet read.
 | LPR | `alerts` + `lpr_events` | `LPR`, vehicle, plate, watchlist verdict | — |
 | Face recognition | `alerts` + `face_events` | `FACE_RECOGNITION`, person, watchlist entry and verdict if matched | — |
 | Access control | `alerts` (`access`) | `ACCESS_CONTROL` | denied, forced, tamper — the events that raise an alert |
-| Alarm panels | `alerts` (`alarm`) | `ALARM` | — |
-| IoT sensors, fleet GPS | `alerts` (`iot`, `gps`) | `SENSOR` | — |
+| Alarm panels | `alerts` (`alarm`) + the alarm event, zone and panel | `ALARM`, placed at the panel's site and the zone's own camera | — |
+| IoT sensors | `alerts` (`iot`) + the sensor | `SENSOR`, placed at the sensor's site | — |
+| Fleet GPS | `alerts` (`gps`) | `SENSOR`, at the position the tracker reported; no site | — |
 | Drone flight problems | `alerts` (`drone_patrol`) | `DRONE_PATROL` | not the alert of a drone *event* — that is read below |
 | Drone sightings | `drone_events` | `DRONE_PATROL`, carrying the drone's own risk as evidence | verified only |
 | Guard SOS, and a man-down nobody cancelled | `incidents` (`guard.sos`) | `GUARD` | — |
@@ -104,16 +108,74 @@ a select that finds the rows not yet read.
 **Not read:** `payroll` and `roster` alerts. They are about the workforce and
 stay on the screens that handle them.
 
-Two details that are easy to get wrong and are tested:
+Three details that are easy to get wrong and are tested:
 
+- **An alert's camera is not always where it happened.** An alarm panel's alert
+  is attached to its zone's camera when the zone has one — and to an arbitrary
+  camera of the tenant when it does not, because an alert once needed a camera
+  to exist. So an alarm's place is taken from its panel and zone, a sensor's
+  from the sensor, and a tracker's from the position it reported. An alarm put
+  at the wrong site would be joined to events it has nothing to do with.
 - **A guard's SOS takes its place from the guard.** The incident an SOS opens is
-  hung on an arbitrary active camera so that it shows in the queue. That camera
-  says nothing about where the guard is, so the event takes the position the
-  phone reported and the site of the shift the guard was working.
+  hung on an arbitrary active camera for the same reason. That camera says
+  nothing about where the guard is, so the event takes the position the phone
+  reported and the site of the shift the guard was working.
 - **A drone sighting is read once.** The drone module raises an alert for a
   verified event; that alert is skipped and the event itself is read, which says
   more. Its risk score comes along as `drone_risk_score` — evidence, not this
   layer's own judgement.
+
+## Context
+
+`backend/app/services/intel_context.py`. An event says "a person, at Gate 1,
+0.87". The context says what that means there: is the site open, is the zone in
+force, is anybody meant to be on site, was a door refused nearby a minute ago,
+is a patrol under way, what has this camera reported before. It does not decide
+how much any of it matters — that is risk (phase 5), which reads this.
+
+Two halves. `load()` reads the facts from the database; `build()` turns facts
+into a context with no database at all, so every rule is a test that needs
+nothing running and the same facts always give the same context.
+
+| Group | Asked of | Says |
+|---|---|---|
+| Place | site and camera profiles, `restricted_zones`, the drone event's zone | Criticality (the camera's overrides the site's) and where it came from; restricted area; each zone in force or not, and why |
+| Time | site profile, tenant time zone, `public_holidays` | Local time; inside or outside business hours with the hours; a public holiday |
+| People | the event's watchlist verdict, `shifts`, `visitors`, `work_permits` | Allowed, blocked or not identified; guards on shift; visitors signed in; contractor permits in force |
+| Access | `access_events` at the site's doors, `alarm_events` on zones linked to the camera | Denied, forced and granted within ten minutes either side; alarms |
+| Operations | `virtual_patrol_sessions`, `drone_patrol_sessions` | A virtual patrol in progress; a drone in the air |
+| History | `alerts`, `incidents` at the camera, 30 days | Earlier alerts of this kind; the share marked false; incidents |
+
+Four rules, each held by tests:
+
+- **Every statement names its source** — the table or setting behind it — so an
+  explanation is made only of things the platform recorded.
+- **Unknown is an answer.** `business_hours` is null until someone sets it, and
+  null means *not defined*: the context says so and does not claim "after
+  hours". Criticality that is not set is not "medium". A false-positive share is
+  not stated on fewer than five decided alerts. Everything not known is listed
+  under `unknowns`.
+- **Not identified is not unauthorised.** A face or plate that matched no
+  watchlist is "not identified", and the context says the two are different.
+  The words *unauthorised* and *intruder* do not appear.
+- **As of the event, not as of now.** Guards on shift, visitors on site, a zone
+  bypass, a patrol under way are all asked about the moment the event happened.
+  A patrol or flight started more than six hours earlier and never closed is not
+  counted as still under way.
+
+`expected` lists what might ordinarily explain the event — the site was open,
+visitors were signed in, a permit was in force, someone was let in nearby. It is
+an input to normality (phase 5), not a conclusion.
+
+**Business hours** are an object keyed by weekday (`mon` … `sun`), each a list
+of `["HH:MM", "HH:MM"]` periods in the site's time zone. A day left out is a
+closed day. A period that ends before it starts runs past midnight and belongs
+to the day it starts on. A zone's schedule is judged by the same rule the zones
+API and the intrusion worker already use.
+
+One limit the tests record rather than hide: a contractor permit later marked
+completed cannot be shown as in force at an earlier time, because the table
+keeps a status and not when it changed.
 
 ## Reading
 
@@ -159,21 +221,28 @@ own process so that nothing it does can hold up the API or the scheduler.
 
 ## API
 
-`backend/app/routers/security_intelligence.py`. Read-only. A caller restricted
-to certain sites sees those sites' events; an event with no site is not shown to
-them, and an event they may not see answers 404, the same as one that does not
-exist.
+`backend/app/routers/security_intelligence.py`. It changes no alert, incident or
+other existing record; the only things it writes are the layer's own site and
+camera profiles. A caller restricted to certain sites sees those sites' events
+and profiles; an event with no site is not shown to them, and anything they may
+not see answers 404, the same as something that does not exist. Request bodies
+refuse fields they do not know.
 
 | Method | Path | Permission | Returns |
 |---|---|---|---|
 | GET | `/security-intelligence/status` | `intel:read` | Whether the layer is on, the runner's state (`running`, `degraded`, `stopped`, or `unknown` when it could not be asked), each source's cursor, and events in the last 24 hours by source |
 | GET | `/security-intelligence/events` | `intel:read` | Events, newest first. Filters: `site_id`, `camera_id`, `source_type`, `severity`, `from`, `to`; `limit` ≤ 200, `offset` |
 | GET | `/security-intelligence/events/{event_id}` | `intel:read` | One event |
+| GET | `/security-intelligence/events/{event_id}/context` | `intel:read` | The event's context: place, time, people, access, operations, history, with `statements` (each with its source), `unknowns` and `expected` |
+| GET | `/security-intelligence/site-profiles` | `intel:read` | Every site the caller may see with its profile; `has_profile` false where nobody has described it |
+| GET | `/security-intelligence/site-profiles/{site_id}` | `intel:read` | One site's profile and its cameras' profiles |
+| PUT | `/security-intelligence/site-profiles/{site_id}` | `intel:read` `intel:manage` | Replace the site's profile. A field left out is no longer set. Audited |
+| PUT | `/security-intelligence/site-profiles/{site_id}/cameras/{camera_id}` | `intel:read` `intel:manage` | Replace a camera's profile; the camera must belong to the site. Audited |
 
 ## Permissions
 
-Seeded by `0132`. Only `intel:read` is used so far; the rest are in place for
-the phases that need them.
+Seeded by `0132`. `intel:read` and `intel:manage` are used so far; the rest are
+in place for the phases that need them.
 
 | Permission | Admin, Manager | Supervisor | Operator | Guard | Viewer |
 |---|:-:|:-:|:-:|:-:|:-:|
@@ -204,6 +273,11 @@ administrator sets one it lets no guard decide.
   gets no cursor.
 - Names are not copied. A guard's SOS carries the guard's user id; the name
   stays on the user.
+- The context of an event is built only from the caller's own tenant: an event
+  pointed at another tenant's site or camera by id finds nothing there.
+- Changes to a profile are written to the tenant's hash-chained audit log with
+  the actor, their role, the site, the request id and the result
+  (`intel.site_profile.update`, `intel.camera_profile.update`).
 
 ## Touch points in existing files
 
@@ -228,17 +302,27 @@ test database.
 
 ## Tests
 
-`backend/tests/test_intel_events.py` (54): each source's mapping with nothing
+`backend/tests/test_intel_events.py` (57): each source's mapping with nothing
 running; reading from the database, once, from where it should, and never the
 wrong rows; only for tenants that asked, and never another tenant's rows; the
 runner's imports and writes; the API's permissions, site scope, filters and the
-switch; the schema. `backend/tests/test_intel_docs.py` checks the API table
-above against the application's route table.
+switch; the schema.
+
+`backend/tests/test_intel_context.py` (29): hours, holidays, overnight periods
+and zone schedules with nothing running; that a site nobody has described is
+never said to be after hours; that not identified is never reported as not
+authorised; that every statement names its source; the facts read as of the
+event's moment, with a row beside each that had ended or lies outside the
+window; another tenant's facts never read; the profile API's permissions,
+validation, site scope and audit entries; the schema.
+
+`backend/tests/test_intel_docs.py` (4) checks the API table above against the
+application's route table.
 
 ## Not built yet
 
-Context and site profiles (3) · correlation and situations (4) · normality and
-risk (5) · recommendations (6) · human decisions, actions and the decision
+Correlation and situations (4) · normality and risk, and storing the context
+with the assessment it informed (5) · recommendations (6) · human decisions, actions and the decision
 policy (7) · the command centre screens (8) · the guard's phone (9) · drone and
 virtual patrol integration beyond reading their events (10) · the unified
 timeline (11) · evidence and summaries (12) · the dashboard and site security
