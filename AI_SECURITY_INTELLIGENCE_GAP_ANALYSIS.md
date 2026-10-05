@@ -78,7 +78,7 @@ on the date above. They are measurements of that database, not of any customer.
 | IoT sensors | `iot_alerts`, `iot_readings` | Yes |
 | Guard: SOS, man-down, checkpoint scans, occurrence book | `man_down_events`, `checkpoint_scans`, `occurrence_book_entries` | SOS and man-down open incidents |
 | Fleet GPS | `geofence_events` | Yes |
-| System: camera offline, stream health | `camera_health_events` | Yes (scheduler) |
+| System: camera offline, stream health | `camera_health_events` | No — a live `camera_status_changed` event only |
 
 ### 2.3 Alerts and incidents
 
@@ -482,17 +482,19 @@ Reads work with the feature off; nothing is written until a tenant turns it on.
 
 ## 9. Decisions for the owner
 
-| # | Decision | Recommended | Why it is yours |
-|---|---|---|---|
-| D1 | May existing files be touched in the minimal ways listed in §12 (router registration, menu entries, one health probe, one compose service, one panel on the Command Centre page)? | Yes — the same kind and number of touches as Drone Patrol | The standing rule is that existing code is not changed without your say |
-| D2 | Should alerts folded into an open situation stop sending their own push notification? | Not now. Situations are a new view; pushes stay as they are until you have seen it work | It changes what guards' phones do today |
-| D3 | How are summaries and explanations written? | From templates over recorded facts | The alternative, a language model, sends security data to a third party and can state things that were not recorded |
-| D4 | Who gets it? | A switch per tenant, off by default; a tenant administrator turns it on | The alternatives are on for everyone, or a paid licence like Drone Patrol |
+All four were put to the owner on 2026-10-05 and decided the same day.
 
-Smaller choices made here unless you say otherwise: table prefix `security_`;
-permission prefix `intel:`; its own background process; face-embedding
-matching of unknown people **not** built; the five existing self-acting
-behaviours in §2.7 left exactly as they are.
+| # | Decision | Decided | Why it was the owner's |
+|---|---|---|---|
+| D1 | May existing files be touched in the minimal ways listed in §12 (router registration, menu entries, one health probe, one compose service, one panel on the Command Centre page)? | **Yes, additions only** | The standing rule is that existing code is not changed without the owner's say |
+| D2 | Should alerts folded into an open situation stop sending their own push notification? | **No — pushes stay as they are.** Situations are a new view; to be looked at again once the layer has been seen working | It would change what guards' phones do today |
+| D3 | How are summaries and explanations written? | **From templates over recorded facts.** No language model | A language model would send security data to a third party and can state things that were not recorded |
+| D4 | Who gets it? | **A switch per tenant, off by default**; a tenant administrator turns it on | The alternatives were on for everyone, or a paid licence like Drone Patrol |
+
+Smaller choices made here unless the owner says otherwise: table prefix
+`security_`; permission prefix `intel:`; its own background process;
+face-embedding matching of unknown people **not** built; the five existing
+self-acting behaviours in §2.7 left exactly as they are.
 
 ---
 
@@ -554,8 +556,7 @@ Additions only. Nothing listed here changes what an existing feature does.
 |---|---|---|
 | `backend/app/main.py` | Register the new routers | 2 |
 | `backend/app/core/config_keys.py` | New `intel.*` setting keys | 2 |
-| `docker/docker-compose.yml`, `docker-compose.core.yml` | The `intelligence-runner` service | 2 |
-| `backend/tests/test_migration_safety.py` | Expected migration head | each migration |
+| `docker/docker-compose.yml` | The `intelligence-runner` service (not the core file, which has no drone runner either) | 2 |
 | `backend/app/services/platform_health.py` | One probe | 15 |
 | `frontend/src/App.tsx`, `components/layout/Sidebar.tsx`, `hooks/usePermission.ts` | Routes, menu entries, permission names | 8 |
 | `frontend/src/pages/CommandCentre.tsx` | One panel: open AI situations, linking to the new pages | 8 |
