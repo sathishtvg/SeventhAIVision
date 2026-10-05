@@ -253,6 +253,7 @@ their role, the site, the source, the request id and the result:
 | `intel.action.<step>` | Each step carried out — guard dispatched, escalation, incident opened or resolved, a flight asked to hold, a mission started — with the function it went through and how it ended. The drone module writes its own entry as well (`drone.event.verify_with_drone`, `drone.mission.run`), under the same person |
 | `intel.decision_policy.update`, `intel.decision_policy.delete` | A change to who may decide |
 | `intel.observation.record` | A report from the ground — that one was made, its kind and whether it carried a position. Not what was said |
+| `intel.evidence.open` | A person opened a piece of a situation's evidence — which situation, which kind, which item and its checksum. For a frame or a clip the platform's own chain-of-custody log gets its entry too |
 
 **Assessments and recommendations being generated** are not entries in that
 log. The record of each is the row itself, which the application can add but

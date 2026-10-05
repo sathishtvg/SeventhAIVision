@@ -174,7 +174,13 @@ export const listAssessments = (id: string) =>
 
 // ── Recommendations: what the layer suggests. Never a decision. ──────────────
 
-export interface RecommendedCamera { id: string; name: string; state: string; relation: 'reported' | 'neighbour' }
+export interface RecommendedCamera {
+  id: string
+  name: string
+  state: string
+  /** It reported this, it is next to a camera that did, or it is the camera of a drone that saw this and is in the air. */
+  relation: 'reported' | 'neighbour' | 'drone'
+}
 
 export interface Recommendation {
   id: string
@@ -400,6 +406,76 @@ export interface Timeline {
 
 export const getTimeline = (id: string) =>
   apiClient.get<Timeline>(`${BASE}/situations/${id}/timeline`).then((r) => r.data)
+
+// ── The AI-assisted summary: fixed templates over the records ────────────────
+
+export interface SituationSummary {
+  /** Always true: the summary is the layer's, and says so wherever it goes. */
+  is_ai_assisted: true
+  label: string
+  made_of: string
+  /** The zone the times in the sentences are told in. */
+  timezone: string
+  situation_number: string
+  suggestions_shown: boolean
+  /** Each sentence with the records it was read from. */
+  sentences: { text: string; refs: { type: string; id: string }[] }[]
+  text: string
+}
+
+export const getSummary = (id: string) =>
+  apiClient.get<SituationSummary>(`${BASE}/situations/${id}/summary`).then((r) => r.data)
+
+// ── Evidence: references to what the platform kept ───────────────────────────
+
+export type EvidenceKind = 'SNAPSHOT' | 'CLIP' | 'RECORDING' | 'DRONE_MEDIA' | 'PATROL_SNAPSHOT'
+
+/** One thing the platform kept. The layer serves no media: `served_at` is the platform's own endpoint. */
+export interface EvidenceItem {
+  kind: EvidenceKind
+  id: string
+  what: string
+  captured_at: string
+  /** The event of this situation it belongs to; null for something kept with the incident. */
+  event_id: string | null
+  camera_name: string | null
+  checksum_sha256: string | null
+  kept: string | null
+  media_type: 'image' | 'video'
+  /** The existing permission its own endpoint asks for, and whether the caller holds it. */
+  needs: string
+  may_open: boolean
+  /** Where the platform records that it was opened. */
+  logged_in: 'evidence_access_log' | 'audit_log'
+  served_at: { path: string; token_in_query: boolean }
+  /** For a recording: how far into it the event is. */
+  offset_seconds?: number | null
+}
+
+export interface SituationEvidence {
+  situation_id: string
+  summary: { total: number; may_open: number; by_kind: Record<EvidenceKind, number> }
+  items: EvidenceItem[]
+}
+
+export const getSituationEvidence = (id: string) =>
+  apiClient.get<SituationEvidence>(`${BASE}/situations/${id}/evidence`).then((r) => r.data)
+
+/** What opening one item answered: recorded first, then where to fetch it. */
+export interface EvidenceOpened {
+  kind: EvidenceKind
+  id: string
+  what: string
+  served_at: { path: string; token_in_query: boolean }
+  media_type: 'image' | 'video'
+  checksum_sha256: string | null
+  custody_entry: string | null
+  audited: true
+}
+
+/** Records that the caller is opening this piece of the situation's evidence. The file is fetched afterwards. */
+export const openSituationEvidence = (id: string, item: { kind: EvidenceKind; id: string }) =>
+  apiClient.post<EvidenceOpened>(`${BASE}/situations/${id}/evidence/open`, item).then((r) => r.data)
 
 // ── Drones: what one could be asked, and what came back ──────────────────────
 

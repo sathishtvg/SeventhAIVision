@@ -14,6 +14,7 @@ the same timeline without them.
 """
 from __future__ import annotations
 
+import ast
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -324,9 +325,31 @@ def test_the_incidents_own_times_are_told_only_where_no_step_from_here_already_t
         "Incident opened", "Could not resolve the incident", "Incident resolved"]
 
 
+def without_docstrings(path: Path) -> str:
+    """A module's source with its docstrings taken out and everything else left
+    in — the SQL above all, which lives in triple-quoted strings. A pattern that
+    drops every triple-quoted string drops the very statements a "this module
+    only reads" test is there to look at, and passes whatever they say."""
+    source = path.read_text(encoding="utf-8")
+    drop: set[int] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                drop.update(range(first.lineno, first.end_lineno + 1))
+    return "\n".join(line for n, line in enumerate(source.splitlines(), 1) if n not in drop)
+
+
+def test_taking_the_docstrings_out_leaves_the_statements_in():
+    code = without_docstrings(SERVICES / "intel_timeline.py")
+    assert "FROM security_situation_events" in code and "MADE OF ROWS THAT ALREADY EXIST" not in code
+    acting = without_docstrings(SERVICES / "intel_decisions.py")
+    assert re.search(r"\bINSERT INTO security_decisions\b", acting), "a module that writes is seen to write"
+
+
 def test_the_timeline_only_reads():
-    source = (SERVICES / "intel_timeline.py").read_text(encoding="utf-8")
-    code = re.sub(r'""".*?"""', "", source, flags=re.S)
+    code = without_docstrings(SERVICES / "intel_timeline.py")
     assert not re.search(r"\b(INSERT|UPDATE|DELETE|TRUNCATE)\b", code) and ".commit(" not in code
     assert "intel_actions" not in code, "it describes what was done; it can do nothing"
     for name in ("intel_runner", "intel_events", "intel_correlation", "intel_risk", "intel_recommend"):

@@ -1,6 +1,6 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–11 of 15 built**: the gap analysis, the
+**As of:** 2026-10-06 · **Phases 1–12 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
@@ -11,8 +11,10 @@ phone with reports from the ground (phase 9, `0138`), and drone and virtual
 patrol integration (phase 10, `0139`): a decision can ask a drone to look
 through the drone module's own functions, what the drone saw comes back as an
 event and the situation is assessed again, and what a virtual patrol recorded
-is read as evidence and context; and the unified timeline (phase 11, no
-migration: it is read from the records the other phases keep). **The
+is read as evidence and context; the unified timeline (phase 11); and
+evidence and the AI-assisted summary (phase 12). Phases 11 and 12 have no
+migration: both are read from records the platform and the other phases
+already keep. **The
 runner still does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
@@ -361,6 +363,64 @@ and `load()` only reads. On the web it is the last card of a situation, each
 actor drawn as itself: hollow and dashed violet for the layer, solid green for
 a person, a square for the platform.
 
+## Evidence
+
+`backend/app/services/intel_evidence.py`. The platform already keeps evidence,
+and keeps it carefully. This layer adds one thing: *which of it belongs to this
+situation*.
+
+| Kind | Belongs because | Kept in | Served by the platform's own | Needs | Its opening is recorded in |
+|---|---|---|---|---|---|
+| `SNAPSHOT`, `CLIP` | It is the frame, crop or clip of a detection one of the situation's events came from, or was kept with its incident | `evidence` | `/api/v1/evidence/{id}/image` | `evidence:read` | the chain-of-custody log (`evidence_access_log`) and the audit log |
+| `RECORDING` | It is that camera's recording, and it was running when the event happened. It says how many seconds in the event is | `recordings` | `/api/v1/recordings/{id}/play` | `recording:read` | the audit log |
+| `DRONE_MEDIA` | It is the drone module's media of a sighting that is one of the situation's events | `drone_event_media` | `/api/v1/drone-media/{id}/file` | `drone:event:read` | the audit log (twice: this layer's entry, and the drone module's own) |
+| `PATROL_SNAPSHOT` | It is the snapshot taken at the virtual patrol check that found the exception | `virtual_patrol_session_cameras` | `/api/v1/virtual-patrol/sessions/{id}/cameras/{id}/snapshot` | `vpatrol:read` | the audit log |
+
+- **References, never media.** The layer copies nothing, stores nothing about
+  evidence and serves no file. Each item names the existing endpoint that
+  serves it and the permission that endpoint asks for.
+- **No storage path leaves.** None is selected into anything the layer returns.
+- **Nothing is matched by guesswork.** A frame of another detection at the same
+  second, the same camera's recording from an hour before, another camera's
+  recording from the same minute: none of them is this situation's.
+- **Opening is a person's act, and is recorded before anything is handed
+  over.** `POST …/evidence/open` checks that the item is this situation's and
+  that the caller holds the permission its own endpoint asks for; writes the
+  platform's chain-of-custody entry for a frame or a clip, through that log's
+  own function; writes an audit entry naming the situation; and only then says
+  where the file is served. The existing endpoint then makes its own checks
+  again. Listing evidence opens none of it, and the screens load nothing until
+  Open is pressed.
+- The cameras suggested for an officer to open now include **the camera of a
+  drone that saw this, while that drone is still in the air**.
+
+## The AI-assisted summary
+
+`backend/app/services/intel_summary.py`. A situation in a paragraph:
+
+> At 10:17 on 5 Oct 2026, a camera reported “Person at Gate 1” at Gate 1,
+> Factory A. Within 39 s, 2 more report(s) joined it: access control (“Access
+> denied at the rear door”, 10:17); a drone (“Possible unauthorised person”,
+> 10:17). The layer assessed it as HIGH risk (65): Access refused, with
+> activity seen nearby. Its suggestion was to dispatch a guard. A suggestion is
+> not a decision. At 10:18, Priya (Operator) decided to dispatch a guard,
+> following what the layer suggested. The platform then carried out: Incident
+> opened; Guard dispatched. At 10:24, Tan Wei Ming (Guard) reported from the
+> ground: arrived. … The situation was closed at 10:28: resolved.
+
+- **Fixed templates, not a language model** (owner decision D3). Each sentence
+  is a form filled from the situation's timeline, so it cannot state what was
+  not recorded, and it carries the references of the records it was read from.
+- **Always marked AI-assisted** (`is_ai_assisted`, `label`), and it says it is
+  not the record: the timeline and the records behind each sentence are.
+- **A source's and a person's words are quoted as theirs.** The templates
+  themselves never say who somebody is or what they intended.
+- **A failure is told as a failure**, an override as an override with its
+  reason, a proposal as waiting, a rejection with its note.
+- **What the reader may not see is not summarised**: it is built from the
+  reader's own timeline.
+- Times are in the site's time zone, and the summary says which.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -410,8 +470,10 @@ own process so that nothing it does can hold up the API or the scheduler.
 ## API
 
 `backend/app/routers/security_intelligence.py`. It changes no alert, incident or
-other existing record; the only things it writes are the layer's own site and
-camera profiles. A caller restricted to certain sites sees those sites' events
+other existing record. The only things it writes are the layer's own site and
+camera profiles and — when a person opens a piece of evidence — an entry in the
+platform's existing chain-of-custody log, through that log's own function, and
+an audit entry. A caller restricted to certain sites sees those sites' events
 and profiles; an event with no site is not shown to them, and anything they may
 not see answers 404, the same as something that does not exist. Request bodies
 refuse fields they do not know.
@@ -432,6 +494,9 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, its latest assessment with the reasons behind it, where it stands, and what stands behind any incident |
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/timeline` | `intel:read` | The situation in the order it happened: what sources reported, what the layer assessed and suggested, what people looked at, decided and reported, what the platform then did — each entry with whose it is and the record it was read from. Suggestions are left out for a caller without `intel:recommendation:read` |
+| GET | `/security-intelligence/situations/{situation_id}/summary` | `intel:read` | The AI-assisted summary: sentences made by fixed templates from the caller's own timeline, each with the records it was read from. Always marked `is_ai_assisted` |
+| GET | `/security-intelligence/situations/{situation_id}/evidence` | `intel:read` | References to what the platform kept that belongs to the situation — frames, clips, recordings, a drone's media, a patrol's snapshot — each with the existing endpoint that serves it, the permission that endpoint asks for and whether the caller holds it. No media and no storage path |
+| POST | `/security-intelligence/situations/{situation_id}/evidence/open` | `intel:read` and the item's own permission | Records that the caller is opening one item — the platform's chain-of-custody entry for a frame or clip, and an audit entry naming the situation — and answers where the platform serves it. 404 for an item that is not this situation's |
 | GET | `/security-intelligence/situations/{situation_id}/recommendations` | `intel:read` `intel:recommendation:read` | What the layer suggests doing, surest first, with the reason for each and why any cannot be done now. Always `is_decision: false` |
 | POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested |
 | GET | `/security-intelligence/my-situations` | `intel:read` | The open situations in front of the caller; for a guard, what they were dispatched to and their shift's site where the policy lets a guard decide |
@@ -630,7 +695,7 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (34): the screens' claims above — the
+`frontend/src/pages/intel/intel.test.tsx` (37): the screens' claims above — the
 timeline drawing a source, the layer, a person and the platform each as itself — and
 since phase 10: which flight holds or which mission starts is the officer's
 choice and the layer's never; what was asked of a drone is drawn as a person's
@@ -639,7 +704,18 @@ said, with the decision standing; a patrol's finding is shown as recorded.
 
 `backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`backend/tests/test_intel_timeline.py` (17): the specification's own timeline
+`backend/tests/test_intel_evidence.py` (15): where each kind of evidence is
+served, and that it is never this layer; that no storage path is selected and
+neither module writes; the summary of the specification's example word for
+word, every sentence pointing at its records, an override, a proposal, a
+rejection and a failure each told as what it was, and no template stating who
+somebody is; then from real records: what belongs to a situation and what does
+not, with no path in the answer; opening leaving the platform's custody entry
+and an audit entry, refused without the endpoint's own permission and for what
+is not the situation's; a drone's media from a real simulated flight; and that
+listing evidence or reading the summary writes nothing.
+
+`backend/tests/test_intel_timeline.py` (18): the specification's own timeline
 told in order with each line's actor; ties put as cause before effect; repeats
 folded; what the layer said never worded or marked as a decision; a proposal,
 its verdict and its steps as three lines by two people; a failed step not
@@ -648,7 +724,7 @@ through the API, a situation decided, carried out, reported on and closed read
 back as one sequence; a viewer's timeline without suggestions; another tenant
 and another site refused; and that reading it changes no row anywhere.
 
-`backend/tests/test_intel_drone.py` (33): see *Asking a drone* in
+`backend/tests/test_intel_drone.py` (34): see *Asking a drone* in
 `AI_DECISION_WORKFLOW.md`. Real simulated flights asked to hold and to launch
 from a decision; what came back joining the situation and being assessed again;
 the drone module's refusals kept as the record; what a virtual patrol recorded
@@ -673,9 +749,12 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-Evidence and summaries (12) ·
-the dashboard and site security score (13) · feedback (14) · platform health for
+The dashboard and site security score (13) · feedback (14) · platform health for
 the vendor, the Helm deployment and final validation (15).
+
+Evidence is opened one piece at a time on the web. There is no export of a
+situation's evidence as a bundle: the platform's own export and report screens
+are unchanged and are where that is done.
 
 The timeline is on the web. The phone shows a situation's events, suggestions,
 decisions and reports under their own headings, not as one sequence.
@@ -686,6 +765,5 @@ it is or flies the route its mission already has. And **flying without a
 person's decision** — the platform has no authorised automation policy for it,
 so there is none here.
 
-The screens show evidence as references so far — the events, the alerts behind
-them, and the cameras to open. Snapshots, clips and recordings beside them come
-with phase 12.
+The phone lists a situation's sources and does not open its evidence: that is
+on the web.

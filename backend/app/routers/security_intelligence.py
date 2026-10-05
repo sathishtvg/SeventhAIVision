@@ -40,7 +40,11 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_audit, intel_config, intel_context, intel_decisions, intel_runner, intel_timeline
+from app.routers import dispatch as custody_api
+from app.services import (
+    intel_audit, intel_config, intel_context, intel_decisions, intel_evidence, intel_runner, intel_summary,
+    intel_timeline,
+)
 from app.services.intel_events import SEVERITIES, SOURCE_TYPES
 
 router = APIRouter(prefix="/api/v1/security-intelligence", tags=["security-intelligence"],
@@ -605,6 +609,133 @@ async def get_timeline(
     return {"situation_id": row["id"], "situation_number": row["situation_number"], "started_at": row["started_at"],
             "closed_at": row["closed_at"], "decision_status": row["decision_status"], "suggestions_shown": shown,
             "counts": intel_timeline.counts(entries), "entries": entries}
+
+
+# ─── The summary ─────────────────────────────────────────────────────────────
+
+async def _situation_for_reading(db: AsyncSession, situation_id: uuid.UUID, allowed) -> dict:
+    row = (await db.execute(text(
+        "SELECT x.id, x.situation_number, x.title, x.site_id, s.name AS site_name, x.started_at, x.last_event_at, "
+        "       x.closed_at, x.decision_status, x.incident_id, x.risk_level, x.risk_score "
+        "  FROM security_situations x LEFT JOIN sites s ON s.id = x.site_id "
+        " WHERE x.id = CAST(:id AS uuid)"), {"id": str(situation_id)})).mappings().first()
+    if row is None or not is_site_allowed(allowed, row["site_id"]):
+        raise HTTPException(404, "Situation not found")
+    return dict(row)
+
+
+@router.get("/situations/{situation_id}/summary")
+async def get_summary(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The AI-assisted summary of a situation: a paragraph made only of what
+    is recorded, by fixed templates — there is no language model behind it.
+
+    `sentences` are the summary sentence by sentence, each with `refs`: the
+    records it was read from. `text` is the same sentences joined. It is always
+    marked `is_ai_assisted`, and it is never the record: the timeline and the
+    records it points at are.
+
+    Times are in the site's time zone (`timezone`). Built from the caller's own
+    timeline, so a caller who may not read suggestions gets a summary that does
+    not mention them."""
+    situation = await _situation_for_reading(db, situation_id, allowed)
+    shown = "intel:recommendation:read" in await intel_decisions.permissions_of(db, token.role_id)
+    entries = await intel_timeline.load(db, situation, with_suggestions=shown)
+    assessments = [dict(r) for r in (await db.execute(text(
+        "SELECT id, sequence, assessed_at, label, risk_score, risk_level FROM security_assessments "
+        " WHERE situation_id = :s"), {"s": situation["id"]})).mappings().all()]
+    zone = (await db.execute(text(
+        "SELECT COALESCE((SELECT p.timezone FROM security_site_profiles p WHERE p.site_id = CAST(:site AS uuid)), "
+        "                (SELECT t.timezone FROM tenants t WHERE t.id = current_setting('app.current_tenant')::uuid))"),
+        {"site": str(situation["site_id"]) if situation["site_id"] else None})).scalar()
+    return {**intel_summary.summarise(situation, entries, assessments, zone), "suggestions_shown": shown}
+
+
+# ─── Evidence ────────────────────────────────────────────────────────────────
+
+@router.get("/situations/{situation_id}/evidence")
+async def list_situation_evidence(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What the platform kept that belongs to this situation, oldest first:
+    the frames and clips of the detections its events came from and of its
+    incident, the recordings of its cameras that were running at the time, a
+    drone's media of its sightings, and the snapshot a virtual patrol took at
+    the check that found an exception.
+
+    These are references. The layer copies no media and serves none: each item
+    names the platform's own endpoint that serves it (`served_at`), the
+    permission that endpoint asks for (`needs`), and whether the caller holds
+    it (`may_open`). No storage path is ever returned.
+
+    To open one, a person asks through `POST …/evidence/open`, which records
+    that they did."""
+    situation = await _situation_for_reading(db, situation_id, allowed)
+    mine = await intel_decisions.permissions_of(db, token.role_id)
+    items = await intel_evidence.collect(db, situation, mine)
+    return {"situation_id": situation["id"], "summary": intel_evidence.summary(items), "items": items}
+
+
+class EvidenceOpenIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["SNAPSHOT", "CLIP", "RECORDING", "DRONE_MEDIA", "PATROL_SNAPSHOT"]
+    id: uuid.UUID
+
+
+@router.post("/situations/{situation_id}/evidence/open")
+async def open_situation_evidence(
+    situation_id: uuid.UUID,
+    body: EvidenceOpenIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Record that the caller is opening one piece of this situation's
+    evidence, and say where the platform serves it.
+
+    It is refused unless the item is one of this situation's (404) and the
+    caller holds the permission the item's own endpoint asks for (403, naming
+    it). Then, before anything is handed over: a frame or a clip gets an entry
+    in the platform's existing chain-of-custody log, through that log's own
+    function; and every kind gets an entry in the audit log naming the
+    situation it was opened from. The file itself is then fetched from
+    `served_at`, the existing endpoint, which makes its own checks again.
+
+    Not for API keys: evidence is opened by a person."""
+    if token.via_api_key:
+        raise HTTPException(403, "Evidence is opened by a person who is signed in, not by an API key.")
+    situation = await _situation_for_reading(db, situation_id, allowed)
+    mine = await intel_decisions.permissions_of(db, token.role_id)
+    item = intel_evidence.opening(await intel_evidence.collect(db, situation, mine), body.kind, body.id)
+    if item is None:
+        raise HTTPException(404, "That is not a piece of this situation's evidence.")
+    if not item["may_open"]:
+        raise HTTPException(403, f"Opening this needs the permission {item['needs']}.")
+    await intel_audit.record(
+        db, request, token, "intel.evidence.open", "security_situation", situation["id"],
+        site_id=situation["site_id"],
+        detail={"situation_number": situation["situation_number"], "kind": item["kind"],
+                "evidence_id": str(item["id"]), "event_id": str(item["event_id"]) if item["event_id"] else None,
+                "checksum_sha256": item["checksum_sha256"], "custody": item["logged_in"]})
+    await db.commit()
+    custody = None
+    if item["kind"] in ("SNAPSHOT", "CLIP"):
+        # The platform's own chain-of-custody entry, written by its own function.
+        await intel_decisions.scope(db, token.tenant_id)
+        custody = await custody_api.log_evidence_access(
+            evidence_id=str(item["id"]), request=request, action="view", db=db, token=token)
+    return {"kind": item["kind"], "id": item["id"], "what": item["what"], "served_at": item["served_at"],
+            "media_type": item.get("media_type"), "checksum_sha256": item["checksum_sha256"],
+            "custody_entry": custody["id"] if custody else None, "audited": True}
 
 
 # ─── Recommendations ─────────────────────────────────────────────────────────

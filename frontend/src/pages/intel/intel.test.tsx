@@ -7,8 +7,8 @@ import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/securityIntelligence'
 import type {
-  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, Recommendations, SituationDetail,
-  Timeline, TimelineEntry, Trail,
+  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, EvidenceItem, Recommendations,
+  SituationDetail, SituationEvidence, SituationSummary, Timeline, TimelineEntry, Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
@@ -174,6 +174,36 @@ const REPEATS_AND_A_FAILURE: Timeline = {
   ],
 }
 
+const SUMMARY: SituationSummary = {
+  is_ai_assisted: true, label: 'AI-assisted summary', timezone: 'Asia/Singapore', situation_number: 'SIT-20261005-0001',
+  made_of: 'Made only of what is recorded. Every sentence is read from the records listed with it.',
+  suggestions_shown: true,
+  sentences: [
+    { text: 'At 10:17 on 5 Oct 2026, a camera reported “Person at Gate 1” at Gate 1, Factory A.', refs: [{ type: 'event', id: 'e1' }] },
+    { text: 'The layer assessed it as HIGH risk (65): Access refused, with activity seen nearby.', refs: [{ type: 'assessment', id: 'a1' }] },
+    { text: 'The situation is open: nobody has decided on it yet.', refs: [] }],
+  text: '',
+}
+const NO_EVIDENCE: SituationEvidence = {
+  situation_id: 'sit1', items: [],
+  summary: { total: 0, may_open: 0, by_kind: { SNAPSHOT: 0, CLIP: 0, RECORDING: 0, DRONE_MEDIA: 0, PATROL_SNAPSHOT: 0 } },
+}
+const kept = (kind: EvidenceItem['kind'], id: string, what: string, more: Partial<EvidenceItem> = {}): EvidenceItem => ({
+  kind, id, what, captured_at: '2026-10-05T02:17:04Z', event_id: 'e1', camera_name: 'Gate 1', checksum_sha256: null,
+  kept: 'central', media_type: 'image', needs: 'evidence:read', may_open: true, logged_in: 'evidence_access_log',
+  served_at: { path: `/api/v1/evidence/${id}/image`, token_in_query: true }, ...more })
+const EVIDENCE: SituationEvidence = {
+  ...NO_EVIDENCE,
+  items: [
+    kept('SNAPSHOT', 'ev1', 'Frame at the detection', { checksum_sha256: 'a'.repeat(64) }),
+    kept('RECORDING', 'rec1', 'Recording of Gate 1', {
+      media_type: 'video', needs: 'recording:read', logged_in: 'audit_log', offset_seconds: 600,
+      served_at: { path: '/api/v1/recordings/rec1/play', token_in_query: true } }),
+    kept('PATROL_SNAPSHOT', 'sc1', 'Snapshot taken at the virtual patrol’s check', {
+      needs: 'vpatrol:read', may_open: false, logged_in: 'audit_log',
+      served_at: { path: '/api/v1/virtual-patrol/sessions/vs1/cameras/sc1/snapshot', token_in_query: true } })],
+}
+
 /** A site with no drone in the picture: nothing to ask, nothing asked. */
 const NO_DRONE: DronePicture = {
   situation_id: 'sit1', closed: false, licence: { ok: true, problem: null },
@@ -195,13 +225,15 @@ const WITH_DRONE: DronePicture = { ...NO_DRONE, sightings: [SIGHTING],
 const DRONE_SUGGESTED = authority({ VERIFY_WITH_DRONE: { basis: 'FOLLOWED', needs_reason: false } })
 
 function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRAIL, drone: DronePicture = NO_DRONE,
-              situation: SituationDetail = SITUATION) {
+              situation: SituationDetail = SITUATION, recs: Recommendations = RECS) {
   asRole(role)
   vi.mocked(api.getSituationDrone).mockResolvedValue(drone)
   vi.mocked(api.getTimeline).mockResolvedValue(NO_TIMELINE)
+  vi.mocked(api.getSummary).mockResolvedValue(SUMMARY)
+  vi.mocked(api.getSituationEvidence).mockResolvedValue(NO_EVIDENCE)
   vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
   vi.mocked(api.getSituation).mockResolvedValue(situation)
-  vi.mocked(api.getRecommendations).mockResolvedValue(RECS)
+  vi.mocked(api.getRecommendations).mockResolvedValue(recs)
   vi.mocked(api.getAuthority).mockResolvedValue(a)
   vi.mocked(api.getTrail).mockResolvedValue(trail)
   vi.mocked(api.recordReview).mockResolvedValue({ recorded: true, assessment_id: 'a1' })
@@ -584,6 +616,62 @@ describe('the situation view', () => {
     expect(within(again).queryByText('AI suggestion — not a decision')).toBeNull()
   })
 
+  it('marks the summary as AI-assisted, says it is templates and not the record, and keeps each sentence’s sources', async () => {
+    open(OPERATOR)
+    const card = await screen.findByTestId('ai-summary')
+    expect(within(card).getByText('AI-assisted summary')).toBeInTheDocument()
+    const sentences = await within(card).findAllByTestId('summary-sentence')
+    expect(sentences.map((s) => s.textContent?.trim())).toEqual(SUMMARY.sentences.map((s) => s.text))
+    expect(sentences.map((s) => s.getAttribute('data-refs'))).toEqual(['1', '1', '0'])
+    expect(within(card).getByText(/Written by fixed templates, not by a language model\./)).toBeInTheDocument()
+    expect(within(card).getByText(/Times are in Asia\/Singapore\./)).toBeInTheDocument()
+    expect(within(card).getByText(/It is not the record: the timeline below is\./)).toBeInTheDocument()
+    expect(within(card).queryByText(/not shown to your role/)).toBeNull()
+    expect(card.querySelector('[data-testid="human-decision"]')).toBeNull()
+  })
+
+  it('lists the evidence as references, loads nothing until it is opened, and records the opening first', async () => {
+    const view = open(OPERATOR)
+    await screen.findByTestId('ai-summary')
+    await waitFor(() => expect(api.getSituationEvidence).toHaveBeenCalledWith('sit1'))
+    expect(screen.queryByTestId('evidence-card')).toBeNull()         // nothing kept: no empty card
+    view.unmount()
+    open(OPERATOR)
+    vi.mocked(api.getSituationEvidence).mockResolvedValue(EVIDENCE)
+    vi.mocked(api.openSituationEvidence).mockResolvedValue({
+      kind: 'SNAPSHOT', id: 'ev1', what: 'Frame at the detection', media_type: 'image', checksum_sha256: 'a'.repeat(64),
+      served_at: { path: '/api/v1/evidence/ev1/image', token_in_query: true }, custody_entry: 'c1', audited: true })
+    const card = await screen.findByTestId('evidence-card')
+    const items = await within(card).findAllByTestId('evidence-item')
+    expect(items.map((i) => i.getAttribute('data-kind'))).toEqual(['SNAPSHOT', 'RECORDING', 'PATROL_SNAPSHOT'])
+    expect(within(items[0]).getByText(/SHA-256 aaaaaaaaaaaa…/)).toBeInTheDocument()
+    expect(within(items[1]).getByText(/the event is 600 s in/)).toBeInTheDocument()
+    expect(within(items[2]).getByText(/no checksum recorded/)).toBeInTheDocument()
+    // Not a single image or video is on the page before a person opens one.
+    expect(document.querySelector('img[data-testid="evidence-image"], video')).toBeNull()
+    expect(api.openSituationEvidence).not.toHaveBeenCalled()
+    // What this person may not open is there, disabled, and says which permission it needs.
+    expect(within(items[2]).getByRole('button', { name: 'Open' })).toBeDisabled()
+    fireEvent.mouseOver(within(items[2]).getByRole('button', { name: 'Open' }).parentElement!)
+    expect(await screen.findByText('Opening this needs the permission vpatrol:read.')).toBeInTheDocument()
+
+    fireEvent.click(within(items[0]).getByRole('button', { name: 'Open' }))
+    await waitFor(() => expect(api.openSituationEvidence).toHaveBeenCalledWith('sit1', { kind: 'SNAPSHOT', id: 'ev1' }))
+    const image = await screen.findByTestId('evidence-image')
+    expect(image.getAttribute('src')).toContain('/api/v1/evidence/ev1/image?token=tok')
+    expect(screen.getByText(/Opened by you\. Recorded in the chain of custody and the audit log\./)).toBeInTheDocument()
+  })
+
+  it('lists the camera of a drone still in the air among the cameras to open, as the drone’s', async () => {
+    open(OPERATOR, authority(), EMPTY_TRAIL, NO_DRONE, SITUATION, { ...RECS, recommendations: [
+      { ...RECS.recommendations[0], supporting: { ...RECS.recommendations[0].supporting, cameras: [
+        { id: 'c1', name: 'Gate 1', state: 'online', relation: 'reported' },
+        { id: 'c9', name: 'Drone One camera', state: 'not_known', relation: 'drone' }] } }] })
+    expect(await screen.findByText('Drone One camera')).toBeInTheDocument()
+    expect(screen.getByText('the drone that saw this, in the air now · state not known')).toBeInTheDocument()
+    expect(screen.getByText('reported this · online')).toBeInTheDocument()
+  })
+
   it('a closed situation offers nothing more to decide', async () => {
     asRole(OPERATOR)
     vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
@@ -592,6 +680,8 @@ describe('the situation view', () => {
     vi.mocked(api.getAuthority).mockResolvedValue(authority())
     vi.mocked(api.getSituationDrone).mockResolvedValue(NO_DRONE)
     vi.mocked(api.getTimeline).mockResolvedValue(NO_TIMELINE)
+    vi.mocked(api.getSummary).mockResolvedValue(SUMMARY)
+    vi.mocked(api.getSituationEvidence).mockResolvedValue(NO_EVIDENCE)
     vi.mocked(api.getTrail).mockResolvedValue({ ...EMPTY_TRAIL, decision_status: 'RESOLVED', closed_at: '2026-10-05T02:30:00Z' })
     vi.mocked(api.recordReview).mockResolvedValue({ recorded: false, assessment_id: 'a1' })
     vi.mocked(api.getObservations).mockResolvedValue([])

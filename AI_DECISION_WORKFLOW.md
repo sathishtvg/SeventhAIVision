@@ -100,6 +100,10 @@ Read with it:
   as an event in the situation, `VERIFY_WITH_DRONE` is not suggested again. What
   the drone saw is in the assessment; the question is now what to do about it.
   An officer can still choose it — as an override, with a reason.
+- **A drone in the air:** when one of the situation's events is a sighting by a
+  drone that is still on its mission, that drone's own camera is listed among
+  the cameras to look at, marked as the drone's. Once it has landed it is not:
+  the camera then shows a dock.
 - **Nobody on shift, at `HIGH` or `CRITICAL`:** `CONTACT_SITE` is added at 0.70 —
   the site itself is the next call.
 - **A camera that keeps being wrong:** when the risk was lowered because most
@@ -496,7 +500,7 @@ sites gets 404 for another site's situation or decision.
 
 `backend/tests/test_intel_decisions.py` (39) and `backend/tests/test_intel_field.py`
 (11): see `AI_HUMAN_DECISION_MODEL.md`.
-`backend/tests/test_intel_drone.py` (33): asking a drone. The rules with nothing
+`backend/tests/test_intel_drone.py` (34): asking a drone. The rules with nothing
 running; then **real simulated flights** — an officer asks a flight to hold, the
 drone module's own request, pause and audit entry appear under the officer's
 name, the drone runner holds and resumes it, and what it saw comes back to the

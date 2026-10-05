@@ -61,8 +61,10 @@ class Availability:
     it. Counts and states only: no guard's name, no contact's number."""
 
     has_site: bool = False
-    #: Cameras that reported, then their neighbours: {id, name, state, relation}.
-    #: state is online, degraded, offline, disabled or not_known.
+    #: Cameras that reported, then their neighbours, then the camera of a drone
+    #: that saw this and is still in the air: {id, name, state, relation}.
+    #: state is online, degraded, offline, disabled or not_known; relation is
+    #: reported, neighbour or drone.
     cameras: tuple[dict, ...] = ()
     guards_on_shift: int = 0
     guard_dispatched: bool = False
@@ -332,6 +334,24 @@ async def availability(db: AsyncSession, situation: Mapping, events: list[Mappin
                     cameras.append({"id": str(cam), "name": rows[cam]["name"], "relation": relation,
                                     "state": _camera_state(rows[cam]["is_active"], rows[cam]["health"])})
 
+    # The drone that saw this, while it is still in the air: its own camera is
+    # one more an officer can open. Once it has landed the camera shows a dock,
+    # so it is listed only for a drone on a mission now.
+    drone_ids = list({e["drone_id"] for e in events if e.get("drone_id") is not None})
+    if drone_ids:
+        listed = {c["id"] for c in cameras}
+        for r in (await db.execute(text("""
+            SELECT c.id, c.name, c.is_active,
+                   (SELECT h.event_type FROM camera_health_events h
+                     WHERE h.camera_id = c.id ORDER BY h.occurred_at DESC, h.id DESC LIMIT 1) AS health
+              FROM drones d JOIN cameras c ON c.id = d.camera_id
+             WHERE d.id = ANY(CAST(:ids AS uuid[])) AND d.status = 'MISSION_ACTIVE'
+             ORDER BY c.name
+        """), {"ids": drone_ids})).mappings().all():
+            if str(r["id"]) not in listed:
+                cameras.append({"id": str(r["id"]), "name": r["name"], "relation": "drone",
+                                "state": _camera_state(r["is_active"], r["health"])})
+
     # An incident already open for one of the situation's events: the one an
     # event carries, or the one the platform opened for an event's alert.
     incident_ids = [e["incident_id"] for e in events if e.get("incident_id") is not None]
@@ -381,7 +401,7 @@ async def recommend_situation(db: AsyncSession, situation: Mapping, now: datetim
     assessment = dict((await db.execute(text(
         "SELECT * FROM security_assessments WHERE id = :a"), {"a": situation["assessment_id"]})).mappings().one())
     events = [dict(r) for r in (await db.execute(text("""
-        SELECT e.id, e.occurred_at, e.camera_id, e.alert_id, e.incident_id, e.event_type
+        SELECT e.id, e.occurred_at, e.camera_id, e.alert_id, e.incident_id, e.event_type, e.drone_id
           FROM security_situation_events l JOIN security_events e ON e.id = l.event_id
          WHERE l.situation_id = :s
     """), {"s": situation["id"]})).mappings().all()]
