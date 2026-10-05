@@ -1,12 +1,14 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–6 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–7 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
-in `AI_RISK_ENGINE.md`), and recommendations (`0136`, described in
-`AI_DECISION_WORKFLOW.md`). **Nothing built so far acts**: the layer reads,
-records and suggests, and a person can read what it suggests.
+in `AI_RISK_ENGINE.md`), recommendations (`0136`) and human decisions with
+their actions (`0137`), both described in `AI_DECISION_WORKFLOW.md` and
+`AI_HUMAN_DECISION_MODEL.md`. **The runner still does not act**: it reads,
+records and suggests. Something is carried out only when a person decides it
+through the API.
 
 This document describes what exists. What is not yet built is listed at the end
 and is not described as if it were. The analysis and the plan are in
@@ -20,8 +22,13 @@ and is not described as if it were. The analysis and the plan are in
 - **The runner reads and records. It does not act.** The background process has
   no code path to dispatch a guard, open or change an incident, acknowledge an
   alert, command a drone or operate a door. It imports only its own `intel_*`
-  services and the database, and writes only `security_*` tables. Two tests
-  hold that line.
+  services and the database, and writes only `security_*` tables. Three tests
+  hold that line; one follows its imports to their end and checks that they
+  never arrive at the code that decides or acts.
+- **Acting is one module, reached one way.** `intel_actions` is the only part of
+  the layer that changes anything outside it. It is called by the decisions API,
+  for a decision a signed-in person has made, and calls nothing but the
+  platform's existing functions.
 - **Additive.** Every table is new and prefixed `security_`. No existing table,
   policy, worker or alert producer was changed. The files that gained a line are
   listed under *Touch points*.
@@ -48,7 +55,9 @@ NORMALITY · RISK ─► security_assessments            yes  (phase 5)
    ▼
 RECOMMEND ─► security_recommendations               yes  (phase 6) — suggestions only
    ▼
-HUMAN DECISION ─► ACTION                            no   (phase 7)
+HUMAN DECISION ─► security_decisions                yes  (phase 7) — by a person, through the API
+   ▼
+AUTHORISED ACTION ─► security_actions               yes  (phase 7) — through the platform's existing functions
 ```
 
 ## Data model
@@ -62,6 +71,11 @@ HUMAN DECISION ─► ACTION                            no   (phase 7)
 | `security_situations` | One matter, however many alerts fed it: number, title and severity of its most severe event, counts, sources, `ACTIVE` or `SETTLED` |
 | `security_situation_events` | Each event's place in a situation, with the method, the reason in words and the confidence of the link. An event is in at most one situation |
 | `security_camera_links` | Cameras an administrator has said are next to each other, and the walk between them |
+| `security_reviews` | That a person looked at what was suggested: once per person per assessment |
+| `security_decisions` | What a person decided: who, in what role, the step, whether it followed or overrode what was suggested, the reason, the assessment and risk it was made on, and how the policy let it be made. Added to, never changed |
+| `security_decision_approvals` | A second person's verdict on a decision that needed one. One per decision |
+| `security_actions` | What the platform then did for a decision: the step, the existing function it went through, how it ended, and under whose authority |
+| `security_decision_policies` | Who may decide: per role, how far alone and how far with approval. One for the organisation, at most one per site |
 | `security_recommendations` | What the layer suggests an officer do, per assessment: the step, the reason, how sure, whether it can be done now and if not why. A suggestion and nothing else; added to, never changed |
 | `security_assessments` | What the layer made of a situation, each time the answer changed: a label, the risk and every factor behind it, how unusual it is, three confidences, and what was known then. Added to, never changed: the application's role may only insert and read |
 
@@ -235,6 +249,28 @@ raises something is no surer than the detection, the correlation or the risk it
 rests on, so an incomplete picture puts looking first. A guard's SOS is the
 exception: help is not held back by what is not known about the site.
 
+## Decisions and actions
+
+`backend/app/services/intel_decisions.py` (the rules and the records),
+`intel_actions.py` (carrying out) and `backend/app/routers/security_decisions.py`;
+described in `AI_HUMAN_DECISION_MODEL.md` and part 2 of
+`AI_DECISION_WORKFLOW.md`. In short: a signed-in person with `intel:decide`,
+the site, and the authority the **decision policy** gives their role at this
+risk records what they have decided. If it follows a suggestion it is recorded
+as followed; if it goes against one it is an override, accepted from someone
+who may override and always with a reason. Where the policy lets the role decide
+only with approval, nothing happens until a second person approves.
+
+A decision in effect is carried out step by step through the platform's
+existing functions — acknowledge, assign, open an incident, dispatch, resolve —
+under the permissions of the person who decided or approved, and each step
+leaves a row saying what it went through and how it ended. Every decision,
+verdict and step is in the tenant's hash-chained audit log.
+
+A situation carries `decision_status`, set only by a person; and what stands
+behind any incident — nothing, one the platform opened by itself
+(`PRELIMINARY`), or one a person opened or confirmed (`CONFIRMED`).
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -302,15 +338,27 @@ refuse fields they do not know.
 | PUT | `/security-intelligence/site-profiles/{site_id}/cameras/{camera_id}` | `intel:read` `intel:manage` | Replace a camera's profile; the camera must belong to the site. Audited |
 | GET | `/security-intelligence/site-profiles/{site_id}/camera-links` | `intel:read` | Which of the site's cameras are next to each other |
 | PUT | `/security-intelligence/site-profiles/{site_id}/camera-links` | `intel:read` `intel:manage` | Replace the site's camera links. Audited |
-| GET | `/security-intelligence/situations` | `intel:read` | Situations with their latest risk, the one heard from most recently first, or the highest risk first with `sort=risk`. Filters: `status`, `site_id`, `severity`, `risk_level`, `source_type`, `from`, `to` |
-| GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, and its latest assessment with the reasons behind it |
+| GET | `/security-intelligence/situations` | `intel:read` | Situations with their latest risk and where they stand, the one heard from most recently first, or the highest risk first with `sort=risk`. Filters: `status`, `site_id`, `severity`, `risk_level`, `decision_status`, `open`, `source_type`, `from`, `to` |
+| GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, its latest assessment with the reasons behind it, where it stands, and what stands behind any incident |
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/recommendations` | `intel:read` `intel:recommendation:read` | What the layer suggests doing, surest first, with the reason for each and why any cannot be done now. Always `is_decision: false` |
+| POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested |
+| GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | What the caller may decide here, how, and why not |
+| POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval |
+| GET | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` | The decision trail of a situation |
+| GET | `/security-intelligence/decisions` | `intel:read` | Decisions across situations; `state=pending_approval` is the approver's queue |
+| GET | `/security-intelligence/decisions/{decision_id}` | `intel:read` | One decision |
+| POST | `/security-intelligence/decisions/{decision_id}/approve` | `intel:read` `intel:approve` | Approves a waiting decision; it is then carried out |
+| POST | `/security-intelligence/decisions/{decision_id}/reject` | `intel:read` `intel:approve` | Rejects a waiting decision, with a note |
+| GET | `/security-intelligence/decision-policy` | `intel:read` | Who may decide: the default, the organisation's policy, each site's own |
+| PUT | `/security-intelligence/decision-policy` | `intel:read` `intel:manage` | Sets the organisation's policy. Audited |
+| PUT | `/security-intelligence/decision-policy/sites/{site_id}` | `intel:read` `intel:manage` | Gives a site its own policy. Audited |
+| DELETE | `/security-intelligence/decision-policy/sites/{site_id}` | `intel:read` `intel:manage` | Removes a site's own policy. Audited |
 
 ## Permissions
 
-Seeded by `0132`. `intel:read`, `intel:recommendation:read` and `intel:manage`
-are used so far; the rest are in place for the phases that need them.
+Seeded by `0132`. All are in use except `intel:feedback:export`, which is in
+place for phase 14.
 
 | Permission | Admin, Manager | Supervisor | Operator | Guard | Viewer |
 |---|:-:|:-:|:-:|:-:|:-:|
@@ -326,9 +374,11 @@ The **platform owner** (super admin) and the **client** role hold none. The
 platform owner is not a customer's security operator; an assessment describes a
 site's weaknesses and is not for the site's own customer.
 
-A guard's `intel:decide` does nothing by itself: the decision policy of phase 7
-says at which sites and up to which risk a guard may decide, and until an
-administrator sets one it lets no guard decide.
+A guard's `intel:decide` does nothing by itself: the decision policy says at
+which sites and up to which risk a guard may decide, and until an administrator
+sets one it lets no guard decide — except to ask the command centre for help.
+And `intel:decide` carries nothing out without the platform's own permission
+for each step.
 
 ## Tenancy and security
 
@@ -346,21 +396,27 @@ administrator sets one it lets no guard decide.
 - Changes to a profile are written to the tenant's hash-chained audit log with
   the actor, their role, the site, the request id and the result
   (`intel.site_profile.update`, `intel.camera_profile.update`,
-  `intel.camera_links.update`).
+  `intel.camera_links.update`). So is every look at a suggestion, decision,
+  verdict, step carried out and change of policy; the entries are listed in
+  `AI_HUMAN_DECISION_MODEL.md`.
+- A decision is not accepted from an API key or from a vendor's support
+  session. The platform owner holds no `intel:*` permission.
 
 ## Live events
 
 Published on the tenant's existing channel, `tenant_events:{tenant}`, and
 forwarded to that tenant's clients by the existing listener with no change to it:
 `intel_situation_opened`, `intel_situation_updated`, `intel_assessment_ready`
-and `intel_recommendation_ready`. Each is saved before it is announced, and an
-assessment that says what the last one said is not announced at all.
+and `intel_recommendation_ready` from the runner; `intel_decision_recorded`,
+`intel_decision_pending_approval`, `intel_decision_approved` and
+`intel_decision_rejected` from the API. Each is saved before it is announced,
+and an assessment that says what the last one said is not announced at all.
 
 ## Touch points in existing files
 
 | File | Addition |
 |---|---|
-| `backend/app/main.py` | Registers the router |
+| `backend/app/main.py` | Registers the two routers |
 | `backend/app/core/config_keys.py` | The `intel.enabled` and `intel.risk_weights` settings |
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
 
@@ -399,15 +455,17 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_recommend.py` (82): see `AI_DECISION_WORKFLOW.md`.
 
-`backend/tests/test_intel_docs.py` (18) checks the API tables of these documents
+`backend/tests/test_intel_decisions.py` (38): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`backend/tests/test_intel_docs.py` (24) checks the API tables of these documents
 against the application's route table, and the rules written in the
-correlation, risk and workflow documents against the code — the recommendation
-rules by running the engine for every kind at every level.
+correlation, risk, workflow and decision documents against the code — the
+recommendation rules by running the engine for every kind at every level, and
+what each decision carries out by running the planner.
 
 ## Not built yet
 
-Human decisions, actions and the decision
-policy (7) · the command centre screens (8) · the guard's phone (9) · drone and
+The command centre screens (8) · the guard's phone (9) · drone and
 virtual patrol integration beyond reading their events (10) · the unified
 timeline (11) · evidence and summaries (12) · the dashboard and site security
 score (13) · feedback (14) · platform health for the vendor, the Helm

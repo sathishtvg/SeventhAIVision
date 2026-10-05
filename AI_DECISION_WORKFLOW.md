@@ -1,17 +1,15 @@
 # AI Security Intelligence — From Suggestion to Decision
 
-**As of:** 2026-10-05 · **Part 1 is built** (phase 6, migration `0136`,
-`backend/app/services/intel_recommend.py`). **Part 2 is not built** and is
-described only as what it will be.
+**As of:** 2026-10-05 · Part 1 (phase 6, migration `0136`) and Part 2 (phase 7,
+migration `0137`) are both built.
 
 ```
 assessment ─► RECOMMENDATION ─► HUMAN DECISION ─► AUTHORISED ACTION ─► outcome
-              part 1 (built)    part 2 (phase 7, not built)
+              part 1            part 2
               a suggestion      a person's choice   what the platform then did
 ```
 
-Three records in three tables, so that none can be mistaken for another. This
-document covers the first.
+Three records in three tables, so that none can be mistaken for another.
 
 ---
 
@@ -222,7 +220,8 @@ site's situation. A situation not yet assessed returns an empty list.
 - **The rules are judgement.** Which step for which kind, and how sure, were
   chosen and not measured. They are one table in one file so that they can be
   argued with; phase 14 collects what officers actually decided.
-- **Availability is a snapshot**, as above.
+- **Availability is a snapshot**, as above. When a decision is taken, what it
+  would carry out is worked out again from the situation as it then is.
 - **"On shift" is not "nearby" or "free".** The layer counts guards on shift at
   the site. It does not know which of them is closest or already busy; choosing
   the guard is the officer's.
@@ -267,14 +266,139 @@ code.
 
 ---
 
-# Part 2 — Decisions and actions (phase 7, not built)
+# Part 2 — Decisions and actions
 
-A person with the authority to decide will choose what to do: accept a
-suggestion, choose a different step, or override with a reason from a fixed
-list. That choice will be its own record — who, in what role, what, whether it
-followed the suggestion, and why if not. What the platform then does, through
-its existing functions, will be a third record with its result. Who may decide
-what, at which sites and up to which risk, will be configuration.
+Built in phase 7: migration `0137`, `backend/app/services/intel_decisions.py`,
+`intel_actions.py`, `backend/app/routers/security_decisions.py`. Who may decide
+and what an override is are in `AI_HUMAN_DECISION_MODEL.md`; this part is what
+happens when someone does.
 
-None of that exists yet. Today a recommendation can be read, and nothing else
-can be done with it.
+## The path of a decision
+
+```
+an officer opens the situation       POST …/reviews      recorded once: they looked
+what may I do here?                  GET  …/authority    each decision: allowed, how, or why not
+the officer chooses                  POST …/decisions    judged, then recorded as theirs
+   │
+   ├─ may decide alone ──────────────► each step carried out now, each leaving a row
+   └─ may decide with approval ──────► nothing carried out; waits
+                                       POST /decisions/{id}/approve   carried out under the approver
+                                       POST /decisions/{id}/reject    nothing carried out; says why
+the trail                            GET  …/decisions    looked · decided · approved · done · how it ended
+```
+
+The decision is saved before anything is carried out. If a step then fails, the
+person's decision is still on record, and so is the failure.
+
+## What each decision carries out
+
+Fourteen decisions: the nine steps a recommendation can name, and five only a
+person can choose. A step is taken only where there is something to take it on:
+acknowledging acts on the alerts still open, closing on those not yet closed.
+
+| Decision | With alerts open and no incident | With an incident already open |
+|---|---|---|
+| `MONITOR` | — | — |
+| `VERIFY` | — | — |
+| `VIEW_CAMERA` | — | — |
+| `VERIFY_WITH_DRONE` | — | — |
+| `INVESTIGATE` | — | — |
+| `CONTACT_SITE` | — | — |
+| `DISPATCH_GUARD` | `INCIDENT_CREATE` → `INCIDENT_DISPATCH` | `INCIDENT_DISPATCH` |
+| `ESCALATE` | `ALERT_ASSIGN` | `ALERT_ASSIGN` → `INCIDENT_ASSIGN` |
+| `CREATE_INCIDENT` | `INCIDENT_CREATE` | refused: confirm it instead |
+| `ACKNOWLEDGE` | `ALERT_ACKNOWLEDGE` | `ALERT_ACKNOWLEDGE` |
+| `CONFIRM_INCIDENT` | refused: there is none | `INCIDENT_CONFIRM` |
+| `REQUEST_ASSISTANCE` | — | — |
+| `FALSE_POSITIVE` | `ALERT_FALSE_POSITIVE` | `ALERT_FALSE_POSITIVE` |
+| `RESOLVE` | `ALERT_DISMISS` | `ALERT_DISMISS` → `INCIDENT_RESOLVE` |
+
+A dash is a decision that is a record and nothing more: it is the officer who
+looks at the camera, makes the call, starts the flight. `VERIFY_WITH_DRONE` is
+recorded and says that the flight is started from the drone screens; this layer
+does not yet ask the drone module to fly (phase 10).
+
+`DISPATCH_GUARD` needs the guard, chosen by the officer. `ESCALATE` needs the
+person it goes to: an active admin, manager or supervisor other than the one
+deciding.
+
+## Through the platform's own functions
+
+Nothing new is done to carry a decision out. Each step calls the function the
+platform already uses when an officer presses the existing button, so a step
+taken from a decision is exactly the step taken by hand — the same rows, the
+same events on the wire. None of those functions was changed.
+
+| Step | Goes through | Needs |
+|---|---|---|
+| `ALERT_ACKNOWLEDGE` | `app.routers.alerts.bulk_acknowledge_alerts` | `alert:acknowledge` |
+| `ALERT_FALSE_POSITIVE` | `app.routers.alerts.mark_false_positive` | `alert:acknowledge` |
+| `ALERT_DISMISS` | `app.routers.alerts.bulk_dismiss_alerts` | `alert:acknowledge` |
+| `ALERT_ASSIGN` | `app.routers.alerts.bulk_assign_alerts` | `alert:acknowledge` |
+| `INCIDENT_CREATE` | `app.routers.incidents.create_incident` | `incident:create` |
+| `INCIDENT_DISPATCH` | `app.routers.dispatch.dispatch_guard` | `incident:dispatch` |
+| `INCIDENT_ASSIGN` | `app.routers.incidents.assign_incident` | `incident:assign` |
+| `INCIDENT_RESOLVE` | `app.routers.incidents.resolve_incident` | `incident:resolve` |
+| `INCIDENT_CONFIRM` | — the layer's own record; the incident is not touched | — |
+
+The person under whose authority a step runs must hold what it needs: the one
+who decided, or the one who approved. So an operator, who may not resolve an
+incident anywhere on the platform, cannot resolve one from here either.
+
+An incident opened from a decision carries the situation's title and severity,
+its first camera, and a description that says it was opened by a person's
+decision from that situation, with the assessment at the time.
+
+## How a step ends
+
+Every step leaves a row in `security_actions`, whatever happened.
+
+| Result | Means |
+|---|---|
+| `OK` | Done, through the function named |
+| `SKIPPED` | The platform's own "nothing to do" — already acknowledged, already resolved |
+| `FAILED` | It did not happen. The row holds the status and message the function gave, or the kind of error — never an error's text, which can carry row contents |
+| `RECORDED` | Nothing was to be carried out, and the row says so |
+
+A failed step does not undo the decision or the steps before it, and the next
+step is still attempted unless it depended on the one that failed.
+
+## One press, one decision
+
+A request can carry `client_ref`. Sent again with a retry it is answered with
+the decision already recorded, and nothing is carried out twice.
+
+## Live messages
+
+On the tenant's existing channel, after the record is saved:
+`intel_decision_recorded`, `intel_decision_pending_approval`,
+`intel_decision_approved`, `intel_decision_rejected`. Each carries ids, the
+step, the basis, where things stand and each action's result. Never a name and
+never a note.
+
+## API
+
+| Method | Path | Permission | Returns |
+|---|---|---|---|
+| POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested. Once per person per assessment |
+| GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | For each of the fourteen decisions: whether the caller may take it, alone or with approval, whether it would follow or override, whether a reason will be asked for, what it would carry out — or why not |
+| POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval. 201; 200 for a retry |
+| GET | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` | The trail: who looked, each decision, any verdict, each action, and how it ended |
+| GET | `/security-intelligence/decisions` | `intel:read` | Decisions across situations, most recent first. `state=pending_approval` is the approver's queue |
+| GET | `/security-intelligence/decisions/{decision_id}` | `intel:read` | One decision |
+| POST | `/security-intelligence/decisions/{decision_id}/approve` | `intel:read` `intel:approve` | Approves a waiting decision; it is then carried out under the approver |
+| POST | `/security-intelligence/decisions/{decision_id}/reject` | `intel:read` `intel:approve` | Rejects a waiting decision, with a note |
+| GET | `/security-intelligence/decision-policy` | `intel:read` | The default, the organisation's policy and each site's own |
+| PUT | `/security-intelligence/decision-policy` | `intel:read` `intel:manage` | Sets the organisation's policy. Audited |
+| PUT | `/security-intelligence/decision-policy/sites/{site_id}` | `intel:read` `intel:manage` | Gives a site its own policy. Audited |
+| DELETE | `/security-intelligence/decision-policy/sites/{site_id}` | `intel:read` `intel:manage` | Removes a site's own policy. Audited |
+
+Request bodies refuse fields they do not know. A caller restricted to certain
+sites gets 404 for another site's situation or decision.
+
+## Tests
+
+`backend/tests/test_intel_decisions.py` (38): see `AI_HUMAN_DECISION_MODEL.md`.
+`backend/tests/test_intel_docs.py` checks the two tables above against the code:
+what each decision carries out by running the planner, and each step's function
+by importing it.

@@ -40,7 +40,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_audit, intel_config, intel_context, intel_runner
+from app.services import intel_audit, intel_config, intel_context, intel_decisions, intel_runner
 from app.services.intel_events import SEVERITIES, SOURCE_TYPES
 
 router = APIRouter(prefix="/api/v1/security-intelligence", tags=["security-intelligence"],
@@ -364,7 +364,8 @@ _SITUATION_COLUMNS = """
     x.started_at, x.last_event_at, x.event_count, x.duplicate_count, x.source_types,
     x.primary_camera_id, c.name AS primary_camera_name, x.location_label, x.latitude, x.longitude,
     x.correlation_confidence, x.settled_at, x.created_at, x.updated_at,
-    x.risk_score, x.risk_level, x.assessed_at
+    x.risk_score, x.risk_level, x.assessed_at,
+    x.decision_status, x.last_decided_at, x.closed_at, x.incident_id, x.incident_confirmed_at
 """
 _SITUATION_FROM = """
       FROM security_situations x
@@ -380,6 +381,8 @@ async def list_situations(
     severity: str | None = Query(None),
     source_type: str | None = Query(None),
     risk_level: str | None = Query(None),
+    decision_status: str | None = Query(None),
+    open_only: bool = Query(False, alias="open"),
     sort: Literal["recent", "risk"] = Query("recent"),
     since: datetime | None = Query(None, alias="from"),
     until: datetime | None = Query(None, alias="to"),
@@ -398,11 +401,17 @@ async def list_situations(
     kind; `from`/`to` are about when a situation was last heard from.
 
     `severity` is the most severe event's own severity. `risk_level` is this
-    layer's assessment in context. They are different things."""
+    layer's assessment in context. They are different things.
+
+    `decision_status` is where the situation stands with the people responsible
+    for it — `AWAITING` until someone has decided anything — and `open=true`
+    leaves out those a person has closed. Neither is the layer's opinion: both
+    are set only by a person's decision."""
     _one_of(status, SITUATION_STATUSES, "status")
     _one_of(severity, SEVERITIES, "severity")
     _one_of(source_type, SOURCE_TYPES, "source type")
     _one_of(risk_level, RISK_LEVELS, "risk level")
+    _one_of(decision_status, intel_decisions.STATUSES, "decision status")
     if since is not None and until is not None and until < since:
         raise HTTPException(422, "The period ends before it starts.")
 
@@ -415,10 +424,13 @@ async def list_situations(
         where.append("x.site_id = CAST(:site AS uuid)")
         params["site"] = str(site_id)
     for column, value, name in (("x.status", status, "status"), ("x.severity", severity, "severity"),
-                                ("x.risk_level", risk_level, "risk_level")):
+                                ("x.risk_level", risk_level, "risk_level"),
+                                ("x.decision_status", decision_status, "decision_status")):
         if value is not None:
             where.append(f"{column} = :{name}")
             params[name] = value
+    if open_only:
+        where.append("x.closed_at IS NULL")
     if source_type is not None:
         where.append("CAST(:source_type AS text) = ANY(x.source_types)")
         params["source_type"] = source_type
@@ -453,7 +465,13 @@ async def get_situation(
     `assessment` is the latest assessment, or null when the situation has not
     been assessed yet: what it appears to be, the risk and every factor behind
     it, how unusual it is for the place and hour, the three confidences kept
-    apart, and what was not known."""
+    apart, and what was not known.
+
+    `incident.state` says what stands behind any incident: `NONE` — an AI event
+    and nothing more; `PRELIMINARY` — the platform opened an incident by itself
+    and no person has confirmed it; `CONFIRMED` — a person opened it, or
+    confirmed it. An incident software opened is never shown as one a person
+    stands behind."""
     row = (await db.execute(
         text(f"SELECT {_SITUATION_COLUMNS} {_SITUATION_FROM} WHERE x.id = CAST(:id AS uuid)"),
         {"id": str(situation_id)})).mappings().first()
@@ -484,8 +502,12 @@ async def get_situation(
     latest = (await db.execute(text(
         "SELECT * FROM security_assessments WHERE situation_id = CAST(:id AS uuid) ORDER BY sequence DESC LIMIT 1"),
         {"id": str(situation_id)})).mappings().first()
+    found = (await intel_decisions.facts(db, {**dict(row), "assessment_id": None})).incident
     return {**dict(row), "sources": list(sources.values()), "events": [dict(e) for e in events],
-            "assessment": _assessment(latest, with_context=True) if latest is not None else None}
+            "assessment": _assessment(latest, with_context=True) if latest is not None else None,
+            "incident": {"state": intel_decisions.incident_state(row, found),
+                         "id": found["id"] if found else None,
+                         "opened_by_the_platform": bool(found["is_auto_created"]) if found else None}}
 
 
 def _loads(value):
