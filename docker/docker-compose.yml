@@ -361,6 +361,10 @@ services:
       - evidence_data:/data/evidence
       - audit_archive:/data/archive
       - backups_data:/data/backups
+      # Read-only: the recording integrity sweep runs here and re-hashes the
+      # recorded files. Without this the scheduler saw an empty directory and
+      # marked every recording it checked as missing.
+      - recordings_data:/data/recordings:ro
     restart: unless-stopped
 
   # The drone runner: carries out queued flight commands, launches and advances
