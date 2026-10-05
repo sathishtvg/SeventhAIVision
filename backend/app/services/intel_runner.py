@@ -26,6 +26,7 @@ from sqlalchemy import text
 
 from app.services import intel_correlation as correlation
 from app.services import intel_events as events
+from app.services import intel_risk as risk
 
 logger = logging.getLogger("intelligence_runner")
 
@@ -175,6 +176,37 @@ async def run_correlate_tick(factory, pub, now: datetime | None = None,
             out["failed"] += 1
             continue
         for key in ("settled", "opened", "joined", "duplicates", "failed"):
+            out[key] += result[key]
+        for event_type, payload in result["announce"]:
+            try:
+                await pub.publish(tenant_id, event_type, payload)
+            except Exception as exc:  # noqa: BLE001 — the record exists; only the nudge was lost
+                logger.warning("could not announce %s: %s", event_type, type(exc).__name__)
+    return out
+
+
+async def run_assess_tick(factory, pub, now: datetime | None = None, batch: int = risk.BATCH) -> dict:
+    """Assess every situation whose events have changed since it was last
+    assessed, for every tenant with the feature on, and announce each new
+    assessment on that tenant's own channel.
+
+    Returns {"tenants", "assessed", "changed", "failed"}. An assessment that
+    says what the last one said is not written again and not announced."""
+    out = {"tenants": 0, "assessed": 0, "changed": 0, "failed": 0}
+    for tenant_id in await tenants(factory):
+        out["tenants"] += 1
+        try:
+            if now is None:
+                async with factory() as db:
+                    moment = await events.database_now(db)
+            else:
+                moment = now
+            result = await risk.assess_tenant(factory, tenant_id, moment, batch)
+        except Exception:  # noqa: BLE001 — this tenant's pass, not everyone's
+            logger.exception("assessment failed for tenant %s", tenant_id)
+            out["failed"] += 1
+            continue
+        for key in ("assessed", "changed", "failed"):
             out[key] += result[key]
         for event_type, payload in result["announce"]:
             try:

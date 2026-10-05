@@ -6,8 +6,9 @@ live wall still plays, because none of that passes through here. Inside the API
 or the scheduler it could hold one of them up; on its own it cannot.
 
 It reads what the platform has already recorded and writes the `security_*`
-tables: each pass normalises what is new, then places each new event in a
-situation. It takes no security action of any kind — see services/intel_runner.py.
+tables: each pass normalises what is new, places each new event in a situation,
+then assesses the situations that changed. It takes no security action of any
+kind — see services/intel_runner.py.
 
 Cadence, each overridable by environment:
   INTEL_RUNNER_TICK_SECONDS      3    read each source for each tenant with the feature on
@@ -109,6 +110,14 @@ async def main() -> None:
             except Exception:  # noqa: BLE001
                 ok = False
                 logger.exception("correlation pass failed")
+            try:
+                assessed = await intel_runner.run_assess_tick(AsyncSessionLocal, pub)
+                ok = ok and not assessed["failed"]
+                if assessed["changed"] or assessed["failed"]:
+                    logger.info("assessments: %s", assessed)
+            except Exception:  # noqa: BLE001
+                ok = False
+                logger.exception("assessment pass failed")
             try:
                 await intel_runner.write_heartbeat(redis, ok, result)
             except Exception as exc:  # noqa: BLE001

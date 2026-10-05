@@ -74,6 +74,14 @@ def _page_labels_validator(v: Any) -> None:
                     raise ValueError(f"'{key}.{field}' must be {limit} characters or fewer")
 
 
+def _risk_weights_validator(v: Any) -> None:
+    """intel.risk_weights: how much each risk factor counts for this tenant. The
+    factor names and the rule live with the engine that uses them."""
+    from app.services.intel_risk import validate_weights
+
+    validate_weights(v)
+
+
 SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     # Tenant-authored page titles/descriptions; defaults live in the frontend.
     "ui.page_labels": _page_labels_validator,
@@ -122,4 +130,6 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     # administrator turns it on; with it off the intelligence runner reads
     # nothing of that tenant's.
     "intel.enabled": _bool_validator,
+    # A multiplier per risk factor, 0 to 3; a factor left out counts as shipped.
+    "intel.risk_weights": _risk_weights_validator,
 }

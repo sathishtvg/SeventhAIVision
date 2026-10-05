@@ -1,9 +1,10 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–4 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–5 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
-site and camera profiles (`0133`), and correlation into situations (`0134`,
-described in `AI_EVENT_CORRELATION.md`).
+site and camera profiles (`0133`), correlation into situations (`0134`,
+described in `AI_EVENT_CORRELATION.md`), and normality and risk (`0135`,
+described in `AI_RISK_ENGINE.md`).
 
 This document describes what exists. What is not yet built is listed at the end
 and is not described as if it were. The analysis and the plan are in
@@ -37,11 +38,11 @@ existing sources                                   built?
    ▼
 NORMALISE ─► security_events                        yes  (phase 2)
    ▼
-CONTEXT                                             yes  (phase 3) — on request; not yet stored
+CONTEXT                                             yes  (phase 3) — on request, and kept with each assessment
    ▼
 CORRELATE ─► security_situations                    yes  (phase 4)
    ▼
-NORMALITY · RISK                                    no   (phase 5)
+NORMALITY · RISK ─► security_assessments            yes  (phase 5)
    ▼
 RECOMMEND                                           no   (phase 6)
    ▼
@@ -59,6 +60,7 @@ HUMAN DECISION ─► ACTION                            no   (phase 7)
 | `security_situations` | One matter, however many alerts fed it: number, title and severity of its most severe event, counts, sources, `ACTIVE` or `SETTLED` |
 | `security_situation_events` | Each event's place in a situation, with the method, the reason in words and the confidence of the link. An event is in at most one situation |
 | `security_camera_links` | Cameras an administrator has said are next to each other, and the walk between them |
+| `security_assessments` | What the layer made of a situation, each time the answer changed: a label, the risk and every factor behind it, how unusual it is, three confidences, and what was known then. Added to, never changed: the application's role may only insert and read |
 
 All have `FORCE ROW LEVEL SECURITY` with the platform's standard tenant policy.
 Foreign keys to sites, cameras, drones, alerts and incidents are `ON DELETE SET
@@ -196,6 +198,24 @@ as duplicates and nothing is dropped: the alerts are untouched.
 It never joins across sites, and it never says two sightings are the same
 person unless it has an identity for them.
 
+## Normality and risk
+
+`backend/app/services/intel_risk.py`; the factors, the points and the limits are
+in `AI_RISK_ENGINE.md`. In short: each situation whose events have changed is
+assessed. **Normality** is the camera's own habit — how often it has raised this
+kind of alert in this hour of the week — and is not stated at all on too little
+history. **Risk** is a score from 0 to 100 made of named factors, each with its
+points and a sentence: the event's severity, a zone in force, the place's
+criticality, the hour, a block or allow list, a door, how many kinds of source
+agree, repetition, the camera's record, what was expected, and the drone's or a
+guard's own alarm.
+
+Three things are held to. What is not known adds no risk and lowers the *risk
+confidence* instead. The model's confidence, the confidence of the correlation
+and the confidence of the risk are three numbers and are never made one. And an
+assessment is written once: a different answer is a new row beside the old one,
+which the application's database role cannot alter.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -222,7 +242,7 @@ own process so that nothing it does can hold up the API or the scheduler.
 
 | | |
 |---|---|
-| Pass | Every tenant with the feature on, under that tenant's setting, in its own sessions: normalise what is new from every source, then place each new event in a situation and announce it |
+| Pass | Every tenant with the feature on, under that tenant's setting, in its own sessions: normalise what is new from every source, place each new event in a situation and announce it, then assess the situations that changed and announce each new assessment |
 | Cadence | `INTEL_RUNNER_TICK_SECONDS` (3) |
 | Wake | Early, when a tenant's event channel announces an alert, incident, SOS or camera change. A nudge only: the database is what is read, so a missed message costs a tick and never an event |
 | Rest | At least `INTEL_RUNNER_MIN_GAP_SECONDS` (0.5) between passes, so an alert storm cannot turn it into a busy loop |
@@ -235,9 +255,11 @@ own process so that nothing it does can hold up the API or the scheduler.
 | Setting | Where | Default |
 |---|---|---|
 | `intel.enabled` | Tenant setting, through the settings API (`settings:write`) | off |
+| `intel.risk_weights` | Tenant setting, the same way: a multiplier from 0 to 3 per risk factor | every factor as shipped |
 | `INTEL_RUNNER_TICK_SECONDS`, `INTEL_RUNNER_MIN_GAP_SECONDS` | Runner environment | 3, 0.5 |
 | `INTEL_BACKFILL_MINUTES`, `INTEL_OVERLAP_SECONDS`, `INTEL_INGEST_BATCH` | Runner environment | 60, 120, 200 |
 | `INTEL_SITUATION_QUIET_MINUTES`, `INTEL_CORRELATE_BATCH` | Runner environment | 30, 100 |
+| `INTEL_ASSESS_BATCH` | Runner environment | 50 |
 | Camera links | Per site, through the API (`intel:manage`) | none |
 
 ## API
@@ -261,8 +283,9 @@ refuse fields they do not know.
 | PUT | `/security-intelligence/site-profiles/{site_id}/cameras/{camera_id}` | `intel:read` `intel:manage` | Replace a camera's profile; the camera must belong to the site. Audited |
 | GET | `/security-intelligence/site-profiles/{site_id}/camera-links` | `intel:read` | Which of the site's cameras are next to each other |
 | PUT | `/security-intelligence/site-profiles/{site_id}/camera-links` | `intel:read` `intel:manage` | Replace the site's camera links. Audited |
-| GET | `/security-intelligence/situations` | `intel:read` | Situations, the one heard from most recently first. Filters: `status`, `site_id`, `severity`, `source_type`, `from`, `to` |
-| GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, and every event with the reason it is there |
+| GET | `/security-intelligence/situations` | `intel:read` | Situations with their latest risk, the one heard from most recently first, or the highest risk first with `sort=risk`. Filters: `status`, `site_id`, `severity`, `risk_level`, `source_type`, `from`, `to` |
+| GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, and its latest assessment with the reasons behind it |
+| GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
 
 ## Permissions
 
@@ -309,15 +332,16 @@ administrator sets one it lets no guard decide.
 
 Published on the tenant's existing channel, `tenant_events:{tenant}`, and
 forwarded to that tenant's clients by the existing listener with no change to it:
-`intel_situation_opened` and `intel_situation_updated`. The situation is saved
-before it is announced.
+`intel_situation_opened`, `intel_situation_updated` and
+`intel_assessment_ready`. Each is saved before it is announced, and an
+assessment that says what the last one said is not announced at all.
 
 ## Touch points in existing files
 
 | File | Addition |
 |---|---|
 | `backend/app/main.py` | Registers the router |
-| `backend/app/core/config_keys.py` | The `intel.enabled` setting |
+| `backend/app/core/config_keys.py` | The `intel.enabled` and `intel.risk_weights` settings |
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
 
 ## Running it
@@ -351,12 +375,15 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_correlation.py` (33): see `AI_EVENT_CORRELATION.md`.
 
-`backend/tests/test_intel_docs.py` (4) checks the API table above against the
-application's route table.
+`backend/tests/test_intel_risk.py` (39): see `AI_RISK_ENGINE.md`.
+
+`backend/tests/test_intel_docs.py` (13) checks the API tables of these documents
+against the application's route table, and the rules written in the correlation
+and risk documents against the code.
 
 ## Not built yet
 
-Normality and risk, and storing the context with the assessment it informed (5) · recommendations (6) · human decisions, actions and the decision
+Recommendations (6) · human decisions, actions and the decision
 policy (7) · the command centre screens (8) · the guard's phone (9) · drone and
 virtual patrol integration beyond reading their events (10) · the unified
 timeline (11) · evidence and summaries (12) · the dashboard and site security

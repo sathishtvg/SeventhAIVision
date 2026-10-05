@@ -585,9 +585,11 @@ async def test_two_tenants_are_read_in_one_pass_and_neither_sees_the_other():
 APP = Path(events.__file__).resolve().parents[1]
 RUNNER_FILES = [APP / "intelligence_main.py", APP / "services" / "intel_runner.py",
                 APP / "services" / "intel_events.py", APP / "services" / "intel_config.py",
-                APP / "services" / "intel_correlation.py"]
+                APP / "services" / "intel_correlation.py", APP / "services" / "intel_risk.py",
+                APP / "services" / "intel_context.py"]
 MAY_IMPORT = {"app.core.config", "app.db.session", "app.services", "app.services.intel_events",
-              "app.services.intel_runner", "app.services.intel_config", "app.services.intel_correlation"}
+              "app.services.intel_runner", "app.services.intel_config", "app.services.intel_correlation",
+              "app.services.intel_risk", "app.services.intel_context"}
 
 
 def _app_imports(path: Path) -> set[str]:
