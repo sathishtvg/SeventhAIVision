@@ -455,7 +455,7 @@ anyone remembering it (`tests/test_drone_security.py`).
 | Audit | Every operation that changes something writes to the hash-chained audit log | Evidence handed over (`drone.media.access`) and reports taken out (`drone.report.export`, with the document's SHA-256) left no trace — now they do |
 | Gateway sync | Credential compared in constant time with one identical refusal; every item tied to the gateway that sent it; a file accepted only if it is exactly the file described | A file's `telemetry_snapshot` had no size bound — now 8 KB |
 | Errors | An unexpected failure answers a bare 500 and is recorded for the platform owner | A failed report email stored the raw exception text where the organisation could read it — now only a mail server's own refusal is shown |
-| Rate limits | Gateway endpoints per address; report exports per person | Exports were unlimited — now 30 a minute per person across the three |
+| Rate limits | Gateway endpoints per address; report exports per person; every read per person and route | Exports were unlimited — now 30 a minute per person across the three. The platform's default, which had never been applied, was replaced afterwards by one that is |
 | Platform health | The runner writes a heartbeat; the console counts across tenants through `platform_drone_health()` | The platform owner's console had no drone row — now it has one |
 | Performance | Period queries walk time indexes; lists page | Two indexes added from measurement; a year of a large fleet timed (gap analysis §24.7) |
 
@@ -474,9 +474,8 @@ permission check has verified the token.
 
 Two findings belonged to the platform rather than the module and were reported
 rather than changed here: the scheduler's nightly partition maintenance had never
-worked — fixed afterwards, on the owner's decision, in migration `0131` — and the
-platform-wide default rate limit is not being applied, which is still open (gap
-analysis §24.6).
+worked, and the platform-wide default rate limit was not being applied. Both
+were fixed afterwards on the owner's decision (gap analysis §24.6, §26).
 
 ## A flight's distance
 
@@ -486,12 +485,26 @@ one stored count, so a resent or out-of-order sample is never added twice — an
 is taken again from the whole stored track when the flight ends, which is the
 figure reports and analytics use. A flight that never left the ground has none.
 
+## Retention
+
+`services/drone_retention.py`, run by the drone runner every six hours beside its
+loop. Footage follows the organisation's `evidence.retention_days`; flight tracks
+follow `drone.telemetry_retention_days`, a year by default.
+
+Drone media lives in its own table because the platform's evidence purge deletes
+by age alone, including evidence an open incident depends on. The drone rule is
+narrower: past its period a snapshot or clip is deleted — file first, then its
+record — unless its event became an incident, or is confirmed and still open, or
+its flight is in progress. Events, incidents and stored reports are not touched,
+and a flight whose track has gone keeps its record and still reports.
+
+Run as the application's role, one organisation at a time, with the tenant scope
+set again after every commit; each organisation's purge is one audit entry.
+
 ## Not built
 
 No real drone, manufacturer SDK or edge hardware is connected, and none is
 claimed: every flight so far is the simulator's, and no real video has passed
 through the module. What a real aircraft needs is in
 `DRONE_PATROL_PROVIDER_INTEGRATION.md` and summarised in
-`DRONE_PATROL_IMPLEMENTATION.md`. How long drone footage and telemetry are kept
-is an open decision (gap analysis §24.8), and the desktop release that would
-carry the drone screens has not been made (§25.6).
+`DRONE_PATROL_IMPLEMENTATION.md`.

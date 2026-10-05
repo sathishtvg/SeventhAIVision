@@ -21,8 +21,8 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | IDs | UUIDs. A malformed ID answers **422** before touching the database |
 | Lists | `GET /drones`, `/drone-missions`, `/drone-patrols` and `/drone-events` are paginated (`limit` ≤ 200, `offset`) and return `{items, total, limit, offset, has_more}`. Other lists return a plain array |
 | Updates | `PUT` bodies are partial: a field sent as `null` is cleared, a field left out is left alone. Names, codes and required settings cannot be cleared |
-| Errors | `403` permission or licence · `404` not found or not visible · `409` conflict (duplicate name or code, in use, already decided) · `422` invalid input, with every problem stated · `429` too many report exports in a minute (body `{"error": …}`, not `detail`) |
-| Audit | Every change and every event decision is written to the tenant's hash-chained audit log with the user and address. So is everything taken out: each file of evidence handed over (`drone.media.access`) and each report exported (`drone.report.export`, with the SHA-256 of the document) |
+| Errors | `403` permission or licence · `404` not found or not visible · `409` conflict (duplicate name or code, in use, already decided) · `422` invalid input, with every problem stated · `429` too many requests — every read is limited per caller and route (300 a minute; 1,200 for media), with `Retry-After` and a `detail`; report exports have their own allowance and answer `{"error": …}` instead |
+| Audit | Every change and every event decision is written to the tenant's hash-chained audit log with the user and address. So is everything taken out: each file of evidence handed over (`drone.media.access`) and each report exported (`drone.report.export`, with the SHA-256 of the document). The runner's deletion of expired footage and tracks is recorded too (`drone.retention.purge`, one entry per organisation and night) |
 | Unexpected failures | A bare `500` with no detail. The failure is recorded for the platform owner |
 
 ## Fleet — `/api/v1/drones`
