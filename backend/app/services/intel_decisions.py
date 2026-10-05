@@ -181,10 +181,28 @@ class Step:
     ids: tuple = ()
 
 
-def plan(action: str, *, alerts: list[Mapping], incident: Mapping | None) -> list[Step]:
+def drone_choice(params: Mapping | None) -> dict | None:
+    """How a VERIFY_WITH_DRONE decision said the drone should look, from the
+    decision's stored `params`: {"event_id", "hold_seconds"} to hold the flight
+    that saw a sighting, {"mission_id"} to start a mission the site already
+    has, or None when the officer chose neither and will fly it themselves."""
+    params = params or {}
+    if params.get("drone_event_id"):
+        return {"event_id": params["drone_event_id"], "hold_seconds": params.get("hold_seconds")}
+    if params.get("drone_mission_id"):
+        return {"mission_id": params["drone_mission_id"]}
+    return None
+
+
+def plan(action: str, *, alerts: list[Mapping], incident: Mapping | None,
+         drone: Mapping | None = None) -> list[Step]:
     """The steps a decision would be carried out by. Pure: it reads what the
     situation has and says what would be done, in order. An empty plan means
-    the decision is a record and nothing more."""
+    the decision is a record and nothing more.
+
+    `drone` is the officer's own choice of how a drone should look
+    (`drone_choice`). The layer never makes that choice: with none, verifying
+    with a drone is a record and the officer flies it from the drone screens."""
     open_ = tuple(str(a["id"]) for a in alerts if a["status"] == "open")
     live = tuple(str(a["id"]) for a in alerts if a["status"] in ("open", "acknowledged"))
     has_incident = incident is not None and incident.get("status") not in ("resolved", "closed")
@@ -212,6 +230,12 @@ def plan(action: str, *, alerts: list[Mapping], incident: Mapping | None) -> lis
         if not has_incident:
             steps.append(Step("INCIDENT_CREATE", "incident:create", "incident"))
         steps.append(Step("INCIDENT_DISPATCH", "incident:dispatch", "incident", incident_id if has_incident else None))
+    elif action == "VERIFY_WITH_DRONE" and drone:
+        # The drone module's own permissions: the ones its own buttons ask for.
+        if drone.get("event_id"):
+            steps.append(Step("DRONE_HOLD", "drone:operate", "drone_event", drone["event_id"]))
+        elif drone.get("mission_id"):
+            steps.append(Step("DRONE_LAUNCH", "drone:mission:execute", "drone_mission", drone["mission_id"]))
     return steps
 
 
@@ -333,15 +357,16 @@ class Check:
 
 
 def check(action: str, *, situation: Mapping, f: Facts, mine: set[str], roles: Mapping, role_id: int,
-          in_reach: bool = True) -> Check:
+          in_reach: bool = True, drone: Mapping | None = None) -> Check:
     """Judge one decision without recording anything. Pure, so that the answer
     given to "what may I do here?" and the answer given when the button is
     pressed are the same code. `in_reach` is false for a guard who is neither
-    on shift at the situation's site nor dispatched to it."""
+    on shift at the situation's site nor dispatched to it. `drone` is how the
+    officer said a drone should look, when they said."""
     basis, recommendation = classify(action, f.current)
     level = f.assessment["risk_level"] if f.assessment else None
     how, said = authority(roles, role_id, level, action)
-    steps = plan(action, alerts=f.alerts, incident=f.incident)
+    steps = plan(action, alerts=f.alerts, incident=f.incident, drone=drone)
     open_incident = f.incident is not None and f.incident.get("status") not in ("resolved", "closed")
     missing = [p for p in permissions_needed(steps) if p not in mine]
     refusal = None

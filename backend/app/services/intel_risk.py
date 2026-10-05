@@ -48,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import intel_context as ctx
 
-ENGINE_VERSION = "rules-1"
+ENGINE_VERSION = "rules-2"
 LEVELS = ("INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL")
 #: Score at or above which each level starts — the drone engine's own bands, so
 #: a "HIGH" means the same thing wherever an officer reads it.
@@ -61,6 +61,9 @@ ZONE_POINTS = {"critical": 20, "high": 20, "medium": 15, "low": 10}
 #: A drone security zone's kind, as the drone module scores it.
 DRONE_ZONE_POINTS = {"CRITICAL": 25, "NO_ENTRY": 20, "RESTRICTED": 15, "PERSON_RESTRICTED": 15,
                      "VEHICLE_RESTRICTED": 15, "SPECIAL_INSPECTION": 5}
+#: What a second look by a drone is worth, either way: added when it saw more of
+#: the same thing, taken off when it saw nothing more.
+LOOK_POINTS = 5
 #: The name each factor is weighted by in a tenant's `intel.risk_weights`.
 FACTORS = ("SEVERITY", "ZONE", "CRITICALITY", "TIME", "IDENTITY", "ACCESS", "CORROBORATION", "PERSISTENCE",
            "HISTORY", "EXPECTED", "ANOMALY", "DRONE", "GUARD", "CONFIDENCE")
@@ -318,6 +321,19 @@ def assess(situation: Mapping, events: list[Mapping], context: Mapping, baseline
         if pts:
             add("DRONE", pts, f"The drone module assessed its own sighting as {lvl}"
                               + (f" ({round(score)})." if score is not None else "."))
+    # A look a person asked for: the drone held and looked again. Seeing more
+    # of the same thing is a confirmation; seeing nothing more is a small
+    # reason for less concern, and no more than that — the latest look counts.
+    looks = [e for e in events if e.get("event_type") == "drone.verification"]
+    if looks:
+        last = max(looks, key=lambda e: e["occurred_at"])
+        added = int(_attrs(last).get("detections_added") or 0)
+        hold = _attrs(last).get("hold_seconds")
+        held = f"held for {hold} s and looked again" if hold else "held and looked again"
+        if added > 0:
+            add("DRONE", LOOK_POINTS, f"A drone {held}, as a person asked: {added} more detection(s) of the same thing.")
+        else:
+            add("DRONE", -LOOK_POINTS, f"A drone {held}, as a person asked: it saw nothing more.")
 
     if any(e.get("source_type") == "GUARD" for e in events):
         add("GUARD", 20, "A guard raised an SOS.")

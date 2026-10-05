@@ -12,6 +12,15 @@ resolving. So a step taken from a decision is exactly the step taken by hand —
 the same rows, the same events on the wire — and nothing about those functions
 was changed to allow it.
 
+A DRONE LOOKS ONLY BECAUSE A PERSON SAID SO, AND SAID HOW. Verifying with a
+drone is carried out when the officer chose which: hold the flight that saw a
+sighting, or start a mission the site already has. Each is the drone module's
+own endpoint function, with its own checks — distance, battery, the provider,
+the licence, pre-flight — and its own audit entry. When that module says no,
+its reason is the step's record. Nothing here steers an aircraft, makes a
+mission or changes one; and with no choice made, the decision is a record and
+the officer flies it from the drone screens.
+
 EVERY STEP LEAVES A ROW, WHATEVER HAPPENED. Done, skipped because there was
 nothing to do, or failed with the reason: `security_actions` says which, and
 names the function it went through. A decision that calls for nothing to be
@@ -22,17 +31,22 @@ so the session is scoped again before and after every call.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any, Mapping
 
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import TokenPayload
+from app.dependencies.drone_module import require_drone_module
 from app.routers import alerts as alerts_api
 from app.routers import dispatch as dispatch_api
+from app.routers import drone_operations as drone_ops_api
+from app.routers import drone_planning as drone_plan_api
 from app.routers import incidents as incidents_api
 from app.services import intel_audit
 from app.services import intel_decisions as decisions
+from app.services import intel_drone
 
 #: What each step goes through. The right-hand side is the platform's own code.
 THROUGH = {
@@ -44,13 +58,15 @@ THROUGH = {
     "INCIDENT_DISPATCH": "app.routers.dispatch.dispatch_guard",
     "INCIDENT_ASSIGN": "app.routers.incidents.assign_incident",
     "INCIDENT_RESOLVE": "app.routers.incidents.resolve_incident",
+    "DRONE_HOLD": "app.routers.drone_operations.verify_with_drone",
+    "DRONE_LAUNCH": "app.routers.drone_planning.run_mission",
 }
 #: The existing bulk functions take at most this many ids in a call.
 CHUNK = 100
 #: Decisions that are a record and nothing more, and what the record says.
 RECORD_ONLY = {
-    "VERIFY_WITH_DRONE": "Recorded. The flight is started from the drone screens: this layer does not ask "
-                         "the drone module to fly.",
+    "VERIFY_WITH_DRONE": "Recorded. No flight or mission was chosen with the decision, so nothing was asked of "
+                         "a drone: the officer flies it from the drone screens.",
     "CONTACT_SITE": "Recorded. The call is made by the officer; the site's contact is on the site record.",
 }
 RECORDED = "Recorded. There was nothing for the platform to carry out."
@@ -74,12 +90,22 @@ def incident_text(situation: Mapping, assessment: Mapping | None) -> tuple[str, 
     return str(situation["title"])[:255], " ".join(lines), severity
 
 
+async def _launch(*, db: AsyncSession, **kwargs):
+    """Start a mission exactly as the drone screen does: the module's licence
+    check first, which is that endpoint's own gate, then the endpoint."""
+    await require_drone_module(db=db)
+    return await drone_plan_api.run_mission(db=db, **kwargs)
+
+
 async def carry_out(db: AsyncSession, request: Request, token: TokenPayload, *, decision: Mapping,
-                    situation: Mapping, f: decisions.Facts, params: Mapping) -> list[dict]:
+                    situation: Mapping, f: decisions.Facts, params: Mapping,
+                    allowed: list[str] | None = None) -> list[dict]:
     """Carry out a decision that is in effect. Returns what was done, in order.
     `token` is the person under whose authority it runs: the one who decided,
-    or the one who approved."""
-    steps = decisions.plan(decision["action"], alerts=f.alerts, incident=f.incident)
+    or the one who approved; `allowed` is the sites that person may see, which
+    the drone module's functions ask of every caller."""
+    drone = decisions.drone_choice(params)
+    steps = decisions.plan(decision["action"], alerts=f.alerts, incident=f.incident, drone=drone)
     done: list[dict] = []
     incident_id = f.incident["id"] if f.incident is not None else None
 
@@ -173,6 +199,36 @@ async def carry_out(db: AsyncSession, request: Request, token: TokenPayload, *, 
         elif step.action == "INCIDENT_RESOLVE":
             result, answer = await call(incidents_api.resolve_incident, incident_id=str(step.target_id))
             await leave(step.action, through, result, None if result == "OK" else answer, "incident", step.target_id)
+        elif step.action == "DRONE_HOLD":
+            hold = intel_drone.hold_seconds(drone.get("hold_seconds"))
+            why = (decision.get("note") or "").strip() or f"From security situation {situation['situation_number']}."
+            result, answer = await call(drone_ops_api.verify_with_drone, event_id=uuid.UUID(str(step.target_id)),
+                                        request=request, token=token, allowed=allowed,
+                                        body=drone_ops_api.VerifyIn(hold_seconds=hold, reason=why))
+            if result == "OK":
+                await leave(step.action, through, result,
+                            f"The flight was asked to hold for {hold} s and look again. What it sees comes back "
+                            "as an event in this situation.", "drone_look", answer["verification"]["id"])
+            else:
+                await leave(step.action, through, "FAILED", answer, "drone_event", step.target_id)
+        elif step.action == "DRONE_LAUNCH":
+            result, answer = await call(_launch, mission_id=uuid.UUID(str(step.target_id)), request=request,
+                                        token=token, allowed=allowed)
+            if result != "OK":
+                await leave(step.action, through, "FAILED", answer, "drone_mission", step.target_id)
+                continue
+            flight = answer["session"]
+            if flight["status"] == "READY":
+                await leave(step.action, through, "OK",
+                            f"Flight {flight['session_number']} of mission “{answer['mission_name']}” passed "
+                            "pre-flight and is launching. What it sees comes back as events in this situation.",
+                            "drone_flight", flight["id"])
+            else:
+                # Asked, and stopped by the drone module's own pre-flight. The
+                # attempt is on its record as well as on this one.
+                await leave(step.action, through, "FAILED",
+                            f"Pre-flight stopped flight {flight['session_number']}: "
+                            f"{intel_drone.blocked_reason(answer.get('preflight'))}", "drone_flight", flight["id"])
 
     if not done:
         await leave("NONE", None, "RECORDED", RECORD_ONLY.get(decision["action"], RECORDED))

@@ -43,7 +43,7 @@ from typing import Mapping
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-ENGINE_VERSION = "rules-1"
+ENGINE_VERSION = "rules-2"
 ACTIONS = ("MONITOR", "VERIFY", "VIEW_CAMERA", "VERIFY_WITH_DRONE", "DISPATCH_GUARD", "ESCALATE", "INVESTIGATE",
            "CONTACT_SITE", "CREATE_INCIDENT")
 #: Steps that only look. The rest send someone or raise something.
@@ -69,6 +69,8 @@ class Availability:
     drones_at_site: int = 0
     drones_ready: int = 0
     drone_in_flight: bool = False
+    #: A drone has already held and looked again at this, because a person asked.
+    drone_looked: bool = False
     site_contact: bool = False
     #: An incident already open for one of the situation's events: {id, status}.
     incident: dict | None = None
@@ -184,7 +186,9 @@ def recommend(assessment: Mapping, avail: Availability) -> list[Recommendation]:
                   "No camera shows this place: confirm another way — call the site, or ask a guard.")
 
     def drone(base: float) -> None:
-        if avail.drones_at_site:
+        # Once a drone has looked, looking again is not suggested: what it saw
+        # is among the events, and the question is now what to do about it.
+        if avail.drones_at_site and not avail.drone_looked:
             offer("VERIFY_WITH_DRONE", base, "A drone can look from above before anyone is sent.")
 
     def incident(base: float) -> None:
@@ -342,8 +346,9 @@ async def availability(db: AsyncSession, situation: Mapping, events: list[Mappin
         """), {"incidents": incident_ids, "alerts": alert_ids})).mappings().first()
         incident = dict(row) if row is not None else None
 
+    looked = any(e.get("event_type") == "drone.verification" for e in events)
     if site_id is None:
-        return Availability(has_site=False, cameras=tuple(cameras), incident=incident,
+        return Availability(has_site=False, cameras=tuple(cameras), incident=incident, drone_looked=looked,
                             guard_dispatched=bool(incident and incident.get("dispatched_guard_id")))
 
     guards = (await db.execute(text("""
@@ -366,7 +371,7 @@ async def availability(db: AsyncSession, situation: Mapping, events: list[Mappin
         has_site=True, cameras=tuple(cameras), guards_on_shift=int(guards),
         guard_dispatched=bool(incident and incident.get("dispatched_guard_id")),
         drones_at_site=int(drones.at_site or 0), drones_ready=int(drones.ready or 0),
-        drone_in_flight=bool(drones.flying), site_contact=bool(contact), incident=incident)
+        drone_in_flight=bool(drones.flying), drone_looked=looked, site_contact=bool(contact), incident=incident)
 
 
 async def recommend_situation(db: AsyncSession, situation: Mapping, now: datetime) -> tuple[dict, list[Recommendation]]:
@@ -376,7 +381,7 @@ async def recommend_situation(db: AsyncSession, situation: Mapping, now: datetim
     assessment = dict((await db.execute(text(
         "SELECT * FROM security_assessments WHERE id = :a"), {"a": situation["assessment_id"]})).mappings().one())
     events = [dict(r) for r in (await db.execute(text("""
-        SELECT e.id, e.occurred_at, e.camera_id, e.alert_id, e.incident_id
+        SELECT e.id, e.occurred_at, e.camera_id, e.alert_id, e.incident_id, e.event_type
           FROM security_situation_events l JOIN security_events e ON e.id = l.event_id
          WHERE l.situation_id = :s
     """), {"s": situation["id"]})).mappings().all()]

@@ -2,8 +2,9 @@
 
 An event says "a person, at Gate 1, 0.87". This says what that means here: is
 the site open, is the zone in force, is anybody meant to be on site, was a door
-refused nearby a minute ago, is a patrol under way, and what has this camera
-reported before. It does not decide how much any of it matters — that is risk,
+refused nearby a minute ago, is a patrol under way, when did an officer on a
+virtual patrol last look at this camera and what did they report, and what has
+this camera reported before. It does not decide how much any of it matters — that is risk,
 later, and it reads this.
 
 TWO HALVES, AND ONLY ONE TOUCHES THE DATABASE. `load()` reads the facts that
@@ -53,6 +54,8 @@ HISTORY_FLOOR = 5
 #: A patrol or a flight that was started and never closed is not still under way
 #: a week later. Past this long it is no longer counted as in progress.
 STALE_AFTER = timedelta(hours=6)
+#: How far back the last virtual patrol check of a camera is still worth saying.
+PATROL_LOOKBACK = timedelta(hours=24)
 
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -160,7 +163,17 @@ class Facts:
     alarm_events: int | None = None
     virtual_patrol_in_progress: bool | None = None
     drone_in_flight: bool | None = None
+    #: The last time a virtual patrol reached this camera before the event:
+    #: {at, patrol_number, status, answered, exceptions, noted, snapshot}.
+    last_patrol_check: dict | None = None
     history: dict | None = None
+
+
+def _before(delta: timedelta) -> str:
+    minutes = max(0, round(delta.total_seconds() / 60))
+    if minutes < 90:
+        return f"{minutes} min before"
+    return f"{round(minutes / 60)} h before"
 
 
 def _attrs(event: Mapping) -> dict:
@@ -307,6 +320,28 @@ def build(event: Mapping, facts: Facts) -> dict:
         _say(out, "operations", "A virtual patrol of the site was in progress", "virtual_patrol_sessions")
     if facts.drone_in_flight:
         _say(out, "operations", "A drone patrol was in the air at the site", "drone_patrol_sessions")
+    # The last time an officer on a virtual patrol looked at this camera. Said
+    # as what was recorded: a check that reported nothing is not a claim that
+    # nothing has happened since.
+    out["operations"]["last_patrol_check"] = None
+    if facts.last_patrol_check is not None:
+        p = facts.last_patrol_check
+        out["operations"]["last_patrol_check"] = {
+            "at": p["at"].isoformat(), "patrol_number": p.get("patrol_number"), "status": p.get("status"),
+            "answered": int(p.get("answered") or 0), "exceptions": int(p.get("exceptions") or 0),
+            "noted": bool(p.get("noted")), "snapshot": bool(p.get("snapshot"))}
+        when = _before(at - p["at"])
+        patrol = f" ({p['patrol_number']})" if p.get("patrol_number") else ""
+        if p.get("status") == "CAMERA_UNAVAILABLE":
+            _say(out, "operations", f"A virtual patrol could not see this camera {when}{patrol}: the camera was "
+                                    "unavailable", "virtual_patrol_session_cameras")
+        elif p.get("exceptions"):
+            _say(out, "operations", f"A virtual patrol checked this camera {when}{patrol} and reported "
+                                    f"{p['exceptions']} exception(s)", "virtual_patrol_session_answers")
+        else:
+            _say(out, "operations", f"A virtual patrol checked this camera {when}{patrol}: "
+                                    f"{int(p.get('answered') or 0)} question(s) answered, nothing reported",
+                 "virtual_patrol_session_answers")
 
     # ── History ──────────────────────────────────────────────────────────────
     out["history"] = None
@@ -367,6 +402,22 @@ async def load(db: AsyncSession, event: Mapping) -> Facts:
             SELECT count(*) FROM alarm_events ae JOIN alarm_zones az ON az.id = ae.zone_id
              WHERE az.linked_camera_id = :c AND ae.occurred_at BETWEEN :a AND :b
         """, {"c": camera_id, "a": at - WINDOW, "b": at + WINDOW})
+        f.last_patrol_check = await _one(db, """
+            SELECT COALESCE(sc.completed_at, sc.started_at) AS at, sc.status, vs.patrol_number,
+                   (sc.snapshot_path IS NOT NULL) AS snapshot,
+                   (btrim(COALESCE(sc.officer_notes, '')) <> '') AS noted,
+                   (SELECT count(*) FROM virtual_patrol_session_answers a
+                      JOIN virtual_patrol_session_questions q ON q.id = a.session_question_id
+                     WHERE q.session_camera_id = sc.id) AS answered,
+                   (SELECT count(*) FROM virtual_patrol_session_answers a
+                      JOIN virtual_patrol_session_questions q ON q.id = a.session_question_id
+                     WHERE q.session_camera_id = sc.id AND a.is_exception) AS exceptions
+              FROM virtual_patrol_session_cameras sc
+              JOIN virtual_patrol_sessions vs ON vs.id = sc.session_id
+             WHERE sc.camera_id = :c AND sc.status IN ('COMPLETED', 'SNAPSHOT_FAILED', 'CAMERA_UNAVAILABLE')
+               AND COALESCE(sc.completed_at, sc.started_at) BETWEEN :since AND :at
+             ORDER BY COALESCE(sc.completed_at, sc.started_at) DESC LIMIT 1
+        """, {"c": camera_id, "since": at - PATROL_LOOKBACK, "at": at})
         module = _attrs(event).get("module_type")
         if module:
             f.history = await _one(db, """

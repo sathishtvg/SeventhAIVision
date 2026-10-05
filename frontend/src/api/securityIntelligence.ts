@@ -77,6 +77,8 @@ export interface Situation {
   closed_at: string | null
   incident_id: string | null
   incident_confirmed_at: string | null
+  /** The layer has assessed it again since the last decision, and it is still open. The decision stands. */
+  reassessed_since_decision?: boolean
 }
 
 export interface Factor { factor: string; points: number; detail: string }
@@ -130,6 +132,8 @@ export interface SituationEvent {
   reason: string
   link_confidence: number | null
   is_duplicate: boolean
+  /** As the source recorded them: a patrol's question and answer, how long a drone held and what more it saw. */
+  attributes?: Record<string, unknown>
 }
 
 export interface SituationSource {
@@ -258,7 +262,7 @@ export interface ActionRow {
   sequence: number
   action: string
   through: string | null
-  target_type: 'alert' | 'incident' | null
+  target_type: 'alert' | 'incident' | 'drone_event' | 'drone_look' | 'drone_mission' | 'drone_flight' | null
   target_id: string | null
   result: 'OK' | 'FAILED' | 'SKIPPED' | 'RECORDED'
   detail: string | null
@@ -267,6 +271,15 @@ export interface ActionRow {
 }
 
 export interface Person { user_id: string | null; name: string | null; role_id: number }
+
+/** Who or what a decision named: the guard, the senior, or how a drone was to look. */
+export interface DecisionParams {
+  guard_user_id?: string
+  escalate_to_user_id?: string
+  drone_event_id?: string
+  hold_seconds?: number
+  drone_mission_id?: string
+}
 
 export interface Decision {
   id: string
@@ -291,7 +304,7 @@ export interface Decision {
   authority: 'ALONE' | 'WITH_APPROVAL'
   state: DecisionState
   policy: { source?: string; said?: string }
-  params: { guard_user_id?: string; escalate_to_user_id?: string }
+  params: DecisionParams
   approval: { verdict: 'APPROVED' | 'REJECTED'; note: string | null; at: string; by: Person } | null
   actions: ActionRow[]
   replayed?: boolean
@@ -304,6 +317,11 @@ export interface DecisionInput {
   seen_assessment_id?: string
   guard_user_id?: string
   escalate_to_user_id?: string
+  /** With VERIFY_WITH_DRONE, the officer's own choice of one: hold the flight that saw this sighting… */
+  drone_event_id?: string
+  hold_seconds?: number
+  /** …or start this mission, which the site already has. With neither, the decision is a record. */
+  drone_mission_id?: string
   /** One per press, sent again with a retry, so that one press is one decision. */
   client_ref: string
 }
@@ -333,6 +351,78 @@ export const approveDecision = (decisionId: string, note?: string) =>
 
 export const rejectDecision = (decisionId: string, note: string) =>
   apiClient.post<Decision>(`${BASE}/decisions/${decisionId}/reject`, { note }).then((r) => r.data)
+
+// ── Drones: what one could be asked, and what came back ──────────────────────
+
+export interface DroneSighting {
+  event_id: string
+  drone_event_id: string
+  title: string
+  occurred_at: string
+  location_label: string | null
+  session_id: string | null
+  session_number: string | null
+  mission_name: string | null
+  drone_name: string | null
+  flight_status: string | null
+  drone_risk_level: string | null
+  detection_count: number | null
+  /** A first answer: the drone module makes its own checks when it is asked. */
+  can_hold: boolean
+  why_not: string | null
+}
+
+export interface DroneMission {
+  mission_id: string
+  name: string
+  drone_name: string | null
+  drone_status: string | null
+  route_name: string | null
+  battery_level: number | null
+  can_launch: boolean
+  why_not: string | null
+}
+
+export interface DroneLook {
+  id: string
+  drone_event_id: string
+  status: 'REQUESTED' | 'HOLDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  hold_seconds: number
+  started_at: string | null
+  ends_at: string | null
+  completed_at: string | null
+  result: { detections_added?: number; risk_before?: string; risk_after?: string; reason?: string }
+}
+
+/** One thing a decision on this situation asked of a drone, and what has come of it. */
+export interface DroneAsked {
+  action_id: string
+  decision_id: string
+  action: 'DRONE_HOLD' | 'DRONE_LAUNCH'
+  result: 'OK' | 'FAILED' | 'SKIPPED'
+  detail: string | null
+  asked_at: string
+  look: DroneLook | null
+  flight: { id: string; session_number: string; mission_name: string | null; status: string; started_at: string | null
+            ended_at: string | null; event_count: number | null; blocked_reason: string | null } | null
+}
+
+export interface DronePicture {
+  situation_id: string
+  closed: boolean
+  licence: { ok: boolean; problem: string | null }
+  may: { hold: boolean; launch: boolean; see_missions: boolean }
+  hold_seconds: { min: number; max: number; default: number }
+  notes: { hold: string; launch: string }
+  sightings: DroneSighting[]
+  missions: DroneMission[]
+  asked: DroneAsked[]
+  /** Looks at these sightings asked for from the drone screens, not by a decision here. */
+  other_looks: (DroneLook & { asked_at: string })[]
+}
+
+export const getSituationDrone = (id: string) =>
+  apiClient.get<DronePicture>(`${BASE}/situations/${id}/aerial`).then((r) => r.data)
 
 // ── From the ground: what the person dealing with it reports ─────────────────
 

@@ -1,7 +1,8 @@
 # AI Security Intelligence — From Suggestion to Decision
 
 **As of:** 2026-10-05 · Part 1 (phase 6, migration `0136`) and Part 2 (phase 7,
-migration `0137`) are both built.
+migration `0137`) are both built. Phase 10 (migration `0139`) lets a decision
+ask a drone to look, through the drone module's own functions.
 
 ```
 assessment ─► RECOMMENDATION ─► HUMAN DECISION ─► AUTHORISED ACTION ─► outcome
@@ -95,6 +96,10 @@ Read with it:
   sure, and says that no camera shows the place.
 - **No drone at the site:** `VERIFY_WITH_DRONE` is left out altogether. A site
   without a drone is not told in every suggestion that it has none.
+- **A drone has already looked:** once a look a person asked for has come back
+  as an event in the situation, `VERIFY_WITH_DRONE` is not suggested again. What
+  the drone saw is in the assessment; the question is now what to do about it.
+  An officer can still choose it — as an override, with a reason.
 - **Nobody on shift, at `HIGH` or `CRITICAL`:** `CONTACT_SITE` is added at 0.70 —
   the site itself is the next call.
 - **A camera that keeps being wrong:** when the risk was lowered because most
@@ -190,7 +195,7 @@ why a camera misfires is not what is urgent tonight.
 | `confidence`, `confidence_limited_by` | The fourth confidence and what held it down |
 | `available`, `unavailable_reason` | Whether it can be done now, and if not, why — always one or the other |
 | `supporting` | What it rests on: the risk level and score, the sentences of the top risk factors, and for the step itself the cameras to look at, how many guards were on shift, the drone's state, or the incident already open |
-| `engine_version` | `rules-1` |
+| `engine_version` | `rules-2` (`rules-1` before phase 10, which stopped suggesting a second drone look) |
 
 **One set per assessment, written once.** A new assessment gets a new set; the
 earlier one stays. The application's database role is granted `SELECT` and
@@ -314,13 +319,78 @@ acknowledging acts on the alerts still open, closing on those not yet closed.
 | `RESOLVE` | `ALERT_DISMISS` | `ALERT_DISMISS` → `INCIDENT_RESOLVE` |
 
 A dash is a decision that is a record and nothing more: it is the officer who
-looks at the camera, makes the call, starts the flight. `VERIFY_WITH_DRONE` is
-recorded and says that the flight is started from the drone screens; this layer
-does not yet ask the drone module to fly (phase 10).
+looks at the camera and makes the call.
+
+`VERIFY_WITH_DRONE` is a record too **unless the officer says how the drone
+should look** — see *Asking a drone*, below. The layer never makes that choice.
 
 `DISPATCH_GUARD` needs the guard, chosen by the officer. `ESCALATE` needs the
 person it goes to: an active admin, manager or supervisor other than the one
 deciding.
+
+## Asking a drone
+
+```
+officer decides VERIFY_WITH_DRONE, and says how
+      ─► the drone module's own function, under the officer's own drone permission
+      ─► the drone looks
+      ─► what it saw comes back as an event in the same situation
+      ─► the situation is assessed again, and suggestions are made again
+      ─► the officer decides
+```
+
+A drone looks only because a person decided it should and chose how. There are
+two ways, and the decision names one of them or neither:
+
+| The officer chooses | Sent as | Step | What the drone module then does |
+|---|---|---|---|
+| The flight that saw a sighting holds and looks again | `drone_event_id`, `hold_seconds` (5 to 120, 30 if not said) | `DRONE_HOLD` | Its own checks — the flight active, the drone still within 75 m of the spot, a provider that can pause and resume, battery to come home — then an ordinary pause in its command queue, and a resume when the hold is over |
+| A mission the site already has is started | `drone_mission_id` | `DRONE_LAUNCH` | Its own licence check and pre-flight. Passed, the flight is ready and its runner launches it; failed, it records the attempt as blocked, with every reason |
+| Neither | — | — | Nothing. The decision is a record and the officer flies it from the drone screens |
+
+- `drone_event_id` must be one of **this situation's** drone sightings;
+  `drone_mission_id` a mission **switched on at this situation's site**.
+  Anything else is refused (422) and nothing is recorded.
+- The officer needs the drone module's own permission for the step:
+  `drone:operate` to hold a flight, `drone:mission:execute` to start one. A
+  guard who may decide here but may not operate a drone can record that a drone
+  should look, and cannot ask one.
+- An organisation without the Drone Patrol licence cannot start a flight from a
+  decision (403, in that module's own words). A flight already in the air can
+  still be asked to hold: that module does not licence-gate it either.
+- **When the drone module says no, that is the step's record.** "409: The drone
+  is 212 m from where it saw this…", "Pre-flight stopped flight DPS-…: Battery
+  12% is below…". The decision stands; the step is `FAILED` with the reason.
+- Where the policy asks for approval, nothing is asked of the drone until a
+  second person approves, and it is then asked under the approver's name.
+- **The layer chooses no flight and no mission, steers nothing, makes no mission
+  and changes none.** The runner never does any of this: it cannot import the
+  module that acts, and a test holds that.
+
+`GET …/situations/{id}/aerial` is what the officer's screen reads first: the
+situation's sightings and whether each one's flight could be asked to hold, the
+site's missions and whether each could start now, and everything already asked
+from this situation with what came of it. "Could" is a first answer — the
+drone module decides when it is asked.
+
+### What comes back
+
+- **A look that was held** (`drone_verification_requests`, completed, at a
+  sighting the drone module has verified) becomes an event: *Drone looked
+  again: 4 more detection(s) — …*, or *…and saw nothing more*. It joins the
+  situation its sighting is in, by `DRONE_LOOK`, with what it saw in the reason.
+  A look asked for from the drone screens joins the same way.
+- **A sighting from a flight a decision started** joins the situation that
+  decision was about, by `DRONE_LOOK` at 0.60, and says why it is there: the
+  flight follows its own route and may have seen something else. A surer
+  ordinary link to another situation wins.
+- **Never into a situation a person has closed.** Something seen after a matter
+  was ended opens a matter of its own, where it will be seen.
+- A situation that had gone quiet is woken by a look that comes back to it.
+- The risk engine then counts the look (`AI_RISK_ENGINE.md`), a new assessment
+  is written, new suggestions are made for it, and the situation is marked
+  `reassessed_since_decision` until a person decides again. **The earlier
+  decision stands; nothing is decided by the layer.**
 
 ## Through the platform's own functions
 
@@ -339,6 +409,8 @@ same events on the wire. None of those functions was changed.
 | `INCIDENT_DISPATCH` | `app.routers.dispatch.dispatch_guard` | `incident:dispatch` |
 | `INCIDENT_ASSIGN` | `app.routers.incidents.assign_incident` | `incident:assign` |
 | `INCIDENT_RESOLVE` | `app.routers.incidents.resolve_incident` | `incident:resolve` |
+| `DRONE_HOLD` | `app.routers.drone_operations.verify_with_drone` | `drone:operate` |
+| `DRONE_LAUNCH` | `app.routers.drone_planning.run_mission` | `drone:mission:execute` |
 | `INCIDENT_CONFIRM` | — the layer's own record; the incident is not touched | — |
 
 The person under whose authority a step runs must hold what it needs: the one
@@ -405,6 +477,7 @@ codes and where things stand. Never a name, never a note, never what was said.
 | GET | `/security-intelligence/situations/{situation_id}/observations` | `intel:read` | What was reported from the ground, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | For each of the fourteen decisions: whether the caller may take it, alone or with approval, whether it would follow or override, whether a reason will be asked for, what it would carry out — or why not |
 | GET | `/security-intelligence/situations/{situation_id}/responders` | `intel:read` `intel:decide` | The guards a decision could dispatch — those on shift at the site first — and the people it could be escalated to. A list to choose from; the layer does not choose |
+| GET | `/security-intelligence/situations/{situation_id}/aerial` | `intel:read` | The situation's drone sightings and whether each one's flight could be asked to hold; the site's missions and whether each could start (for someone with `drone:read`); what decisions here asked of a drone and what came of it. Asks nothing of a drone |
 | POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval. 201; 200 for a retry |
 | GET | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` | The trail: who looked, each decision, any verdict, each action, and how it ended |
 | GET | `/security-intelligence/decisions` | `intel:read` | Decisions across situations, most recent first. `state=pending_approval` is the approver's queue |
@@ -423,6 +496,16 @@ sites gets 404 for another site's situation or decision.
 
 `backend/tests/test_intel_decisions.py` (39) and `backend/tests/test_intel_field.py`
 (11): see `AI_HUMAN_DECISION_MODEL.md`.
+`backend/tests/test_intel_drone.py` (33): asking a drone. The rules with nothing
+running; then **real simulated flights** — an officer asks a flight to hold, the
+drone module's own request, pause and audit entry appear under the officer's
+name, the drone runner holds and resumes it, and what it saw comes back to the
+same situation, which is assessed again; a look that saw nothing; the drone
+module's refusal kept as the step's record; a mission started from a decision
+and flown; pre-flight stopping one; no licence; approval; a look that comes back
+after the matter was closed opening a new matter; a quiet situation woken; and
+the runner's own ticks bringing a look back, announcing it, and changing no row
+of the drone module, no alert and no incident.
 `backend/tests/test_intel_docs.py` checks the two tables above against the code:
 what each decision carries out by running the planner, and each step's function
 by importing it.

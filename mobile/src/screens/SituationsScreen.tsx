@@ -41,6 +41,12 @@ function SituationRow({ item, onOpen }: { item: MySituation; onOpen: (id: string
           <Text style={styles.risk}>{riskText(item.risk_level, item.risk_score)}</Text>
           <Text style={styles.stands}>{STATUS_LABEL[item.decision_status] ?? item.decision_status}</Text>
         </View>
+        {item.reassessed_since_decision && (
+          <View style={styles.metaRow}>
+            <Ionicons name="refresh-outline" size={12} color={colors.textSecondary} />
+            <Text style={styles.metaText}>Assessed again since the last decision</Text>
+          </View>
+        )}
         <View style={styles.metaRow}>
           <Ionicons name="location-outline" size={12} color={colors.info} />
           <Text style={[styles.metaText, { color: colors.info }]} numberOfLines={1}>

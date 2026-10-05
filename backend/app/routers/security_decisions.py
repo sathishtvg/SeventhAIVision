@@ -37,7 +37,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_actions, intel_audit, intel_field
+from app.services import intel_actions, intel_audit, intel_drone, intel_field
 from app.services import intel_decisions as decisions
 from app.services.intel_risk import LEVELS
 
@@ -309,6 +309,39 @@ async def list_responders(
     return {"guards": [dict(g) for g in guards], "escalation": [dict(s) for s in seniors]}
 
 
+# ─── What a drone could be asked, and what came back ─────────────────────────
+
+@router.get("/situations/{situation_id}/aerial")
+async def drone_picture(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Drones and this situation: what an officer could ask a drone to do, and
+    what came of anything already asked.
+
+    `sightings` are the situation's drone sightings, each with the state of the
+    flight that saw it and whether that flight could be asked to hold and look
+    again. `missions` are the missions the site already has switched on, and
+    whether each could start now — listed for someone who may see the drone
+    module. Both are a first answer: the drone module makes its own checks when
+    it is asked, and when it refuses, its reason is on the step's record.
+
+    `asked` is every look a decision on this situation asked for — the step,
+    how it ended, and the look or flight since. `other_looks` are looks at
+    these sightings asked for from the drone screens.
+
+    Nothing is asked of a drone from here. That is a decision:
+    `VERIFY_WITH_DRONE` with `drone_event_id` or `drone_mission_id`.
+
+    The path says "aerial", not "drone", on purpose: every path with "drone" in
+    it is the drone module's, held to that module's own permissions by its own
+    tests. This one is the intelligence layer's, and reads under `intel:read`."""
+    situation = await _situation(db, situation_id, allowed)
+    return await intel_drone.picture(db, situation, await decisions.permissions_of(db, token.role_id))
+
+
 # ─── Deciding ────────────────────────────────────────────────────────────────
 
 class DecisionIn(BaseModel):
@@ -322,9 +355,40 @@ class DecisionIn(BaseModel):
     seen_assessment_id: uuid.UUID | None = None
     guard_user_id: uuid.UUID | None = None
     escalate_to_user_id: uuid.UUID | None = None
+    #: With VERIFY_WITH_DRONE, how the drone should look — the officer's own
+    #: choice of one: hold the flight that saw this sighting, or start this
+    #: mission. With neither, the decision is a record.
+    drone_event_id: uuid.UUID | None = None
+    drone_mission_id: uuid.UUID | None = None
+    hold_seconds: int | None = Field(None, ge=intel_drone.HOLD_MIN, le=intel_drone.HOLD_MAX)
     via: Literal["web", "mobile"] = "web"
     #: Sent again with a retry, so that one press is one decision.
     client_ref: uuid.UUID | None = None
+
+
+async def _drone_params(db: AsyncSession, body: DecisionIn, situation: dict) -> dict:
+    """The decision's stored `params` for what it asks of a drone, or {} when
+    it asks nothing. Refuses a choice that is not this situation's to make."""
+    given = [name for name in ("drone_event_id", "drone_mission_id", "hold_seconds")
+             if getattr(body, name) is not None]
+    if not given:
+        return {}
+    if body.action != "VERIFY_WITH_DRONE":
+        raise HTTPException(422, f"{', '.join(given)} can be given only with VERIFY_WITH_DRONE.")
+    if body.drone_event_id is not None and body.drone_mission_id is not None:
+        raise HTTPException(422, "Choose one: hold the flight that saw a sighting (drone_event_id), or start a "
+                                 "mission (drone_mission_id).")
+    if body.drone_event_id is not None:
+        if not await intel_drone.sighting_in(db, situation["id"], body.drone_event_id):
+            raise HTTPException(422, "drone_event_id must be a drone sighting that is one of this situation's "
+                                     "events.")
+        return {"drone_event_id": str(body.drone_event_id),
+                "hold_seconds": intel_drone.hold_seconds(body.hold_seconds)}
+    if body.drone_mission_id is None or body.hold_seconds is not None:
+        raise HTTPException(422, "hold_seconds goes with drone_event_id: it is how long a flight holds.")
+    if await intel_drone.mission_at(db, body.drone_mission_id, situation["site_id"]) is None:
+        raise HTTPException(422, "drone_mission_id must be a mission that is switched on at this situation's site.")
+    return {"drone_mission_id": str(body.drone_mission_id)}
 
 
 async def _active_user(db: AsyncSession, user_id: uuid.UUID) -> dict | None:
@@ -361,7 +425,14 @@ async def record_decision(
 
     `DISPATCH_GUARD` needs `guard_user_id`; `ESCALATE` needs
     `escalate_to_user_id`, an admin, manager or supervisor other than the
-    caller."""
+    caller.
+
+    `VERIFY_WITH_DRONE` may say how the drone should look: `drone_event_id`, one
+    of the situation's drone sightings, asks the flight that saw it to hold for
+    `hold_seconds` and look again; `drone_mission_id`, a mission switched on at
+    the situation's site, starts it. Each is the drone module's own function
+    and needs its own permission (`drone:operate`, `drone:mission:execute`).
+    With neither, the decision is recorded and nothing is asked of a drone."""
     _person(token)
     if body.action not in decisions.DECISIONS:
         raise HTTPException(422, f"Unknown decision '{body.action}'. One of: {', '.join(decisions.DECISIONS)}.")
@@ -385,18 +456,23 @@ async def record_decision(
     f = await decisions.facts(db, situation)
     mine = await decisions.permissions_of(db, token.role_id)
     policy = await decisions.policy_for(db, situation["site_id"])
+    params: dict = await _drone_params(db, body, situation)
     c = decisions.check(body.action, situation=situation, f=f, mine=mine, roles=policy["roles"],
-                        role_id=token.role_id,
+                        role_id=token.role_id, drone=decisions.drone_choice(params),
                         in_reach=await intel_field.within_reach(db, situation, token.user_id, token.role_id))
     if c.refusal is not None:
         raise HTTPException(*c.refusal)
+    if params.get("drone_mission_id"):
+        # The drone module's own licence gate, asked before anything is recorded.
+        problem = await intel_drone.licence_problem(db)
+        if problem is not None:
+            raise HTTPException(403, problem)
     if c.basis in ("OVERRIDE", "CLOSING") and body.reason_code is None:
         what = "Closing a situation" if c.basis == "CLOSING" else "Choosing a step that was not suggested"
         raise HTTPException(422, f"{what} needs a reason. One of: {', '.join(decisions.REASONS)}.")
     if body.reason_code == "OTHER" and not (body.note or "").strip():
         raise HTTPException(422, "The reason 'OTHER' needs a note saying what it was.")
 
-    params: dict = {}
     if body.action == "DISPATCH_GUARD":
         guard = await _active_user(db, body.guard_user_id) if body.guard_user_id else None
         if guard is None:
@@ -427,12 +503,14 @@ async def record_decision(
                 "reason_code": body.reason_code, "suggested_action": decisions.first_suggestion(f.current),
                 "recommendation_id": str(c.recommendation["id"]) if c.recommendation else None,
                 "assessment_id": str(a["id"]) if a else None, "risk_level": a.get("risk_level"),
-                "risk_score": a.get("risk_score"), "authority": c.how, "via": body.via})
+                "risk_score": a.get("risk_score"), "authority": c.how, "via": body.via,
+                "asked_of_a_drone": ("hold" if params.get("drone_event_id") else
+                                     "launch" if params.get("drone_mission_id") else None)})
     await db.commit()
 
     if c.how == "ALONE":
         await intel_actions.carry_out(
-            db, request, token, situation=situation, f=f, params=params,
+            db, request, token, situation=situation, f=f, params=params, allowed=allowed,
             decision={"id": row["id"], "action": body.action, "reason_code": body.reason_code, "note": body.note,
                       "via": body.via})
     await decisions.scope(db, token.tenant_id)
@@ -574,7 +652,8 @@ async def _verdict(verdict: str, decision_id: uuid.UUID, body: VerdictIn | None,
     if how != "ALONE":
         raise HTTPException(403, f"Approving needs the authority to take this decision alone. {said}")
     if verdict == "APPROVED":
-        steps = decisions.plan(d["action"], alerts=f.alerts, incident=f.incident)
+        steps = decisions.plan(d["action"], alerts=f.alerts, incident=f.incident,
+                               drone=decisions.drone_choice(d["params"]))
         missing = [p for p in decisions.permissions_needed(steps) if p not in mine]
         if missing:
             raise HTTPException(403, f"Carrying this out needs the permission {', '.join(missing)}.")
@@ -597,7 +676,7 @@ async def _verdict(verdict: str, decision_id: uuid.UUID, body: VerdictIn | None,
 
     if verdict == "APPROVED":
         await intel_actions.carry_out(
-            db, request, token, situation=situation, f=f, params=d["params"] or {},
+            db, request, token, situation=situation, f=f, params=d["params"] or {}, allowed=allowed,
             decision={"id": d["id"], "action": d["action"], "reason_code": d["reason_code"], "note": d["note"],
                       "via": d["via"]})
     await decisions.scope(db, token.tenant_id)

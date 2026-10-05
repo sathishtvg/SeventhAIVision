@@ -22,6 +22,13 @@ PURE RULES, THEN THE DATABASE. Everything that decides is in `match()`,
 `best_link()` and `choose()`, which take plain rows. `correlate_tenant()` reads
 candidates, applies them, and records the result.
 
+WHAT A PERSON ASKED A DRONE TO LOOK AT. When an officer's decision had a drone
+hold and look again at a sighting, or started a flight to look at a situation,
+what comes back belongs with that situation and says so: `asked_link()`. A
+look goes back to the situation its sighting is in even if that situation has
+gone quiet, and wakes it. It never goes into a situation a person has closed:
+something seen after a matter was ended is a new matter, and must be seen.
+
 DUPLICATES ARE FOLDED, NOT DROPPED. The same camera raising the same alert again
 inside a few minutes joins the situation marked `is_duplicate`. The operator
 sees one card with a count; the alert itself is untouched and still in the
@@ -32,6 +39,7 @@ any record that existed before this layer, and nothing here acts.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 from dataclasses import dataclass
@@ -239,6 +247,44 @@ def match(event: Mapping, member: Mapping, *, camera_links: Mapping[frozenset, i
     return max(found, key=lambda link: link.confidence) if found else None
 
 
+def _attrs(event: Mapping) -> dict:
+    a = event.get("attributes")
+    if isinstance(a, str):
+        try:
+            a = json.loads(a)
+        except ValueError:
+            a = {}
+    return a if isinstance(a, dict) else {}
+
+
+def asked_link(event: Mapping, matched_event_id: Any = None) -> Link | None:
+    """The link for an event that is what came back from a drone look a person
+    asked for — or None when the event is not of that kind. Pure: which
+    situation it goes to is `_asked_for()`'s to find.
+
+    A look at a sighting is about that sighting, and is linked as surely as
+    anything here. A sighting from a flight started to look at a situation is
+    linked for that reason alone, and less surely: the flight follows its own
+    route, and may have seen something else."""
+    attrs = _attrs(event)
+    if event.get("source_table") == "drone_verification_requests":
+        added = int(attrs.get("detections_added") or 0)
+        before, after = attrs.get("risk_before"), attrs.get("drone_risk_level")
+        saw = f"{added} more detection(s)" if added else "nothing more"
+        risk = ""
+        if before and after:
+            risk = (f" The drone module's own risk went from {before} to {after}." if before != after
+                    else f" The drone module's own risk stayed {after}.")
+        hold = f" for {attrs['hold_seconds']} s" if attrs.get("hold_seconds") else ""
+        return Link("DRONE_LOOK", f"A person asked the drone to hold{hold} and look again at this sighting: "
+                                  f"it saw {saw}.{risk}", 0.95, matched_event_id)
+    if event.get("source_table") == "drone_events" and attrs.get("session_id"):
+        return Link("DRONE_LOOK", "Seen by the flight a person started to look at this situation. The flight "
+                                  "follows its own route: this may be the same matter, or something else it passed.",
+                    0.6, matched_event_id)
+    return None
+
+
 def best_link(event: Mapping, members: list[Mapping], **kw) -> Link | None:
     """The strongest link from `event` to any of a situation's events."""
     links = [link for link in (match(event, m, **kw) for m in members) if link is not None]
@@ -442,12 +488,69 @@ def summary(situation: Mapping, *, opened: bool, link: Link | None = None) -> di
     }
 
 
+async def _asked_for(db: AsyncSession, event: Mapping) -> tuple[dict, Link] | None:
+    """(the situation, the link) when `event` is what came back from a drone
+    look a person asked for about a situation that is still open — else None.
+
+    A look at a sighting goes to the situation that sighting is in. A sighting
+    from a flight goes to the situation whose decision started that flight.
+    Never to one a person has closed."""
+    link = asked_link(event)
+    if link is None:
+        return None
+    attrs = _attrs(event)
+    if event.get("source_table") == "drone_verification_requests":
+        if not attrs.get("drone_event_id"):
+            return None
+        row = (await db.execute(text("""
+            SELECT s.*, m.id AS matched_event_id
+              FROM security_events m
+              JOIN security_situation_events l ON l.event_id = m.id
+              JOIN security_situations s ON s.id = l.situation_id
+             WHERE m.source_table = 'drone_events' AND m.source_id = CAST(:e AS uuid) AND s.closed_at IS NULL
+             ORDER BY l.linked_at DESC LIMIT 1
+        """), {"e": attrs["drone_event_id"]})).mappings().first()
+    else:
+        row = (await db.execute(text("""
+            SELECT s.*, NULL::uuid AS matched_event_id
+              FROM security_actions a
+              JOIN security_situations s ON s.id = a.situation_id
+             WHERE a.action = 'DRONE_LAUNCH' AND a.result = 'OK' AND a.target_type = 'drone_flight'
+               AND a.target_id = CAST(:f AS uuid) AND s.closed_at IS NULL
+             ORDER BY a.executed_at DESC LIMIT 1
+        """), {"f": attrs["session_id"]})).mappings().first()
+    if row is None:
+        return None
+    situation = dict(row)
+    matched = situation.pop("matched_event_id")
+    return situation, asked_link(event, matched)
+
+
+async def _wake(db: AsyncSession, situation_id) -> dict:
+    """A situation that had gone quiet takes events again: something a person
+    asked for about it has come back. One a person closed is never woken."""
+    row = (await db.execute(text(
+        "UPDATE security_situations SET status = 'ACTIVE', settled_at = NULL "
+        " WHERE id = :s AND closed_at IS NULL RETURNING *"), {"s": situation_id})).mappings().one()
+    return dict(row)
+
+
 async def correlate_event(db: AsyncSession, event: Mapping) -> tuple[dict, Link | None]:
     """Place one event: (the situation it is now in, the link that put it there
     — None when it opened a situation of its own). The caller commits."""
     situations = await _candidates(db, event)
     picked = choose(event, situations, camera_links=await _camera_links(db, event.get("site_id")),
                     drone_pairs=await _drone_pairs(db, event))
+    # What a person asked a drone to look at goes back to where they asked,
+    # unless an ordinary rule ties it more surely to something else.
+    asked = await _asked_for(db, event)
+    if asked is not None and (picked is None or asked[1].confidence >= picked[1].confidence):
+        target, link = asked
+        situation = await _join(db, target, event, link)
+        if situation["status"] != "ACTIVE":
+            situation = await _wake(db, situation["id"])
+        await db.execute(text("UPDATE security_events SET status = 'LINKED' WHERE id = :e"), {"e": event["id"]})
+        return situation, link
     if picked is None:
         situation, link = await _open(db, event), None
     else:

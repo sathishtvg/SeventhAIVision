@@ -65,6 +65,13 @@ export const STEP_LABEL: Record<string, string> = {
   ALERT_DISMISS: 'Alerts closed', ALERT_ASSIGN: 'Alerts assigned', INCIDENT_CREATE: 'Incident opened',
   INCIDENT_CONFIRM: 'Incident confirmed', INCIDENT_DISPATCH: 'Guard dispatched',
   INCIDENT_ASSIGN: 'Incident assigned', INCIDENT_RESOLVE: 'Incident resolved', NONE: 'Recorded',
+  DRONE_HOLD: 'Flight asked to hold and look again', DRONE_LAUNCH: 'Mission started',
+}
+
+/** A drone look's state, in words. */
+export const LOOK_LABEL: Record<string, string> = {
+  REQUESTED: 'Asked — waiting for the flight to hold', HOLDING: 'Holding and looking', COMPLETED: 'Looked',
+  FAILED: 'Could not hold', CANCELLED: 'Cancelled — the flight ended',
 }
 
 export function fmt(iso: string | null | undefined): string {

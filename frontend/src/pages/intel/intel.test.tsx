@@ -7,7 +7,8 @@ import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/securityIntelligence'
 import type {
-  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, Recommendations, SituationDetail, Trail,
+  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, Recommendations, SituationDetail,
+  Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
@@ -132,10 +133,32 @@ const EMPTY_TRAIL: Trail = { situation_id: 'sit1', decision_status: 'AWAITING', 
 const ON = { enabled: true, runner: { state: 'running' as const, last_seen_at: '2026-10-05T02:18:00Z' },
              last_24_hours: { CCTV_AI: 12 }, sources: [] }
 
-function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRAIL) {
+/** A site with no drone in the picture: nothing to ask, nothing asked. */
+const NO_DRONE: DronePicture = {
+  situation_id: 'sit1', closed: false, licence: { ok: true, problem: null },
+  may: { hold: true, launch: true, see_missions: true }, hold_seconds: { min: 5, max: 120, default: 30 },
+  notes: { hold: 'The drone module checks distance, battery and the provider when it is asked.',
+           launch: 'Pre-flight runs when it is asked, and can still stop it.' },
+  sightings: [], missions: [], asked: [], other_looks: [],
+}
+const SIGHTING = {
+  event_id: 'e2', drone_event_id: 'de1', title: 'Possible unauthorised person', occurred_at: '2026-10-05T02:17:30Z',
+  location_label: 'Loading Bay', session_id: 'f1', session_number: 'DPS-0007', mission_name: 'Night Watch',
+  drone_name: 'Drone One', flight_status: 'ACTIVE', drone_risk_level: 'MEDIUM', detection_count: 3,
+  can_hold: true, why_not: null,
+}
+const MISSION = { mission_id: 'm1', name: 'Night Watch', drone_name: 'Drone One', drone_status: 'READY',
+                  route_name: 'Perimeter', battery_level: 90, can_launch: true, why_not: null }
+const WITH_DRONE: DronePicture = { ...NO_DRONE, sightings: [SIGHTING],
+  missions: [{ ...MISSION, can_launch: false, why_not: 'Its drone is already committed to another flight.' }] }
+const DRONE_SUGGESTED = authority({ VERIFY_WITH_DRONE: { basis: 'FOLLOWED', needs_reason: false } })
+
+function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRAIL, drone: DronePicture = NO_DRONE,
+              situation: SituationDetail = SITUATION) {
   asRole(role)
+  vi.mocked(api.getSituationDrone).mockResolvedValue(drone)
   vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
-  vi.mocked(api.getSituation).mockResolvedValue(SITUATION)
+  vi.mocked(api.getSituation).mockResolvedValue(situation)
   vi.mocked(api.getRecommendations).mockResolvedValue(RECS)
   vi.mocked(api.getAuthority).mockResolvedValue(a)
   vi.mocked(api.getTrail).mockResolvedValue(trail)
@@ -333,12 +356,147 @@ describe('the situation view', () => {
     expect(screen.queryByTestId('human-decision')).toBeNull()       // reporting did not make a decision appear
   })
 
+  it('a drone looks only as the officer says: which flight holds, and for how long, is their choice', async () => {
+    vi.mocked(api.decide).mockResolvedValue(DECISION)
+    open(OPERATOR, DRONE_SUGGESTED, EMPTY_TRAIL, WITH_DRONE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify with drone' }))
+    const choice = await screen.findByTestId('drone-choice')
+    expect(within(choice).getByText('Your choice. The layer chooses no flight and no mission, and steers nothing.'))
+      .toBeInTheDocument()
+    const hold = within(choice).getByRole('radio', { name: /Ask flight DPS-0007 to hold and look again/ })
+    const launch = within(choice).getByRole('radio', { name: /Start mission “Night Watch”/ })
+    const none = within(choice).getByRole('radio', { name: /Record only — I will fly it from the drone screens/ })
+    expect(hold).toBeChecked()                       // the first thing that could be asked — still theirs to change
+    expect(launch).toBeDisabled()                    // and what cannot be asked says why
+    expect(within(choice).getByText('Its drone is already committed to another flight.')).toBeInTheDocument()
+    expect(none).toBeEnabled()
+    expect(screen.getByText(/through the drone module, under your own drone permission/)).toBeInTheDocument()
+    expect(within(choice).getByText(NO_DRONE.notes.hold)).toBeInTheDocument()
+
+    const record = screen.getByRole('button', { name: 'Record my decision' })
+    fireEvent.change(within(choice).getByLabelText('Hold for (seconds)'), { target: { value: '200' } })
+    expect(record).toBeDisabled()                    // outside the drone module's own range
+    fireEvent.change(within(choice).getByLabelText('Hold for (seconds)'), { target: { value: '45' } })
+    fireEvent.click(record)
+    await waitFor(() => expect(api.decide).toHaveBeenCalledTimes(1))
+    const body = vi.mocked(api.decide).mock.calls[0][1]
+    expect(body).toMatchObject({ action: 'VERIFY_WITH_DRONE', drone_event_id: 'de1', hold_seconds: 45 })
+    expect(body.drone_mission_id).toBeUndefined()
+  })
+
+  it('starting a mission, or only recording it, sends that and nothing else about a drone', async () => {
+    vi.mocked(api.decide).mockResolvedValue(DECISION)
+    const view = open(OPERATOR, DRONE_SUGGESTED, EMPTY_TRAIL, { ...NO_DRONE, missions: [MISSION] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify with drone' }))
+    const choice = await screen.findByTestId('drone-choice')
+    expect(within(choice).getByRole('radio', { name: /Start mission “Night Watch” \(Drone One\)/ })).toBeChecked()
+    expect(screen.getByText(/after its own pre-flight checks/)).toBeInTheDocument()
+    expect(within(choice).queryByLabelText('Hold for (seconds)')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Record my decision' }))
+    await waitFor(() => expect(api.decide).toHaveBeenCalledTimes(1))
+    let body = vi.mocked(api.decide).mock.calls[0][1]
+    expect(body).toMatchObject({ action: 'VERIFY_WITH_DRONE', drone_mission_id: 'm1' })
+    expect(body.drone_event_id).toBeUndefined()
+    expect(body.hold_seconds).toBeUndefined()
+    view.unmount()
+
+    // Without the permission to start one, and with no flight to hold: a record, and it says so.
+    vi.mocked(api.decide).mockClear()
+    open(OPERATOR, DRONE_SUGGESTED, EMPTY_TRAIL,
+         { ...NO_DRONE, missions: [MISSION], may: { hold: false, launch: false, see_missions: true } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify with drone' }))
+    const again = await screen.findByTestId('drone-choice')
+    expect(within(again).getByRole('radio', { name: /Record only/ })).toBeChecked()
+    expect(within(again).getByText('Starting a mission needs the permission to start one.')).toBeInTheDocument()
+    expect(screen.getByText('It is recorded as yours. Nothing is carried out by the platform.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Record my decision' }))
+    await waitFor(() => expect(api.decide).toHaveBeenCalledTimes(1))
+    body = vi.mocked(api.decide).mock.calls[0][1]
+    expect(body.drone_event_id).toBeUndefined()
+    expect(body.drone_mission_id).toBeUndefined()
+  })
+
+  it('shows what was asked of a drone as a person’s act, what came back, and what the drone module refused', async () => {
+    const view = open(OPERATOR)
+    await screen.findAllByTestId('ai-suggestion')
+    expect(screen.queryByTestId('drone-card')).toBeNull()            // no drone in the picture: no empty card
+    view.unmount()
+    open(OPERATOR, authority(), EMPTY_TRAIL, {
+      ...WITH_DRONE,
+      asked: [
+        { action_id: 'x1', decision_id: 'd1', action: 'DRONE_HOLD', result: 'OK', detail: null,
+          asked_at: '2026-10-05T02:18:20Z', flight: null,
+          look: { id: 'v1', drone_event_id: 'de1', status: 'COMPLETED', hold_seconds: 30, started_at: null, ends_at: null,
+                  completed_at: '2026-10-05T02:19:00Z',
+                  result: { detections_added: 4, risk_before: 'MEDIUM', risk_after: 'HIGH' } } },
+        { action_id: 'x2', decision_id: 'd2', action: 'DRONE_LAUNCH', result: 'FAILED',
+          detail: 'Pre-flight stopped flight DPS-0008: Battery 12% is below 30%', asked_at: '2026-10-05T02:21:00Z',
+          look: null, flight: { id: 'f2', session_number: 'DPS-0008', mission_name: 'Night Watch', status: 'BLOCKED',
+                                started_at: null, ended_at: null, event_count: 0, blocked_reason: null } }],
+      other_looks: [{ id: 'v2', drone_event_id: 'de1', status: 'HOLDING', hold_seconds: 20, started_at: null,
+                      ends_at: null, completed_at: null, result: {}, asked_at: '2026-10-05T02:23:00Z' }],
+    })
+    const card = await screen.findByTestId('drone-card')
+    expect(within(card).getByText(/A drone looks only when a person decides it should\./)).toBeInTheDocument()
+    expect(within(card).getByText(/flight DPS-0007 \(Active\) · could be asked to hold and look again/)).toBeInTheDocument()
+    const asked = within(card).getAllByTestId('drone-asked')
+    expect(asked).toHaveLength(2)
+    expect(within(asked[0]).getByText('Asked by a decision')).toBeInTheDocument()
+    expect(within(asked[0]).getByText(
+      'Looked for 30 s: 4 more detection(s). The drone module\'s own risk: Medium → High.')).toBeInTheDocument()
+    expect(within(asked[1]).getByText('Not done')).toBeInTheDocument()
+    expect(within(asked[1]).getByText('Pre-flight stopped flight DPS-0008: Battery 12% is below 30%')).toBeInTheDocument()
+    const other = within(card).getByTestId('drone-other-look')
+    expect(within(other).getByText(/Asked from the drone screens/)).toBeInTheDocument()
+    expect(within(other).getByText('Holding and looking')).toBeInTheDocument()
+    expect(within(card).queryByText(/AI/)).toBeNull()                // nothing here is the layer's doing
+  })
+
+  it('says when the layer has assessed it again since the last decision, and that the decision stands', async () => {
+    const view = open(OPERATOR)
+    await screen.findAllByTestId('ai-suggestion')
+    expect(screen.queryByTestId('reassessed')).toBeNull()
+    view.unmount()
+    open(OPERATOR, authority(), EMPTY_TRAIL, NO_DRONE,
+         { ...SITUATION, decision_status: 'IN_HAND', reassessed_since_decision: true })
+    const banner = await screen.findByTestId('reassessed')
+    expect(within(banner).getByText(/Assessed again since the last decision/)).toBeInTheDocument()
+    expect(within(banner).getByText(/The decision stands until a person decides again\./)).toBeInTheDocument()
+  })
+
+  it('shows a patrol’s finding as the officer recorded it, and a drone’s second look as what it saw', async () => {
+    open(OPERATOR, authority(), EMPTY_TRAIL, NO_DRONE, { ...SITUATION, events: [
+      ...SITUATION.events,
+      { ...SITUATION.events[0], id: 'e3', source_type: 'VIRTUAL_PATROL', event_type: 'vpatrol.exception',
+        title: 'Virtual patrol exception: Is the rear gate closed?', method: 'PATROL_FINDING',
+        reason: 'A virtual patrol reported an exception on this camera, 12 min apart.', confidence: null,
+        attributes: { patrol_number: 'VP-0042', question: 'Is the rear gate closed?', answer: 'NO',
+                      exception_reason: 'Gate left open', observation: 'Rear gate visibility abnormal',
+                      has_snapshot: true } },
+      { ...SITUATION.events[0], id: 'e4', source_type: 'DRONE_PATROL', event_type: 'drone.verification',
+        title: 'Drone looked again and saw nothing more — Possible unauthorised person', method: 'DRONE_LOOK',
+        reason: 'A person asked the drone to hold for 30 s and look again at this sighting: it saw nothing more.',
+        confidence: null, attributes: { hold_seconds: 30, detections_added: 0, risk_before: 'HIGH',
+                                        drone_risk_level: 'HIGH' } }] })
+    const finding = await screen.findByTestId('patrol-finding')
+    expect(within(finding).getByText('Virtual patrol VP-0042 — as the officer recorded it')).toBeInTheDocument()
+    for (const line of ['Asked: Is the rear gate closed?', 'Answered: NO', 'Why it is an exception: Gate left open',
+                        'Officer\'s note on the camera: Rear gate visibility abnormal',
+                        'A snapshot was kept at the check.']) {
+      expect(within(finding).getByText(line)).toBeInTheDocument()
+    }
+    const look = screen.getByTestId('drone-look-result')
+    expect(within(look).getByText(/Held for 30 s\. Nothing more seen\. The drone module's own risk: High → High\./))
+      .toBeInTheDocument()
+  })
+
   it('a closed situation offers nothing more to decide', async () => {
     asRole(OPERATOR)
     vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
     vi.mocked(api.getSituation).mockResolvedValue({ ...SITUATION, decision_status: 'RESOLVED', closed_at: '2026-10-05T02:30:00Z' })
     vi.mocked(api.getRecommendations).mockResolvedValue(RECS)
     vi.mocked(api.getAuthority).mockResolvedValue(authority())
+    vi.mocked(api.getSituationDrone).mockResolvedValue(NO_DRONE)
     vi.mocked(api.getTrail).mockResolvedValue({ ...EMPTY_TRAIL, decision_status: 'RESOLVED', closed_at: '2026-10-05T02:30:00Z' })
     vi.mocked(api.recordReview).mockResolvedValue({ recorded: false, assessment_id: 'a1' })
     vi.mocked(api.getObservations).mockResolvedValue([])

@@ -1,13 +1,17 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–9 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–10 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
 in `AI_RISK_ENGINE.md`), recommendations (`0136`) and human decisions with
 their actions (`0137`), both described in `AI_DECISION_WORKFLOW.md` and
-`AI_HUMAN_DECISION_MODEL.md`, the web screens (phase 8, below) and the guard's
-phone with reports from the ground (phase 9, `0138`). **The
+`AI_HUMAN_DECISION_MODEL.md`, the web screens (phase 8, below), the guard's
+phone with reports from the ground (phase 9, `0138`), and drone and virtual
+patrol integration (phase 10, `0139`): a decision can ask a drone to look
+through the drone module's own functions, what the drone saw comes back as an
+event and the situation is assessed again, and what a virtual patrol recorded
+is read as evidence and context. **The
 runner still does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
@@ -75,7 +79,7 @@ AUTHORISED ACTION ─► security_actions               yes  (phase 7) — throu
 | `security_reviews` | That a person looked at what was suggested: once per person per assessment |
 | `security_decisions` | What a person decided: who, in what role, the step, whether it followed or overrode what was suggested, the reason, the assessment and risk it was made on, and how the policy let it be made. Added to, never changed |
 | `security_decision_approvals` | A second person's verdict on a decision that needed one. One per decision |
-| `security_actions` | What the platform then did for a decision: the step, the existing function it went through, how it ended, and under whose authority |
+| `security_actions` | What the platform then did for a decision: the step, the existing function it went through, how it ended, and under whose authority. Since `0139` a step can be asking a flight to hold (`DRONE_HOLD`) or starting a mission (`DRONE_LAUNCH`), pointing at the look or the flight |
 | `security_decision_policies` | Who may decide: per role, how far alone and how far with approval. One for the organisation, at most one per site |
 | `security_observations` | What a person reported from the ground about a situation: accepted, arrived, or what they saw, with a position when the phone gave one. A statement, not a decision. Added to, never changed |
 | `security_recommendations` | What the layer suggests an officer do, per assessment: the step, the reason, how sure, whether it can be done now and if not why. A suggestion and nothing else; added to, never changed |
@@ -125,8 +129,9 @@ a select that finds the rows not yet read.
 | Fleet GPS | `alerts` (`gps`) | `SENSOR`, at the position the tracker reported; no site | — |
 | Drone flight problems | `alerts` (`drone_patrol`) | `DRONE_PATROL` | not the alert of a drone *event* — that is read below |
 | Drone sightings | `drone_events` | `DRONE_PATROL`, carrying the drone's own risk as evidence | verified only |
+| A drone's second look | `drone_verification_requests` + the sighting | `DRONE_PATROL`, `drone.verification`: how long it held, how many more detections, the drone module's risk before and after. Carries neither the sighting's alert nor its incident, so it is not folded away as a duplicate | a look that was held and finished, at a verified sighting |
 | Guard SOS, and a man-down nobody cancelled | `incidents` (`guard.sos`) | `GUARD` | — |
-| Virtual patrol | `virtual_patrol_session_answers` | `VIRTUAL_PATROL` on the camera checked | exceptions only |
+| Virtual patrol | `virtual_patrol_session_answers` + the question and the camera check | `VIRTUAL_PATROL` on the camera checked, with what the officer was asked, what they answered, why it is an exception, their note on the camera, and whether a snapshot was kept at the check | exceptions only |
 | Camera stopped sending | `camera_health_events` | `SYSTEM` | `stream_disconnected` |
 | Any other alert module | `alerts` | `OTHER` — kept, never dropped for being unknown | — |
 
@@ -155,8 +160,9 @@ Three details that are easy to get wrong and are tested:
 `backend/app/services/intel_context.py`. An event says "a person, at Gate 1,
 0.87". The context says what that means there: is the site open, is the zone in
 force, is anybody meant to be on site, was a door refused nearby a minute ago,
-is a patrol under way, what has this camera reported before. It does not decide
-how much any of it matters — that is risk (phase 5), which reads this.
+is a patrol under way, when did an officer on a virtual patrol last look at this
+camera and what did they report, what has this camera reported before. It does
+not decide how much any of it matters — that is risk (phase 5), which reads this.
 
 Two halves. `load()` reads the facts from the database; `build()` turns facts
 into a context with no database at all, so every rule is a test that needs
@@ -168,7 +174,7 @@ nothing running and the same facts always give the same context.
 | Time | site profile, tenant time zone, `public_holidays` | Local time; inside or outside business hours with the hours; a public holiday |
 | People | the event's watchlist verdict, `shifts`, `visitors`, `work_permits` | Allowed, blocked or not identified; guards on shift; visitors signed in; contractor permits in force |
 | Access | `access_events` at the site's doors, `alarm_events` on zones linked to the camera | Denied, forced and granted within ten minutes either side; alarms |
-| Operations | `virtual_patrol_sessions`, `drone_patrol_sessions` | A virtual patrol in progress; a drone in the air |
+| Operations | `virtual_patrol_sessions`, `drone_patrol_sessions`, `virtual_patrol_session_cameras` and their answers | A virtual patrol in progress; a drone in the air; the last time a virtual patrol reached this camera in the 24 hours before — how long before, how many questions were answered, how many exceptions were reported, or that the camera could not be seen |
 | History | `alerts`, `incidents` at the camera, 30 days | Earlier alerts of this kind; the share marked false; incidents |
 
 Four rules, each held by tests:
@@ -217,6 +223,11 @@ as duplicates and nothing is dropped: the alerts are untouched.
 It never joins across sites, and it never says two sightings are the same
 person unless it has an identity for them.
 
+One more reason, since phase 10: `DRONE_LOOK`. What comes back from a drone look
+a person asked for — a hold at a sighting, or a sighting from a flight a
+decision started — goes to the situation it was asked about, and says so. Never
+into a situation a person has closed.
+
 ## Normality and risk
 
 `backend/app/services/intel_risk.py`; the factors, the points and the limits are
@@ -226,8 +237,9 @@ kind of alert in this hour of the week — and is not stated at all on too littl
 history. **Risk** is a score from 0 to 100 made of named factors, each with its
 points and a sentence: the event's severity, a zone in force, the place's
 criticality, the hour, a block or allow list, a door, how many kinds of source
-agree, repetition, the camera's record, what was expected, and the drone's or a
-guard's own alarm.
+agree, repetition, the camera's record, what was expected, the drone's or a
+guard's own alarm, and — a little, either way — what a drone saw on a second
+look a person asked for.
 
 Three things are held to. What is not known adds no risk and lowers the *risk
 confidence* instead. The model's confidence, the confidence of the correlation
@@ -272,6 +284,39 @@ verdict and step is in the tenant's hash-chained audit log.
 A situation carries `decision_status`, set only by a person; and what stands
 behind any incident — nothing, one the platform opened by itself
 (`PRELIMINARY`), or one a person opened or confirmed (`CONFIRMED`).
+
+## Drones and virtual patrols
+
+`backend/app/services/intel_drone.py` (reads only) and the two drone steps in
+`intel_actions.py`; described in *Asking a drone* in `AI_DECISION_WORKFLOW.md`.
+
+```
+officer decides VERIFY_WITH_DRONE and says how ─► the drone module's own function
+   ─► the drone looks ─► what it saw is an event in the same situation
+   ─► assessed again ─► suggested again ─► the officer decides
+```
+
+- **A drone looks only because a person decided it should, and chose how**: the
+  flight that saw a sighting holds and looks again
+  (`drone_operations.verify_with_drone`), or a mission the site already has is
+  started (`drone_planning.run_mission`, after that module's licence check).
+  Each needs the drone module's own permission, makes that module's own checks
+  and leaves its own audit entry, exactly as its own button does. Its refusal
+  is the step's record.
+- **The layer chooses no flight and no mission, steers nothing, creates no
+  mission and changes none.** Without a choice, the decision is a record.
+- **What the drone saw comes back** as an event, joins the situation it was
+  asked about, and the situation is assessed and suggested for again. It is
+  marked `reassessed_since_decision` until a person decides again; the earlier
+  decision stands.
+- **A virtual patrol's findings are evidence, as the officer recorded them**:
+  the question, the answer, the reason, the note on the camera, whether a
+  snapshot was kept. A finding and what a camera or a drone then saw at the
+  place are one situation (`PATROL_FINDING`). The last patrol check of a camera
+  is part of every later event's context there — and a check that reported
+  nothing lowers no risk: it says what was seen then, not what is true now.
+- No table of the drone module or of virtual patrol is written to by this
+  layer, and none of their code was changed.
 
 ## Reading
 
@@ -350,6 +395,7 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}/observations` | `intel:read` | What was reported from the ground, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | What the caller may decide here, how, and why not |
 | GET | `/security-intelligence/situations/{situation_id}/responders` | `intel:read` `intel:decide` | The guards and senior staff a decision can name, to choose from |
+| GET | `/security-intelligence/situations/{situation_id}/aerial` | `intel:read` | What a drone could be asked about this situation — which flight could hold, which mission could start — and what was already asked and came back. Asks nothing of a drone |
 | POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval |
 | GET | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` | The decision trail of a situation |
 | GET | `/security-intelligence/decisions` | `intel:read` | Decisions across situations; `state=pending_approval` is the approver's queue |
@@ -540,12 +586,22 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (26): the screens' claims above.
+`frontend/src/pages/intel/intel.test.tsx` (31): the screens' claims above, and
+since phase 10: which flight holds or which mission starts is the officer's
+choice and the layer's never; what was asked of a drone is drawn as a person's
+act with what came back; an assessment made again since the last decision is
+said, with the decision standing; a patrol's finding is shown as recorded.
 
 `backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
 
+`backend/tests/test_intel_drone.py` (33): see *Asking a drone* in
+`AI_DECISION_WORKFLOW.md`. Real simulated flights asked to hold and to launch
+from a decision; what came back joining the situation and being assessed again;
+the drone module's refusals kept as the record; what a virtual patrol recorded
+read as evidence, and its last check of a camera read as context.
+
 `mobile/src/api/securityIntelligence.test.ts` (13) and
-`mobile/__tests__/situationScreen.test.tsx` (12): the phone's calls on the wire, the rules of
+`mobile/__tests__/situationScreen.test.tsx` (13): the phone's calls on the wire, the rules of
 its screens, and the screen mounted — a report is not a decision, a suggestion is marked as one,
 and a decision a guard may not take says why.
 
@@ -563,10 +619,15 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-Drone and virtual patrol integration beyond reading
-their events (10) · the unified timeline (11) · evidence and summaries (12) ·
+The unified timeline (11) · evidence and summaries (12) ·
 the dashboard and site security score (13) · feedback (14) · platform health for
 the vendor, the Helm deployment and final validation (15).
+
+Of drones, two things are deliberately not built. **Sending a drone to a place**
+— the installed providers cannot be re-tasked in flight, so a flight holds where
+it is or flies the route its mission already has. And **flying without a
+person's decision** — the platform has no authorised automation policy for it,
+so there is none here.
 
 The screens show evidence as references so far — the events, the alerts behind
 them, and the cameras to open. Snapshots, clips and recordings beside them come

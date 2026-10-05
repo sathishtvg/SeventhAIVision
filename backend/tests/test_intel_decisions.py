@@ -235,7 +235,8 @@ def test_every_step_goes_through_a_function_the_platform_already_had():
 
     assert set(intel_actions.THROUGH) | {"INCIDENT_CONFIRM", "NONE"} == {
         "ALERT_ACKNOWLEDGE", "ALERT_FALSE_POSITIVE", "ALERT_DISMISS", "ALERT_ASSIGN", "INCIDENT_CREATE",
-        "INCIDENT_CONFIRM", "INCIDENT_DISPATCH", "INCIDENT_ASSIGN", "INCIDENT_RESOLVE", "NONE"}
+        "INCIDENT_CONFIRM", "INCIDENT_DISPATCH", "INCIDENT_ASSIGN", "INCIDENT_RESOLVE", "NONE",
+        "DRONE_HOLD", "DRONE_LAUNCH"}   # phase 10: the drone module's own two functions
     for path in intel_actions.THROUGH.values():
         module, name = path.rsplit(".", 1)
         assert module.startswith("app.routers.") and "intel" not in module and "security" not in module

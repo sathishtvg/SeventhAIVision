@@ -66,6 +66,8 @@ export interface MySituation {
   dispatch_notes: string | null
   /** This person's own last report on it, so the next button is known. */
   my_last: 'ACCEPTED' | 'ARRIVED' | null
+  /** The layer has assessed it again since the last decision — new events, or what a drone saw. */
+  reassessed_since_decision?: boolean
 }
 
 export interface SituationDetail {

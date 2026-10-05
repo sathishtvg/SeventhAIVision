@@ -108,7 +108,10 @@ export default function Situations() {
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           {s.duplicate_count} repeat(s) folded</Typography>)}</TableCell>
                     <TableCell>{fmt(s.last_event_at)}</TableCell>
-                    <TableCell><DecisionStatusChip status={s.decision_status} /></TableCell>
+                    <TableCell><DecisionStatusChip status={s.decision_status} />
+                      {s.reassessed_since_decision && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Assessed again since</Typography>)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
