@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(13,8,38,0.92)',
   },
   cardBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
     borderRadius: radius.xl,

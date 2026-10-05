@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
   actionBtnText: { color: '#fff', fontSize: fontSize.xs, fontWeight: '700' },
   btnDisabled: { opacity: 0.5 },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.7)',
     alignItems: 'center',
     justifyContent: 'center',

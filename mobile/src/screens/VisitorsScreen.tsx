@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   cameraWrap:     { flex: 1, margin: spacing.md, borderRadius: radius.md, overflow: 'hidden', position: 'relative' },
   camera:         { flex: 1, minHeight: 300 },
   cameraPlaceholder: { backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  scanCorners:    { ...StyleSheet.absoluteFillObject, pointerEvents: 'none' },
+  scanCorners:    { ...StyleSheet.absoluteFill, pointerEvents: 'none' },
   corner:         { position: 'absolute', width: 24, height: 24, borderColor: colors.primary, borderWidth: 3 },
   corner_tl:      { top: 12, left: 12, borderRightWidth: 0, borderBottomWidth: 0 },
   corner_tr:      { top: 12, right: 12, borderLeftWidth: 0, borderBottomWidth: 0 },

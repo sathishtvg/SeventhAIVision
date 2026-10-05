@@ -163,7 +163,9 @@ export function SitesScreen() {
         <SiteCard
           site={item}
           stats={siteStats[item.id]}
-          onPress={() => nav.navigate('CamerasList', { siteId: item.id })}
+          // popTo, not navigate: the camera list is the screen underneath, and
+          // since React Navigation 7 navigate() would stack a second one on top.
+          onPress={() => nav.popTo('CamerasList', { siteId: item.id })}
         />
       )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -172,7 +174,7 @@ export function SitesScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       ListFooterComponent={
         unassigned.length > 0 ? (
-          <Pressable onPress={() => nav.navigate('CamerasList', { siteId: '__none__' })}>
+          <Pressable onPress={() => nav.popTo('CamerasList', { siteId: '__none__' })}>
             <Card style={[styles.card, styles.unassignedCard]}>
               <View style={styles.cardTop}>
                 <View style={[styles.siteIcon, { backgroundColor: colors.textDisabled + '28' }]}>

@@ -71,9 +71,9 @@ export function CheckInPhotoModal({
 
         <View style={styles.cameraContainer}>
           {capturedUri ? (
-            <Image source={{ uri: capturedUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: capturedUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : permission?.granted ? (
-            <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing={facing} />
+            <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
           ) : (
             <View style={styles.center}>
               <Text style={styles.permText}>

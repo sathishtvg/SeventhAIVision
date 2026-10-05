@@ -45,7 +45,7 @@ export function VirtualPatrolCard() {
   return (
     <Pressable
       style={styles.card}
-      onPress={() => nav.navigate('Patrol', { screen: 'VirtualPatrols' })}
+      onPress={() => nav.navigate('Patrol', { screen: 'VirtualPatrols', pop: true })}
       accessibilityRole="button"
       accessibilityLabel="Open virtual patrols"
     >

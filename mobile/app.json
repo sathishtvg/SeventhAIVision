@@ -6,9 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "backgroundColor": "#080818"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.seventh.vision",
@@ -53,6 +50,13 @@
           "icon": "./assets/notification-icon.png",
           "color": "#6C63FF",
           "sounds": []
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#080818"
         }
       ]
     ],

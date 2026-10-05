@@ -322,9 +322,10 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
-      # postinstall runs patch-package against mobile/patches — currently one
-      # patch to expo-modules-core. `npm ci` honours it; `npm i --ignore-scripts`
-      # would not, and the app would build against unpatched native modules.
+      # Node 20 here is deliberate while it lasts: React Native 0.86 (Expo SDK
+      # 57) needs 20.19.4 or later, which '20' resolves to. There is no
+      # postinstall patch any more — the one fix mobile/patches carried for
+      # expo-modules-core is in the SDK itself now.
       - name: Install dependencies
         run: npm ci
         working-directory: mobile
