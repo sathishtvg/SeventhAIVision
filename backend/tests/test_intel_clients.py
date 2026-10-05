@@ -1,7 +1,7 @@
 """AI security intelligence: the clients call an API that exists.
 
-The web app (and the Windows desktop app, which is the web build in a shell) is
-not compiled against the server. A path renamed on one side is a button that
+The web app (and the Windows desktop app, which is the web build in a shell) and
+the phone are not compiled against the server. A path renamed on one side is a button that
 does nothing on the other, and a field the server does not know is a decision
 refused — found by an officer at two in the morning rather than by a build.
 
@@ -13,6 +13,8 @@ refused — found by an officer at two in the morning rather than by a build.
       more, so no button onto a 403; no less, so no screen hidden from a role
       that may use it
   D — The screens are registered, and the sidebar guards them
+  E — The phone: its calls, the bodies it sends, its screens, and that it
+      offers no step that is the command centre's
 
 Read from the working tree, so it runs with the repository-inspection suites.
 """
@@ -60,9 +62,9 @@ def test_every_intelligence_call_in_the_web_client_is_served(spec):
 
 # ─── B. Filters and bodies ───────────────────────────────────────────────────
 
-def _interface(name: str) -> set[str]:
-    """The field names of an exported TypeScript interface in the web client."""
-    src = WEB_CLIENT.read_text(encoding="utf-8")
+def _interface(name: str, client=WEB_CLIENT) -> set[str]:
+    """The field names of an exported TypeScript interface in a client file."""
+    src = client.read_text(encoding="utf-8")
     body = re.search(rf"export interface {name} \{{(.*?)\n\}}", src, re.S).group(1)
     return set(re.findall(r"^\s*(\w+)\??:", body, re.M))
 
@@ -163,3 +165,57 @@ def test_the_command_centre_gained_one_panel_and_nothing_else():
     panel = (REPO_ROOT / "frontend" / "src" / "components" / "intel" / "SituationsPanel.tsx").read_text("utf-8")
     assert "if (!on || !data) return null" in panel
     assert "usePermission('intel:read')" in panel and "status?.enabled" in panel
+
+
+# ─── E. The phone ────────────────────────────────────────────────────────────
+
+MOBILE_CLIENT = REPO_ROOT / "mobile" / "src" / "api" / "securityIntelligence.ts"
+MOBILE_RULES = REPO_ROOT / "mobile" / "src" / "lib" / "situations.ts"
+MOBILE_NAV = REPO_ROOT / "mobile" / "src" / "navigation" / "index.tsx"
+MOBILE_MENU = REPO_ROOT / "mobile" / "src" / "screens" / "MoreMenuScreen.tsx"
+
+
+def test_every_intelligence_call_in_the_phone_client_is_served(spec):
+    calls = client_calls(MOBILE_CLIENT)
+    assert len(calls) >= 9, f"only {len(calls)} calls found in the phone client"
+    assert all(p.startswith(BASE + "/") for _, p in calls), [p for _, p in calls if not p.startswith(BASE + "/")]
+    missing = sorted({f"{m} {p}" for m, p in calls if not _served(m, p, spec)})
+    assert not missing, f"the phone calls operations the API does not serve: {missing}"
+    assert ("GET", f"{BASE}/my-situations") in calls and ("POST", f"{BASE}/situations/{{}}/observations") in calls
+
+
+def test_a_decision_and_a_report_from_the_phone_have_only_fields_the_api_accepts(spec):
+    schemas = spec["components"]["schemas"]
+    decision = _interface("DecisionInput", MOBILE_CLIENT) | {"via"}
+    assert {"action", "client_ref"} <= decision, "the interface was not read"
+    assert decision <= set(schemas["DecisionIn"]["properties"]), decision - set(schemas["DecisionIn"]["properties"])
+    # The report's body is built where it is sent.
+    src = MOBILE_CLIENT.read_text(encoding="utf-8")
+    body = re.search(r"/observations`, \{(.*?)\}\)", src, re.S).group(1)
+    sent = set(re.findall(r"(\w+)(?::|,|\s*$)", body, re.M)) & {
+        "kind", "note", "via", "client_ref", "latitude", "longitude", "decides", "status"}
+    assert sent == {"kind", "note", "via", "client_ref", "latitude", "longitude"}, sent
+    assert sent <= set(schemas["ObservationIn"]["properties"])
+    assert schemas["ObservationIn"].get("additionalProperties") is False
+
+
+def test_the_phone_registers_the_screens_behind_the_permission_they_need():
+    nav = MOBILE_NAV.read_text(encoding="utf-8")
+    for screen in ('name="Situations"', 'name="SituationDetail"', 'name="SituationCameraLive"'):
+        assert screen in nav, screen
+    row = next(line for line in MOBILE_MENU.read_text(encoding="utf-8").splitlines() if "screen: 'Situations'" in line)
+    assert "permission: 'intel:read'" in row
+    # Not an oversight screen: the guard is who it is for.
+    assert "audience: 'ops'" not in row
+
+
+def test_the_phone_offers_no_step_that_is_the_command_centres():
+    from app.services import intel_decisions
+
+    rules = MOBILE_RULES.read_text(encoding="utf-8")
+    offered = set(re.findall(r"'([A-Z_]+)'", re.search(r"PHONE_DECISIONS: DecisionAction\[\] = \[(.*?)\]", rules, re.S).group(1)))
+    assert offered and offered <= set(intel_decisions.DECISIONS), offered - set(intel_decisions.DECISIONS)
+    assert not offered & {"DISPATCH_GUARD", "CREATE_INCIDENT", "CONFIRM_INCIDENT", "VERIFY_WITH_DRONE", "CONTACT_SITE"}
+    assert {"REQUEST_ASSISTANCE", "ESCALATE", "RESOLVE", "FALSE_POSITIVE", "INVESTIGATE", "MONITOR"} <= offered
+    labels = set(re.findall(r"^\s*([A-Z_]+): '", rules.split("export const DECISION_LABEL", 1)[1].split("}", 1)[0], re.M))         | set(re.findall(r"([A-Z_]+): '", rules.split("export const DECISION_LABEL", 1)[1].split("}", 1)[0]))
+    assert labels == set(intel_decisions.DECISIONS), "a decision the phone has no word for, or a word for none"

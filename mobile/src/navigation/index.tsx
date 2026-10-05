@@ -57,6 +57,8 @@ import { ActionCenterScreen }          from '@/screens/ActionCenterScreen'
 import { AttendanceScreen }            from '@/screens/AttendanceScreen'
 import { DroneEventsScreen }           from '@/screens/DroneEventsScreen'
 import { DroneEventDetailScreen }      from '@/screens/DroneEventDetailScreen'
+import { SituationsScreen }            from '@/screens/SituationsScreen'
+import { SituationDetailScreen }       from '@/screens/SituationDetailScreen'
 import { useAuthStore }                from '@/store/auth'
 import { colors }                      from '@/theme'
 
@@ -127,6 +129,10 @@ export type MoreStackParamList = {
   Attendance:    undefined
   DroneEvents:      undefined
   DroneEventDetail: { eventId: string }
+  /** AI security situations: what is in front of this person, and one of them. */
+  Situations:          undefined
+  SituationDetail:     { situationId: string }
+  SituationCameraLive: { cameraId: string; streamId: string; cameraName: string }
 }
 
 export type MainTabParamList = {
@@ -243,6 +249,12 @@ function MoreNavigator() {
           stay on the web. */}
       <MoreStack.Screen name="DroneEvents"      component={DroneEventsScreen}       options={{ title: 'Drone Events' }} />
       <MoreStack.Screen name="DroneEventDetail" component={DroneEventDetailScreen}  options={{ title: 'Drone Event', headerBackTitle: 'Back' }} />
+      {/* AI security intelligence: the situations in front of this person, the
+          reports from the ground and the decisions a phone takes. Setup and the
+          full history stay on the web. */}
+      <MoreStack.Screen name="Situations"          component={SituationsScreen}      options={{ title: 'Security Situations' }} />
+      <MoreStack.Screen name="SituationDetail"     component={SituationDetailScreen} options={{ title: 'Situation', headerBackTitle: 'Back' }} />
+      <MoreStack.Screen name="SituationCameraLive" component={CameraLiveScreen}      options={{ title: 'Live View', headerBackTitle: 'Back' }} />
     </MoreStack.Navigator>
   )
 }

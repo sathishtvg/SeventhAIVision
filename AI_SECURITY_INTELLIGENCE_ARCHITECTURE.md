@@ -1,12 +1,13 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–8 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–9 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
 in `AI_RISK_ENGINE.md`), recommendations (`0136`) and human decisions with
 their actions (`0137`), both described in `AI_DECISION_WORKFLOW.md` and
-`AI_HUMAN_DECISION_MODEL.md`, and the web screens (phase 8, below). **The
+`AI_HUMAN_DECISION_MODEL.md`, the web screens (phase 8, below) and the guard's
+phone with reports from the ground (phase 9, `0138`). **The
 runner still does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
@@ -76,6 +77,7 @@ AUTHORISED ACTION ─► security_actions               yes  (phase 7) — throu
 | `security_decision_approvals` | A second person's verdict on a decision that needed one. One per decision |
 | `security_actions` | What the platform then did for a decision: the step, the existing function it went through, how it ended, and under whose authority |
 | `security_decision_policies` | Who may decide: per role, how far alone and how far with approval. One for the organisation, at most one per site |
+| `security_observations` | What a person reported from the ground about a situation: accepted, arrived, or what they saw, with a position when the phone gave one. A statement, not a decision. Added to, never changed |
 | `security_recommendations` | What the layer suggests an officer do, per assessment: the step, the reason, how sure, whether it can be done now and if not why. A suggestion and nothing else; added to, never changed |
 | `security_assessments` | What the layer made of a situation, each time the answer changed: a label, the risk and every factor behind it, how unusual it is, three confidences, and what was known then. Added to, never changed: the application's role may only insert and read |
 
@@ -343,6 +345,9 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/recommendations` | `intel:read` `intel:recommendation:read` | What the layer suggests doing, surest first, with the reason for each and why any cannot be done now. Always `is_decision: false` |
 | POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested |
+| GET | `/security-intelligence/my-situations` | `intel:read` | The open situations in front of the caller; for a guard, what they were dispatched to and their shift's site where the policy lets a guard decide |
+| POST | `/security-intelligence/situations/{situation_id}/observations` | `intel:read` `intel:decide` | Records a report from the ground. Changes nothing else |
+| GET | `/security-intelligence/situations/{situation_id}/observations` | `intel:read` | What was reported from the ground, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | What the caller may decide here, how, and why not |
 | GET | `/security-intelligence/situations/{situation_id}/responders` | `intel:read` `intel:decide` | The guards and senior staff a decision can name, to choose from |
 | POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval |
@@ -447,14 +452,41 @@ What the screens hold to, each with a test:
   screens say plainly when it is off, or when its runner is not running.
 - **Opening a situation records that the officer looked**, once per assessment.
 
+## The phone
+
+`mobile/src/screens/SituationsScreen.tsx`, `SituationDetailScreen.tsx`,
+`mobile/src/api/securityIntelligence.ts`, `mobile/src/lib/situations.ts`; under
+More → Security Situations, for anyone who holds `intel:read`.
+
+The list is what is in front of this person: what the command centre sent them
+first, marked, then the rest by risk. A situation shows what it is and where,
+the evidence as the sources that reported, what the layer suggests — marked "AI
+suggests — not a decision" — and why the risk is what it is, with the detection
+and risk confidences each named.
+
+Then what is theirs to do, in two kinds that are kept apart:
+
+- **Reports** — *Accept*, then *Arrived* (with the phone's position if it
+  gives one), and *Record what I see*. Each says on the screen that it decides
+  nothing and changes no incident. *Navigate* opens the phone's maps;
+  *View live* opens the situation's camera.
+- **Decisions** — under "Your decision": *Accept: …* where what the layer put
+  first is a phone's to take, then acknowledge, investigate, monitor, escalate,
+  request assistance, resolve, false positive. One the person may not take is
+  greyed and, when pressed, says why in the server's own sentence. One that
+  needs approval says so before and after.
+
+Setup, the decision history and the command centre's own steps — dispatching,
+incidents, calling the site, a drone — are on the web.
+
 ## Live events
 
 Published on the tenant's existing channel, `tenant_events:{tenant}`, and
 forwarded to that tenant's clients by the existing listener with no change to it:
 `intel_situation_opened`, `intel_situation_updated`, `intel_assessment_ready`
 and `intel_recommendation_ready` from the runner; `intel_decision_recorded`,
-`intel_decision_pending_approval`, `intel_decision_approved` and
-`intel_decision_rejected` from the API. Each is saved before it is announced,
+`intel_decision_pending_approval`, `intel_decision_approved`,
+`intel_decision_rejected` and `intel_observation_recorded` from the API. Each is saved before it is announced,
 and an assessment that says what the last one said is not announced at all.
 
 ## Touch points in existing files
@@ -468,6 +500,8 @@ and an assessment that says what the last one said is not announced at all.
 | `frontend/src/components/layout/Sidebar.tsx` | One section, three entries |
 | `frontend/src/hooks/usePermission.ts` | The seven `intel:*` permissions, per role as migration `0132` grants them |
 | `frontend/src/pages/CommandCentre.tsx` | One import and one line: the panel, between the figures and the site grid |
+| `mobile/src/navigation/index.tsx` | Three screens in the More stack |
+| `mobile/src/screens/MoreMenuScreen.tsx` | One row, behind `intel:read` |
 
 ## Running it
 
@@ -506,12 +540,20 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (25): the screens' claims above.
+`frontend/src/pages/intel/intel.test.tsx` (26): the screens' claims above.
 
-`backend/tests/test_intel_clients.py` (7): every call the web client makes is an operation the API
-serves; its filters and the body of a decision hold only what the API accepts; the web's
-permission table gives each role exactly what migration `0132` grants; the screens are
-registered and guarded; and the Command Centre page gained one panel and nothing else.
+`backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`mobile/src/api/securityIntelligence.test.ts` (13) and
+`mobile/__tests__/situationScreen.test.tsx` (12): the phone's calls on the wire, the rules of
+its screens, and the screen mounted — a report is not a decision, a suggestion is marked as one,
+and a decision a guard may not take says why.
+
+`backend/tests/test_intel_clients.py` (11): every call the web and phone clients make is an
+operation the API serves; their filters and the bodies of a decision and a report hold only what
+the API accepts; the web's permission table gives each role exactly what migration `0132`
+grants; the screens are registered and guarded on both; and the Command Centre page gained one
+panel and nothing else.
 
 `backend/tests/test_intel_docs.py` (24) checks the API tables of these documents
 against the application's route table, and the rules written in the
@@ -521,7 +563,7 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-The guard's phone (9) · drone and virtual patrol integration beyond reading
+Drone and virtual patrol integration beyond reading
 their events (10) · the unified timeline (11) · evidence and summaries (12) ·
 the dashboard and site security score (13) · feedback (14) · platform health for
 the vendor, the Helm deployment and final validation (15).

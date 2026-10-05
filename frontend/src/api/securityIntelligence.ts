@@ -334,6 +334,25 @@ export const approveDecision = (decisionId: string, note?: string) =>
 export const rejectDecision = (decisionId: string, note: string) =>
   apiClient.post<Decision>(`${BASE}/decisions/${decisionId}/reject`, { note }).then((r) => r.data)
 
+// ── From the ground: what the person dealing with it reports ─────────────────
+
+/** A statement by a person, not a decision: it changes no alert, incident or dispatch. */
+export interface Observation {
+  id: string
+  kind: 'ACCEPTED' | 'ARRIVED' | 'OBSERVATION'
+  note: string | null
+  user_id: string | null
+  name: string | null
+  role_id: number
+  latitude: number | null
+  longitude: number | null
+  via: 'web' | 'mobile'
+  observed_at: string
+}
+
+export const getObservations = (id: string) =>
+  apiClient.get<Observation[]>(`${BASE}/situations/${id}/observations`).then((r) => r.data)
+
 // ── Who may decide ───────────────────────────────────────────────────────────
 
 export type PolicyRoles = Record<string, { alone?: RiskLevel | null; with_approval?: RiskLevel | null }>

@@ -1,7 +1,7 @@
 # AI Security Intelligence — The Human Decision Model
 
-**As of:** 2026-10-05 · phase 7 of 15 · migration `0137` ·
-`backend/app/services/intel_decisions.py`, `intel_actions.py`,
+**As of:** 2026-10-05 · phases 7 and 9 of 15 · migrations `0137`, `0138` ·
+`backend/app/services/intel_decisions.py`, `intel_actions.py`, `intel_field.py`,
 `backend/app/routers/security_decisions.py`
 
 > AI detects, understands, correlates, assesses and recommends. Authorised
@@ -32,15 +32,16 @@ Each of these is held by a test, not by intention.
 
 ## What it takes to decide
 
-All five, or the decision is refused and nothing is recorded as decided.
+All of them, or the decision is refused and nothing is recorded as decided.
 
 | | Needs | Refused with |
 |---|---|---|
 | 1 | To be a person, signed in | 403 |
 | 2 | The permission `intel:decide` | 403 |
 | 3 | The situation's site, for someone restricted to certain sites | 404, as if it did not exist |
-| 4 | The authority the **decision policy** gives that person's role at this risk | 403, with the policy's own sentence |
-| 5 | To be carried out alone: the platform's own permission for each step — `incident:dispatch` to dispatch, `incident:resolve` to resolve an incident, and so on | 403, naming the permission |
+| 4 | For a guard: to be on shift at the situation's site right now, or dispatched to it | 403 |
+| 5 | The authority the **decision policy** gives that person's role at this risk | 403, with the policy's own sentence |
+| 6 | To be carried out alone: the platform's own permission for each step — `incident:dispatch` to dispatch, `incident:resolve` to resolve an incident, and so on | 403, naming the permission |
 
 `intel:decide` by itself carries nothing out. And going against what was
 suggested needs `intel:override` as well.
@@ -88,6 +89,42 @@ back too, for instance an operator alone only up to `HIGH`.
   decision up, not taking it: anyone who may decide at all may ask, whatever
   the policy says.
 - **Changing a policy** needs `intel:manage` and is audited.
+
+## The person on the ground
+
+**A guard's reach is their own shift.** Every other role is confined, if at all,
+by the sites an administrator assigned to it. A guard usually has none
+assigned, which everywhere else on the platform means all sites — too much for
+deciding about a security situation. So for a guard, and only for a guard, one
+more thing is asked: is the situation at the site of a shift they are on right
+now, or one they were dispatched to? If neither, they may read it like anyone
+else and may not decide on it or report from it — not even to ask for help.
+Reach narrows; it is not authority. A guard who was dispatched under a policy
+that leaves incidents to the command centre is within reach and still decides
+nothing but to ask for help.
+
+**What a guard's phone shows** (`GET /my-situations`): what they were dispatched
+to, always, first; and the other open situations at the site of their shift
+only where the decision policy lets a guard decide there at all. Where the
+command centre controls incidents, a guard is shown what the command centre
+sent them and nothing more. Anyone else is shown the open situations of the
+sites they may see.
+
+**A report is not a decision.** `ACCEPTED` (I have this), `ARRIVED` (I am
+there) and `OBSERVATION` (this is what I see, in words) are recorded as that
+person's, with the time and the phone's position when it gave one. They change
+no alert, no incident and no dispatch, and they do not move `decision_status`.
+What to do about the situation is still a decision, under the policy.
+
+A guard's arrival here is **this layer's record**. The incident's own arrival
+time is set by the platform's dispatch function, which needs a permission a
+guard does not hold, and nothing here goes round that.
+
+**What a phone offers to decide:** acknowledge, investigate, monitor, escalate,
+request assistance, resolve, false positive — and *accept*, which is following
+what the layer put first, where that is one of those and this person may take
+it. Sending a guard, opening or confirming an incident, calling the site and
+flying a drone are the command centre's, on the web.
 
 ## Approval by a second person
 
@@ -150,10 +187,11 @@ API and the database refuse one without.
 | `security_decision_approvals` | A second person's verdict on a decision that needed one | The API, on the approver's request |
 | `security_actions` | What the platform then did: the step, the existing function it went through, the target, how it ended, and under whose authority | The API, after the decision is saved |
 | `security_decision_policies` | Who may decide: one for the organisation, at most one per site | An administrator |
+| `security_observations` | What a person reported from the ground: accepted, arrived, or what they saw — who, in what role, when, and from where if the phone gave a position | The API, on that person's request |
 
-The first five are added to and read; the application's role is granted
-`SELECT` and `INSERT` on them and nothing else. All six are tenant-scoped under
-forced row-level security.
+All but the policies are added to and read; the application's role is granted
+`SELECT` and `INSERT` on them and nothing else. All seven are tenant-scoped
+under forced row-level security.
 
 A decision records `decided_on_an_earlier_assessment` when a newer assessment
 existed than the one on the officer's screen. It is not refused for that: an
@@ -201,6 +239,7 @@ their role, the site, the source, the request id and the result:
 | `intel.decision.approve`, `intel.decision.reject` | A second person's verdict |
 | `intel.action.<step>` | Each step carried out — guard dispatched, escalation, incident opened or resolved — with the function it went through and how it ended |
 | `intel.decision_policy.update`, `intel.decision_policy.delete` | A change to who may decide |
+| `intel.observation.record` | A report from the ground — that one was made, its kind and whether it carried a position. Not what was said |
 
 **Assessments and recommendations being generated** are not entries in that
 log. The record of each is the row itself, which the application can add but
@@ -215,9 +254,11 @@ the audit log from it would have meant giving that up.
   than their role.
 - **On shift is not checked for the decider.** Anyone with the authority may
   decide, on duty or not.
-- **A guard without assigned sites may decide at any site**, the same as every
-  other site-scoped screen for a user with no assignments. Assign guards to
-  their sites to confine them.
+- **A guard's reach is the shift they are on.** A guard who has not started
+  their shift in the system is on no shift, and can decide and report only on
+  what they were dispatched to.
+- **"Arrived" is the guard's word.** A position is kept when the phone gives
+  one and is not checked against the site.
 - **Approval is not routed.** A waiting decision appears in the queue of
   everyone who could approve it; nobody in particular is asked.
 - **The decider chooses the guard and the supervisor.** The layer validates
@@ -240,3 +281,12 @@ authority; rejected with a reason; not approved by its own author, nor by
 someone who could not have decided it; the audit entries; the policy API; the
 schema's own refusals; and that no role of the application can change a
 decision once it is recorded.
+
+`backend/tests/test_intel_field.py` (11): a guard out of reach refused before
+the policy is asked, and still able to read; a guard on shift elsewhere; a
+dispatched guard within reach but without authority; what a guard's phone shows
+under a policy that leaves incidents to the command centre, and under one that
+does not; a report recorded as that person's while the incident, the alerts,
+the dispatch and where the situation stands are all exactly as they were; what
+a report must say; one report per press; nothing after a situation is closed;
+and that the application's role cannot change an observation.

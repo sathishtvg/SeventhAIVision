@@ -27,7 +27,8 @@ import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/api/client'
 import { getStreams } from '@/api/cameras'
 import {
-  apiError, decide, getAuthority, getRecommendations, getResponders, getSituation, getTrail, recordReview,
+  apiError, decide, getAuthority, getObservations, getRecommendations, getResponders, getSituation, getTrail,
+  recordReview,
 } from '@/api/securityIntelligence'
 import type {
   Authority, AuthorityAction, DecisionAction, ReasonCode, RecommendedCamera, Recommendations, SituationDetail, Trail,
@@ -52,7 +53,8 @@ export default function Situation() {
   const { data: trail } = useQuery({ queryKey: ['intel-trail', id], queryFn: () => getTrail(id!) })
   const { data: authority } = useQuery({
     queryKey: ['intel-authority', id], queryFn: () => getAuthority(id!), enabled: canDecide })
-  useIntelRealtime([['intel-situation', id], ['intel-recommendations', id], ['intel-trail', id], ['intel-authority', id]],
+  useIntelRealtime([['intel-situation', id], ['intel-recommendations', id], ['intel-trail', id], ['intel-authority', id],
+                    ['intel-observations', id]],
                    (_t, p) => p.situation_id === id || p.id === id)
 
   // That this officer has looked at what was suggested — once per assessment.
@@ -87,6 +89,7 @@ export default function Situation() {
           {canSeeSuggestions && <Suggestions recs={recs} />}
           <Decide situationId={situation.id} authority={authority} canDecide={canDecide}
                   seenAssessmentId={a?.id} closed={situation.closed_at != null} />
+          <Ground situationId={situation.id} />
           <History trail={trail} />
         </Grid>
       </Grid>
@@ -481,6 +484,34 @@ function DecideDialog({ situationId, choice, authority, seenAssessmentId, onClos
         </Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+// ── From the ground ──────────────────────────────────────────────────────────
+
+const GROUND_WORDS = { ACCEPTED: 'Accepted — on the way', ARRIVED: 'Arrived' }
+
+/** What the person dealing with it reports. Shown apart from decisions: a report is not one. */
+function Ground({ situationId }: { situationId: string }) {
+  const { data } = useQuery({
+    queryKey: ['intel-observations', situationId], queryFn: () => getObservations(situationId), refetchInterval: 20_000 })
+  if (!data?.length) return null
+  return (
+    <GlassCard sx={{ p: 2, mb: 2 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>From the ground</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        Reports by the people dealing with it. A report is not a decision and changes nothing else.
+      </Typography>
+      {data.map((o) => (
+        <Box key={o.id} data-testid="ground-report" sx={{ py: 0.5, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <Typography variant="caption" color="text.secondary">
+            {fmtTime(o.observed_at)} · {o.name ?? 'A former user'} ({ROLE_LABEL[o.role_id] ?? `Role ${o.role_id}`})
+            {o.via === 'mobile' ? ' · from the phone' : ''}{o.latitude != null ? ' · with position' : ''}
+          </Typography>
+          <Typography variant="body2">{o.kind === 'OBSERVATION' ? o.note : GROUND_WORDS[o.kind]}</Typography>
+        </Box>
+      ))}
+    </GlassCard>
   )
 }
 

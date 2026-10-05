@@ -37,7 +37,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_actions, intel_audit
+from app.services import intel_actions, intel_audit, intel_field
 from app.services import intel_decisions as decisions
 from app.services.intel_risk import LEVELS
 
@@ -122,6 +122,109 @@ async def record_review(
     return {"recorded": new, "assessment_id": situation["assessment_id"]}
 
 
+# ─── The person on the ground ────────────────────────────────────────────────
+
+@router.get("/my-situations")
+async def my_situations(
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The open situations in front of the caller: those they were dispatched
+    to first, then by risk. `assigned_to_me` marks the first kind, with when
+    they were dispatched and what the dispatcher wrote.
+
+    For a guard this is what they were dispatched to, and the other open
+    situations at the site of the shift they are on — the latter only where the
+    decision policy lets a guard decide there at all. For anyone else it is the
+    open situations of the sites they may see.
+
+    `my_last` is the caller's own last report on it — `ACCEPTED` or `ARRIVED` —
+    so the phone knows which button comes next."""
+    return await intel_field.mine(db, token.user_id, token.role_id, allowed, limit)
+
+
+class ObservationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["ACCEPTED", "ARRIVED", "OBSERVATION"]
+    note: str | None = Field(None, max_length=2000)
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+    via: Literal["web", "mobile"] = "mobile"
+    #: Sent again with a retry, so that one report is one observation.
+    client_ref: uuid.UUID | None = None
+
+
+@router.post("/situations/{situation_id}/observations", status_code=201,
+             dependencies=[Depends(require_permission("intel:decide"))])
+async def record_observation(
+    situation_id: uuid.UUID,
+    body: ObservationIn,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Report from the ground: `ACCEPTED` (I have this), `ARRIVED` (I am
+    there), or `OBSERVATION` with a `note` saying what was seen. A position is
+    kept when the phone gives one.
+
+    It is recorded as the caller's and changes nothing else: no alert, no
+    incident, no dispatch. An arrival here is this layer's record; the
+    incident's own arrival time is still set by the command centre. What to do
+    about the situation remains a decision.
+
+    A guard reports from the site of the shift they are on, or from a situation
+    they were dispatched to."""
+    _person(token)
+    situation = await _situation(db, situation_id, allowed)
+    if situation["closed_at"] is not None:
+        raise HTTPException(409, "This situation is closed. Nothing more can be reported on it.")
+    if not await intel_field.within_reach(db, situation, token.user_id, token.role_id):
+        raise HTTPException(403, decisions.OUT_OF_REACH)
+    if (body.latitude is None) != (body.longitude is None):
+        raise HTTPException(422, "A position is a latitude and a longitude together, or neither.")
+    if body.kind == "OBSERVATION" and not (body.note or "").strip():
+        raise HTTPException(422, "An observation says what was seen: a note is needed.")
+    if body.client_ref is not None:
+        earlier = (await db.execute(text(
+            "SELECT id, situation_id, user_id FROM security_observations WHERE client_ref = :c"),
+            {"c": body.client_ref})).first()
+        if earlier is not None:
+            if earlier.situation_id != situation["id"] or str(earlier.user_id) != str(token.user_id):
+                raise HTTPException(409, "This reference was already used for another report.")
+            response.status_code = 200
+            return {"id": earlier.id, "kind": body.kind, "replayed": True}
+    row = await intel_field.record(
+        db, situation_id=situation["id"], kind=body.kind, note=body.note, user_id=token.user_id,
+        role_id=token.role_id, latitude=body.latitude, longitude=body.longitude, via=body.via,
+        request_id=getattr(request.state, "request_id", None), client_ref=body.client_ref)
+    await intel_audit.record(db, request, token, "intel.observation.record", "security_situation", situation["id"],
+                             site_id=situation["site_id"],
+                             detail={"observation_id": str(row["id"]), "kind": body.kind, "via": body.via,
+                                     "with_position": body.latitude is not None})
+    await db.commit()
+    await _announce(request, token, "intel_observation_recorded", {
+        "situation_id": situation["id"], "situation_number": situation["situation_number"],
+        "observation_id": row["id"], "kind": body.kind, "by_role": token.role_id})
+    return {"id": row["id"], "kind": body.kind, "observed_at": row["observed_at"]}
+
+
+@router.get("/situations/{situation_id}/observations")
+async def list_observations(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What was reported from the ground about a situation, oldest first: who,
+    in what role, what, when, and from where if a position was given."""
+    situation = await _situation(db, situation_id, allowed)
+    return await intel_field.observations(db, situation["id"])
+
+
 # ─── What the caller may decide ──────────────────────────────────────────────
 
 NEEDS = {"DISPATCH_GUARD": ["guard_user_id"], "ESCALATE": ["escalate_to_user_id"]}
@@ -147,9 +250,11 @@ async def my_authority(
     mine = await decisions.permissions_of(db, token.role_id)
     policy = await decisions.policy_for(db, situation["site_id"])
     not_a_person = token.via_api_key or bool(token.support_session_id)
+    in_reach = await intel_field.within_reach(db, situation, token.user_id, token.role_id)
     actions = []
     for action in decisions.DECISIONS:
-        c = decisions.check(action, situation=situation, f=f, mine=mine, roles=policy["roles"], role_id=token.role_id)
+        c = decisions.check(action, situation=situation, f=f, mine=mine, roles=policy["roles"], role_id=token.role_id,
+                            in_reach=in_reach)
         why_not = ("A security decision is made by a person who is signed in." if not_a_person
                    else c.refusal[1] if c.refusal else None)
         actions.append({"action": action, "allowed": why_not is None, "how": c.how if why_not is None else None,
@@ -164,6 +269,7 @@ async def my_authority(
                      "id": f.incident["id"] if f.incident else None},
         "policy": {"source": policy["source"], "rule": policy["roles"].get(str(token.role_id)) or {}},
         "may_override": "intel:override" in mine, "may_approve": "intel:approve" in mine,
+        "in_reach": in_reach,
         "suggested_action": decisions.first_suggestion(f.current),
         "reasons": [{"code": code, "label": label} for code, label in decisions.REASONS.items()],
         "actions": actions,
@@ -280,7 +386,8 @@ async def record_decision(
     mine = await decisions.permissions_of(db, token.role_id)
     policy = await decisions.policy_for(db, situation["site_id"])
     c = decisions.check(body.action, situation=situation, f=f, mine=mine, roles=policy["roles"],
-                        role_id=token.role_id)
+                        role_id=token.role_id,
+                        in_reach=await intel_field.within_reach(db, situation, token.user_id, token.role_id))
     if c.refusal is not None:
         raise HTTPException(*c.refusal)
     if c.basis in ("OVERRIDE", "CLOSING") and body.reason_code is None:
