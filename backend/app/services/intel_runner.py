@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
+from app.services import intel_correlation as correlation
 from app.services import intel_events as events
 
 logger = logging.getLogger("intelligence_runner")
@@ -31,6 +32,30 @@ logger = logging.getLogger("intelligence_runner")
 HEARTBEAT_KEY = "intel_runner:heartbeat"
 #: Twenty ticks. The console calls the runner down when the key has gone.
 HEARTBEAT_TTL_SECONDS = 60
+
+
+class RedisPublisher:
+    """The existing realtime channel, in the existing envelope. The API's
+    listener forwards every event type on it to the tenant's own clients."""
+
+    def __init__(self, redis):
+        self.redis = redis
+
+    async def publish(self, tenant_id: str, event_type: str, payload: dict) -> None:
+        await self.redis.publish(f"tenant_events:{tenant_id}", json.dumps({
+            "event_type": event_type, "tenant_id": str(tenant_id), "payload": payload,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        }))
+
+
+class ListPublisher:
+    """Collects instead of publishing — for tests and dry runs."""
+
+    def __init__(self):
+        self.events: list[tuple[str, str, dict]] = []
+
+    async def publish(self, tenant_id: str, event_type: str, payload: dict) -> None:
+        self.events.append((str(tenant_id), event_type, payload))
 
 
 async def tenants(factory) -> list[str]:
@@ -124,3 +149,36 @@ def runner_state(asked: bool, heartbeat: dict | None) -> str:
     if heartbeat is None:
         return "stopped"
     return "running" if heartbeat.get("ok") else "degraded"
+
+
+async def run_correlate_tick(factory, pub, now: datetime | None = None,
+                             batch: int = correlation.BATCH) -> dict:
+    """Place every event not yet in a situation, for every tenant with the
+    feature on, and announce each situation that opened or grew on that
+    tenant's own channel.
+
+    Returns {"tenants", "settled", "opened", "joined", "duplicates", "failed"}.
+    A situation is recorded before it is announced: if the announcement cannot
+    be sent the situation is still there, and a screen that asks will find it."""
+    out = {"tenants": 0, "settled": 0, "opened": 0, "joined": 0, "duplicates": 0, "failed": 0}
+    for tenant_id in await tenants(factory):
+        out["tenants"] += 1
+        try:
+            if now is None:
+                async with factory() as db:
+                    moment = await events.database_now(db)
+            else:
+                moment = now
+            result = await correlation.correlate_tenant(factory, tenant_id, moment, batch)
+        except Exception:  # noqa: BLE001 — this tenant's pass, not everyone's
+            logger.exception("correlation failed for tenant %s", tenant_id)
+            out["failed"] += 1
+            continue
+        for key in ("settled", "opened", "joined", "duplicates", "failed"):
+            out[key] += result[key]
+        for event_type, payload in result["announce"]:
+            try:
+                await pub.publish(tenant_id, event_type, payload)
+            except Exception as exc:  # noqa: BLE001 — the record exists; only the nudge was lost
+                logger.warning("could not announce %s: %s", event_type, type(exc).__name__)
+    return out
