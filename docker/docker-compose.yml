@@ -382,6 +382,9 @@ services:
       DRONE_RUNNER_SCHEDULE_SECONDS: "${DRONE_RUNNER_SCHEDULE_SECONDS:-30}"
       DRONE_RUNNER_AI_SECONDS: "${DRONE_RUNNER_AI_SECONDS:-3}"
       DRONE_RUNNER_REPORT_SECONDS: "${DRONE_RUNNER_REPORT_SECONDS:-60}"
+      # Expired drone footage and flight tracks, every six hours; 0 never deletes.
+      DRONE_RUNNER_RETENTION_SECONDS: "${DRONE_RUNNER_RETENTION_SECONDS:-21600}"
+      DRONE_TELEMETRY_RETENTION_DAYS: "${DRONE_TELEMETRY_RETENTION_DAYS:-365}"
     volumes:
       - evidence_data:/data/evidence
     restart: unless-stopped
