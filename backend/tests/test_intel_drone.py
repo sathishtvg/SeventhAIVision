@@ -50,6 +50,7 @@ from tests.test_intel_decisions import ALERTS, _facts as _dfacts
 from tests.test_intel_events import _alert, _world as _intel_world
 from tests.test_intel_recommend import _a, _can, _steps
 from tests.test_intel_risk import _context, _ev, _points, _situation as _sit
+from tests.test_intel_timeline import without_docstrings
 
 BASE = "/api/v1/security-intelligence"
 SERVICES = Path(__file__).resolve().parents[1] / "app" / "services"
@@ -344,15 +345,15 @@ def test_no_path_of_the_layer_is_one_the_drone_module_would_take_for_its_own():
 
 
 def test_the_part_of_the_layer_that_reads_about_drones_writes_nothing():
-    source = (SERVICES / "intel_drone.py").read_text(encoding="utf-8")
-    code = re.sub(r'""".*?"""', "", source, flags=re.S)
+    code = without_docstrings(SERVICES / "intel_drone.py")
+    assert "FROM drone_verification_requests" in code, "the statements are what is being looked at"
     assert not re.search(r"\b(INSERT|UPDATE|DELETE|TRUNCATE)\b", code), "intel_drone.py only reads"
     assert ".commit(" not in code
     # And the runner still cannot act: it imports neither the reader's caller nor the actor.
     for name in ("intel_runner", "intel_events", "intel_correlation", "intel_risk", "intel_recommend",
                  "intel_context"):
         text_ = (SERVICES / f"{name}.py").read_text(encoding="utf-8")
-        assert "intel_actions" not in re.sub(r'""".*?"""', "", text_, flags=re.S), name
+        assert "intel_actions" not in without_docstrings(SERVICES / f"{name}.py"), name
         assert "intel_drone" not in text_, name
         assert "drone_response" not in text_ and "drone_planning" not in text_ and "drone_operations" not in text_, name
 
@@ -565,6 +566,30 @@ async def test_an_officer_asks_the_flight_to_look_again_and_what_it_sees_comes_b
     assert [x["sequence"] for x in told if x["kind"] == "ASSESSMENT"] == [1, 2]
     assert len([x for x in told if x["kind"] == "RECOMMENDATION"]) == 2 and all(
         x["is_decision"] is False for x in told if x["kind"] == "RECOMMENDATION")
+
+
+@pytest.mark.asyncio
+async def test_the_camera_of_a_drone_that_saw_it_is_one_to_open_only_while_that_drone_is_in_the_air():
+    w, sid, t, e, s = await _sighted()
+    first = await _recs(s)
+    looking = next(r for r in first if r["action"] == "VIEW_CAMERA")
+    assert _j(looking["supporting"])["cameras"] == [
+        {"id": str(w["camera"]), "name": "Drone One camera", "relation": "drone", "state": "not_known"}]
+    assert "VERIFY" not in [r["action"] for r in first], "there is a camera that shows the place: the drone's own"
+
+    async def cameras() -> tuple:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": str(w["tenant"])})
+            events = [dict(r) for r in (await db.execute(text(
+                "SELECT ev.id, ev.occurred_at, ev.camera_id, ev.alert_id, ev.incident_id, ev.event_type, ev.drone_id "
+                "  FROM security_situation_events l JOIN security_events ev ON ev.id = l.event_id "
+                " WHERE l.situation_id = :s"), {"s": s["id"]})).mappings().all()]
+            return (await rec.availability(db, s, events, _now())).cameras
+
+    assert [c["relation"] for c in await cameras()] == ["drone"]
+    # Landed: its camera now shows a dock, and is not offered as a look at the place.
+    await _sql("UPDATE drones SET status = 'READY' WHERE id = :d", {"d": w["drone"]})
+    assert await cameras() == ()
 
 
 @pytest.mark.asyncio

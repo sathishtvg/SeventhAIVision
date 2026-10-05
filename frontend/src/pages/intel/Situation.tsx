@@ -48,6 +48,8 @@ import {
   AI_COLOR, DECISION_LABEL, HUMAN_COLOR, INCIDENT_LABEL, LOOK_LABEL, ROLE_LABEL, SOURCE_LABEL, STATUS_LABEL,
   STEP_LABEL, fmt, fmtTime, newClientRef, pct, pretty, useIntelRealtime,
 } from '@/components/intel/intelFormat'
+import { SituationEvidence } from '@/components/intel/SituationEvidence'
+import { SituationSummary } from '@/components/intel/SituationSummary'
 import { SituationTimeline } from '@/components/intel/SituationTimeline'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
 
@@ -67,7 +69,8 @@ export default function Situation() {
     queryKey: ['intel-drone', id], queryFn: () => getSituationDrone(id!),
     refetchInterval: (q) => (lookingNow(q.state.data) ? 5_000 : 20_000) })
   useIntelRealtime([['intel-situation', id], ['intel-recommendations', id], ['intel-trail', id], ['intel-authority', id],
-                    ['intel-observations', id], ['intel-drone', id], ['intel-timeline', id]],
+                    ['intel-observations', id], ['intel-drone', id], ['intel-timeline', id], ['intel-summary', id],
+                    ['intel-evidence', id]],
                    (_t, p) => p.situation_id === id || p.id === id)
 
   // That this officer has looked at what was suggested — once per assessment.
@@ -94,9 +97,11 @@ export default function Situation() {
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, lg: 7 }}>
           <Summary situation={situation} recs={recs} trail={trail} />
+          <SituationSummary situationId={situation.id} />
           <Why situation={situation} recommendationConfidence={first?.recommendation_confidence} />
           <Events situation={situation} />
           <Cameras situation={situation} recs={recs} />
+          <SituationEvidence situationId={situation.id} />
           <Drones picture={drone} />
           <SituationTimeline situationId={situation.id} />
         </Grid>
@@ -307,6 +312,10 @@ const CAMERA_STATE: Record<string, string> = {
   online: 'online', degraded: 'degraded', offline: 'not sending', disabled: 'switched off', not_known: 'state not known',
 }
 
+const CAMERA_RELATION: Record<string, string> = {
+  reported: 'reported this', neighbour: 'next to a camera that did', drone: 'the drone that saw this, in the air now',
+}
+
 function LiveDialog({ camera, onClose }: { camera: RecommendedCamera; onClose: () => void }) {
   const token = useAuthStore((s) => s.accessToken)
   const { data: streams, isLoading, error } = useQuery({
@@ -353,7 +362,7 @@ function Cameras({ situation, recs }: { situation: SituationDetail; recs?: Recom
             <ListItemButton key={c.id} onClick={() => setOpen(c)} disabled={c.state === 'offline' || c.state === 'disabled'}>
               <VideocamIcon fontSize="small" sx={{ mr: 1.5, opacity: 0.7 }} />
               <ListItemText primary={c.name}
-                            secondary={`${c.relation === 'reported' ? 'reported this' : 'next to a camera that did'} · `
+                            secondary={`${CAMERA_RELATION[c.relation] ?? c.relation} · `
                               + `${CAMERA_STATE[c.state] ?? c.state}`} />
             </ListItemButton>
           ))}
@@ -626,7 +635,7 @@ function DecideDialog({ situationId, choice, authority, seenAssessmentId, drone,
       drone_mission_id: how.startsWith('launch:') ? how.slice(7) : undefined }),
     onSuccess: () => {
       ['intel-situation', 'intel-trail', 'intel-authority', 'intel-recommendations', 'intel-drone',
-       'intel-timeline'].forEach((k) =>
+       'intel-timeline', 'intel-summary', 'intel-evidence'].forEach((k) =>
         qc.invalidateQueries({ queryKey: [k, situationId] }))
       qc.invalidateQueries({ queryKey: ['intel-situations'] })
       onClose()
