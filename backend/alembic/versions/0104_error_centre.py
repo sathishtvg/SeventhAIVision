@@ -46,8 +46,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 0103's table was one row per occurrence and nothing has written to it
-    # yet, so it is replaced outright rather than migrated.
+    # DESTRUCTIVE: 0103's table was one row per occurrence and nothing has
+    # written to it yet, so it is replaced outright rather than migrated.
     op.execute("DROP TABLE IF EXISTS platform_errors")
 
     op.execute("""
