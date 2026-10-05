@@ -545,7 +545,11 @@ async def test_taking_a_piece_of_evidence_is_in_the_audit_log(evidence):
 async def test_taking_a_report_out_is_in_the_audit_log(evidence):
     a = await _everything(evidence)
     day = a["at"].astimezone(SGT).date().isoformat()
-    period = {"from": day, "to": day}
+    # The summary files a flight under the day its record was made, which for
+    # this fixture is now — the day after `at` when the test runs between
+    # midnight and 02:22 in Singapore. The period runs to today so the hour
+    # of the run does not decide the count.
+    period = {"from": day, "to": datetime.now(SGT).date().isoformat()}
     base = f"/api/v1/drone-patrols/{a['session']}/report"
     async with _client() as c:
         read = await c.get(base, headers=a["h_admin"])

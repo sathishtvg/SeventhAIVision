@@ -217,8 +217,12 @@ async def test_a_flight_records_how_far_it_flew():
 
     async with _client() as c:
         shown = (await c.get(f"/api/v1/drone-patrols/{sid}", headers=w["h_admin"])).json()
+        # The summary's days are the organisation's, not UTC's: between 16:00
+        # and 24:00 UTC "today" in UTC is yesterday in Singapore, and this
+        # flight fell outside it. The day either side makes the hour irrelevant.
         period = (await c.get("/api/v1/drone-reports/summary", headers=w["h_admin"],
-                              params={"from": _now().date().isoformat(), "to": _now().date().isoformat()})).json()
+                              params={"from": (_now() - timedelta(days=1)).date().isoformat(),
+                                      "to": (_now() + timedelta(days=1)).date().isoformat()})).json()
     assert float(shown["distance_m"]) == flown
     assert period["totals"]["distance_m"] == pytest.approx(flown, abs=0.1)
 

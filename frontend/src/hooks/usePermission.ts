@@ -120,6 +120,10 @@ const ALL_PERMISSIONS = [
   'drone:mission:create', 'drone:mission:update', 'drone:mission:execute', 'drone:mission:abort',
   'drone:event:read', 'drone:event:acknowledge', 'drone:event:investigate',
   'drone:maintenance:read', 'drone:maintenance:manage', 'drone:report:read', 'drone:report:export',
+  // AI Security Intelligence (migration 0132). The platform owner and the
+  // client role hold none of these.
+  'intel:read', 'intel:recommendation:read', 'intel:decide', 'intel:override', 'intel:approve', 'intel:manage',
+  'intel:feedback:export',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -227,6 +231,8 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'drone:read', 'drone:operate', 'drone:mission:create', 'drone:mission:update', 'drone:mission:execute',
     'drone:mission:abort', 'drone:event:read', 'drone:event:acknowledge', 'drone:event:investigate',
     'drone:maintenance:read', 'drone:report:read', 'drone:report:export',
+    // AI Security Intelligence (migration 0132)
+    'intel:read', 'intel:recommendation:read', 'intel:decide', 'intel:override', 'intel:approve',
   ],
   4: [ // operator
     'camera:read',
@@ -271,6 +277,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     // Drone Patrol (migration 0123)
     'drone:read', 'drone:operate', 'drone:mission:execute', 'drone:mission:abort', 'drone:event:read',
     'drone:event:acknowledge', 'drone:event:investigate', 'drone:report:read',
+    'intel:read', 'intel:recommendation:read', 'intel:decide', 'intel:override', // AI Security Intelligence (0132)
   ],
   5: [ // security_guard
     'camera:read',
@@ -302,6 +309,9 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'parking:read',
     'scan:create',
     'drone:event:read', // Drone Patrol (migration 0123)
+    // AI Security Intelligence (0132). Deciding still needs the decision
+    // policy to let a guard decide; by default it does not.
+    'intel:read', 'intel:recommendation:read', 'intel:decide',
   ],
   6: [ // viewer
     'camera:read',
@@ -334,6 +344,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'iot:read',
     'parking:read',
     'drone:read', 'drone:event:read', 'drone:report:read', // Drone Patrol (migration 0123)
+    'intel:read', // AI Security Intelligence (0132): situations and assessments, not the suggestions
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

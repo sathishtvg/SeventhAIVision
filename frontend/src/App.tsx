@@ -90,6 +90,10 @@ import DroneEvents from '@/pages/drones/DroneEvents'
 import DroneEvent from '@/pages/drones/DroneEvent'
 import DroneZones from '@/pages/drones/DroneZones'
 import DroneAnalytics from '@/pages/drones/DroneAnalytics'
+import Situations from '@/pages/intel/Situations'
+import Situation from '@/pages/intel/Situation'
+import SituationDecisions from '@/pages/intel/Decisions'
+import IntelSetup from '@/pages/intel/IntelSetup'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -239,6 +243,11 @@ export default function App() {
         <Route path="drone-events/:id" element={<DroneEvent />} />
         <Route path="drone-zones" element={<DroneZones />} />
         <Route path="drone-analytics" element={<DroneAnalytics />} />
+        {/* AI Security Intelligence: flat paths, as the drone module's are. */}
+        <Route path="situations" element={<Situations />} />
+        <Route path="situations/:id" element={<Situation />} />
+        <Route path="situation-decisions" element={<SituationDecisions />} />
+        <Route path="intelligence-setup" element={<IntelSetup />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
