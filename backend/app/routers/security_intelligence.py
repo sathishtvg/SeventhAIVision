@@ -3,7 +3,8 @@
 The layer described in AI_SECURITY_INTELLIGENCE_GAP_ANALYSIS.md, as far as it is
 built: whether it is running for this organisation, the security events it has
 read, the context of each, the situations those events have been joined into
-and why, and what an administrator has said about each site.
+and why, how each situation has been assessed, and what an administrator has
+said about each site.
 
 NOTHING HERE CHANGES AN ALERT, AN INCIDENT OR ANY OTHER EXISTING RECORD. The
 events are written by the intelligence runner (app/intelligence_main.py); the
@@ -352,12 +353,14 @@ async def put_camera_profile(
 # ─── Situations ──────────────────────────────────────────────────────────────
 
 SITUATION_STATUSES = ("ACTIVE", "SETTLED")
+RISK_LEVELS = ("INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL")
 
 _SITUATION_COLUMNS = """
     x.id, x.situation_number, x.title, x.status, x.severity, x.site_id, s.name AS site_name,
     x.started_at, x.last_event_at, x.event_count, x.duplicate_count, x.source_types,
     x.primary_camera_id, c.name AS primary_camera_name, x.location_label, x.latitude, x.longitude,
-    x.correlation_confidence, x.settled_at, x.created_at, x.updated_at
+    x.correlation_confidence, x.settled_at, x.created_at, x.updated_at,
+    x.risk_score, x.risk_level, x.assessed_at
 """
 _SITUATION_FROM = """
       FROM security_situations x
@@ -372,6 +375,8 @@ async def list_situations(
     site_id: uuid.UUID | None = Query(None),
     severity: str | None = Query(None),
     source_type: str | None = Query(None),
+    risk_level: str | None = Query(None),
+    sort: Literal["recent", "risk"] = Query("recent"),
     since: datetime | None = Query(None, alias="from"),
     until: datetime | None = Query(None, alias="to"),
     limit: int = Query(50, ge=1, le=200),
@@ -379,15 +384,21 @@ async def list_situations(
     db: AsyncSession = Depends(get_db_with_tenant),
     allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
-    """Security situations, the one heard from most recently first. Each is one
-    matter, however many alerts fed it: `event_count` says how many, and
-    `duplicate_count` how many of those added nothing new.
+    """Security situations. Each is one matter, however many alerts fed it:
+    `event_count` says how many, and `duplicate_count` how many of those added
+    nothing new.
 
-    `source_type` finds situations that include a source of that kind;
-    `from`/`to` are about when a situation was last heard from."""
+    `sort=recent` (the default) puts the one heard from most recently first;
+    `sort=risk` puts the highest assessed risk first, and those not yet
+    assessed last. `source_type` finds situations that include a source of that
+    kind; `from`/`to` are about when a situation was last heard from.
+
+    `severity` is the most severe event's own severity. `risk_level` is this
+    layer's assessment in context. They are different things."""
     _one_of(status, SITUATION_STATUSES, "status")
     _one_of(severity, SEVERITIES, "severity")
     _one_of(source_type, SOURCE_TYPES, "source type")
+    _one_of(risk_level, RISK_LEVELS, "risk level")
     if since is not None and until is not None and until < since:
         raise HTTPException(422, "The period ends before it starts.")
 
@@ -399,7 +410,8 @@ async def list_situations(
     if site_id is not None:
         where.append("x.site_id = CAST(:site AS uuid)")
         params["site"] = str(site_id)
-    for column, value, name in (("x.status", status, "status"), ("x.severity", severity, "severity")):
+    for column, value, name in (("x.status", status, "status"), ("x.severity", severity, "severity"),
+                                ("x.risk_level", risk_level, "risk_level")):
         if value is not None:
             where.append(f"{column} = :{name}")
             params[name] = value
@@ -413,10 +425,11 @@ async def list_situations(
         where.append("x.last_event_at <= :until")
         params["until"] = until
     clause = ("WHERE " + " AND ".join(where)) if where else ""
+    order = ("x.risk_score DESC NULLS LAST, x.last_event_at DESC, x.id DESC" if sort == "risk"
+             else "x.last_event_at DESC, x.id DESC")
     return await paginate(
         db,
-        f"SELECT {_SITUATION_COLUMNS} {_SITUATION_FROM} {clause} "
-        "ORDER BY x.last_event_at DESC, x.id DESC LIMIT :limit OFFSET :offset",
+        f"SELECT {_SITUATION_COLUMNS} {_SITUATION_FROM} {clause} ORDER BY {order} LIMIT :limit OFFSET :offset",
         f"SELECT count(*) FROM security_situations x {clause}",
         params, limit, offset,
     )
@@ -431,7 +444,12 @@ async def get_situation(
     """One situation with every event in it, oldest first, and for each event
     why it is here: the method, the reason in words, how sure the link is, and
     whether it added anything new. `sources` is the short list an officer reads
-    first — which cameras and which other sources reported."""
+    first — which cameras and which other sources reported.
+
+    `assessment` is the latest assessment, or null when the situation has not
+    been assessed yet: what it appears to be, the risk and every factor behind
+    it, how unusual it is for the place and hour, the three confidences kept
+    apart, and what was not known."""
     row = (await db.execute(
         text(f"SELECT {_SITUATION_COLUMNS} {_SITUATION_FROM} WHERE x.id = CAST(:id AS uuid)"),
         {"id": str(situation_id)})).mappings().first()
@@ -459,7 +477,61 @@ async def get_situation(
             "first_at": e["occurred_at"], "last_at": e["occurred_at"]})
         entry["events"] += 1
         entry["last_at"] = e["occurred_at"]
-    return {**dict(row), "sources": list(sources.values()), "events": [dict(e) for e in events]}
+    latest = (await db.execute(text(
+        "SELECT * FROM security_assessments WHERE situation_id = CAST(:id AS uuid) ORDER BY sequence DESC LIMIT 1"),
+        {"id": str(situation_id)})).mappings().first()
+    return {**dict(row), "sources": list(sources.values()), "events": [dict(e) for e in events],
+            "assessment": _assessment(latest, with_context=True) if latest is not None else None}
+
+
+def _loads(value):
+    return json.loads(value) if isinstance(value, str) else value
+
+
+def _assessment(row, *, with_context: bool) -> dict:
+    """An assessment as it is served. The three confidences are three fields,
+    never one. With its context: the statements it rested on, each with its
+    source, and what was not known."""
+    context = _loads(row["context"]) or {}
+    out = {
+        "id": row["id"], "sequence": row["sequence"], "assessed_at": row["assessed_at"],
+        "kind": row["kind"], "label": row["label"], "summary": row["summary"],
+        "risk_score": row["risk_score"], "risk_level": row["risk_level"],
+        "risk_factors": _loads(row["risk_factors"]),
+        "normality_score": row["normality_score"], "anomaly_score": row["anomaly_score"],
+        "normality_factors": _loads(row["normality_factors"]),
+        "normality_basis": context.get("normality_basis"),
+        "confidence": {
+            "detection": row["detection_confidence"],
+            "correlation": row["correlation_confidence"],
+            "risk": row["risk_confidence"],
+        },
+        "unknowns": context.get("unknowns", []),
+        "event_count": row["event_count"], "engine_version": row["engine_version"],
+    }
+    if with_context:
+        out["statements"] = context.get("statements", [])
+        out["expected"] = context.get("expected", [])
+    return out
+
+
+@router.get("/situations/{situation_id}/assessments")
+async def list_assessments(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Every assessment of a situation, oldest first. They are never edited:
+    what was believed before the drone arrived stays beside what was believed
+    after, each with the factors behind it."""
+    site = (await db.execute(text("SELECT site_id FROM security_situations WHERE id = CAST(:id AS uuid)"),
+                             {"id": str(situation_id)})).first()
+    if site is None or not is_site_allowed(allowed, site.site_id):
+        raise HTTPException(404, "Situation not found")
+    rows = (await db.execute(text(
+        "SELECT * FROM security_assessments WHERE situation_id = CAST(:id AS uuid) ORDER BY sequence"),
+        {"id": str(situation_id)})).mappings().all()
+    return [_assessment(r, with_context=False) for r in rows]
 
 
 # ─── Camera links ────────────────────────────────────────────────────────────
