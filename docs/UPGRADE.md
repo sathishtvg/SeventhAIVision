@@ -175,19 +175,63 @@ To rotate the signing key without invalidating existing sessions:
 
 ## Database Partition Maintenance
 
-`pg_partman` creates 3 future monthly partitions automatically. The `scheduler` container runs this daily. If the scheduler was stopped for an extended period, run maintenance manually:
+Fourteen tables are partitioned by month through `pg_partman` (installed in the
+`public` schema — there is no `partman` schema). Each always has the current
+month and three ahead. The `scheduler` container keeps it that way in its daily
+cycle (`run_partition_maintenance`), and migration `0131` does it once when it is
+applied.
+
+**It needs the superuser credentials.** Adding a partition requires owning the
+table, which the app role does not. The scheduler uses `POSTGRES_USER` and
+`PGPASSWORD` (or `POSTGRES_PASSWORD`) — the same ones the backup and the audit
+archive use. Without them it logs `partition maintenance SKIPPED` as an error and
+no partitions are made. Until migration `0131` the job ran as the app role and had
+never made one; an installation older than three months should be checked after
+upgrading (below).
+
+To inspect, as the superuser:
+
+```bash
+docker exec docker-postgres-1 psql -U postgres seventh_ai_vision -c "
+  SELECT parent_table,
+         (SELECT max(partition_tablename) FROM public.show_partitions(parent_table)) AS newest
+    FROM public.part_config ORDER BY 1;"
+```
+
+Every `newest` should be three months ahead of today. To make them without
+waiting for the scheduler:
 
 ```bash
 docker exec docker-postgres-1 psql -U postgres seventh_ai_vision \
-  -c "SELECT partman.run_maintenance_proc();"
+  -c "SELECT public.run_maintenance(p_analyze => false); SELECT public.apply_partition_rls();"
 ```
 
-To inspect current partitions:
+`apply_partition_rls()` matters: a new partition does not inherit its table's
+row-level security, and without it is readable across tenants by name.
+
+### Rows in a default partition
+
+A row arriving when no partition exists for its date goes to the table's
+`_default` partition, and that month's partition then cannot be made until the
+row is moved. Check with:
 
 ```bash
-docker exec docker-postgres-1 psql -U postgres seventh_ai_vision \
-  -c "SELECT * FROM partman.show_partitions('public.detections');"
+docker exec docker-postgres-1 psql -U postgres seventh_ai_vision -c "
+  SELECT 'detections' AS t, count(*) FROM ONLY detections_default
+  UNION ALL SELECT 'audit_logs', count(*) FROM ONLY audit_logs_default;"
 ```
+
+The scheduler moves such rows by itself, a month per transaction, before it makes
+partitions, and reports what it moved (`partition maintenance: … stranded rows
+moved …`).
+
+**Do not move them by hand with `partition_data_time()` or `partition_data_proc()`.**
+pg_partman moves a row by deleting it and inserting it again, and eleven event
+tables reference `detections` with `ON DELETE CASCADE`: moving a detection that
+way deletes its plate, face, intrusion and other event rows. The scheduler
+suspends the foreign-key triggers for the one transaction of each move
+(`session_replication_role = replica`), which is why it needs a superuser. If
+they must be moved by hand, do exactly that, one table per transaction.
 
 ---
 

@@ -31,45 +31,140 @@ ARCHIVE_ROOT = Path(os.environ.get("AUDIT_ARCHIVE_ROOT", "/data/archive"))
 RUN_INTERVAL_SECONDS = int(os.environ.get("SCHEDULER_INTERVAL_SECONDS", str(24 * 60 * 60)))
 
 
-async def run_partition_maintenance(db: AsyncSession | None = None) -> None:
-    """Pre-creates future partitions + applies pg_partman's own (coarse,
-    per-table, not per-tenant) retention as a safety net. Fine-grained
-    per-tenant retention is handled separately below, since all tenants share
-    the same physical monthly partitions — pg_partman has no concept of
-    per-tenant retention.
+#: How many months of stranded rows one table may have moved in one night. A
+#: month is one transaction, so a backlog is worked off without holding a lock
+#: on the table for longer than one month's rows take.
+PARTITION_MOVE_MAX_BATCHES = int(os.environ.get("PARTITION_MOVE_MAX_BATCHES", "36"))
 
-    run_maintenance_proc() is a PROCEDURE that commits internally as it
-    processes each registered table — calling it through a regular session
-    (which wraps every execute() in an implicit transaction) raises
-    "invalid transaction termination" (confirmed by actually running this,
-    not assumed). Needs a connection in AUTOCOMMIT isolation instead; the
-    `db` parameter is accepted-but-unused for interface symmetry with the
-    other two maintenance functions below, which is the cheaper deviation
-    here than rewriting their callers and tests around a special case.
-    """
+
+async def secure_new_partitions() -> int:
+    """Give any partition that lacks it the row security its parent has.
+
+    Partitions do NOT inherit their parent's row-level security, and
+    pg_partman's template table does not carry it either (verified - a template
+    with RLS produced partitions with none). A partition without it is readable
+    across tenants if queried by name. Idempotent; returns how many it fixed,
+    which should be 0 on a healthy day. See migration 0083.
+
+    Runs as the app role - the function is SECURITY DEFINER - so it still
+    happens on a deployment with no admin credentials, where nothing else here
+    can. On its own connection in AUTOCOMMIT, as it always has."""
     async with engine.connect() as conn:
         await conn.execution_options(isolation_level="AUTOCOMMIT")
-        try:
-            await conn.execute(text("CALL public.run_maintenance_proc()"))
-        except Exception as exc:
-            # In test/dev environments the app role may lack CREATE on public schema.
-            # Log and continue — partman maintenance is best-effort in non-prod.
-            logger.warning("run_maintenance_proc skipped: %s", exc)
-
-        # Partitions do NOT inherit their parent's row-level security, and
-        # pg_partman's template table does not carry it either (verified —
-        # a template with RLS produced partitions with none). So every
-        # partition partman just created above is currently unprotected:
-        # readable across tenants if queried by name. Re-apply immediately
-        # after creating them. Idempotent; returns how many it fixed, which
-        # should be 0 on a healthy day. See migration 0083.
         try:
             fixed = await conn.scalar(text("SELECT public.apply_partition_rls()"))
             if fixed:
                 logger.info("apply_partition_rls secured %s new partition(s)", fixed)
+            return int(fixed or 0)
         except Exception as exc:
             logger.error("apply_partition_rls FAILED — new partitions may be "
                          "readable across tenants: %s", exc)
+            return 0
+
+
+async def _partition_names(db: AsyncSession, parent: str) -> set[str]:
+    rows = await db.execute(text(
+        "SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid "
+        " WHERE i.inhparent = CAST(:p AS regclass)"), {"p": parent})
+    return {r[0] for r in rows}
+
+
+async def _move_stranded_rows(db: AsyncSession, parent: str) -> int:
+    """Move rows out of a table's default partition into the partitions they
+    belong in, making those partitions as it goes. Returns how many it moved.
+
+    A row lands in the default partition when no partition exists for its date -
+    which is what happens to every row once maintenance has not run for longer
+    than the months made in advance. Left there, it also stops that month's
+    partition ever being made: Postgres refuses a new partition whose range the
+    default already holds rows for.
+
+    WITH THE FOREIGN-KEY TRIGGERS OFF, and this is not optional. pg_partman moves
+    a row by deleting it from the default and inserting it into its partition.
+    Eleven event tables reference `detections` ON DELETE CASCADE, and the cascade
+    fires on that delete: moving one detection the documented way deletes its
+    plate, face and intrusion rows (measured - one plate row before, none after).
+    The row comes back under the same key in the same statement, so nothing it
+    was linked to should change; `session_replication_role = replica` for the
+    one transaction makes that true. It needs a superuser. Without one this
+    raises and the rows stay where they are, which is the safe failure.
+
+    One month per transaction, so a long backlog never holds the table."""
+    default = await db.scalar(text(
+        "SELECT c.oid::regclass::text FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid "
+        " WHERE i.inhparent = CAST(:p AS regclass) AND pg_get_expr(c.relpartbound, c.oid) = 'DEFAULT'"),
+        {"p": parent})
+    total = 0
+    if default is None:
+        await db.commit()
+        return total
+    for _ in range(PARTITION_MOVE_MAX_BATCHES):
+        # `default` is a table name read from the catalogue, quoted by regclass.
+        stranded = await db.scalar(text(f"SELECT EXISTS (SELECT 1 FROM ONLY {default})"))
+        if not stranded:
+            break
+        await db.execute(text("SELECT set_config('session_replication_role', 'replica', true)"))
+        moved = await db.scalar(text(
+            "SELECT public.partition_data_time(:p, p_batch_count => 1, p_analyze => false)"), {"p": parent})
+        # The partition the move just made has no row security yet. In the same
+        # transaction, so it is never visible without it.
+        await db.execute(text("SELECT public.apply_partition_rls()"))
+        await db.commit()                      # ends the transaction, and with it the role setting
+        total += int(moved or 0)
+        if not moved:
+            break                              # rows it cannot place: stop rather than spin
+    else:
+        logger.warning("partition maintenance: %s still has rows in its default partition after %d months "
+                       "moved; the rest follow on the next run", parent, PARTITION_MOVE_MAX_BATCHES)
+    await db.commit()
+    return total
+
+
+async def run_partition_maintenance(db: AsyncSession) -> dict:
+    """Make the months ahead for every partitioned table, and put right any rows
+    that arrived while there was no partition for them.
+
+    REQUIRES A SUPERUSER SESSION - pass one from admin_session(). This ran on the
+    app connection from the start and never once made a partition, for the two
+    reasons archive_old_audit_partitions documents: the app role does not own
+    the tables (and has no CREATE on the schema), so it cannot add a partition
+    at all; and pg_partman reads each partition by name, which on a pooled
+    connection carrying an empty app.current_tenant raises ''::uuid in the
+    partition's own row-security policy. The failure was caught and logged as a
+    warning every night, so every table simply ran out of partitions three
+    months after it was created.
+
+    One table at a time, each in its own transaction, so one table's trouble is
+    that table's alone - and is logged as an error, because a table that cannot
+    get its partitions is collecting rows in its default.
+
+    New partitions are given row security in the transaction that makes them.
+
+    Returns {"created": [...], "moved": {table: rows}, "failed": {table: why}}."""
+    result: dict = {"created": [], "moved": {}, "failed": {}}
+    parents = [r[0] for r in await db.execute(text(
+        "SELECT parent_table FROM public.part_config WHERE automatic_maintenance = 'on' ORDER BY parent_table"))]
+    await db.commit()
+    for parent in parents:
+        try:
+            moved = await _move_stranded_rows(db, parent)
+            if moved:
+                result["moved"][parent] = moved
+            before = await _partition_names(db, parent)
+            await db.execute(text("SELECT public.run_maintenance(:p, p_analyze => false)"), {"p": parent})
+            await db.execute(text("SELECT public.apply_partition_rls()"))
+            created = sorted(await _partition_names(db, parent) - before)
+            await db.commit()
+            result["created"] += created
+        except Exception as exc:
+            await db.rollback()
+            result["failed"][parent] = str(exc).splitlines()[0][:300]
+            logger.error("partition maintenance FAILED for %s — it will get no new partitions and its "
+                         "rows will collect in its default partition: %s", parent, exc)
+    if result["created"] or result["moved"]:
+        logger.info("partition maintenance: created %s; stranded rows moved %s",
+                    result["created"] or "nothing", result["moved"] or "none")
+    return result
 
 
 async def purge_expired_evidence(db: AsyncSession) -> int:
@@ -1149,7 +1244,21 @@ async def run_compliance_maintenance(db: AsyncSession, redis: Redis) -> dict:
 
 async def run_once(redis: Redis | None = None) -> None:
     """Full daily maintenance cycle (partitions, evidence purge, audit archive, backup)."""
-    await run_partition_maintenance()
+    async with admin_session() as db:
+        if db is None:
+            logger.error(
+                "partition maintenance SKIPPED: no POSTGRES_USER/PGPASSWORD. Adding a "
+                "partition needs ownership of the table, so without a superuser "
+                "connection no new partitions are made and every partitioned table's "
+                "rows collect in its default partition once the months made in "
+                "advance run out."
+            )
+        else:
+            try:
+                await run_partition_maintenance(db)
+            except Exception:
+                logger.exception("run_partition_maintenance failed")
+    await secure_new_partitions()
 
     async with AsyncSessionLocal() as db:
         deleted = await purge_expired_evidence(db)
