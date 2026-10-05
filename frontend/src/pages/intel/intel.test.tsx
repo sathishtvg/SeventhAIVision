@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/securityIntelligence'
 import type {
   Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, Recommendations, SituationDetail,
-  Trail,
+  Timeline, TimelineEntry, Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
@@ -133,6 +133,47 @@ const EMPTY_TRAIL: Trail = { situation_id: 'sit1', decision_status: 'AWAITING', 
 const ON = { enabled: true, runner: { state: 'running' as const, last_seen_at: '2026-10-05T02:18:00Z' },
              last_24_hours: { CCTV_AI: 12 }, sources: [] }
 
+const NO_TIMELINE: Timeline = {
+  situation_id: 'sit1', situation_number: 'SIT-20261005-0001', started_at: '2026-10-05T02:17:04Z', closed_at: null,
+  decision_status: 'AWAITING', suggestions_shown: true, counts: { SOURCE: 0, AI: 0, PERSON: 0, PLATFORM: 0 }, entries: [],
+}
+const line = (at: string, kind: TimelineEntry['kind'], actor: TimelineEntry['actor'], title: string,
+              more: Partial<TimelineEntry> = {}): TimelineEntry =>
+  ({ at: `2026-10-05T${at}Z`, kind, actor, title, detail: null, who: null, ref: { type: 'event', id: `${kind}-${at}` },
+     ...more })
+const TIMELINE: Timeline = {
+  ...NO_TIMELINE, decision_status: 'IN_HAND', counts: { SOURCE: 2, AI: 2, PERSON: 3, PLATFORM: 2 },
+  entries: [
+    line('02:17:04', 'EVENT', 'SOURCE', 'Person at Gate 1', { source_type: 'CCTV_AI', where: 'Gate 1' }),
+    line('02:17:08', 'EVENT', 'SOURCE', 'Access denied at the rear door',
+         { source_type: 'ACCESS_CONTROL', where: 'Rear door', detail: 'An access event at the door this camera watches, 4 s apart.' }),
+    line('02:18:02', 'ASSESSMENT', 'AI', 'AI-assisted assessment: Access refused, with activity seen nearby. Risk HIGH (65).',
+         { detail: 'On 2 event(s).', risk_level: 'HIGH', risk_score: 65 }),
+    line('02:18:06', 'RECOMMENDATION', 'AI', 'AI suggests: dispatch a guard',
+         { detail: 'More than one kind of source reported this: send a guard.', is_decision: false, action: 'DISPATCH_GUARD' }),
+    line('02:18:15', 'DECISION', 'PERSON', 'Decided: dispatch a guard',
+         { detail: 'Followed what the layer suggested.', who: { user_id: 'u9', name: 'Priya', role_id: SUPERVISOR }, via: 'web' }),
+    line('02:18:17', 'ACTION', 'PLATFORM', 'Guard dispatched',
+         { result: 'OK', through: 'app.routers.dispatch.dispatch_guard', action: 'INCIDENT_DISPATCH' }),
+    line('02:24:31', 'OBSERVATION', 'PERSON', 'Arrived',
+         { who: { user_id: 'g1', name: 'Tan Wei Ming', role_id: GUARD }, via: 'mobile' }),
+    line('02:27:10', 'OBSERVATION', 'PERSON', 'Reported from the ground: Authorised maintenance worker.',
+         { who: { user_id: 'g1', name: 'Tan Wei Ming', role_id: GUARD }, via: 'mobile' }),
+    line('02:28:00', 'INCIDENT', 'PLATFORM', 'Incident resolved'),
+  ],
+}
+const REPEATS_AND_A_FAILURE: Timeline = {
+  ...NO_TIMELINE, counts: { SOURCE: 1, AI: 0, PERSON: 0, PLATFORM: 1 },
+  entries: [
+    line('02:17:40', 'REPEATS', 'SOURCE', 'The same alert again, 6 time(s): Person at Gate 1',
+         { source_type: 'CCTV_AI', where: 'Gate 1', count: 6, until: '2026-10-05T02:21:10Z',
+           detail: 'Folded as repeats. Each is still an alert of its own.' }),
+    line('02:19:46', 'ACTION', 'PLATFORM', 'Could not dispatch the guard',
+         { result: 'FAILED', through: 'app.routers.dispatch.dispatch_guard',
+           detail: '409: This guard is already dispatched to another incident.' }),
+  ],
+}
+
 /** A site with no drone in the picture: nothing to ask, nothing asked. */
 const NO_DRONE: DronePicture = {
   situation_id: 'sit1', closed: false, licence: { ok: true, problem: null },
@@ -157,6 +198,7 @@ function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRA
               situation: SituationDetail = SITUATION) {
   asRole(role)
   vi.mocked(api.getSituationDrone).mockResolvedValue(drone)
+  vi.mocked(api.getTimeline).mockResolvedValue(NO_TIMELINE)
   vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
   vi.mocked(api.getSituation).mockResolvedValue(situation)
   vi.mocked(api.getRecommendations).mockResolvedValue(RECS)
@@ -490,6 +532,58 @@ describe('the situation view', () => {
       .toBeInTheDocument()
   })
 
+  it('tells the situation in order, and draws a source, the layer, a person and the platform each as itself', async () => {
+    open(OPERATOR)
+    vi.mocked(api.getTimeline).mockResolvedValue(TIMELINE)
+    const card = await screen.findByTestId('timeline')
+    const entries = await within(card).findAllByTestId('timeline-entry')
+    expect(entries.map((e) => e.getAttribute('data-actor'))).toEqual(
+      ['SOURCE', 'SOURCE', 'AI', 'AI', 'PERSON', 'PLATFORM', 'PERSON', 'PERSON', 'PLATFORM'])
+    // A source says which; the layer says it is the layer; a person is named; the platform says it acted.
+    expect(within(entries[0]).getByText('CCTV · Gate 1')).toBeInTheDocument()
+    expect(within(entries[1]).getByText('An access event at the door this camera watches, 4 s apart.')).toBeInTheDocument()
+    expect(within(entries[2]).getByText('AI-assisted')).toBeInTheDocument()
+    expect(within(entries[3]).getByText('AI suggestion — not a decision')).toBeInTheDocument()
+    expect(within(entries[4]).getByText('Priya · Supervisor')).toBeInTheDocument()
+    expect(within(entries[4]).getByText('Decided: dispatch a guard')).toBeInTheDocument()
+    expect(within(entries[5]).getByText('What the platform then did')).toBeInTheDocument()
+    expect(within(entries[5]).getByText('through app.routers.dispatch.dispatch_guard')).toBeInTheDocument()
+    expect(within(entries[6]).getByText('Tan Wei Ming · Guard · from the phone')).toBeInTheDocument()
+    expect(within(entries[8]).getByText('The incident’s own record')).toBeInTheDocument()
+    // The line of a suggestion carries nothing that marks a person; the line of a decision nothing that marks the layer.
+    expect(within(entries[3]).queryByText(/Priya|Supervisor|Decided/)).toBeNull()
+    expect(within(entries[4]).queryByText(/AI/)).toBeNull()
+    expect(within(card).getByText('The layer assessed or suggested (2)')).toBeInTheDocument()
+    expect(within(card).getByText('A person looked, decided or reported (3)')).toBeInTheDocument()
+    expect(within(card).getByText(/Each line is read from the record it describes/)).toBeInTheDocument()
+  })
+
+  it('folds repeats into one line with when the last was, and does not draw a failed step as done', async () => {
+    open(OPERATOR)
+    vi.mocked(api.getTimeline).mockResolvedValue(REPEATS_AND_A_FAILURE)
+    const entries = await within(await screen.findByTestId('timeline')).findAllByTestId('timeline-entry')
+    expect(within(entries[0]).getByText('The same alert again, 6 time(s): Person at Gate 1')).toBeInTheDocument()
+    expect(within(entries[0]).getByText(/^The last at .+\.$/)).toBeInTheDocument()
+    const failed = within(entries[1]).getByText('Could not dispatch the guard')
+    expect(failed).toHaveAttribute('data-result', 'FAILED')
+    expect(within(entries[1]).getByText('409: This guard is already dispatched to another incident.')).toBeInTheDocument()
+    expect(within(entries[1]).queryByText(/Guard dispatched/)).toBeNull()
+  })
+
+  it('an empty timeline says so, and one without suggestions says they are not shown', async () => {
+    const view = open(OPERATOR)
+    const card = await screen.findByTestId('timeline')
+    expect(await within(card).findByText('Nothing is recorded yet.')).toBeInTheDocument()
+    expect(within(card).queryByText(/not shown to your role/)).toBeNull()
+    view.unmount()
+    open(VIEWER)
+    vi.mocked(api.getTimeline).mockResolvedValue({
+      ...TIMELINE, suggestions_shown: false, entries: TIMELINE.entries.filter((e) => e.kind !== 'RECOMMENDATION') })
+    const again = await screen.findByTestId('timeline')
+    expect(await within(again).findByText('What the layer suggested is not shown to your role.')).toBeInTheDocument()
+    expect(within(again).queryByText('AI suggestion — not a decision')).toBeNull()
+  })
+
   it('a closed situation offers nothing more to decide', async () => {
     asRole(OPERATOR)
     vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
@@ -497,6 +591,7 @@ describe('the situation view', () => {
     vi.mocked(api.getRecommendations).mockResolvedValue(RECS)
     vi.mocked(api.getAuthority).mockResolvedValue(authority())
     vi.mocked(api.getSituationDrone).mockResolvedValue(NO_DRONE)
+    vi.mocked(api.getTimeline).mockResolvedValue(NO_TIMELINE)
     vi.mocked(api.getTrail).mockResolvedValue({ ...EMPTY_TRAIL, decision_status: 'RESOLVED', closed_at: '2026-10-05T02:30:00Z' })
     vi.mocked(api.recordReview).mockResolvedValue({ recorded: false, assessment_id: 'a1' })
     vi.mocked(api.getObservations).mockResolvedValue([])

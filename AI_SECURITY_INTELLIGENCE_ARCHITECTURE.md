@@ -1,6 +1,6 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–10 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–11 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
@@ -11,7 +11,8 @@ phone with reports from the ground (phase 9, `0138`), and drone and virtual
 patrol integration (phase 10, `0139`): a decision can ask a drone to look
 through the drone module's own functions, what the drone saw comes back as an
 event and the situation is assessed again, and what a virtual patrol recorded
-is read as evidence and context. **The
+is read as evidence and context; and the unified timeline (phase 11, no
+migration: it is read from the records the other phases keep). **The
 runner still does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
@@ -318,6 +319,48 @@ officer decides VERIFY_WITH_DRONE and says how ─► the drone module's own fun
 - No table of the drone module or of virtual patrol is written to by this
   layer, and none of their code was changed.
 
+## The timeline
+
+`backend/app/services/intel_timeline.py`. One situation, in the order it
+happened:
+
+```
+02:17:04  Person at Gate 1                          SOURCE    a camera reported
+02:17:08  Access denied at the rear door            SOURCE    a door reported
+02:18:02  AI-assisted assessment: … Risk HIGH (65)  AI        what the layer made of it
+02:18:06  AI suggests: dispatch a guard             AI        a suggestion — is_decision: false
+02:18:15  Decided: dispatch a guard                 PERSON    who, and that it followed the suggestion
+02:18:17  Guard dispatched                          PLATFORM  the step, and the function it went through
+02:24:31  Arrived                                   PERSON    reported from the ground
+02:27:10  Reported from the ground: …               PERSON
+02:28:00  Decided: resolve it                       PERSON    closed, with the reason
+02:28:00  Incident resolved                         PLATFORM
+```
+
+- **Nothing is stored for it.** Every entry is read from the record it
+  describes — an event and why it joined, an assessment, a set of suggestions,
+  a look at them, a decision, a second person's verdict, a step carried out, a
+  report from the ground, the incident's own times — and carries a reference
+  back to that record. The timeline cannot say what the records do not.
+- **Every entry says whose it is**: `SOURCE`, `AI`, `PERSON` or `PLATFORM`,
+  decided by which table the row came from and never guessed. Every line of
+  the layer's begins "AI"; a suggestion says `is_decision: false`; a decision
+  names the person; a step names the existing function it went through.
+- **A failure is not worded as done.** "Could not dispatch the guard", with the
+  reason the function gave.
+- **Repeats are one line**: "The same alert again, 11 time(s)", with the first
+  and the last time. The alerts themselves are all still there.
+- **Nothing is said twice.** An incident's own times are told only where no
+  step from a decision already tells them — an arrival recorded on the
+  existing dispatch screen, an escalation by the platform's own timer.
+- **A reader who may not see suggestions gets the same timeline without them**,
+  and is told that they are left out.
+
+`build()` is pure — the order and the words are tests with nothing running —
+and `load()` only reads. On the web it is the last card of a situation, each
+actor drawn as itself: hollow and dashed violet for the layer, solid green for
+a person, a square for the platform.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -388,6 +431,7 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations` | `intel:read` | Situations with their latest risk and where they stand, the one heard from most recently first, or the highest risk first with `sort=risk`. Filters: `status`, `site_id`, `severity`, `risk_level`, `decision_status`, `open`, `source_type`, `from`, `to` |
 | GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, its latest assessment with the reasons behind it, where it stands, and what stands behind any incident |
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
+| GET | `/security-intelligence/situations/{situation_id}/timeline` | `intel:read` | The situation in the order it happened: what sources reported, what the layer assessed and suggested, what people looked at, decided and reported, what the platform then did — each entry with whose it is and the record it was read from. Suggestions are left out for a caller without `intel:recommendation:read` |
 | GET | `/security-intelligence/situations/{situation_id}/recommendations` | `intel:read` `intel:recommendation:read` | What the layer suggests doing, surest first, with the reason for each and why any cannot be done now. Always `is_decision: false` |
 | POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested |
 | GET | `/security-intelligence/my-situations` | `intel:read` | The open situations in front of the caller; for a guard, what they were dispatched to and their shift's site where the policy lets a guard decide |
@@ -586,13 +630,23 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (31): the screens' claims above, and
+`frontend/src/pages/intel/intel.test.tsx` (34): the screens' claims above — the
+timeline drawing a source, the layer, a person and the platform each as itself — and
 since phase 10: which flight holds or which mission starts is the officer's
 choice and the layer's never; what was asked of a drone is drawn as a person's
 act with what came back; an assessment made again since the last decision is
 said, with the decision standing; a patrol's finding is shown as recorded.
 
 `backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`backend/tests/test_intel_timeline.py` (17): the specification's own timeline
+told in order with each line's actor; ties put as cause before effect; repeats
+folded; what the layer said never worded or marked as a decision; a proposal,
+its verdict and its steps as three lines by two people; a failed step not
+worded as done; the incident's own times told once; then, from real records
+through the API, a situation decided, carried out, reported on and closed read
+back as one sequence; a viewer's timeline without suggestions; another tenant
+and another site refused; and that reading it changes no row anywhere.
 
 `backend/tests/test_intel_drone.py` (33): see *Asking a drone* in
 `AI_DECISION_WORKFLOW.md`. Real simulated flights asked to hold and to launch
@@ -619,9 +673,12 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-The unified timeline (11) · evidence and summaries (12) ·
+Evidence and summaries (12) ·
 the dashboard and site security score (13) · feedback (14) · platform health for
 the vendor, the Helm deployment and final validation (15).
+
+The timeline is on the web. The phone shows a situation's events, suggestions,
+decisions and reports under their own headings, not as one sequence.
 
 Of drones, two things are deliberately not built. **Sending a drone to a place**
 — the installed providers cannot be re-tasked in flight, so a flight holds where
@@ -631,4 +688,4 @@ so there is none here.
 
 The screens show evidence as references so far — the events, the alerts behind
 them, and the cameras to open. Snapshots, clips and recordings beside them come
-with phase 12, and the single timeline with phase 11.
+with phase 12.
