@@ -10,6 +10,12 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # The default rate limit on reads, per caller and per route — see
+    # dependencies/rate_limit.py for what the numbers are measured against.
+    # The second is for video, live overlays and stored pictures.
+    API_READ_RATE_LIMIT: str = "300/minute"
+    API_MEDIA_RATE_LIMIT: str = "1200/minute"
+
     JWT_SECRET_KEY_CURRENT: str = "change_me_dev_only"
     JWT_SECRET_KEY_PREVIOUS: str | None = None
     JWT_ACTIVE_KID: str = "2026-06"
