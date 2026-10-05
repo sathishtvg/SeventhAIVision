@@ -615,6 +615,23 @@ def test_the_runner_imports_nothing_that_could_take_a_security_action():
         assert imports <= MAY_IMPORT, f"{path.name} imports {sorted(imports - MAY_IMPORT)}"
 
 
+def test_nothing_the_runner_imports_can_reach_the_code_that_acts():
+    """Decisions and actions belong to the API, on a person's request. Followed
+    through every import, the runner never arrives at either."""
+    reached, queue = set(), ["app.intelligence_main"]
+    while queue:
+        module = queue.pop()
+        if module in reached:
+            continue
+        reached.add(module)
+        path = APP.parent / (module.replace(".", "/") + ".py")
+        if path.exists() and module.startswith("app.") and "intel" in module:
+            queue.extend(_app_imports(path))
+    assert "app.services.intel_recommend" in reached, "the walk did not follow the runner's imports"
+    assert not {"app.services.intel_actions", "app.services.intel_decisions", "app.routers.security_decisions",
+                "app.routers.alerts", "app.routers.incidents", "app.routers.dispatch"} & reached
+
+
 def test_the_runner_writes_only_its_own_tables():
     # Not "ON CONFLICT ... DO UPDATE SET", and not the row lock "FOR UPDATE SKIP LOCKED".
     writes = re.compile(r"\b(INSERT\s+INTO|(?<!DO )(?<!FOR )UPDATE|DELETE\s+FROM)\s+([a-z_]+)", re.I)

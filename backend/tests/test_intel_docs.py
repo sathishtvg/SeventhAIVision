@@ -9,14 +9,17 @@ suites.
 """
 from __future__ import annotations
 
+import importlib
 import inspect
+import json
 import re
+import uuid
 
 import pytest
 import yaml
 
 from app.main import app
-from app.services import intel_correlation, intel_recommend, intel_risk
+from app.services import intel_actions, intel_correlation, intel_decisions, intel_recommend, intel_risk
 from tests._repo import REPO_ROOT, requires_repo_tree
 
 pytestmark = requires_repo_tree
@@ -25,6 +28,7 @@ ARCHITECTURE = REPO_ROOT / "AI_SECURITY_INTELLIGENCE_ARCHITECTURE.md"
 CORRELATION = REPO_ROOT / "AI_EVENT_CORRELATION.md"
 RISK = REPO_ROOT / "AI_RISK_ENGINE.md"
 WORKFLOW = REPO_ROOT / "AI_DECISION_WORKFLOW.md"
+DECISION_MODEL = REPO_ROOT / "AI_HUMAN_DECISION_MODEL.md"
 PREFIX = "/security-intelligence"
 
 
@@ -354,3 +358,122 @@ def test_the_workflow_document_states_priorities_and_adjustments_as_coded():
                  incident={"id": "i", "status": "open"})
     assert "`ESCALATE` is added at 0.70" in text_ and conf("ESCALATE", **stuck) == "0.70"
     assert "`MONITOR` at 0.60" in text_ and conf("MONITOR", {**base, "risk_level": "MEDIUM"}, **stuck) == "0.60"
+
+
+# ─── Decisions and actions, as written and as coded ──────────────────────────
+
+def _cells(document, heading: str, width: int) -> list[list[str]]:
+    """The rows of the first table under a heading, as stripped cells."""
+    section = document.read_text(encoding="utf-8").split(f"\n## {heading}\n", 1)[1].split("\n## ", 1)[0]
+    rows = []
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.split("|")][1:-1]
+        if len(cells) == width and not (cells[0] and set(cells[0]) <= {"-"}) and line.startswith("|"):
+            rows.append(cells)
+    return rows[1:]      # without the header
+
+
+def test_the_workflow_document_says_what_each_decision_carries_out_as_the_planner_does():
+    alerts = [{"id": uuid.uuid4(), "status": "open"}, {"id": uuid.uuid4(), "status": "acknowledged"}]
+    incident = {"id": uuid.uuid4(), "status": "open", "is_auto_created": True}
+    situation = {"closed_at": None, "incident_confirmed_at": None}
+    everything = {"intel:decide", "intel:override", "alert:acknowledge", "incident:create", "incident:dispatch",
+                  "incident:assign", "incident:resolve"}
+    rows = {r[0].strip("`"): r[1:] for r in _cells(WORKFLOW, "What each decision carries out", 3)}
+    assert set(rows) == set(intel_decisions.DECISIONS) and len(rows) == len(intel_decisions.DECISIONS), \
+        "every decision the code has, once"
+    for decision, written in rows.items():
+        for cell, has_incident in zip(written, (None, incident)):
+            f = intel_decisions.Facts(assessment={"id": uuid.uuid4(), "risk_level": "LOW", "risk_score": 20},
+                                      current=[], alerts=alerts, incident=has_incident)
+            c = intel_decisions.check(decision, situation=situation, f=f, mine=everything, roles=None, role_id=2)
+            if cell.startswith("refused"):
+                assert c.refusal is not None and c.refusal[0] == 409, f"{decision}: the document says refused"
+                continue
+            assert c.refusal is None, f"{decision}: refused ({c.refusal}), the document says {cell}"
+            assert [s.action for s in c.steps] == re.findall(r"`([A-Z_]+)`", cell), f"{decision}: {cell}"
+            assert (cell == "—") == (c.steps == [])
+
+
+def test_the_workflow_document_names_the_function_and_permission_each_step_goes_through():
+    rows = {r[0].strip("`"): r[1:] for r in _cells(WORKFLOW, "Through the platform's own functions", 3)}
+    assert set(rows) == set(intel_actions.THROUGH) | {"INCIDENT_CONFIRM"}
+    # The permission the planner asks for each step, gathered from every decision it can plan.
+    alerts = [{"id": uuid.uuid4(), "status": "open"}]
+    needs: dict = {}
+    for decision in intel_decisions.DECISIONS:
+        for incident in (None, {"id": uuid.uuid4(), "status": "open"}):
+            for step in intel_decisions.plan(decision, alerts=alerts, incident=incident):
+                needs[step.action] = step.permission
+    assert set(needs) == set(rows), "a step the planner never plans, or plans without the document listing it"
+    for step, (through, needed) in rows.items():
+        if step == "INCIDENT_CONFIRM":
+            assert needs[step] is None and through.startswith("—") and needed == "—"
+            continue
+        path = through.strip("`")
+        assert path == intel_actions.THROUGH[step] and needed.strip("`") == needs[step]
+        module, name = path.rsplit(".", 1)
+        assert callable(getattr(importlib.import_module(module), name)), f"{path} does not exist"
+    results = {r[0].strip("`") for r in _cells(WORKFLOW, "How a step ends", 2)}
+    migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0137_security_decisions.py").read_text("utf-8")
+    assert results == set(re.findall(r"'([A-Z_]+)'", re.search(r'RESULTS = "(.*?)"', migration).group(1)))
+
+
+def _migration_set(name: str) -> set[str]:
+    migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0137_security_decisions.py").read_text("utf-8")
+    block = re.search(rf"^{name} = \(?(.*?)\)?\n(?=\S)", migration, re.S | re.M).group(1)
+    return set(re.findall(r"'([A-Z_]+)'", block))
+
+
+def test_the_database_and_the_code_agree_about_decisions_reasons_steps_and_statuses():
+    assert _migration_set("DECISIONS") == set(intel_decisions.DECISIONS)
+    assert _migration_set("BASES") == set(intel_decisions.BASES)
+    assert _migration_set("REASONS") == set(intel_decisions.REASONS)
+    assert _migration_set("STATUSES") == set(intel_decisions.STATUSES)
+    assert _migration_set("ACTIONS") == set(intel_actions.THROUGH) | {"INCIDENT_CONFIRM", "NONE"}
+    assert _migration_set("RISK_LEVELS") == set(intel_risk.LEVELS)
+
+
+def test_the_decision_model_document_lists_the_reasons_bases_and_statuses_the_code_has():
+    reasons = {r[0].strip("`"): r[1] for r in _cells(DECISION_MODEL, "Override", 2) if r[0].strip("`") in
+               intel_decisions.REASONS}
+    assert set(reasons) == set(intel_decisions.REASONS)
+    for code, label in intel_decisions.REASONS.items():
+        assert reasons[code].startswith(label), f"{code}: the code says “{label}”"
+    bases = {r[0].strip("`") for r in _cells(DECISION_MODEL, "Override", 2)} & set(intel_decisions.BASES)
+    assert bases == set(intel_decisions.BASES)
+    statuses = [r[0].strip("`") for r in _cells(DECISION_MODEL, "Where a situation stands", 2)]
+    assert statuses == list(intel_decisions.STATUSES)
+    states = {r[0].strip("`") for r in _cells(DECISION_MODEL, "Incidents: three things that are not the same", 2)}
+    assert states == {"NONE", "PRELIMINARY", "CONFIRMED"}
+
+
+def test_the_decision_model_document_gives_the_default_and_the_three_policies_as_they_behave():
+    section = DECISION_MODEL.read_text(encoding="utf-8").split("\n## The decision policy\n", 1)[1].split("\n## ", 1)[0]
+    blocks = [json.loads(b) for b in re.findall(r"```json\n(.*?)\n```", section, re.S)]
+    assert blocks[1] == intel_decisions.DEFAULT_POLICY, "the default as written is the default as coded"
+    intel_decisions.validate_policy(blocks[0]["roles"])
+    policies = {r[0]: json.loads(r[2].strip("`")) for r in _cells(DECISION_MODEL, "The decision policy", 3)}
+    assert set(policies) == {"A", "B", "C"}
+    guard = {name: [intel_decisions.authority(roles, 5, level, "INVESTIGATE")[0] for level in intel_risk.LEVELS]
+             for name, roles in policies.items()}
+    for roles in policies.values():
+        intel_decisions.validate_policy(roles)
+    assert guard["A"] == [None] * 5, "the command centre controls: a guard decides nothing"
+    assert guard["B"] == ["ALONE", "ALONE", "ALONE", None, None], "a guard handles low and medium"
+    assert guard["C"] == ["ALONE", "ALONE", "ALONE", "WITH_APPROVAL", "WITH_APPROVAL"], "high risk needs approval"
+    for name, role in intel_decisions.POLICY_ROLES.items():
+        assert f"{role.lower()} (`{name}`)" in section
+
+
+def test_the_decision_model_document_lists_every_audit_entry_the_code_writes():
+    written = set()
+    for path in ("app/routers/security_decisions.py", "app/services/intel_actions.py"):
+        source = (REPO_ROOT / "backend" / path).read_text(encoding="utf-8")
+        written |= set(re.findall(r'"(intel\.[a-z_.]+)"', source))
+        written |= {m + "<step>" for m in re.findall(r'f"(intel\.action\.)\{', source)}
+        if re.search(r"f\"intel\.decision\.\{'approve' if", source):
+            written |= {"intel.decision.approve", "intel.decision.reject"}
+    assert len(written) >= 7, f"found too few audit entries in the code to compare: {sorted(written)}"
+    said = DECISION_MODEL.read_text(encoding="utf-8").split("\n## Audit\n", 1)[1].split("\n## ", 1)[0]
+    assert [name for name in sorted(written) if f"`{name}`" not in said] == []

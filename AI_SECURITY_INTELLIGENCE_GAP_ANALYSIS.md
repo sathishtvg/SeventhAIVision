@@ -524,6 +524,14 @@ self-acting behaviours in §2.7 left exactly as they are.
   and recommendation generated (system actor), recommendation viewed, accepted,
   rejected, override reason, guard assigned, escalation, incident opened or
   resolved, drone verification approved, evidence opened or exported.
+
+  *As built (phases 5–7):* everything a person does is in that log.
+  **Assessments and recommendations being generated are not**: the record of
+  each is its own row, which the application's database role can add but not
+  alter, and each decision's log entry names the assessment and suggestion it
+  was made on. Writing them to the log would have meant the runner writing a
+  table that is not the layer's own, and the rule that it writes only
+  `security_*` tables was kept instead.
 - **Evidence access** from a situation goes through the existing evidence
   endpoints and their chain-of-custody log; the new layer stores references.
 - **No free text from an event is executed or interpolated**; SQL uses bind
