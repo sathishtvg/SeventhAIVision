@@ -40,7 +40,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_audit, intel_config, intel_context, intel_decisions, intel_runner
+from app.services import intel_audit, intel_config, intel_context, intel_decisions, intel_runner, intel_timeline
 from app.services.intel_events import SEVERITIES, SOURCE_TYPES
 
 router = APIRouter(prefix="/api/v1/security-intelligence", tags=["security-intelligence"],
@@ -571,6 +571,40 @@ async def list_assessments(
         "SELECT * FROM security_assessments WHERE situation_id = CAST(:id AS uuid) ORDER BY sequence"),
         {"id": str(situation_id)})).mappings().all()
     return [_assessment(r, with_context=False) for r in rows]
+
+
+# ─── The timeline ────────────────────────────────────────────────────────────
+
+@router.get("/situations/{situation_id}/timeline")
+async def get_timeline(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """One situation, in the order it happened: what the sources reported, what
+    the layer made of it and suggested, what people looked at, decided and
+    reported, what the platform then did, and how it ended.
+
+    Nothing is stored for the timeline. Each entry is read from the record it
+    describes and points back at it (`ref`), and says whose it is (`actor`):
+    `SOURCE`, `AI`, `PERSON` or `PLATFORM`. What the layer suggested carries
+    `is_decision: false`; what a person decided carries `who`; what was
+    carried out names the function it went `through` and how it ended.
+
+    Repeats of one alert are one entry with a `count`. A caller who may not
+    read suggestions gets the same timeline without them, and
+    `suggestions_shown` says so."""
+    row = (await db.execute(text(
+        "SELECT id, situation_number, site_id, started_at, closed_at, decision_status, incident_id "
+        "  FROM security_situations WHERE id = CAST(:id AS uuid)"), {"id": str(situation_id)})).mappings().first()
+    if row is None or not is_site_allowed(allowed, row["site_id"]):
+        raise HTTPException(404, "Situation not found")
+    shown = "intel:recommendation:read" in await intel_decisions.permissions_of(db, token.role_id)
+    entries = await intel_timeline.load(db, dict(row), with_suggestions=shown)
+    return {"situation_id": row["id"], "situation_number": row["situation_number"], "started_at": row["started_at"],
+            "closed_at": row["closed_at"], "decision_status": row["decision_status"], "suggestions_shown": shown,
+            "counts": intel_timeline.counts(entries), "entries": entries}
 
 
 # ─── Recommendations ─────────────────────────────────────────────────────────

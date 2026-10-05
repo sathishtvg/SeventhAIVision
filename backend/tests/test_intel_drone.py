@@ -549,6 +549,23 @@ async def test_an_officer_asks_the_flight_to_look_again_and_what_it_sees_comes_b
     assert asked["look"]["status"] == "COMPLETED" and asked["look"]["result"]["detections_added"] == 3
     assert asked["flight"] is None and picture["other_looks"] == []
 
+    # And the timeline tells it as it was: a person decided, the platform asked
+    # the flight, the drone's look came back as a source's report, and the layer
+    # assessed again. (The simulated flight's clock runs ahead of the real one
+    # the decision was stamped by, so only what must be adjacent is held to be.)
+    async with _client() as c:
+        told = (await c.get(f"{BASE}/situations/{s['id']}/timeline", headers=w["h_op"])).json()["entries"]
+    i = next(n for n, x in enumerate(told) if x["kind"] == "DECISION")
+    assert (told[i]["actor"], told[i]["title"]) == ("PERSON", "Decided: verify with a drone")
+    assert (told[i + 1]["actor"], told[i + 1]["title"]) == ("PLATFORM", "Flight asked to hold and look again")
+    assert told[i + 1]["through"] == "app.routers.drone_operations.verify_with_drone"
+    looked = [x for x in told if x["kind"] == "EVENT" and x["title"].startswith("Drone looked again: 3 more")]
+    assert len(looked) == 1 and looked[0]["actor"] == "SOURCE" and looked[0]["source_type"] == "DRONE_PATROL"
+    assert looked[0]["detail"].startswith("A person asked the drone to hold for 10 s and look again")
+    assert [x["sequence"] for x in told if x["kind"] == "ASSESSMENT"] == [1, 2]
+    assert len([x for x in told if x["kind"] == "RECOMMENDATION"]) == 2 and all(
+        x["is_decision"] is False for x in told if x["kind"] == "RECOMMENDATION")
+
 
 @pytest.mark.asyncio
 async def test_a_look_that_sees_nothing_more_comes_back_too_and_lowers_the_risk_a_little():

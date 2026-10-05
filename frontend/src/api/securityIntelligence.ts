@@ -352,6 +352,55 @@ export const approveDecision = (decisionId: string, note?: string) =>
 export const rejectDecision = (decisionId: string, note: string) =>
   apiClient.post<Decision>(`${BASE}/decisions/${decisionId}/reject`, { note }).then((r) => r.data)
 
+// ── The timeline: one situation, in the order it happened ────────────────────
+
+/** Whose an entry is. It follows from the record the entry was read from; it is never guessed. */
+export type TimelineActor = 'SOURCE' | 'AI' | 'PERSON' | 'PLATFORM'
+export type TimelineKind =
+  | 'EVENT' | 'REPEATS' | 'ASSESSMENT' | 'RECOMMENDATION' | 'REVIEW' | 'DECISION' | 'APPROVAL' | 'ACTION'
+  | 'OBSERVATION' | 'INCIDENT'
+
+export interface TimelineEntry {
+  at: string
+  kind: TimelineKind
+  actor: TimelineActor
+  title: string
+  detail: string | null
+  /** The person, for an entry that is a person's. */
+  who: Person | null
+  /** The record this entry was read from. */
+  ref: { type: 'event' | 'assessment' | 'recommendation' | 'decision' | 'observation' | 'incident'; id: string }
+  source_type?: SourceType
+  where?: string | null
+  /** For repeats folded into one line: how many, and when the last was. */
+  count?: number
+  until?: string
+  /** Always false, and only on what the layer suggested. */
+  is_decision?: false
+  action?: string
+  result?: 'OK' | 'FAILED' | 'SKIPPED' | 'RECORDED'
+  /** The existing function a step went through. */
+  through?: string | null
+  via?: string | null
+  risk_level?: RiskLevel
+  risk_score?: number
+}
+
+export interface Timeline {
+  situation_id: string
+  situation_number: string
+  started_at: string
+  closed_at: string | null
+  decision_status: DecisionStatus
+  /** False for a reader who may not see what the layer suggested: those entries are left out. */
+  suggestions_shown: boolean
+  counts: Record<TimelineActor, number>
+  entries: TimelineEntry[]
+}
+
+export const getTimeline = (id: string) =>
+  apiClient.get<Timeline>(`${BASE}/situations/${id}/timeline`).then((r) => r.data)
+
 // ── Drones: what one could be asked, and what came back ──────────────────────
 
 export interface DroneSighting {

@@ -12,6 +12,8 @@
  * A drone looks only when a person decides it should and says how — hold the
  * flight that saw it, or start a mission the site already has. What it then
  * sees comes back as an event here, and the situation is assessed again.
+ *
+ * And at the foot of the left column, all of it in one sequence: the timeline.
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -46,6 +48,7 @@ import {
   AI_COLOR, DECISION_LABEL, HUMAN_COLOR, INCIDENT_LABEL, LOOK_LABEL, ROLE_LABEL, SOURCE_LABEL, STATUS_LABEL,
   STEP_LABEL, fmt, fmtTime, newClientRef, pct, pretty, useIntelRealtime,
 } from '@/components/intel/intelFormat'
+import { SituationTimeline } from '@/components/intel/SituationTimeline'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
 
 export default function Situation() {
@@ -64,7 +67,7 @@ export default function Situation() {
     queryKey: ['intel-drone', id], queryFn: () => getSituationDrone(id!),
     refetchInterval: (q) => (lookingNow(q.state.data) ? 5_000 : 20_000) })
   useIntelRealtime([['intel-situation', id], ['intel-recommendations', id], ['intel-trail', id], ['intel-authority', id],
-                    ['intel-observations', id], ['intel-drone', id]],
+                    ['intel-observations', id], ['intel-drone', id], ['intel-timeline', id]],
                    (_t, p) => p.situation_id === id || p.id === id)
 
   // That this officer has looked at what was suggested — once per assessment.
@@ -95,6 +98,7 @@ export default function Situation() {
           <Events situation={situation} />
           <Cameras situation={situation} recs={recs} />
           <Drones picture={drone} />
+          <SituationTimeline situationId={situation.id} />
         </Grid>
         <Grid size={{ xs: 12, lg: 5 }}>
           {situation.reassessed_since_decision && (
@@ -621,7 +625,8 @@ function DecideDialog({ situationId, choice, authority, seenAssessmentId, drone,
       hold_seconds: how.startsWith('hold:') ? hold : undefined,
       drone_mission_id: how.startsWith('launch:') ? how.slice(7) : undefined }),
     onSuccess: () => {
-      ['intel-situation', 'intel-trail', 'intel-authority', 'intel-recommendations', 'intel-drone'].forEach((k) =>
+      ['intel-situation', 'intel-trail', 'intel-authority', 'intel-recommendations', 'intel-drone',
+       'intel-timeline'].forEach((k) =>
         qc.invalidateQueries({ queryKey: [k, situationId] }))
       qc.invalidateQueries({ queryKey: ['intel-situations'] })
       onClose()
