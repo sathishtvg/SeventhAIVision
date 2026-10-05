@@ -496,3 +496,23 @@ def test_the_decision_model_document_lists_every_audit_entry_the_code_writes():
     assert len(written) >= 7, f"found too few audit entries in the code to compare: {sorted(written)}"
     said = DECISION_MODEL.read_text(encoding="utf-8").split("\n## Audit\n", 1)[1].split("\n## ", 1)[0]
     assert [name for name in sorted(written) if f"`{name}`" not in said] == []
+
+
+def test_the_architecture_document_states_the_score_and_the_findings_as_the_code_counts_them():
+    from app.services import intel_insight
+
+    heading = "The site security score and daily intelligence"
+    rules = {r[0].strip("`"): r[1:] for r in _cells(ARCHITECTURE, heading, 4)}
+    assert set(rules) == set(intel_insight.FACTORS), "every factor the code counts, and no other"
+    for factor, each, cap in intel_insight.SCORE_RULES:
+        counts, written_each, written_cap = rules[factor]
+        assert counts == intel_insight.EACH[factor], factor
+        assert (int(written_each), int(written_cap)) == (each, cap), factor
+    pairs = {r[0].strip("`"): r[1] for r in _cells(ARCHITECTURE, heading, 2) if r[0].startswith("`")}
+    bands = dict(intel_insight.BANDS)
+    assert {k: int(v) for k, v in pairs.items() if k in bands} == bands
+    coded = set(re.findall(r'add\("([A-Z_]+)"', inspect.getsource(intel_insight.findings)))
+    assert {k for k in pairs if k not in bands} == coded and len(coded) == 8, "every finding the code can make"
+    text_ = ARCHITECTURE.read_text(encoding="utf-8")
+    assert "`intel.score_weights`" in text_ and "fewer than five" in text_
+    assert intel_insight.FLOOR == 5 and intel_insight.REPEATED_AT == 3

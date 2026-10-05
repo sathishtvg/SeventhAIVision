@@ -84,6 +84,14 @@ export function fmtTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+/** A length of time in the words a person would use, or that there is none to give. */
+export function duration(seconds: number | null | undefined): string {
+  if (seconds == null) return 'not enough to say'
+  if (seconds < 90) return `${Math.round(seconds)} s`
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min`
+  return `${(seconds / 3600).toFixed(1)} h`
+}
+
 /** A confidence as a percentage, or a dash when the source gave none. */
 export const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 

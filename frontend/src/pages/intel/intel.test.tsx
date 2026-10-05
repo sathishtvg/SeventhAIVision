@@ -7,15 +7,17 @@ import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/securityIntelligence'
 import type {
-  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, EvidenceItem, Recommendations,
-  SituationDetail, SituationEvidence, SituationSummary, Timeline, TimelineEntry, Trail,
+  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, EvidenceItem, Insight as InsightData,
+  Recommendations, SiteScores, SituationDetail, SituationEvidence, SituationSummary, Timeline, TimelineEntry, Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
+import { duration } from '@/components/intel/intelFormat'
 import Situations from './Situations'
 import Situation from './Situation'
 import Decisions from './Decisions'
 import IntelSetup from './IntelSetup'
+import Insight from './Insight'
 
 vi.mock('@/components/common/HlsPlayer', () => ({ HlsPlayer: () => <div data-testid="hls" /> }))
 vi.mock('@/store/auth', () => ({ useAuthStore: vi.fn() }))
@@ -840,5 +842,124 @@ describe('setup', () => {
     expect(screen.queryByRole('button', { name: 'Save the policy' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Describe' })).toBeNull()
     expect(await screen.findByRole('switch', { name: 'Off for this organisation' })).toBeDisabled()
+  })
+})
+
+
+describe('the insight page', () => {
+  const SCORES: SiteScores = {
+    days: 7,
+    rules: [{ factor: 'OPEN_INCIDENTS', points_each: 5, at_most: 20, weight: 1, counts: 'each unresolved incident' }],
+    bands: [{ band: 'GOOD', from: 85 }, { band: 'FAIR', from: 65 }, { band: 'NEEDS_ATTENTION', from: 40 }, { band: 'POOR', from: 0 }],
+    sites: [
+      { site_id: 's1', site_name: 'Factory A', score: 54, out_of: 100, band: 'NEEDS_ATTENTION', note: null,
+        deductions: [
+          { factor: 'OPEN_INCIDENTS', count: 3, points: -15, detail: '3 unresolved incident(s).', capped: false },
+          { factor: 'CAMERAS_OFFLINE', count: 5, points: -20, detail: '5 camera(s) not sending.', capped: true },
+          { factor: 'PATROLS_MISSED', count: 2, points: -6, detail: '2 patrol(s) missed or failed in the period.', capped: false },
+          { factor: 'HIGH_RISK_OPEN', count: 1, points: -5, detail: '1 open situation(s) assessed HIGH or CRITICAL.', capped: false }],
+        went_well: ['5 drone patrol(s) completed.'],
+        basis: { cameras: 12, situations: 9, incidents: 4, virtual_patrols: 3, drone_patrols: 5 } },
+      { site_id: 's2', site_name: 'Factory B', score: 100, out_of: 100, band: 'NOTHING_RECORDED', deductions: [], went_well: [],
+        basis: { cameras: 0, situations: 0, incidents: 0, virtual_patrols: 0, drone_patrols: 0 },
+        note: 'Nothing was recorded for this site in the period — no cameras, situations, incidents or patrols. '
+          + 'The score says that nothing was found wrong, not that nothing is.' }],
+  }
+  const COUNTS: InsightData['counts'] = {
+    timezone: 'Asia/Singapore', situations: 10, events: 31, repeats_folded: 12, still_open: 3, closed: 7,
+    false_positive: 4, resolved: 3, by_risk: { CRITICAL: 1, HIGH: 2, MEDIUM: 5, LOW: 2, NOT_ASSESSED: 0 },
+    by_source: { CCTV_AI: 20, DRONE_PATROL: 6, ACCESS_CONTROL: 5 }, by_hour: { 1: 4, 2: 4, 14: 2 },
+    locations: [{ name: 'Rear perimeter', camera_id: 'c7', situations: 7 }, { name: 'Gate 1', camera_id: 'c1', situations: 3 }],
+    vehicles: [{ plate: 'SGX1234A', situations: 4 }], persons: [{ watchlist_entry_id: 'w1', situations: 2 }],
+    decisions: 9, decided: 8, followed: 5, overrides: 3, median_seconds_to_decide: 1500, guard_arrivals: 0,
+    median_seconds_to_arrive: null, offline_names: ['Dock 4'], cameras: 12, cameras_offline: 1, high_risk_open: 1,
+    unattended: 1, patrols_missed: 2, virtual_patrols: 3, drone_patrols: 5,
+  }
+  const INSIGHT: InsightData = {
+    period: { days: 7, from: '2026-09-28T00:00:00Z', to: '2026-10-05T00:00:00Z', timezone: 'Asia/Singapore' },
+    site: null, counts: COUNTS, is_advisory: true, score: null,
+    findings: [{ code: 'CONCENTRATED_PLACE', is_advisory: true, is_decision: false,
+                 finding: 'Rear perimeter is where 70% of the situations of the last 7 day(s) began (7 of 10).',
+                 consider: 'Review what that camera covers and the rule that raises its alerts, and whether the place needs more patrols.',
+                 rests_on: { place: 'Rear perimeter', situations: 7, of: 10 } }],
+  }
+
+  function openInsight(insight: InsightData = INSIGHT, scores: SiteScores = SCORES) {
+    asRole(SUPERVISOR)
+    vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
+    vi.mocked(api.getSiteScores).mockResolvedValue(scores)
+    vi.mocked(api.getInsight).mockResolvedValue(insight)
+    return renderAt('/security-insight', '/security-insight', <Insight />)
+  }
+
+  it('shows each site’s score with every point taken off as a line, and the lines add up', async () => {
+    openInsight()
+    const cards = await screen.findAllByTestId('site-score')
+    expect(cards).toHaveLength(2)
+    expect(within(cards[0]).getByText('Factory A')).toBeInTheDocument()
+    expect(within(cards[0]).getByText('Needs attention')).toBeInTheDocument()
+    const lines = within(cards[0]).getAllByTestId('score-line')
+    expect(lines).toHaveLength(4)
+    expect(within(lines[1]).getByText('5 camera(s) not sending.')).toBeInTheDocument()
+    expect(within(lines[1]).getByText('-20 (the most this can take)')).toBeInTheDocument()
+    // What the screen shows is what the score is made of: 100 less the lines.
+    const shown = SCORES.sites[0].deductions.reduce((sum, d) => sum + d.points, 100)
+    expect(shown).toBe(SCORES.sites[0].score)
+    expect(within(cards[0]).getByText('54')).toBeInTheDocument()
+    expect(within(cards[0]).getByText('✓ 5 drone patrol(s) completed.')).toBeInTheDocument()
+    expect(screen.getByText(/it is not a prediction, and not a grade of anybody/)).toBeInTheDocument()
+  })
+
+  it('does not let a hundred from no records read as secure', async () => {
+    openInsight()
+    const cards = await screen.findAllByTestId('site-score')
+    expect(within(cards[1]).getByText('100')).toBeInTheDocument()
+    expect(within(cards[1]).getByText('Nothing took points off.')).toBeInTheDocument()
+    expect(within(cards[1]).getByText('Nothing recorded')).toBeInTheDocument()
+    expect(within(cards[1]).queryByText('Good')).toBeNull()
+    expect(within(cards[1]).getByText(/The score says that nothing was found wrong, not that nothing is\./)).toBeInTheDocument()
+  })
+
+  it('draws a finding as AI-assisted advice with what a person might consider, never as a decision', async () => {
+    openInsight()
+    const finding = await screen.findByTestId('finding')
+    expect(within(finding).getByText('AI-assisted finding — advice, not a decision')).toBeInTheDocument()
+    expect(within(finding).getByText(/Rear perimeter is where 70% of the situations/)).toBeInTheDocument()
+    expect(within(finding).getByText(/^To consider: Review what that camera covers/)).toBeInTheDocument()
+    expect(finding.querySelector('button')).toBeNull()               // nothing on it can be pressed
+    expect(screen.queryByTestId('human-decision')).toBeNull()
+    expect(screen.getByText(/A rule about a share stays silent on fewer than five\./)).toBeInTheDocument()
+  })
+
+  it('says so when nothing stands out, and when there is too little to give a time', async () => {
+    openInsight({ ...INSIGHT, findings: [], counts: { ...COUNTS, median_seconds_to_decide: null, decided: 0 } })
+    expect(await screen.findByText('Nothing in the period stands out by the rules this page applies.')).toBeInTheDocument()
+    const tiles = await screen.findAllByTestId('insight-tile')
+    const decide = tiles.find((t) => within(t).queryByText('To first decision'))!
+    expect(within(decide).getByText('not enough to say')).toBeInTheDocument()
+    expect(duration(45)).toBe('45 s')
+    expect(duration(1500)).toBe('25 min')
+    expect(duration(9000)).toBe('2.5 h')
+    expect(duration(null)).toBe('not enough to say')
+  })
+
+  it('names a number plate and counts a watchlist entry, and names nobody', async () => {
+    openInsight()
+    expect(await screen.findByText('Plate SGX1234A')).toBeInTheDocument()
+    expect(screen.getByText(/1 watchlist entry was part of more than one situation\./)).toBeInTheDocument()
+    expect(screen.getByText(/A person nobody identified is not counted as anybody, and nobody is named here\./)).toBeInTheDocument()
+    expect(screen.queryByText('w1')).toBeNull()
+  })
+
+  it('asks again for the site and the period a person chooses', async () => {
+    openInsight()
+    const cards = await screen.findAllByTestId('site-score')
+    await waitFor(() => expect(api.getInsight).toHaveBeenCalledWith({ site_id: undefined, days: 7 }))
+    fireEvent.click(cards[0])
+    await waitFor(() => expect(api.getInsight).toHaveBeenCalledWith({ site_id: 's1', days: 7 }))
+    fireEvent.mouseDown(screen.getByLabelText('Period'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Last 30 days' }))
+    await waitFor(() => expect(api.getSiteScores).toHaveBeenCalledWith(30))
+    await waitFor(() => expect(api.getInsight).toHaveBeenCalledWith({ site_id: 's1', days: 30 }))
   })
 })

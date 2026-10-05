@@ -42,8 +42,8 @@ from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_s
 from app.dependencies.tenant import get_db_with_tenant
 from app.routers import dispatch as custody_api
 from app.services import (
-    intel_audit, intel_config, intel_context, intel_decisions, intel_evidence, intel_runner, intel_summary,
-    intel_timeline,
+    intel_audit, intel_config, intel_context, intel_decisions, intel_evidence, intel_insight, intel_runner,
+    intel_summary, intel_timeline,
 )
 from app.services.intel_events import SEVERITIES, SOURCE_TYPES
 
@@ -736,6 +736,75 @@ async def open_situation_evidence(
     return {"kind": item["kind"], "id": item["id"], "what": item["what"], "served_at": item["served_at"],
             "media_type": item.get("media_type"), "checksum_sha256": item["checksum_sha256"],
             "custody_entry": custody["id"] if custody else None, "audited": True}
+
+
+# ─── Insight: the site security score, and what a period looked like ─────────
+
+_DAYS = Query(intel_insight.DEFAULT_DAYS, ge=1, le=intel_insight.MAX_DAYS,
+              description="How many days back the period runs")
+
+
+@router.get("/site-scores")
+async def get_site_scores(
+    days: int = _DAYS,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The site security score of every site the caller may see, the lowest
+    first.
+
+    A score starts at 100 and loses stated points for stated things. Each
+    site's `deductions` are those lines — the factor, how many, the points and
+    the sentence — and they add up to its `score`. `went_well` says what went
+    right and moves no points. `note` says so when little or nothing was
+    recorded for the site, because a score of 100 from no records is not a
+    finding that the site is secure.
+
+    `rules` is how the score is made: for each factor the points each one
+    costs, the most the factor can take, and this organisation's weight for it
+    (`intel.score_weights`). It is counted when asked, from recorded rows;
+    nothing is stored, predicted or learned."""
+    tenant_weights = await intel_insight.weights(db)
+    return {
+        "days": days,
+        "rules": [{"factor": factor, "points_each": each, "at_most": cap,
+                   "weight": float(tenant_weights.get(factor, 1)),
+                   "counts": intel_insight.EACH[factor]}
+                  for factor, each, cap in intel_insight.SCORE_RULES],
+        "bands": [{"band": name, "from": floor} for name, floor in intel_insight.BANDS],
+        "sites": await intel_insight.site_scores(db, allowed, days),
+    }
+
+
+@router.get("/insight")
+async def get_insight(
+    site_id: uuid.UUID | None = Query(None),
+    days: int = _DAYS,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What a period looked like, for one site or for every site the caller
+    may see: how many situations and at what risk, what reported, where and in
+    which hours they began, how many were closed as false, how long the first
+    decision and a dispatched guard took, cameras not sending, patrols missed,
+    and what was seen in more than one situation.
+
+    `findings` are fixed rules over those counts. Each says what it rests on
+    and what a person might consider, and is advisory (`is_advisory`): nothing
+    is changed, scheduled or decided by it. A rule about a share stays silent
+    on fewer than five.
+
+    A repeated vehicle is its number plate. A repeated person is a watchlist
+    entry's id and never a name; someone nobody identified is not counted as
+    anybody. With `site_id`, `score` is that site's score."""
+    site = None
+    if site_id is not None:
+        row = (await db.execute(text("SELECT id, name FROM sites WHERE id = CAST(:id AS uuid)"),
+                                {"id": str(site_id)})).mappings().first()
+        if row is None or not is_site_allowed(allowed, row["id"]):
+            raise HTTPException(404, "Site not found")
+        site = dict(row)
+    return await intel_insight.insight(db, site, allowed, days)
 
 
 # ─── Recommendations ─────────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary'
 import HistoryIcon from '@mui/icons-material/History'
+import InsightsIcon from '@mui/icons-material/Insights'
 import SettingsIcon from '@mui/icons-material/Settings'
 import PeopleIcon from '@mui/icons-material/People'
 import ShieldIcon from '@mui/icons-material/Shield'
@@ -254,6 +255,7 @@ const NAV_SECTIONS: {
     items: [
       { label: 'Situations',         path: '/situations',          icon: <ShieldIcon fontSize="small" />,   permission: 'intel:read' },
       { label: 'Decisions',          path: '/situation-decisions', icon: <HistoryIcon fontSize="small" />,  permission: 'intel:read' },
+      { label: 'Insight',            path: '/security-insight',    icon: <InsightsIcon fontSize="small" />, permission: 'intel:read' },
       { label: 'Intelligence Setup', path: '/intelligence-setup',  icon: <SecurityIcon fontSize="small" />, permission: 'intel:manage' },
     ],
   },

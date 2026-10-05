@@ -358,6 +358,98 @@ export const approveDecision = (decisionId: string, note?: string) =>
 export const rejectDecision = (decisionId: string, note: string) =>
   apiClient.post<Decision>(`${BASE}/decisions/${decisionId}/reject`, { note }).then((r) => r.data)
 
+// ── Insight: the site security score, and what a period looked like ──────────
+
+/** One thing that took points off a site's score. The lines add up to the score. */
+export interface ScoreLine { factor: string; count: number; points: number; detail: string; capped: boolean }
+
+export interface SiteScore {
+  site_id: string
+  site_name: string
+  score: number
+  out_of: number
+  /** NOTHING_RECORDED: a 100 that rests on no records at all, and is not called good. */
+  band: 'GOOD' | 'FAIR' | 'NEEDS_ATTENTION' | 'POOR' | 'NOTHING_RECORDED'
+  deductions: ScoreLine[]
+  /** What went right. It moves no points. */
+  went_well: string[]
+  basis: Record<string, number>
+  /** Said when little or nothing was recorded: a 100 from no records is not a finding that the site is secure. */
+  note: string | null
+}
+
+export interface SiteScores {
+  days: number
+  /** How the score is made: what each factor counts, what it costs, the most it can take, this organisation's weight. */
+  rules: { factor: string; points_each: number; at_most: number; weight: number; counts: string }[]
+  bands: { band: SiteScore['band']; from: number }[]
+  sites: SiteScore[]
+}
+
+export const getSiteScores = (days = 7) =>
+  apiClient.get<SiteScores>(`${BASE}/site-scores`, { params: { days } }).then((r) => r.data)
+
+/** A fixed rule over the counts: what it found, what it rests on, what a person might consider. Advice only. */
+export interface InsightFinding {
+  code: string
+  finding: string
+  consider: string
+  rests_on: Record<string, unknown>
+  is_advisory: true
+  is_decision: false
+}
+
+export interface InsightCounts {
+  timezone: string
+  situations: number
+  events: number
+  repeats_folded: number
+  still_open: number
+  closed: number
+  false_positive: number
+  resolved: number
+  by_risk: Record<'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'NOT_ASSESSED', number>
+  by_source: Record<string, number>
+  by_hour: Record<number, number>
+  locations: { name: string; camera_id: string | null; situations: number }[]
+  /** A number plate the platform read in more than one situation. */
+  vehicles: { plate: string; situations: number }[]
+  /** Watchlist entries in more than one situation: ids, never names. */
+  persons: { watchlist_entry_id: string; situations: number }[]
+  decisions: number
+  decided: number
+  followed: number
+  overrides: number
+  median_seconds_to_decide: number | null
+  guard_arrivals: number
+  median_seconds_to_arrive: number | null
+  offline_names: string[]
+  cameras?: number
+  cameras_offline?: number
+  incidents?: number
+  incidents_open?: number
+  sla_breached?: number
+  high_risk_open?: number
+  unattended?: number
+  repeated_locations?: number
+  patrols_missed?: number
+  virtual_patrols?: number
+  drone_patrols?: number
+}
+
+export interface Insight {
+  period: { days: number; from: string; to: string; timezone: string }
+  site: { id: string; name: string } | null
+  counts: InsightCounts
+  findings: InsightFinding[]
+  is_advisory: true
+  /** One site's score; null for every site together, which has no single score. */
+  score: Omit<SiteScore, 'site_id' | 'site_name'> | null
+}
+
+export const getInsight = (params: { site_id?: string; days?: number } = {}) =>
+  apiClient.get<Insight>(`${BASE}/insight`, { params }).then((r) => r.data)
+
 // ── The timeline: one situation, in the order it happened ────────────────────
 
 /** Whose an entry is. It follows from the record the entry was read from; it is never guessed. */
