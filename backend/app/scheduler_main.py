@@ -1323,22 +1323,33 @@ async def run_once(redis: Redis | None = None) -> None:
         logger.exception("roster generation failed (non-fatal, maintenance continues)")
 
 
+#: The "last run" of a job that has not run since this process started.
+_NOT_YET = float("-inf")
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
-    last_daily = 0.0
-    last_escalation = 0.0
-    last_overstay = 0.0
-    last_camera = 0.0
-    last_report = 0.0
-    last_compliance = 0.0
-    last_contractor = 0.0
-    last_no_show = 0.0
-    last_certification = 0.0
-    last_overtime = 0.0
-    last_integrity = 0.0
-    last_vpatrol = 0.0
+    # "Never run yet", so every job is due on the first pass. These were 0.0,
+    # compared against the event loop's clock - which is the machine's uptime,
+    # not the time of day. On a machine that has been up for weeks that made
+    # everything due at start, as intended. On one booted an hour ago it made
+    # the daily cycle wait until the machine had been up for a full day: a
+    # computer switched off every night never ran its backup, its evidence
+    # purge or its partition maintenance at all.
+    last_daily = _NOT_YET
+    last_escalation = _NOT_YET
+    last_overstay = _NOT_YET
+    last_camera = _NOT_YET
+    last_report = _NOT_YET
+    last_compliance = _NOT_YET
+    last_contractor = _NOT_YET
+    last_no_show = _NOT_YET
+    last_certification = _NOT_YET
+    last_overtime = _NOT_YET
+    last_integrity = _NOT_YET
+    last_vpatrol = _NOT_YET
 
     try:
         while True:
