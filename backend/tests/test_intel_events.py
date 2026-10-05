@@ -170,6 +170,43 @@ def test_an_alarm_panel_alert_has_no_confidence_and_none_is_made_up():
     assert n.latitude is None and n.longitude is None
 
 
+def test_an_alarms_place_is_its_panel_and_zone_not_the_camera_its_alert_was_hung_on():
+    arbitrary, zone_cam, panel_site = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    hung = {**ALERT, "module_type": "alarm", "alert_code": "alarm.zone_alarm", "camera_id": arbitrary,
+            "camera_name": "Some other camera", "detection_id": None, "detection_confidence": None,
+            "alarm_site_id": panel_site, "alarm_panel_name": "Panel 1", "alarm_zone_number": 3}
+    no_camera = events.from_alert({**hung, "alarm_zone_name": "Rear PIR", "alarm_camera_id": None})
+    assert no_camera.site_id == panel_site and no_camera.camera_id is None, "the arbitrary camera is not taken"
+    assert no_camera.latitude is None and no_camera.location_label == "Rear PIR"
+    assert no_camera.attributes == {"module_type": "alarm", "panel": "Panel 1", "zone_number": 3}
+
+    linked = events.from_alert({**hung, "alarm_zone_name": "Rear PIR", "alarm_camera_id": zone_cam,
+                                "alarm_camera_name": "Rear gate", "alarm_camera_latitude": 1.35,
+                                "alarm_camera_longitude": 103.85})
+    assert linked.camera_id == zone_cam and (linked.latitude, linked.longitude) == (1.35, 103.85)
+    assert linked.location_label == "Rear PIR — Rear gate"
+    panel_only = events.from_alert({**hung, "alarm_zone_name": None, "alarm_camera_id": None})
+    assert panel_only.location_label == "Panel 1"
+
+
+def test_a_sensors_place_is_the_sensor_and_a_trackers_is_where_it_reported():
+    site = uuid.uuid4()
+    sensor = events.from_alert({**ALERT, "module_type": "iot", "alert_code": "iot.threshold_breach",
+                                "camera_id": None, "site_id": None, "camera_site_id": None, "camera_name": None,
+                                "camera_location": None, "camera_latitude": None, "camera_longitude": None,
+                                "sensor_site_id": site, "sensor_name": "Cold room 2", "sensor_location": "Level 1",
+                                "sensor_type": "temperature"})
+    assert sensor.site_id == site and sensor.camera_id is None
+    assert sensor.location_label == "Cold room 2 — Level 1" and sensor.attributes["sensor_type"] == "temperature"
+
+    tracker = events.from_alert({**ALERT, "module_type": "gps", "alert_code": "gps.geofence_exit",
+                                 "gps_params": json.dumps({"vehicle_id": "v-1", "geofence": "Depot",
+                                                           "lat": 1.29, "lon": 103.77, "speed": 12})})
+    assert tracker.site_id is None and tracker.camera_id is None, "a vehicle on the road is at no site"
+    assert (tracker.latitude, tracker.longitude) == (1.29, 103.77) and tracker.location_label == "Depot"
+    assert tracker.attributes == {"module_type": "gps", "vehicle_id": "v-1", "geofence": "Depot"}
+
+
 def test_a_strange_severity_does_not_stop_an_event_being_read():
     assert events.from_alert({**ALERT, "severity": "URGENT"}).severity == "medium"
     assert events.from_alert({**ALERT, "severity": "CRITICAL"}).severity == "critical"
@@ -389,6 +426,41 @@ async def test_a_guard_sos_a_patrol_exception_and_a_dark_camera_are_read():
     assert g["title"] == "Guard SOS" and "Tan" not in json.dumps(_attrs(g))
     assert (v["source_id"], v["camera_id"], v["site_id"], v["severity"]) == (answer, w["cam_a"], w["site_a"], "high")
     assert s["source_id"] == health and s["event_type"] == "camera.stream_disconnected"
+
+
+@pytest.mark.asyncio
+async def test_an_alarm_and_a_sensor_are_placed_at_their_own_site_whatever_camera_the_alert_carries():
+    w = await _world()
+    panel, zone, bare_zone, sensor = (uuid.uuid4() for _ in range(4))
+    # The panel is at site B. Both alerts are hung on site A's camera, as the
+    # alarm code does when a zone has no camera of its own.
+    with_camera = await _alert(w, "alarm", camera="cam_a", site=None, code="alarm.zone_alarm", title="Zone alarm")
+    without = await _alert(w, "alarm", camera="cam_a", site=None, code="alarm.zone_alarm", title="Zone alarm 2")
+    breach = await _alert(w, "iot", camera=None, site=None, code="iot.threshold_breach", title="Too warm",
+                          params={"sensor_id": str(sensor), "value": 9.5})
+    await _run([
+        ("INSERT INTO alarm_panels (id, tenant_id, site_id, name) VALUES (:i,:t,:s,'Panel B')",
+         {"i": panel, "t": w["tenant"], "s": w["site_b"]}),
+        ("INSERT INTO alarm_zones (id, tenant_id, panel_id, zone_number, name, linked_camera_id) "
+         "VALUES (:i,:t,:p,1,'Dock PIR',:c)", {"i": zone, "t": w["tenant"], "p": panel, "c": w["cam_b"]}),
+        ("INSERT INTO alarm_zones (id, tenant_id, panel_id, zone_number, name) VALUES (:i,:t,:p,2,'Roof hatch')",
+         {"i": bare_zone, "t": w["tenant"], "p": panel}),
+        ("INSERT INTO alarm_events (tenant_id, panel_id, zone_id, zone_number, event_type, alert_id) "
+         "VALUES (:t,:p,:z,1,'zone_alarm',:a)", {"t": w["tenant"], "p": panel, "z": zone, "a": with_camera}),
+        ("INSERT INTO alarm_events (tenant_id, panel_id, zone_id, zone_number, event_type, alert_id) "
+         "VALUES (:t,:p,:z,2,'zone_alarm',:a)", {"t": w["tenant"], "p": panel, "z": bare_zone, "a": without}),
+        ("INSERT INTO iot_sensors (id, tenant_id, site_id, name, sensor_type, location) "
+         "VALUES (:i,:t,:s,'Cold room 2','temperature','Level 1')", {"i": sensor, "t": w["tenant"], "s": w["site_b"]}),
+    ])
+    assert (await _read(w))["alerts"] == 3
+    by = {e["source_id"]: e for e in await _events(w)}
+    assert (by[with_camera]["site_id"], by[with_camera]["camera_id"]) == (w["site_b"], w["cam_b"])
+    assert by[with_camera]["location_label"] == "Dock PIR — Dock 4"
+    assert (by[without]["site_id"], by[without]["camera_id"]) == (w["site_b"], None), \
+        "site A's camera was only where the alert was hung"
+    assert by[without]["location_label"] == "Roof hatch" and by[without]["source_type"] == "ALARM"
+    assert (by[breach]["site_id"], by[breach]["camera_id"]) == (w["site_b"], None)
+    assert by[breach]["location_label"] == "Cold room 2 — Level 1" and by[breach]["source_type"] == "SENSOR"
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,15 @@ alert would fall behind the cursor and never be read.
 CONFIDENCE IS THE SOURCE'S OWN. The model's certainty about what it saw, copied
 and never adjusted. How much an event matters is risk, decided later and kept in
 another place.
+
+AN ALERT'S CAMERA IS NOT ALWAYS WHERE IT HAPPENED. An alarm panel's alert is
+attached to its zone's camera when the zone has one — and to an arbitrary camera
+of the tenant when it does not, because an alert once needed a camera to exist.
+A guard's SOS incident is hung on an arbitrary camera for the same reason. So an
+alarm's place is taken from its panel and zone, a sensor's from the sensor, a
+vehicle tracker's from the position it reported, and an SOS's from the guard.
+Putting an alarm at the wrong site would join it to events it has nothing to do
+with.
 """
 from __future__ import annotations
 
@@ -161,6 +170,29 @@ def from_alert(a: Mapping) -> Normalised:
         matched = a.get("matched_watchlist_id")
         ref = str(matched) if matched else None
         verdict = _verdict(a.get("face_match"))
+
+    # Where it happened. For most alerts that is the alert's camera; for the
+    # three below the alert's camera says nothing (see the module docstring).
+    site_id = a.get("site_id") or a.get("camera_site_id")
+    camera_id = a.get("camera_id")
+    latitude, longitude = _num(a.get("camera_latitude")), _num(a.get("camera_longitude"))
+    label = _place(a.get("camera_name"), a.get("camera_location"))
+    extra: dict = {}
+    if module == "alarm":
+        site_id, camera_id = a.get("alarm_site_id"), a.get("alarm_camera_id")
+        latitude, longitude = _num(a.get("alarm_camera_latitude")), _num(a.get("alarm_camera_longitude"))
+        label = _place(a.get("alarm_zone_name") or a.get("alarm_panel_name"), a.get("alarm_camera_name"))
+        extra = {"panel": a.get("alarm_panel_name"), "zone_number": a.get("alarm_zone_number")}
+    elif module == "iot":
+        site_id, camera_id, latitude, longitude = a.get("sensor_site_id"), None, None, None
+        label = _place(a.get("sensor_name"), a.get("sensor_location"))
+        extra = {"sensor_type": a.get("sensor_type")}
+    elif module == "gps":
+        params = _obj(a.get("gps_params"))
+        site_id, camera_id = None, None
+        latitude, longitude = _num(params.get("lat")), _num(params.get("lon"))
+        label = (str(params["geofence"])[:255] if params.get("geofence") else None)
+        extra = {"vehicle_id": params.get("vehicle_id"), "geofence": params.get("geofence")}
     return Normalised(
         source_type=ALERT_SOURCE.get(module, "OTHER"),
         source_table="alerts",
@@ -169,19 +201,20 @@ def from_alert(a: Mapping) -> Normalised:
         occurred_at=a["created_at"],
         severity=_severity(a.get("severity")),
         title=str(a["title"])[:255],
-        site_id=a.get("site_id") or a.get("camera_site_id"),
-        camera_id=a.get("camera_id"),
+        site_id=site_id,
+        camera_id=camera_id,
         alert_id=a["id"],
         detection_id=a.get("detection_id"),
         subject_kind=kind,
         subject_ref=ref,
         subject_verdict=verdict,
         confidence=_num(a.get("detection_confidence")),
-        latitude=_num(a.get("camera_latitude")),
-        longitude=_num(a.get("camera_longitude")),
-        location_label=_place(a.get("camera_name"), a.get("camera_location")),
+        latitude=latitude,
+        longitude=longitude,
+        location_label=label,
         attributes=_clean({
             "module_type": module,
+            **extra,
             "zone_id": str(a["zone_id"]) if a.get("zone_id") else None,
             "zone_name": a.get("zone_name"),
             "dwell_time_seconds": _num(a.get("dwell_time_seconds")),
@@ -339,7 +372,14 @@ SOURCES: tuple[Source, ...] = (
                    l.plate_number, l.plate_confidence, l.watchlist_match AS plate_match,
                    l.direction, l.vehicle_type, l.vehicle_color,
                    f.matched_watchlist_id, f.match_confidence, f.watchlist_match AS face_match,
-                   i.zone_id, i.dwell_time_seconds, z.name AS zone_name
+                   i.zone_id, i.dwell_time_seconds, z.name AS zone_name,
+                   ale.zone_number AS alarm_zone_number, az.name AS alarm_zone_name,
+                   az.linked_camera_id AS alarm_camera_id, ap.site_id AS alarm_site_id,
+                   ap.name AS alarm_panel_name, lc.name AS alarm_camera_name,
+                   lc.latitude AS alarm_camera_latitude, lc.longitude AS alarm_camera_longitude,
+                   ios.site_id AS sensor_site_id, ios.name AS sensor_name, ios.location AS sensor_location,
+                   ios.sensor_type,
+                   CASE WHEN a.module_type = 'gps' THEN a.message_params END AS gps_params
               FROM alerts a
               LEFT JOIN cameras c ON c.id = a.camera_id
               LEFT JOIN detections d ON d.id = a.detection_id
@@ -347,6 +387,15 @@ SOURCES: tuple[Source, ...] = (
               LEFT JOIN face_events f ON a.module_type = 'face' AND f.detection_id = a.detection_id
               LEFT JOIN intrusion_events i ON a.module_type = 'intrusion' AND i.detection_id = a.detection_id
               LEFT JOIN restricted_zones z ON z.id = i.zone_id
+              LEFT JOIN LATERAL (
+                    SELECT e.panel_id, e.zone_id, e.zone_number FROM alarm_events e
+                     WHERE a.module_type = 'alarm' AND e.alert_id = a.id
+                     ORDER BY e.occurred_at LIMIT 1) ale ON TRUE
+              LEFT JOIN alarm_zones az ON az.id = ale.zone_id
+              LEFT JOIN alarm_panels ap ON ap.id = ale.panel_id
+              LEFT JOIN cameras lc ON lc.id = az.linked_camera_id
+              LEFT JOIN iot_sensors ios ON a.module_type = 'iot'
+                                       AND ios.id::text = a.message_params->>'sensor_id'
              WHERE a.created_at > :floor
                AND a.module_type NOT IN ({", ".join(repr(m) for m in NOT_SECURITY)})
                AND NOT (a.module_type = 'drone_patrol' AND a.message_params->>'event_id' IS NOT NULL)
