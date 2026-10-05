@@ -37,6 +37,11 @@ spec:
           volumeMounts:
             - name: evidence
               mountPath: /data/evidence
+            # The recorder runs here. Without this it wrote every recording to
+            # the pod's own disk, where the API could not play it and a restart
+            # lost it.
+            - name: recordings
+              mountPath: /data/recordings
           {{- end }}
           resources:
             {{- toYaml .Values.ingestion.resources | nindent 12 }}
@@ -45,6 +50,9 @@ spec:
         - name: evidence
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+        - name: recordings
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-recordings
       {{- end }}
       {{- with .Values.ingestion.nodeSelector }}
       nodeSelector:
