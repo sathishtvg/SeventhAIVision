@@ -3,8 +3,8 @@
 The layer described in AI_SECURITY_INTELLIGENCE_GAP_ANALYSIS.md, as far as it is
 built: whether it is running for this organisation, the security events it has
 read, the context of each, the situations those events have been joined into
-and why, how each situation has been assessed, and what an administrator has
-said about each site.
+and why, how each situation has been assessed, what the layer suggests doing
+about it, and what an administrator has said about each site.
 
 NOTHING HERE CHANGES AN ALERT, AN INCIDENT OR ANY OTHER EXISTING RECORD. The
 events are written by the intelligence runner (app/intelligence_main.py); the
@@ -14,9 +14,13 @@ settings. The only things written here are the layer's own site and camera
 profiles and camera links, by someone with `intel:manage`, and each change is
 audited.
 
-Everything needs `intel:read`. A caller restricted to certain sites sees those
-sites' events and profiles; an event with no site is not shown to them — the
-same rule as every other site-scoped list.
+Everything needs `intel:read`; what the layer suggests needs
+`intel:recommendation:read` as well. A caller restricted to certain sites sees
+those sites' events and profiles; an event with no site is not shown to them —
+the same rule as every other site-scoped list.
+
+A SUGGESTION IS SERVED AS A SUGGESTION. Reading one changes nothing, and every
+response that carries one says `is_decision: false`.
 """
 from __future__ import annotations
 
@@ -532,6 +536,69 @@ async def list_assessments(
         "SELECT * FROM security_assessments WHERE situation_id = CAST(:id AS uuid) ORDER BY sequence"),
         {"id": str(situation_id)})).mappings().all()
     return [_assessment(r, with_context=False) for r in rows]
+
+
+# ─── Recommendations ─────────────────────────────────────────────────────────
+
+@router.get("/situations/{situation_id}/recommendations",
+            dependencies=[Depends(require_permission("intel:recommendation:read"))])
+async def list_recommendations(
+    situation_id: uuid.UUID,
+    assessment_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What the layer suggests an officer do about a situation, surest first,
+    with the reason for each and what each rests on. A step that cannot be
+    taken right now is listed after those that can, `available` false, with the
+    reason in `unavailable_reason`.
+
+    These are suggestions. Nothing has been done, and nothing will be until a
+    person decides: `is_decision` is always false here.
+
+    Without `assessment_id` the set for the situation's latest assessment is
+    returned and `current` is true. With it, the set that was suggested for
+    that earlier assessment — what was suggested then is kept.
+
+    Four confidences, each under its own name: `assessment.confidence` holds
+    the detection, correlation and risk confidences, and each suggestion has
+    its own `recommendation_confidence` with what held it down in `limited_by`."""
+    situation = (await db.execute(text(
+        "SELECT site_id, assessment_id FROM security_situations WHERE id = CAST(:id AS uuid)"),
+        {"id": str(situation_id)})).first()
+    if situation is None or not is_site_allowed(allowed, situation.site_id):
+        raise HTTPException(404, "Situation not found")
+    target = assessment_id or situation.assessment_id
+    out = {"situation_id": situation_id, "is_decision": False, "current": True, "assessment": None,
+           "recommendations": []}
+    if target is None:
+        return out          # not assessed yet, so nothing has been suggested
+    a = (await db.execute(text(
+        "SELECT id, sequence, assessed_at, kind, label, risk_level, risk_score, detection_confidence, "
+        "       correlation_confidence, risk_confidence "
+        "  FROM security_assessments WHERE id = CAST(:a AS uuid) AND situation_id = CAST(:s AS uuid)"),
+        {"a": str(target), "s": str(situation_id)})).mappings().first()
+    if a is None:
+        raise HTTPException(404, "Assessment not found")
+    rows = (await db.execute(text(
+        "SELECT id, rank, action, priority, reason, confidence, confidence_limited_by, available, "
+        "       unavailable_reason, supporting, created_at "
+        "  FROM security_recommendations WHERE assessment_id = CAST(:a AS uuid) ORDER BY rank"),
+        {"a": str(target)})).mappings().all()
+    out["current"] = situation.assessment_id is not None and str(target) == str(situation.assessment_id)
+    out["assessment"] = {
+        "id": a["id"], "sequence": a["sequence"], "assessed_at": a["assessed_at"], "kind": a["kind"],
+        "label": a["label"], "risk_level": a["risk_level"], "risk_score": a["risk_score"],
+        "confidence": {"detection": a["detection_confidence"], "correlation": a["correlation_confidence"],
+                       "risk": a["risk_confidence"]},
+    }
+    out["recommendations"] = [{
+        "id": r["id"], "rank": r["rank"], "action": r["action"], "priority": r["priority"], "reason": r["reason"],
+        "recommendation_confidence": r["confidence"], "limited_by": r["confidence_limited_by"],
+        "available": r["available"], "unavailable_reason": r["unavailable_reason"],
+        "supporting": _loads(r["supporting"]), "created_at": r["created_at"],
+    } for r in rows]
+    return out
 
 
 # ─── Camera links ────────────────────────────────────────────────────────────

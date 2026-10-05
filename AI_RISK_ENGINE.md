@@ -130,7 +130,7 @@ always adds up to the score.
 
 They are three columns in the database and three fields in the API, and are
 never combined into one number. The fourth — how sure a recommendation is —
-comes with recommendations (phase 6).
+belongs to each recommendation and is described in `AI_DECISION_WORKFLOW.md`.
 
 *Not known* means: no criticality set, business hours not defined, who a person
 or vehicle is, too few decided alerts to say how reliable the camera is, too

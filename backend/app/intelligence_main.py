@@ -7,7 +7,8 @@ or the scheduler it could hold one of them up; on its own it cannot.
 
 It reads what the platform has already recorded and writes the `security_*`
 tables: each pass normalises what is new, places each new event in a situation,
-then assesses the situations that changed. It takes no security action of any
+assesses the situations that changed, then writes what it suggests an officer
+do about each. Suggesting is all it does: it takes no security action of any
 kind — see services/intel_runner.py.
 
 Cadence, each overridable by environment:
@@ -118,6 +119,14 @@ async def main() -> None:
             except Exception:  # noqa: BLE001
                 ok = False
                 logger.exception("assessment pass failed")
+            try:
+                suggested = await intel_runner.run_recommend_tick(AsyncSessionLocal, pub)
+                ok = ok and not suggested["failed"]
+                if suggested["recommended"] or suggested["failed"]:
+                    logger.info("recommendations: %s", suggested)
+            except Exception:  # noqa: BLE001
+                ok = False
+                logger.exception("recommendation pass failed")
             try:
                 await intel_runner.write_heartbeat(redis, ok, result)
             except Exception as exc:  # noqa: BLE001

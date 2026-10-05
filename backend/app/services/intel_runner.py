@@ -26,6 +26,7 @@ from sqlalchemy import text
 
 from app.services import intel_correlation as correlation
 from app.services import intel_events as events
+from app.services import intel_recommend as recommend
 from app.services import intel_risk as risk
 
 logger = logging.getLogger("intelligence_runner")
@@ -207,6 +208,36 @@ async def run_assess_tick(factory, pub, now: datetime | None = None, batch: int 
             out["failed"] += 1
             continue
         for key in ("assessed", "changed", "failed"):
+            out[key] += result[key]
+        for event_type, payload in result["announce"]:
+            try:
+                await pub.publish(tenant_id, event_type, payload)
+            except Exception as exc:  # noqa: BLE001 — the record exists; only the nudge was lost
+                logger.warning("could not announce %s: %s", event_type, type(exc).__name__)
+    return out
+
+
+async def run_recommend_tick(factory, pub, now: datetime | None = None, batch: int = recommend.BATCH) -> dict:
+    """Write suggestions for every situation whose latest assessment has none,
+    for every tenant with the feature on, and announce that they are ready.
+
+    Returns {"tenants", "recommended", "failed"}. A suggestion is a row and an
+    announcement that says it is not a decision; nothing is done about it here."""
+    out = {"tenants": 0, "recommended": 0, "failed": 0}
+    for tenant_id in await tenants(factory):
+        out["tenants"] += 1
+        try:
+            if now is None:
+                async with factory() as db:
+                    moment = await events.database_now(db)
+            else:
+                moment = now
+            result = await recommend.recommend_tenant(factory, tenant_id, moment, batch)
+        except Exception:  # noqa: BLE001 — this tenant's pass, not everyone's
+            logger.exception("recommendation failed for tenant %s", tenant_id)
+            out["failed"] += 1
+            continue
+        for key in ("recommended", "failed"):
             out[key] += result[key]
         for event_type, payload in result["announce"]:
             try:

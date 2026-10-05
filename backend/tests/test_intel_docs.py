@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 from app.main import app
-from app.services import intel_correlation, intel_risk
+from app.services import intel_correlation, intel_recommend, intel_risk
 from tests._repo import REPO_ROOT, requires_repo_tree
 
 pytestmark = requires_repo_tree
@@ -24,6 +24,7 @@ pytestmark = requires_repo_tree
 ARCHITECTURE = REPO_ROOT / "AI_SECURITY_INTELLIGENCE_ARCHITECTURE.md"
 CORRELATION = REPO_ROOT / "AI_EVENT_CORRELATION.md"
 RISK = REPO_ROOT / "AI_RISK_ENGINE.md"
+WORKFLOW = REPO_ROOT / "AI_DECISION_WORKFLOW.md"
 PREFIX = "/security-intelligence"
 
 
@@ -73,7 +74,7 @@ def test_the_architecture_document_lists_exactly_the_operations_that_are_served(
     assert sorted(set(documented) - set(served)) == [], "in the architecture document, but not served"
 
 
-@pytest.mark.parametrize("document", [ARCHITECTURE, CORRELATION, RISK], ids=lambda p: p.name)
+@pytest.mark.parametrize("document", [ARCHITECTURE, CORRELATION, RISK, WORKFLOW], ids=lambda p: p.name)
 def test_a_document_states_the_permission_the_code_requires(document):
     served, documented = _served(), _documented(document)
     assert documented, f"{document.name}: found no operation table to check"
@@ -252,3 +253,104 @@ def test_the_risk_document_gives_every_label_the_code_can_give():
     migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0135_security_assessments.py").read_text("utf-8")
     accepted = set(re.findall(r"'([A-Z_]+)'", re.search(r"KINDS = \((.*?)\)\n", migration, re.S).group(1)))
     assert accepted == set(intel_risk.KINDS), "the database and the engine disagree about the kinds"
+
+
+# ─── The recommendation rules, as written and as the engine gives them ───────
+
+def _workflow_section(heading: str) -> str:
+    return WORKFLOW.read_text(encoding="utf-8").split(f"\n## {heading}\n", 1)[1].split("\n## ", 1)[0]
+
+
+def _documented_rules() -> dict[tuple[str, str, bool], list[tuple[str, str]] | None]:
+    """(kind, risk level, more than one kind of source) -> the steps the
+    document's rules table gives, in order. A row that names a kind stands over
+    the "any other" row for the same level."""
+    named: dict = {}
+    other: dict = {}
+    for line in _workflow_section("The rules").splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) != 6 or not re.search(r"`[A-Z_]+` \d\.\d\d", cells[4]):
+            continue
+        steps = re.findall(r"`([A-Z_]+)` (\d\.\d\d)", cells[4])
+        levels = intel_risk.LEVELS if cells[2] == "any" else tuple(re.findall(r"`([A-Z]+)`", cells[2]))
+        agreed = {"—": (False, True), "one kind": (False,), "two or more": (True,)}[cells[3]]
+        kind = re.fullmatch(r"`([A-Z_]+)`", cells[1])
+        assert kind or cells[1] == "any other", f"unreadable kind in the rules table: {cells[1]}"
+        assert levels and set(levels) <= set(intel_risk.LEVELS), f"unreadable risk in the rules table: {cells[2]}"
+        for level in levels:
+            for both in agreed:
+                if kind:
+                    named[(kind.group(1), level, both)] = steps
+                else:
+                    other[(level, both)] = steps
+    assert {k for k, _, _ in named} <= set(intel_risk.KINDS), "the rules table names a kind the engine does not have"
+    return {(kind, level, both): named.get((kind, level, both), other.get((level, both)))
+            for kind in intel_risk.KINDS for level in intel_risk.LEVELS for both in (False, True)}
+
+
+def test_the_workflow_document_gives_the_steps_the_engine_gives():
+    """The rules table is not a description of the engine: it is checked against
+    it, for every kind at every level, at a site where everything is possible
+    and with nothing holding a confidence down."""
+    everything = intel_recommend.Availability(
+        has_site=True, cameras=({"id": "c", "name": "Gate 1", "state": "online", "relation": "reported"},),
+        guards_on_shift=3, drones_at_site=1, drones_ready=1, site_contact=True)
+    documented = _documented_rules()
+    assert len(documented) == len(intel_risk.KINDS) * len(intel_risk.LEVELS) * 2
+    wrong = []
+    for (kind, level, both), steps in sorted(documented.items()):
+        assert steps, f"the document has no row for {kind} at {level}"
+        factors = [{"factor": "SEVERITY", "points": 45, "detail": "x."}]
+        if both:
+            factors.append({"factor": "CORROBORATION", "points": 10, "detail": "y."})
+        given = [(r.action, f"{r.confidence:.2f}") for r in intel_recommend.recommend(
+            {"kind": kind, "risk_level": level, "risk_score": 60, "risk_factors": factors,
+             "detection_confidence": None, "correlation_confidence": None, "risk_confidence": 1.0}, everything)]
+        if given != steps:
+            wrong.append(f"{kind} {level} {'two or more' if both else 'one kind'}: engine {given}, document {steps}")
+    assert wrong == []
+
+
+def test_the_workflow_document_says_which_steps_look_and_which_act():
+    rows = dict(re.findall(r"^\| `([A-Z_]+)` \|.*\| (looks|acts) \|$", _workflow_section("The nine steps"), re.M))
+    assert rows == {a: "looks" if a in intel_recommend.LOOKING else "acts" for a in intel_recommend.ACTIONS}
+    migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0136_security_recommendations.py").read_text("utf-8")
+    accepted = set(re.findall(r"'([A-Z_]+)'", re.search(r"ACTIONS = \((.*?)\)\n", migration, re.S).group(1)))
+    assert accepted == set(intel_recommend.ACTIONS), "the database and the engine disagree about the steps"
+
+
+def test_the_workflow_document_quotes_every_reason_a_step_cannot_be_taken():
+    source = inspect.getsource(intel_recommend.recommend)
+    block = source.split("def why_not", 1)[1].split("def facts_for", 1)[0]
+    messages = re.findall(r'"([A-Z][^"]+\.)"', re.sub(r'""".*?"""', "", block, flags=re.S))
+    assert len(messages) >= 9, f"found too few messages in the code to compare: {messages}"
+    said = _workflow_section("What cannot be done is said")
+    assert [m for m in messages if m not in said] == []
+
+
+def test_the_workflow_document_states_priorities_and_adjustments_as_coded():
+    text_ = WORKFLOW.read_text(encoding="utf-8")
+    for level, priority in intel_recommend.PRIORITY_OF.items():
+        assert f"| `{level}` | `{priority}` |" in text_
+    assert f"`{intel_recommend.ENGINE_VERSION}`" in text_
+    # The adjustments the table does not show, each run rather than read.
+    base = {"kind": "ACTIVITY", "risk_level": "HIGH", "risk_score": 60, "detection_confidence": None,
+            "correlation_confidence": None, "risk_confidence": 1.0,
+            "risk_factors": [{"factor": "SEVERITY", "points": 45, "detail": "x."}]}
+    cam = {"id": "c", "name": "Gate 1", "state": "online", "relation": "reported"}
+
+    def conf(action, assessment=base, **avail):
+        site = {**dict(has_site=True, cameras=(cam,), guards_on_shift=2, site_contact=True), **avail}
+        recs = intel_recommend.recommend(assessment, intel_recommend.Availability(**site))
+        return next((f"{r.confidence:.2f}" for r in recs if r.action == action), None)
+
+    assert "`VERIFY`, 0.15 less" in text_ and conf("VERIFY", cameras=()) == "0.70" and conf("VIEW_CAMERA") == "0.85"
+    assert "`CONTACT_SITE` is added at 0.70" in text_ and conf("CONTACT_SITE", guards_on_shift=0) == "0.70"
+    wrong = {**base, "risk_factors": base["risk_factors"] + [{"factor": "HISTORY", "points": -25, "detail": "z."}]}
+    again = {**base, "risk_factors": base["risk_factors"] + [{"factor": "PERSISTENCE", "points": 10, "detail": "z."}]}
+    assert "`INVESTIGATE` is added at 0.75" in text_ and conf("INVESTIGATE", wrong) == "0.75"
+    assert "`INVESTIGATE` is added at 0.70" in text_ and conf("INVESTIGATE", again) == "0.70"
+    stuck = dict(cameras=({**cam, "state": "offline"},), guards_on_shift=0, site_contact=False,
+                 incident={"id": "i", "status": "open"})
+    assert "`ESCALATE` is added at 0.70" in text_ and conf("ESCALATE", **stuck) == "0.70"
+    assert "`MONITOR` at 0.60" in text_ and conf("MONITOR", {**base, "risk_level": "MEDIUM"}, **stuck) == "0.60"
