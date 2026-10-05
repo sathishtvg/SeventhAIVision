@@ -1001,4 +1001,106 @@ That was **assessed and not attempted**. Six SDK versions change the native
 build, the navigation library and the notifications library under an app whose
 job includes SOS and man-down alerts, and none of it can be proven without the
 app on real Android and iOS devices. It is a project of its own, to be planned
-with device testing.
+with device testing. *The owner said to proceed, and it was done the same day —
+§28.*
+
+---
+
+## 28. The phone app on Expo SDK 57 (2026-10-05)
+
+§27.5 ended with the SDK upgrade assessed and not attempted. The owner said to
+proceed.
+
+| | Was | Now |
+|---|---|---|
+| Expo SDK | 51 | 57 |
+| React Native | 0.74.5 | 0.86.3, on its New Architecture (the old one no longer exists) |
+| React | 18.2 | 19.2 |
+| React Navigation | 6 | 7 |
+| TypeScript | 5.6 | 6.0 |
+| Packages installed | 1,490 | 853 |
+| Published advisories | 39, one critical | 3, none critical |
+
+The three that remain are in tools that run on the build machine, and no
+upgrade removes them: two (`braces`, `node-forge`) have no fixed release at all,
+and the third (`uuid`) is pinned by the library that writes the iOS project.
+`npm audit` counts every package that depends on them, so it still prints 25
+"high"; they are those two advisories, counted 25 times.
+
+### 28.1 What the upgrade broke, and what found it
+
+1. **A style helper React Native removed.** `StyleSheet.absoluteFillObject` is
+   gone, from the types and at run time. Eight places used it; spread into a
+   style it would now have contributed nothing, silently — the camera in the
+   check-in photo and the patrol scan would have had no size. *The type check.*
+2. **Returning to an open screen.** Until version 7, `navigate()` to a screen
+   already in a stack went back to it. Now it pushes a second copy: the
+   dashboard's check-in reminder would have laid a new My Shifts over a patrol
+   in progress, and choosing a site would have stacked a second camera list.
+   Eight calls say `pop: true` and two use `popTo`, so each behaves as it did.
+   *Reading all 29 navigation calls; then a test that mounts the real navigators
+   with the real Dashboard and Sites screens. It fails against the screens as
+   they were.*
+3. **Notifications inside Expo Go.** The notifications package now throws while
+   it loads in Expo Go on Android, which lost push in SDK 53: a full-screen
+   error at every sign-in during development. The app skips registering there.
+   A real build is not Expo Go and registers as before. *The emulator — nothing
+   else showed it.*
+4. **TypeScript 6** no longer accepts `baseUrl` and no longer includes the test
+   globals by itself. *The type check.*
+5. **The test setup** mocked a React Native file that no longer exists, and two
+   Expo packages the app's own files rely on have to be named as dependencies
+   or npm installs them out of reach. *Every test failing to start.*
+6. **The splash colour** was a top-level setting that the configuration no
+   longer has; it is the splash-screen plugin's now, same colour. *Expo's
+   project check; then the generated native configuration, read back.*
+7. **The Android build patch** the project carried for `expo-modules-core` is
+   in the SDK itself. The patch and the tool that applied it are removed.
+
+### 28.2 What was verified
+
+- Type check; 174 tests (four new); Android and iOS bundles built to bytecode;
+  Expo's project check, 21 of 21; the native configuration evaluated — seven
+  plugins, the Android permissions and the iOS usage strings; a clean install
+  from the lockfile.
+- **On the Android 16 emulator**, in Expo Go 57, signed in as the read-only
+  demo viewer against the development API: the login screen; sign-in; the
+  session restored on restart from the token the SDK 51 app had stored, so
+  secure storage survives the upgrade; the dashboard, laid out as in the SDK 51
+  screenshots; all six tabs with data; all 25 More-menu screens that role can
+  see; an alert's detail; Back. No error after the notifications fix.
+
+### 28.3 What was not
+
+- **iOS, at all.** There is no Mac here. The iOS bundle builds; nothing ran.
+- **A release build.** Nothing was built with EAS. The native side changed with
+  the SDK, so guards get this only from a new build, and that build is the
+  first time the native code is compiled.
+- **The hardware paths:** the camera and QR scan, GPS check-in, biometrics,
+  push, and man-down — which was deliberately left alone, because signed in as
+  a guard it raises a real SOS.
+- **The on-screen keyboard over forms.** Android now draws the app edge to
+  edge; whether a field at the bottom of a form stays above the keyboard was
+  the next check when the emulator session ended. Look at this first on a
+  device.
+- Live video and clip playback in the web view.
+
+### 28.4 Before guards get it
+
+A new build and a pass on real phones, as §27.5 said. The minimum iOS version
+is now 16.4 (Expo's SDK 56 notes) and the minimum Android is 7.0. The build
+still needs `google-services.json`, which is not in the repository — as before.
+Expo Go for SDK 57 is not in the app stores: Expo's command-line tool installs
+it on an Android emulator, and the old one refuses the project.
+
+### 28.5 Found on the way, not caused by the upgrade
+
+Each was handed to the owner as its own task and left as found:
+
+- A refused refresh token is retried in a loop until the API's rate limit stops
+  it — five refusals and a 429 from one app start.
+- The alert and incident detail screens look for their record in the newest
+  page of the list, so on a busy organisation most open alerts answer "Alert
+  not found".
+- The Action Center sends "check in" to a screen name that does not exist, and
+  "patrol due" to one it cannot reach.

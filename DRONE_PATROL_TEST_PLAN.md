@@ -2,7 +2,7 @@
 
 **As of:** 2026-10-05 · all 14 phases, and the items closed after them. **413 drone tests** —
 343 backend, 34 web, 36 phone — all passing, inside a platform suite of 3,220
-backend tests, 1,129 repository-inspection tests, 132 web tests and 170 phone
+backend tests, 1,129 repository-inspection tests, 132 web tests and 174 phone
 tests that CI runs on every push. This describes the tests that exist, what they
 prove, and what no test here can prove.
 

@@ -400,7 +400,17 @@ Four leftovers from that list were taken up next (gap analysis §27):
 | The scheduler's integrity sweep marked every recording missing | It had never been given the recordings volume. Mounted read-only; the recordings verify. In the Kubernetes chart the recorder had no recordings volume either — both pods now mount the claim the API uses (**not rendered**: Helm is not installed here) |
 | Backup rotation kept the newest seven files | Keeps the newest of each day for seven days, so restarts do not push earlier days out |
 | Four moderate advisories in the desktop's settings store | None: the store upgraded, released as 1.0.3 |
-| 1 critical and 47 high in the phone's build tooling | 1 and 41: seven packages updated in place. `npm audit fix` was tried and undone — it broke the app. The rest needs the Expo SDK upgrade, assessed and not attempted |
+| 1 critical and 47 high in the phone's build tooling | 1 and 41: seven packages updated in place. `npm audit fix` was tried and undone — it broke the app. The rest needed the Expo SDK upgrade — done next, below |
+
+Then, on the owner's word, **the phone app was moved from Expo SDK 51 to 57**
+(gap analysis §28): React Native 0.74 to 0.86, React 18 to 19, React Navigation
+6 to 7, TypeScript 5 to 6. The 39 advisories became 3, none critical and none
+with a fixed release to move to. It passes the type check, 174 tests and both
+bundle builds, and ran on the Android emulator through sign-in, every tab and
+25 menu screens. **Not verified:** iOS at all, a release build, the camera,
+GPS, biometrics, push and man-down, and the on-screen keyboard over forms. It
+reaches guards only through a new build, which should be tried on real phones
+first.
 
 With those, the platform's suite is 3,220 backend tests and 1,129
 repository-inspection tests, and the module's own is 413 (343 backend in 22
