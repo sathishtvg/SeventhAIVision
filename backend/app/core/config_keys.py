@@ -118,4 +118,8 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "access.auto_open_min_confidence": _range_validator(0.0, 1.0),
     "access.unknown_plate_action": _choice_validator("require_operator", "block", "alarm"),
     "access.expired_action": _choice_validator("require_operator", "block", "alarm"),
+    # AI security intelligence (services/intel_config.py). Off until a tenant's
+    # administrator turns it on; with it off the intelligence runner reads
+    # nothing of that tenant's.
+    "intel.enabled": _bool_validator,
 }
