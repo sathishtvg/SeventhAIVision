@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   borderOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderWidth: 1,
     borderRadius: radius.xl,
   },

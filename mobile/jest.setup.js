@@ -32,9 +32,6 @@ jest.mock('expo-camera', () => ({
   useCameraPermissions: jest.fn(() => [{ granted: true }, jest.fn()]),
 }))
 
-// Silence the RN animation helper warning that fires in every component test.
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper')
-
 /**
  * FormData that behaves like React Native's, not the browser's.
  *

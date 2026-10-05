@@ -133,7 +133,7 @@ export function PatrolScanScreen() {
         <View style={styles.cameraContainer}>
           {permission?.granted ? (
             <CameraView
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               facing="back"
               barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
               onBarcodeScanned={handleBarCodeScanned}
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   routeName: { fontSize: fontSize.md, fontWeight: '700', color: colors.text, flex: 1 },
   progress: { fontSize: fontSize.sm, color: colors.primary, fontWeight: '600' },
   cameraContainer: { height: 280, position: 'relative', backgroundColor: '#000' },
-  scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  scanOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   scanFrame: {
     width: 200, height: 200, borderWidth: 2, borderColor: colors.primary,
     borderRadius: 8, backgroundColor: 'transparent',

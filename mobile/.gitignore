@@ -1,0 +1,4 @@
+# Expo: machine-specific device history and dev-server settings
+.expo/
+# A local `expo export`
+dist/
