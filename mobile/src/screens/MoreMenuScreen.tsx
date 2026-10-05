@@ -47,6 +47,7 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'Visitors',      label: 'Visitor Management', description: 'Check in/out and manage visitors',   icon: 'people-outline',           color: colors.info, permission: 'visitor:read' },
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary, permission: 'detection:read' },
   { screen: 'DroneEvents',   label: 'Drone Events',       description: 'What the drones found, and the response', icon: 'airplane-outline',     color: colors.info, permission: 'drone:event:read' },
+  { screen: 'Situations',    label: 'Security Situations', description: 'What you were sent to, and what is open at your site', icon: 'shield-half-outline', color: colors.primary, permission: 'intel:read' },
   { screen: 'Analytics',     label: 'Analytics',          description: 'Metrics, trends, and top cameras',   icon: 'bar-chart-outline',        color: colors.secondary, audience: 'ops' },
   { screen: 'Reports',       label: 'Reports',            description: 'Generate and download PDF reports',  icon: 'document-text-outline',    color: colors.warning, audience: 'ops' },
   { screen: 'Notifications', label: 'Notification Logs',  description: 'Email, SMS, and webhook history',    icon: 'notifications-outline',    color: colors.success, permission: 'notification:manage', audience: 'ops' },

@@ -363,6 +363,25 @@ Every step leaves a row in `security_actions`, whatever happened.
 A failed step does not undo the decision or the steps before it, and the next
 step is still attempted unless it depended on the one that failed.
 
+## Reports from the ground
+
+Beside the decisions, and not one of them: the person dealing with a situation
+says where they are with it and what they see.
+
+```
+the command centre dispatches a guard      a decision, as above
+the guard's phone shows it                 GET  /my-situations
+"I have this"                              POST …/observations   ACCEPTED
+"I am there"                               POST …/observations   ARRIVED, with the phone's position
+"this is what I see"                       POST …/observations   OBSERVATION, in words
+what to do about it                        POST …/decisions      under the decision policy
+```
+
+A report changes no alert, incident or dispatch and does not move where the
+situation stands. A guard reports from the site of the shift they are on, or
+from a situation they were dispatched to. Nothing can be reported on a closed
+situation.
+
 ## One press, one decision
 
 A request can carry `client_ref`. Sent again with a retry it is answered with
@@ -372,15 +391,18 @@ the decision already recorded, and nothing is carried out twice.
 
 On the tenant's existing channel, after the record is saved:
 `intel_decision_recorded`, `intel_decision_pending_approval`,
-`intel_decision_approved`, `intel_decision_rejected`. Each carries ids, the
-step, the basis, where things stand and each action's result. Never a name and
-never a note.
+`intel_decision_approved`, `intel_decision_rejected`, and
+`intel_observation_recorded` for a report from the ground. Each carries ids,
+codes and where things stand. Never a name, never a note, never what was said.
 
 ## API
 
 | Method | Path | Permission | Returns |
 |---|---|---|---|
 | POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested. Once per person per assessment |
+| GET | `/security-intelligence/my-situations` | `intel:read` | The open situations in front of the caller: what they were dispatched to first, then by risk. For a guard, those and their shift's site where the policy lets a guard decide |
+| POST | `/security-intelligence/situations/{situation_id}/observations` | `intel:read` `intel:decide` | Records a report from the ground: accepted, arrived, or what was seen. Changes nothing else. 201; 200 for a retry |
+| GET | `/security-intelligence/situations/{situation_id}/observations` | `intel:read` | What was reported from the ground, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | For each of the fourteen decisions: whether the caller may take it, alone or with approval, whether it would follow or override, whether a reason will be asked for, what it would carry out — or why not |
 | GET | `/security-intelligence/situations/{situation_id}/responders` | `intel:read` `intel:decide` | The guards a decision could dispatch — those on shift at the site first — and the people it could be escalated to. A list to choose from; the layer does not choose |
 | POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval. 201; 200 for a retry |
@@ -399,7 +421,8 @@ sites gets 404 for another site's situation or decision.
 
 ## Tests
 
-`backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
+`backend/tests/test_intel_decisions.py` (39) and `backend/tests/test_intel_field.py`
+(11): see `AI_HUMAN_DECISION_MODEL.md`.
 `backend/tests/test_intel_docs.py` checks the two tables above against the code:
 what each decision carries out by running the planner, and each step's function
 by importing it.

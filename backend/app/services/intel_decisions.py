@@ -64,6 +64,10 @@ ESCALATION_ROLES = (2, 3, 8)
 
 STATUSES = ("AWAITING", "ACKNOWLEDGED", "IN_HAND", "PENDING_APPROVAL", "ASSISTANCE_REQUESTED", "RESOLVED",
             "FALSE_POSITIVE")
+#: Said to a guard who is neither on shift at the situation's site nor
+#: dispatched to it (services/intel_field.py works out which).
+OUT_OF_REACH = ("A guard decides and reports at the site of their own shift, or on a situation they were "
+                "dispatched to. This one is neither.")
 
 
 class Refused(Exception):
@@ -328,10 +332,12 @@ class Check:
     refusal: tuple[int, str] | None
 
 
-def check(action: str, *, situation: Mapping, f: Facts, mine: set[str], roles: Mapping, role_id: int) -> Check:
+def check(action: str, *, situation: Mapping, f: Facts, mine: set[str], roles: Mapping, role_id: int,
+          in_reach: bool = True) -> Check:
     """Judge one decision without recording anything. Pure, so that the answer
     given to "what may I do here?" and the answer given when the button is
-    pressed are the same code."""
+    pressed are the same code. `in_reach` is false for a guard who is neither
+    on shift at the situation's site nor dispatched to it."""
     basis, recommendation = classify(action, f.current)
     level = f.assessment["risk_level"] if f.assessment else None
     how, said = authority(roles, role_id, level, action)
@@ -343,6 +349,8 @@ def check(action: str, *, situation: Mapping, f: Facts, mine: set[str], roles: M
         refusal = (409, "This situation is closed. Nothing more can be decided on it.")
     elif "intel:decide" not in mine:
         refusal = (403, "Deciding needs the permission intel:decide.")
+    elif not in_reach:
+        refusal = (403, OUT_OF_REACH)
     elif how is None:
         refusal = (403, said)
     elif basis == "OVERRIDE" and "intel:override" not in mine:

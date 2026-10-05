@@ -143,6 +143,7 @@ function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRA
   vi.mocked(api.getResponders).mockResolvedValue({
     guards: [{ user_id: 'g1', name: 'Tan Wei Ming', on_shift_here: true, on_shift: true }],
     escalation: [{ user_id: 'sv1', name: 'Priya', role_id: SUPERVISOR }] })
+  vi.mocked(api.getObservations).mockResolvedValue([])
   return renderAt('/situations/sit1', '/situations/:id', <Situation />)
 }
 
@@ -312,6 +313,26 @@ describe('the situation view', () => {
     expect(screen.getAllByTestId('ai-suggestion')).toHaveLength(2)
   })
 
+  it('shows what was reported from the ground, apart from what was decided', async () => {
+    const view = open(OPERATOR)
+    await screen.findAllByTestId('ai-suggestion')
+    expect(screen.queryByText('From the ground')).toBeNull()        // nothing reported: no empty card
+    view.unmount()
+    open(OPERATOR)
+    vi.mocked(api.getObservations).mockResolvedValue([
+      { id: 'o1', kind: 'ARRIVED', note: null, user_id: 'g1', name: 'Tan Wei Ming', role_id: GUARD, latitude: 1.3,
+        longitude: 103.8, via: 'mobile', observed_at: '2026-10-05T02:24:31Z' },
+      { id: 'o2', kind: 'OBSERVATION', note: 'Night cleaner, badge checked.', user_id: 'g1', name: 'Tan Wei Ming',
+        role_id: GUARD, latitude: null, longitude: null, via: 'mobile', observed_at: '2026-10-05T02:27:10Z' }])
+    const reports = await screen.findAllByTestId('ground-report')
+    expect(reports).toHaveLength(2)
+    expect(within(reports[0]).getByText('Arrived')).toBeInTheDocument()
+    expect(within(reports[0]).getByText(/Tan Wei Ming \(Guard\) · from the phone · with position/)).toBeInTheDocument()
+    expect(within(reports[1]).getByText('Night cleaner, badge checked.')).toBeInTheDocument()
+    expect(screen.getByText(/A report is not a decision and changes nothing else\./)).toBeInTheDocument()
+    expect(screen.queryByTestId('human-decision')).toBeNull()       // reporting did not make a decision appear
+  })
+
   it('a closed situation offers nothing more to decide', async () => {
     asRole(OPERATOR)
     vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
@@ -320,6 +341,7 @@ describe('the situation view', () => {
     vi.mocked(api.getAuthority).mockResolvedValue(authority())
     vi.mocked(api.getTrail).mockResolvedValue({ ...EMPTY_TRAIL, decision_status: 'RESOLVED', closed_at: '2026-10-05T02:30:00Z' })
     vi.mocked(api.recordReview).mockResolvedValue({ recorded: false, assessment_id: 'a1' })
+    vi.mocked(api.getObservations).mockResolvedValue([])
     renderAt('/situations/sit1', '/situations/:id', <Situation />)
     expect(await screen.findByText('This situation is closed. Nothing more can be decided on it.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Monitor' })).toBeNull()

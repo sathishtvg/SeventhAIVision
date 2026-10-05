@@ -566,7 +566,7 @@ async def test_a_step_that_fails_is_recorded_as_failed_and_the_decision_stands(m
 
 @pytest.mark.asyncio
 async def test_who_may_not_decide_and_that_a_refusal_records_nothing():
-    w, s = await _ready()
+    w, s = await _ready(on_shift=True)          # the guard is on shift here: what stops them is the policy
     await _alert(w, "weapon", camera="cam_b", site="site_b", code="weapon.detected", severity="critical",
                  title="Weapon at Dock 4", at=_ago(seconds=50))
     await _pass(w)
@@ -600,7 +600,7 @@ async def test_who_may_not_decide_and_that_a_refusal_records_nothing():
 
 @pytest.mark.asyncio
 async def test_where_the_policy_lets_a_guard_decide_the_guard_decides_within_it():
-    w, s = await _ready(policy=POLICY_B)
+    w, s = await _ready(policy=POLICY_B, on_shift=True)
     async with _client() as c:
         follows = await _decide(c, w, s, GUARD, "VIEW_CAMERA", via="mobile")
         # A guard has not been given the right to go against a suggestion.
@@ -611,7 +611,7 @@ async def test_where_the_policy_lets_a_guard_decide_the_guard_decides_within_it(
                                         "said": "Guard may decide alone up to MEDIUM; this is MEDIUM."}
     assert overrides.status_code == 403 and "intel:override" in overrides.json()["detail"]
     assert acknowledges.status_code == 201 and acknowledges.json()["actions"][0]["result"] == "OK"
-    high_w, high = await _ready(severity="critical", policy=POLICY_B)
+    high_w, high = await _ready(severity="critical", policy=POLICY_B, on_shift=True)
     async with _client() as c:
         too_high = await _decide(c, high_w, high, GUARD, "VIEW_CAMERA")
     assert too_high.status_code == 403
@@ -620,7 +620,7 @@ async def test_where_the_policy_lets_a_guard_decide_the_guard_decides_within_it(
 
 @pytest.mark.asyncio
 async def test_a_decision_that_needs_approval_carries_nothing_out_until_a_second_person_approves():
-    w, s = await _ready(severity="critical", policy=POLICY_C)
+    w, s = await _ready(severity="critical", policy=POLICY_C, on_shift=True)
     async with _client() as c:
         r = await _decide(c, w, s, GUARD, "CREATE_INCIDENT", via="mobile")
         d = r.json()
@@ -653,7 +653,7 @@ async def test_a_decision_that_needs_approval_carries_nothing_out_until_a_second
 
 @pytest.mark.asyncio
 async def test_a_rejected_decision_carries_nothing_out_and_says_why():
-    w, s = await _ready(severity="critical", policy=POLICY_C)
+    w, s = await _ready(severity="critical", policy=POLICY_C, on_shift=True)
     async with _client() as c:
         d = (await _decide(c, w, s, GUARD, "FALSE_POSITIVE", reason_code="FALSE_DETECTION")).json()
         assert d["state"] == "PENDING_APPROVAL" and (await _situation(w, s))["closed_at"] is None
@@ -770,7 +770,7 @@ async def test_every_decision_and_every_step_is_in_the_audit_log_with_who_where_
 
 @pytest.mark.asyncio
 async def test_what_may_i_do_here_is_answered_by_the_same_judgement_as_deciding():
-    w, s = await _ready(severity="critical", policy=POLICY_C)
+    w, s = await _ready(severity="critical", policy=POLICY_C, on_shift=True)
     async with _client() as c:
         operator = (await c.get(_url(s, "authority"), headers=w["h"][OPERATOR])).json()
         guard = (await c.get(_url(s, "authority"), headers=w["h"][GUARD])).json()
