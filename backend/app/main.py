@@ -76,6 +76,7 @@ from app.routers import (
     drone_operations,
     drone_reports,
     drone_analytics,
+    security_intelligence,
     drone_edge,
     platform_drone_licenses,
     payroll,
@@ -371,6 +372,7 @@ app.include_router(drone_planning.router)
 app.include_router(drone_operations.router)
 app.include_router(drone_reports.router)
 app.include_router(drone_analytics.router)
+app.include_router(security_intelligence.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)

@@ -393,6 +393,25 @@ services:
       - evidence_data:/data/evidence
     restart: unless-stopped
 
+  # The AI security intelligence runner: reads the security events the platform
+  # has already recorded and writes them in one common shape for the tenants
+  # that have switched `intel.enabled` on. It is extra by design — it takes no
+  # security action, publishes no ports, mounts nothing, and if it is stopped
+  # alerts, pushes, incidents and video carry on exactly as before.
+  intelligence-runner:
+    build: { context: .., dockerfile: docker/backend.Dockerfile }
+    command: ["python", "-m", "app.intelligence_main"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      INTEL_RUNNER_TICK_SECONDS: "${INTEL_RUNNER_TICK_SECONDS:-3}"
+      # How far back the first read goes when a tenant turns the feature on.
+      INTEL_BACKFILL_MINUTES: "${INTEL_BACKFILL_MINUTES:-60}"
+    restart: unless-stopped
+
   # The drone site edge gateway: the service that runs AT A SITE, next to its
   # drones — flies them with the provider adapter installed there, keeps
   # flying and recording through a lost link, and syncs to the central API
