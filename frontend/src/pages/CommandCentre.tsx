@@ -24,6 +24,7 @@ import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getCCOverview } from '@/api/commandCentre'
 import { AlertResponseDialog } from '@/components/common/AlertResponseDialog'
+import { SituationsPanel } from '@/components/intel/SituationsPanel'
 import { openLiveWallWindow } from '@/lib/liveWallWindow'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
@@ -487,6 +488,10 @@ export default function CommandCentre() {
             <KpiCard label="Critical"       value={s?.critical_alerts ?? 0} color="#FF4560" icon={<ErrorIcon sx={{ fontSize: 16 }} />}          sub="severity" onClick={() => navigate('/alerts')} />
             <KpiCard label="Guards on Duty" value={s?.guards_on_duty  ?? 0} color="#00D9C0" icon={<SecurityIcon sx={{ fontSize: 16 }} />}       sub="active shifts" onClick={() => navigate('/roster')} />
           </Box>
+
+          {/* AI Security Intelligence: renders nothing unless the layer is on
+              for this organisation and the user may read it. */}
+          <SituationsPanel />
 
           {/* ── Main area ── */}
           <Box sx={{ flex: 1, display: 'flex', gap: 2, minHeight: 0, overflow: 'hidden' }}>

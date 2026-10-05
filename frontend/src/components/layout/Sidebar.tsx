@@ -248,6 +248,16 @@ const NAV_SECTIONS: {
     ],
   },
   {
+    // AI Security Intelligence. Its screens share their own tab bar
+    // (pages/intel/IntelNav), so these are the entry points.
+    title: 'Security Intelligence',
+    items: [
+      { label: 'Situations',         path: '/situations',          icon: <ShieldIcon fontSize="small" />,   permission: 'intel:read' },
+      { label: 'Decisions',          path: '/situation-decisions', icon: <HistoryIcon fontSize="small" />,  permission: 'intel:read' },
+      { label: 'Intelligence Setup', path: '/intelligence-setup',  icon: <SecurityIcon fontSize="small" />, permission: 'intel:manage' },
+    ],
+  },
+  {
     // Drone Patrol module (Phase 9). Its screens share their own tab bar
     // (pages/drones/DroneNav), so these are the entry points, not a menu tree.
     title: 'Drone Patrol',

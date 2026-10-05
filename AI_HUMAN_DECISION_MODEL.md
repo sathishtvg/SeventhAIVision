@@ -228,7 +228,7 @@ the audit log from it would have meant giving that up.
 
 ## Tests
 
-`backend/tests/test_intel_decisions.py` (38): the default policy and the three
+`backend/tests/test_intel_decisions.py` (39): the default policy and the three
 of the specification; a nonsense policy refused; what kind of decision each
 choice is; every reason a decision is refused, in order; followed, overridden,
 closed, through the API, each step carried out by the platform's own function;

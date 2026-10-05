@@ -1,14 +1,14 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–7 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–8 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
 in `AI_RISK_ENGINE.md`), recommendations (`0136`) and human decisions with
 their actions (`0137`), both described in `AI_DECISION_WORKFLOW.md` and
-`AI_HUMAN_DECISION_MODEL.md`. **The runner still does not act**: it reads,
-records and suggests. Something is carried out only when a person decides it
-through the API.
+`AI_HUMAN_DECISION_MODEL.md`, and the web screens (phase 8, below). **The
+runner still does not act**: it reads, records and suggests. Something is
+carried out only when a person decides it through the API.
 
 This document describes what exists. What is not yet built is listed at the end
 and is not described as if it were. The analysis and the plan are in
@@ -344,6 +344,7 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}/recommendations` | `intel:read` `intel:recommendation:read` | What the layer suggests doing, surest first, with the reason for each and why any cannot be done now. Always `is_decision: false` |
 | POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested |
 | GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | What the caller may decide here, how, and why not |
+| GET | `/security-intelligence/situations/{situation_id}/responders` | `intel:read` `intel:decide` | The guards and senior staff a decision can name, to choose from |
 | POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval |
 | GET | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` | The decision trail of a situation |
 | GET | `/security-intelligence/decisions` | `intel:read` | Decisions across situations; `state=pending_approval` is the approver's queue |
@@ -402,6 +403,50 @@ for each step.
 - A decision is not accepted from an API key or from a vendor's support
   session. The platform owner holds no `intel:*` permission.
 
+## The web screens
+
+`frontend/src/pages/intel/`, `frontend/src/components/intel/`, and the API
+client `frontend/src/api/securityIntelligence.ts`. Four screens under a section
+of their own in the sidebar, and one panel on the existing Command Centre.
+
+| Screen | Path | Shows |
+|---|---|---|
+| Situations | `/situations` | The open situations, highest risk first: risk as the layer assessed it, and beside it where each stands with people. Filters by site, risk and standing |
+| A situation | `/situations/:id` | The situation in one card (risk, location, started, sources, AI assessment, AI recommendation, human decision, incident); why the risk is what it is, factor by factor; the confidences; what was not known; what was known and from where; the related events and why each is there; the cameras worth opening; what the layer suggests; the buttons a person decides with; the decision history |
+| Decisions | `/situation-decisions` | Every decision, most recent first: what the layer had suggested, what the person decided, the state, what was carried out. Approve and reject for those who may |
+| Setup | `/intelligence-setup` | The switch; the runner's state; who may decide, with the three policies of the specification each one press; each site's hours and criticality |
+| Command Centre panel | on `/command-centre` | A strip of the open situations by risk. A card opens the situation |
+
+What the screens hold to, each with a test:
+
+- **A suggestion never looks like a decision.** What the layer suggests is a
+  dashed, violet-edged card marked "AI suggests" and "A suggestion, not a
+  decision". What a person decided is a solid, green-edged card that names them.
+  What the platform then did is listed under that decision, under its own
+  heading. The list says "Risk (AI)" over one column and "Stands (people)" over
+  another.
+- **Four confidences, four lines.** Detection, correlation, risk and
+  recommendation each have their own name, bar and number. One that no source
+  gave says so; it is not shown as 0% or 100%. There is no overall figure.
+- **A step that cannot be taken is shown, greyed, with the reason.** So is a
+  decision the caller may not take: the button is disabled and says why, in the
+  server's own sentence.
+- **An override is possible and asks why.** Choosing a step that was not
+  suggested opens a dialog that says what was suggested, and will not record
+  without a reason; "other" not without a note.
+- **The officer chooses.** The guard to send and the person to escalate to are
+  picked from a list by the officer. The screen opens a camera when asked and
+  says that the layer moves none.
+- **One press, one decision.** The reference sent with a decision is made when
+  the dialog opens, so a retry is the same decision.
+- **A viewer sees the situation and its assessment**, not the suggestions and
+  not the buttons; the requests for them are not even made.
+- **Nothing for a tenant that has not switched it on.** The Command Centre
+  panel renders nothing at all — not a heading, not a gap — when the layer is
+  off or the user may not read it, so that page is as it was. The layer's own
+  screens say plainly when it is off, or when its runner is not running.
+- **Opening a situation records that the officer looked**, once per assessment.
+
 ## Live events
 
 Published on the tenant's existing channel, `tenant_events:{tenant}`, and
@@ -419,6 +464,10 @@ and an assessment that says what the last one said is not announced at all.
 | `backend/app/main.py` | Registers the two routers |
 | `backend/app/core/config_keys.py` | The `intel.enabled` and `intel.risk_weights` settings |
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
+| `frontend/src/App.tsx` | Four routes |
+| `frontend/src/components/layout/Sidebar.tsx` | One section, three entries |
+| `frontend/src/hooks/usePermission.ts` | The seven `intel:*` permissions, per role as migration `0132` grants them |
+| `frontend/src/pages/CommandCentre.tsx` | One import and one line: the panel, between the figures and the site grid |
 
 ## Running it
 
@@ -455,7 +504,14 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_recommend.py` (82): see `AI_DECISION_WORKFLOW.md`.
 
-`backend/tests/test_intel_decisions.py` (38): see `AI_HUMAN_DECISION_MODEL.md`.
+`backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`frontend/src/pages/intel/intel.test.tsx` (25): the screens' claims above.
+
+`backend/tests/test_intel_clients.py` (7): every call the web client makes is an operation the API
+serves; its filters and the body of a decision hold only what the API accepts; the web's
+permission table gives each role exactly what migration `0132` grants; the screens are
+registered and guarded; and the Command Centre page gained one panel and nothing else.
 
 `backend/tests/test_intel_docs.py` (24) checks the API tables of these documents
 against the application's route table, and the rules written in the
@@ -465,11 +521,11 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-The command centre screens (8) · the guard's phone (9) · drone and
-virtual patrol integration beyond reading their events (10) · the unified
-timeline (11) · evidence and summaries (12) · the dashboard and site security
-score (13) · feedback (14) · platform health for the vendor, the Helm
-deployment and final validation (15).
+The guard's phone (9) · drone and virtual patrol integration beyond reading
+their events (10) · the unified timeline (11) · evidence and summaries (12) ·
+the dashboard and site security score (13) · feedback (14) · platform health for
+the vendor, the Helm deployment and final validation (15).
 
-Until phase 8 there is no screen: what exists is reachable through the API
-above.
+The screens show evidence as references so far — the events, the alerts behind
+them, and the cameras to open. Snapshots, clips and recordings beside them come
+with phase 12, and the single timeline with phase 11.

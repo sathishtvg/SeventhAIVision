@@ -814,6 +814,31 @@ async def test_what_may_i_do_here_is_answered_by_the_same_judgement_as_deciding(
 
 
 @pytest.mark.asyncio
+async def test_the_people_a_decision_can_name_are_listed_for_someone_who_may_decide():
+    w, s = await _ready(severity="critical", on_shift=True)
+    await _run([
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
+         "VALUES (:i,:t,5,:e,'x','Aaron Spare')", {"i": uuid.uuid4(), "t": w["tenant"], "e": "spare@decide.test"}),
+        ("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name, is_active) "
+         "VALUES (:i,:t,5,:e,'x','Left Last Year',FALSE)", {"i": uuid.uuid4(), "t": w["tenant"], "e": "left@decide.test"}),
+    ])
+    async with _client() as c:
+        r = await c.get(_url(s, "responders"), headers=w["h"][OPERATOR])
+        as_supervisor = await c.get(_url(s, "responders"), headers=w["h"][SUPERVISOR])
+        viewer = await c.get(_url(s, "responders"), headers=w["h"][VIEWER])
+        stranger = await c.get(_url(s, "responders"), headers=(await _world())["h"][ADMIN])
+    body = r.json()
+    assert r.status_code == 200
+    assert [(g["name"], g["on_shift_here"], g["on_shift"]) for g in body["guards"]] == [
+        ("Role 5 User", True, True), ("Aaron Spare", False, False)], "on shift here first; nobody who has left"
+    assert sorted(e["role_id"] for e in body["escalation"]) == [ADMIN, SUPERVISOR, MANAGER]
+    # Nobody escalates to themselves.
+    assert str(w["users"][SUPERVISOR]) not in [e["user_id"] for e in as_supervisor.json()["escalation"]]
+    assert set(body["guards"][0]) == {"user_id", "name", "on_shift_here", "on_shift"}, "a name to choose by, no more"
+    assert viewer.status_code == 403 and stranger.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_the_decision_policy_is_set_by_an_administrator_and_a_site_can_have_its_own():
     w = await _world()
     url = f"{BASE}/decision-policy"

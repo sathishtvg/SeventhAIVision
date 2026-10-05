@@ -382,6 +382,7 @@ never a note.
 |---|---|---|---|
 | POST | `/security-intelligence/situations/{situation_id}/reviews` | `intel:read` `intel:recommendation:read` | Records that the caller looked at what was suggested. Once per person per assessment |
 | GET | `/security-intelligence/situations/{situation_id}/authority` | `intel:read` | For each of the fourteen decisions: whether the caller may take it, alone or with approval, whether it would follow or override, whether a reason will be asked for, what it would carry out — or why not |
+| GET | `/security-intelligence/situations/{situation_id}/responders` | `intel:read` `intel:decide` | The guards a decision could dispatch — those on shift at the site first — and the people it could be escalated to. A list to choose from; the layer does not choose |
 | POST | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` `intel:decide` | Records the caller's decision and carries it out, or holds it for approval. 201; 200 for a retry |
 | GET | `/security-intelligence/situations/{situation_id}/decisions` | `intel:read` | The trail: who looked, each decision, any verdict, each action, and how it ended |
 | GET | `/security-intelligence/decisions` | `intel:read` | Decisions across situations, most recent first. `state=pending_approval` is the approver's queue |
@@ -398,7 +399,7 @@ sites gets 404 for another site's situation or decision.
 
 ## Tests
 
-`backend/tests/test_intel_decisions.py` (38): see `AI_HUMAN_DECISION_MODEL.md`.
+`backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 `backend/tests/test_intel_docs.py` checks the two tables above against the code:
 what each decision carries out by running the planner, and each step's function
 by importing it.

@@ -170,6 +170,39 @@ async def my_authority(
     }
 
 
+@router.get("/situations/{situation_id}/responders", dependencies=[Depends(require_permission("intel:decide"))])
+async def list_responders(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The people a decision can name, for someone who may decide: the guards
+    one could be dispatched from — those on shift at the situation's site
+    first, then those on shift elsewhere — and the admins, managers and
+    supervisors it could be escalated to, other than the caller.
+
+    A list to choose from. The layer does not choose, and does not say who is
+    nearest or free: that is the officer's to judge."""
+    situation = await _situation(db, situation_id, allowed)
+    on_shift = ("EXISTS (SELECT 1 FROM shifts sh WHERE sh.guard_user_id = u.id AND sh.status = 'active' "
+                "AND sh.actual_start IS NOT NULL AND sh.actual_end IS NULL{here})")
+    guards = (await db.execute(text(f"""
+        SELECT u.id AS user_id, u.full_name AS name,
+               {on_shift.format(here=" AND sh.site_id = CAST(:site AS uuid)")} AS on_shift_here,
+               {on_shift.format(here="")} AS on_shift
+          FROM users u
+         WHERE u.is_active AND u.role_id = 5
+         ORDER BY 3 DESC, 4 DESC, u.full_name LIMIT 200
+    """), {"site": str(situation["site_id"]) if situation["site_id"] else None})).mappings().all()
+    seniors = (await db.execute(text("""
+        SELECT u.id AS user_id, u.full_name AS name, u.role_id FROM users u
+         WHERE u.is_active AND u.role_id = ANY(:roles) AND u.id <> CAST(:me AS uuid)
+         ORDER BY u.role_id, u.full_name LIMIT 200
+    """), {"roles": list(decisions.ESCALATION_ROLES), "me": str(token.user_id)})).mappings().all()
+    return {"guards": [dict(g) for g in guards], "escalation": [dict(s) for s in seniors]}
+
+
 # ─── Deciding ────────────────────────────────────────────────────────────────
 
 class DecisionIn(BaseModel):
