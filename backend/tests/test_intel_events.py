@@ -584,9 +584,10 @@ async def test_two_tenants_are_read_in_one_pass_and_neither_sees_the_other():
 
 APP = Path(events.__file__).resolve().parents[1]
 RUNNER_FILES = [APP / "intelligence_main.py", APP / "services" / "intel_runner.py",
-                APP / "services" / "intel_events.py", APP / "services" / "intel_config.py"]
+                APP / "services" / "intel_events.py", APP / "services" / "intel_config.py",
+                APP / "services" / "intel_correlation.py"]
 MAY_IMPORT = {"app.core.config", "app.db.session", "app.services", "app.services.intel_events",
-              "app.services.intel_runner", "app.services.intel_config"}
+              "app.services.intel_runner", "app.services.intel_config", "app.services.intel_correlation"}
 
 
 def _app_imports(path: Path) -> set[str]:
@@ -613,12 +614,12 @@ def test_the_runner_imports_nothing_that_could_take_a_security_action():
 
 
 def test_the_runner_writes_only_its_own_tables():
-    writes = re.compile(r"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+([a-z_]+)", re.I)
+    # Not "ON CONFLICT ... DO UPDATE SET", and not the row lock "FOR UPDATE SKIP LOCKED".
+    writes = re.compile(r"\b(INSERT\s+INTO|(?<!DO )(?<!FOR )UPDATE|DELETE\s+FROM)\s+([a-z_]+)", re.I)
     seen = set()
     for path in RUNNER_FILES:
         for _, table in writes.findall(path.read_text(encoding="utf-8")):
             seen.add(table.lower())
-    seen.discard("set")  # "ON CONFLICT ... DO UPDATE SET"
     assert seen, "found no writes at all — the pattern no longer matches the code"
     assert all(t.startswith("security_") for t in seen), f"writes outside its own tables: {sorted(seen)}"
 

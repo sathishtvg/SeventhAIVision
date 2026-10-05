@@ -1,8 +1,9 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–3 of 15 built**: the gap analysis, the
-normalised security event pipeline (migration `0132`), and the context engine
-with site and camera profiles (`0133`).
+**As of:** 2026-10-05 · **Phases 1–4 of 15 built**: the gap analysis, the
+normalised security event pipeline (migration `0132`), the context engine with
+site and camera profiles (`0133`), and correlation into situations (`0134`,
+described in `AI_EVENT_CORRELATION.md`).
 
 This document describes what exists. What is not yet built is listed at the end
 and is not described as if it were. The analysis and the plan are in
@@ -38,7 +39,7 @@ NORMALISE ─► security_events                        yes  (phase 2)
    ▼
 CONTEXT                                             yes  (phase 3) — on request; not yet stored
    ▼
-CORRELATE ─► situations                             no   (phase 4)
+CORRELATE ─► security_situations                    yes  (phase 4)
    ▼
 NORMALITY · RISK                                    no   (phase 5)
    ▼
@@ -55,6 +56,9 @@ HUMAN DECISION ─► ACTION                            no   (phase 7)
 | `security_ingest_cursors` | Per tenant and source: where reading starts, when it last ran, how many it has read, and the kind of the last error if there was one |
 | `security_site_profiles` | What an administrator says a site expects: business hours by weekday, time zone, whether it closes on public holidays, criticality. One per site |
 | `security_camera_profiles` | What a camera watches: an area name, criticality, whether it is a restricted area. One per camera; goes when the camera goes |
+| `security_situations` | One matter, however many alerts fed it: number, title and severity of its most severe event, counts, sources, `ACTIVE` or `SETTLED` |
+| `security_situation_events` | Each event's place in a situation, with the method, the reason in words and the confidence of the link. An event is in at most one situation |
+| `security_camera_links` | Cameras an administrator has said are next to each other, and the walk between them |
 
 All have `FORCE ROW LEVEL SECURITY` with the platform's standard tenant policy.
 Foreign keys to sites, cameras, drones, alerts and incidents are `ON DELETE SET
@@ -77,7 +81,7 @@ and `recordings`. The alert's status stays on the alert.
 | `confidence` | The model's certainty about what it saw, 0–1, copied. Empty for sources that have none (an alarm panel) |
 | `severity` | The platform's five: `info`, `low`, `medium`, `high`, `critical` |
 | `attributes` | A few named facts per source (zone, plate details, the drone's own risk). Not the source row |
-| `status` | `NEW` when read; `LINKED` once it belongs to a situation (phase 4) |
+| `status` | `NEW` when read; `LINKED` once it has been placed in a situation |
 
 `security_intel_tenants()` lists the tenants with the feature on. It is
 `SECURITY DEFINER` because the runner connects outside any tenant, where
@@ -177,6 +181,21 @@ One limit the tests record rather than hide: a contractor permit later marked
 completed cannot be shown as in force at an earlier time, because the table
 keeps a status and not when it changed.
 
+## Correlation
+
+`backend/app/services/intel_correlation.py`; the rules, the confidences and the
+limits are in `AI_EVENT_CORRELATION.md`. In short: a new event joins an active
+situation at its site only through a named rule — the same alert, the drone
+module's own corroboration, the same plate or watchlist entry, the same camera
+repeating itself, a door or an alarm and what a camera saw then, a neighbouring
+camera, a drone near a camera, a virtual-patrol finding, a guard's SOS beside a
+serious event — and otherwise opens a situation of its own. Every link stores
+its method, a reason an officer can read, and how sure it is. Repeats are folded
+as duplicates and nothing is dropped: the alerts are untouched.
+
+It never joins across sites, and it never says two sightings are the same
+person unless it has an identity for them.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -203,7 +222,7 @@ own process so that nothing it does can hold up the API or the scheduler.
 
 | | |
 |---|---|
-| Pass | Every tenant with the feature on, every source, under that tenant's setting, in its own sessions |
+| Pass | Every tenant with the feature on, under that tenant's setting, in its own sessions: normalise what is new from every source, then place each new event in a situation and announce it |
 | Cadence | `INTEL_RUNNER_TICK_SECONDS` (3) |
 | Wake | Early, when a tenant's event channel announces an alert, incident, SOS or camera change. A nudge only: the database is what is read, so a missed message costs a tick and never an event |
 | Rest | At least `INTEL_RUNNER_MIN_GAP_SECONDS` (0.5) between passes, so an alert storm cannot turn it into a busy loop |
@@ -218,6 +237,8 @@ own process so that nothing it does can hold up the API or the scheduler.
 | `intel.enabled` | Tenant setting, through the settings API (`settings:write`) | off |
 | `INTEL_RUNNER_TICK_SECONDS`, `INTEL_RUNNER_MIN_GAP_SECONDS` | Runner environment | 3, 0.5 |
 | `INTEL_BACKFILL_MINUTES`, `INTEL_OVERLAP_SECONDS`, `INTEL_INGEST_BATCH` | Runner environment | 60, 120, 200 |
+| `INTEL_SITUATION_QUIET_MINUTES`, `INTEL_CORRELATE_BATCH` | Runner environment | 30, 100 |
+| Camera links | Per site, through the API (`intel:manage`) | none |
 
 ## API
 
@@ -238,6 +259,10 @@ refuse fields they do not know.
 | GET | `/security-intelligence/site-profiles/{site_id}` | `intel:read` | One site's profile and its cameras' profiles |
 | PUT | `/security-intelligence/site-profiles/{site_id}` | `intel:read` `intel:manage` | Replace the site's profile. A field left out is no longer set. Audited |
 | PUT | `/security-intelligence/site-profiles/{site_id}/cameras/{camera_id}` | `intel:read` `intel:manage` | Replace a camera's profile; the camera must belong to the site. Audited |
+| GET | `/security-intelligence/site-profiles/{site_id}/camera-links` | `intel:read` | Which of the site's cameras are next to each other |
+| PUT | `/security-intelligence/site-profiles/{site_id}/camera-links` | `intel:read` `intel:manage` | Replace the site's camera links. Audited |
+| GET | `/security-intelligence/situations` | `intel:read` | Situations, the one heard from most recently first. Filters: `status`, `site_id`, `severity`, `source_type`, `from`, `to` |
+| GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, and every event with the reason it is there |
 
 ## Permissions
 
@@ -277,7 +302,15 @@ administrator sets one it lets no guard decide.
   pointed at another tenant's site or camera by id finds nothing there.
 - Changes to a profile are written to the tenant's hash-chained audit log with
   the actor, their role, the site, the request id and the result
-  (`intel.site_profile.update`, `intel.camera_profile.update`).
+  (`intel.site_profile.update`, `intel.camera_profile.update`,
+  `intel.camera_links.update`).
+
+## Live events
+
+Published on the tenant's existing channel, `tenant_events:{tenant}`, and
+forwarded to that tenant's clients by the existing listener with no change to it:
+`intel_situation_opened` and `intel_situation_updated`. The situation is saved
+before it is announced.
 
 ## Touch points in existing files
 
@@ -316,13 +349,14 @@ event's moment, with a row beside each that had ended or lies outside the
 window; another tenant's facts never read; the profile API's permissions,
 validation, site scope and audit entries; the schema.
 
+`backend/tests/test_intel_correlation.py` (33): see `AI_EVENT_CORRELATION.md`.
+
 `backend/tests/test_intel_docs.py` (4) checks the API table above against the
 application's route table.
 
 ## Not built yet
 
-Correlation and situations (4) · normality and risk, and storing the context
-with the assessment it informed (5) · recommendations (6) · human decisions, actions and the decision
+Normality and risk, and storing the context with the assessment it informed (5) · recommendations (6) · human decisions, actions and the decision
 policy (7) · the command centre screens (8) · the guard's phone (9) · drone and
 virtual patrol integration beyond reading their events (10) · the unified
 timeline (11) · evidence and summaries (12) · the dashboard and site security

@@ -2,14 +2,16 @@
 
 The layer described in AI_SECURITY_INTELLIGENCE_GAP_ANALYSIS.md, as far as it is
 built: whether it is running for this organisation, the security events it has
-read, the context of each, and what an administrator has said about each site.
+read, the context of each, the situations those events have been joined into
+and why, and what an administrator has said about each site.
 
 NOTHING HERE CHANGES AN ALERT, AN INCIDENT OR ANY OTHER EXISTING RECORD. The
 events are written by the intelligence runner (app/intelligence_main.py); the
 switch that turns it on for a tenant is the ordinary tenant setting
 `intel.enabled`, changed through the settings API by someone who may change
 settings. The only things written here are the layer's own site and camera
-profiles, by someone with `intel:manage`, and each change is audited.
+profiles and camera links, by someone with `intel:manage`, and each change is
+audited.
 
 Everything needs `intel:read`. A caller restricted to certain sites sees those
 sites' events and profiles; an event with no site is not shown to them — the
@@ -345,3 +347,201 @@ async def put_camera_profile(
     await db.commit()
     return {"camera_id": str(camera_id), "site_id": str(site_id), "area_label": body.area_label,
             "criticality": body.criticality, "is_restricted_area": body.is_restricted_area}
+
+
+# ─── Situations ──────────────────────────────────────────────────────────────
+
+SITUATION_STATUSES = ("ACTIVE", "SETTLED")
+
+_SITUATION_COLUMNS = """
+    x.id, x.situation_number, x.title, x.status, x.severity, x.site_id, s.name AS site_name,
+    x.started_at, x.last_event_at, x.event_count, x.duplicate_count, x.source_types,
+    x.primary_camera_id, c.name AS primary_camera_name, x.location_label, x.latitude, x.longitude,
+    x.correlation_confidence, x.settled_at, x.created_at, x.updated_at
+"""
+_SITUATION_FROM = """
+      FROM security_situations x
+      LEFT JOIN sites s ON s.id = x.site_id
+      LEFT JOIN cameras c ON c.id = x.primary_camera_id
+"""
+
+
+@router.get("/situations")
+async def list_situations(
+    status: str | None = Query(None),
+    site_id: uuid.UUID | None = Query(None),
+    severity: str | None = Query(None),
+    source_type: str | None = Query(None),
+    since: datetime | None = Query(None, alias="from"),
+    until: datetime | None = Query(None, alias="to"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Security situations, the one heard from most recently first. Each is one
+    matter, however many alerts fed it: `event_count` says how many, and
+    `duplicate_count` how many of those added nothing new.
+
+    `source_type` finds situations that include a source of that kind;
+    `from`/`to` are about when a situation was last heard from."""
+    _one_of(status, SITUATION_STATUSES, "status")
+    _one_of(severity, SEVERITIES, "severity")
+    _one_of(source_type, SOURCE_TYPES, "source type")
+    if since is not None and until is not None and until < since:
+        raise HTTPException(422, "The period ends before it starts.")
+
+    where: list[str] = []
+    params: dict = {}
+    scope = site_scope_clause(allowed, "x.site_id", params)
+    if scope:
+        where.append(scope)
+    if site_id is not None:
+        where.append("x.site_id = CAST(:site AS uuid)")
+        params["site"] = str(site_id)
+    for column, value, name in (("x.status", status, "status"), ("x.severity", severity, "severity")):
+        if value is not None:
+            where.append(f"{column} = :{name}")
+            params[name] = value
+    if source_type is not None:
+        where.append("CAST(:source_type AS text) = ANY(x.source_types)")
+        params["source_type"] = source_type
+    if since is not None:
+        where.append("x.last_event_at >= :since")
+        params["since"] = since
+    if until is not None:
+        where.append("x.last_event_at <= :until")
+        params["until"] = until
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    return await paginate(
+        db,
+        f"SELECT {_SITUATION_COLUMNS} {_SITUATION_FROM} {clause} "
+        "ORDER BY x.last_event_at DESC, x.id DESC LIMIT :limit OFFSET :offset",
+        f"SELECT count(*) FROM security_situations x {clause}",
+        params, limit, offset,
+    )
+
+
+@router.get("/situations/{situation_id}")
+async def get_situation(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """One situation with every event in it, oldest first, and for each event
+    why it is here: the method, the reason in words, how sure the link is, and
+    whether it added anything new. `sources` is the short list an officer reads
+    first — which cameras and which other sources reported."""
+    row = (await db.execute(
+        text(f"SELECT {_SITUATION_COLUMNS} {_SITUATION_FROM} WHERE x.id = CAST(:id AS uuid)"),
+        {"id": str(situation_id)})).mappings().first()
+    if row is None or not is_site_allowed(allowed, row["site_id"]):
+        raise HTTPException(404, "Situation not found")
+    events = (await db.execute(text("""
+        SELECT e.id, e.source_type, e.source_table, e.source_id, e.event_type, e.occurred_at, e.severity,
+               e.title, e.camera_id, cam.name AS camera_name, e.drone_id, e.alert_id, e.incident_id,
+               e.subject_kind, e.subject_ref, e.subject_verdict, e.confidence, e.location_label,
+               l.method, l.reason, l.confidence AS link_confidence, l.is_duplicate, l.matched_event_id,
+               l.linked_at
+          FROM security_situation_events l
+          JOIN security_events e ON e.id = l.event_id
+          LEFT JOIN cameras cam ON cam.id = e.camera_id
+         WHERE l.situation_id = CAST(:id AS uuid)
+         ORDER BY e.occurred_at, e.id
+    """), {"id": str(situation_id)})).mappings().all()
+
+    sources: dict[tuple, dict] = {}
+    for e in events:
+        key = (e["source_type"], str(e["camera_id"]) if e["camera_id"] else e["location_label"])
+        entry = sources.setdefault(key, {
+            "source_type": e["source_type"], "camera_id": e["camera_id"],
+            "label": e["camera_name"] or e["location_label"], "events": 0,
+            "first_at": e["occurred_at"], "last_at": e["occurred_at"]})
+        entry["events"] += 1
+        entry["last_at"] = e["occurred_at"]
+    return {**dict(row), "sources": list(sources.values()), "events": [dict(e) for e in events]}
+
+
+# ─── Camera links ────────────────────────────────────────────────────────────
+
+class CameraLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    camera_a: uuid.UUID
+    camera_b: uuid.UUID
+    walk_seconds: int = Field(..., ge=1, le=3600)
+    note: str | None = Field(None, max_length=255)
+
+
+class CameraLinksIn(BaseModel):
+    """Every link between this site's cameras, replaced as a whole."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    links: list[CameraLinkIn] = Field(..., max_length=500)
+
+
+async def _links(db: AsyncSession, site_id: uuid.UUID) -> list[dict]:
+    rows = (await db.execute(text("""
+        SELECT l.camera_a, a.name AS camera_a_name, l.camera_b, b.name AS camera_b_name, l.walk_seconds, l.note
+          FROM security_camera_links l
+          JOIN cameras a ON a.id = l.camera_a
+          JOIN cameras b ON b.id = l.camera_b
+         WHERE a.site_id = CAST(:s AS uuid)
+         ORDER BY a.name, b.name
+    """), {"s": str(site_id)})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/site-profiles/{site_id}/camera-links")
+async def get_camera_links(
+    site_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Which of the site's cameras an administrator has said are next to each
+    other, and the walk between them in seconds. Cameras with coordinates are
+    related by distance without being listed here."""
+    await _site(db, site_id, allowed)
+    return {"site_id": str(site_id), "links": await _links(db, site_id)}
+
+
+@router.put("/site-profiles/{site_id}/camera-links", dependencies=[Depends(require_permission("intel:manage"))])
+async def put_camera_links(
+    site_id: uuid.UUID,
+    body: CameraLinksIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Say which cameras are next to each other. Replaces every link between
+    this site's cameras. Both cameras of a link must belong to the site."""
+    await _site(db, site_id, allowed)
+    owned = {str(r) for r in (await db.execute(
+        text("SELECT id FROM cameras WHERE site_id = CAST(:s AS uuid)"), {"s": str(site_id)})).scalars().all()}
+    pairs: dict[tuple[str, str], CameraLinkIn] = {}
+    for link in body.links:
+        a, b = sorted((str(link.camera_a), str(link.camera_b)))
+        if a == b:
+            raise HTTPException(422, "A camera cannot be linked to itself.")
+        if a not in owned or b not in owned:
+            raise HTTPException(422, "Both cameras of a link must belong to this site.")
+        if (a, b) in pairs:
+            raise HTTPException(422, "The same pair of cameras is listed twice.")
+        pairs[(a, b)] = link
+    await db.execute(text("""
+        DELETE FROM security_camera_links l USING cameras c
+         WHERE c.id = l.camera_a AND c.site_id = CAST(:s AS uuid)
+    """), {"s": str(site_id)})
+    for (a, b), link in pairs.items():
+        await db.execute(text("""
+            INSERT INTO security_camera_links (tenant_id, camera_a, camera_b, walk_seconds, note, updated_by_user_id)
+            VALUES (current_setting('app.current_tenant')::uuid, CAST(:a AS uuid), CAST(:b AS uuid), :walk, :note,
+                    CAST(:u AS uuid))
+        """), {"a": a, "b": b, "walk": link.walk_seconds, "note": link.note, "u": token.user_id})
+    await intel_audit.record(db, request, token, "intel.camera_links.update", "security_camera_links", site_id,
+                             site_id=site_id, detail={"links": len(pairs)})
+    listed = await _links(db, site_id)
+    await db.commit()
+    return {"site_id": str(site_id), "links": listed}

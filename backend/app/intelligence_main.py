@@ -6,7 +6,8 @@ live wall still plays, because none of that passes through here. Inside the API
 or the scheduler it could hold one of them up; on its own it cannot.
 
 It reads what the platform has already recorded and writes the `security_*`
-tables. It takes no security action of any kind — see services/intel_runner.py.
+tables: each pass normalises what is new, then places each new event in a
+situation. It takes no security action of any kind — see services/intel_runner.py.
 
 Cadence, each overridable by environment:
   INTEL_RUNNER_TICK_SECONDS      3    read each source for each tenant with the feature on
@@ -85,6 +86,7 @@ async def main() -> None:
             pass
     stop_waiter = asyncio.create_task(stop.wait())
     listener = asyncio.create_task(_listen(redis, wake, stop))
+    pub = intel_runner.RedisPublisher(redis)
 
     logger.info("intelligence runner started: tick %.1fs", TICK_SECONDS)
     try:
@@ -99,6 +101,14 @@ async def main() -> None:
             except Exception:  # noqa: BLE001 — a failed pass costs this pass only
                 ok = False
                 logger.exception("ingest pass failed")
+            try:
+                placed = await intel_runner.run_correlate_tick(AsyncSessionLocal, pub)
+                ok = ok and not placed["failed"]
+                if placed["opened"] or placed["joined"] or placed["settled"] or placed["failed"]:
+                    logger.info("situations: %s", placed)
+            except Exception:  # noqa: BLE001
+                ok = False
+                logger.exception("correlation pass failed")
             try:
                 await intel_runner.write_heartbeat(redis, ok, result)
             except Exception as exc:  # noqa: BLE001
