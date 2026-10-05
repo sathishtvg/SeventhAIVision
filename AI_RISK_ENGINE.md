@@ -1,7 +1,8 @@
 # AI Security Intelligence — Normality and Risk
 
 **As of:** 2026-10-05 · phase 5 of 15 · migration `0135` ·
-`backend/app/services/intel_risk.py`
+`backend/app/services/intel_risk.py` · rules `rules-2` since phase 10, which
+added what a drone's second look is worth
 
 A situation says *what happened*: these events, at this place, joined for these
 reasons. This stage says two more things about it and nothing else — **how
@@ -81,12 +82,29 @@ A score from 0 to 100: the sum of the factors below, held to that range.
 | `ANOMALY` | Anomaly of 80 or more: unusual for the place and hour | +10 |
 | | Anomaly of 20 or less: usual | −10 |
 | `DRONE` | The drone module's own assessment of its sighting: HIGH, CRITICAL | +10, +15 |
+| | A drone held and looked again because a person asked, and saw more of the same thing | +5 |
+| | …and saw nothing more | −5 |
 | `GUARD` | A guard raised an SOS | +20 |
 | `CONFIDENCE` | The model's highest confidence was 0.90 or more | +5 |
 | | It was below 0.60 | −10 |
 
 A person who is merely **not identified** appears nowhere in this table. One
 allow-listed person does not vouch for an unidentified one beside them.
+
+**A second look is worth a little, either way.** When an officer has a drone
+hold and look again, what it saw comes back as an event. More detections of the
+same thing is a confirmation; none is a small reason for less concern — a hold
+of half a minute does not prove a place empty. Only the latest look counts, and
+a look is the same kind of source as the sighting, so it does not make a
+situation "reported by two kinds of source". Either way the assessment is
+written again, which is the point: the officer decides next on what the drone
+saw.
+
+**A virtual patrol that reported nothing lowers nothing.** The last patrol check
+of the camera is in the context — "checked this camera 40 min before: 3
+question(s) answered, nothing reported" — and is not a factor. It says what an
+officer saw then, not what is true now. A patrol that reported an exception is
+an event in its own right, and counts as one.
 
 A false-positive share is used only when at least five alerts of that kind from
 that camera have been decided; three out of three is too few to call a camera
@@ -180,7 +198,7 @@ model writes it.
 | `normality_score`, `anomaly_score`, `normality_factors` | Both set or both empty |
 | `detection_confidence`, `correlation_confidence`, `risk_confidence` | The three, separately |
 | `context` | What was known about the place and the moment when it was scored: the statements with their sources, what was expected, and what was not known |
-| `event_count`, `engine_version` | How many events it rested on; `rules-1` |
+| `event_count`, `engine_version` | How many events it rested on; `rules-2` (`rules-1` before phase 10) |
 
 **Written once, never changed.** A situation is assessed again whenever its
 events change. If the answer is the same — the same score, label and factor

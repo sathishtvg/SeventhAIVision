@@ -100,6 +100,10 @@ async def mine(db: AsyncSession, user_id, role_id: int, allowed: list[str] | Non
                s.primary_camera_id, c.name AS primary_camera_name, s.location_label, s.latitude, s.longitude,
                s.started_at, s.last_event_at, s.event_count, s.source_types, s.risk_score, s.risk_level,
                s.decision_status, a.kind, a.label,
+               (s.last_decision_id IS NOT NULL
+                   AND s.assessment_id IS DISTINCT FROM (SELECT ld.assessment_id FROM security_decisions ld
+                                                          WHERE ld.id = s.last_decision_id))
+                   AS reassessed_since_decision,
                d.incident_id AS dispatch_incident_id, d.dispatched_at, d.guard_arrived_at, d.dispatch_notes,
                (SELECT o.kind FROM security_observations o
                  WHERE o.situation_id = s.id AND o.user_id = CAST(:u AS uuid) AND o.kind <> 'OBSERVATION'

@@ -1,8 +1,8 @@
 # AI Security Intelligence — The Human Decision Model
 
-**As of:** 2026-10-05 · phases 7 and 9 of 15 · migrations `0137`, `0138` ·
-`backend/app/services/intel_decisions.py`, `intel_actions.py`, `intel_field.py`,
-`backend/app/routers/security_decisions.py`
+**As of:** 2026-10-05 · phases 7, 9 and 10 of 15 · migrations `0137`, `0138`,
+`0139` · `backend/app/services/intel_decisions.py`, `intel_actions.py`,
+`intel_field.py`, `intel_drone.py`, `backend/app/routers/security_decisions.py`
 
 > AI detects, understands, correlates, assesses and recommends. Authorised
 > human security personnel make the final security decision.
@@ -41,10 +41,23 @@ All of them, or the decision is refused and nothing is recorded as decided.
 | 3 | The situation's site, for someone restricted to certain sites | 404, as if it did not exist |
 | 4 | For a guard: to be on shift at the situation's site right now, or dispatched to it | 403 |
 | 5 | The authority the **decision policy** gives that person's role at this risk | 403, with the policy's own sentence |
-| 6 | To be carried out alone: the platform's own permission for each step — `incident:dispatch` to dispatch, `incident:resolve` to resolve an incident, and so on | 403, naming the permission |
+| 6 | To be carried out alone: the platform's own permission for each step — `incident:dispatch` to dispatch, `incident:resolve` to resolve an incident, `drone:operate` to have a flight hold and look again, `drone:mission:execute` to start a mission, and so on | 403, naming the permission |
 
 `intel:decide` by itself carries nothing out. And going against what was
 suggested needs `intel:override` as well.
+
+**A drone is asked only by a person, and only as that person chose.** Deciding
+`VERIFY_WITH_DRONE` records that a drone should look. It asks one only when the
+officer also says which flight is to hold, or which of the site's missions is to
+start — and then under the drone module's own permission, checks and licence.
+No part of the layer chooses a flight or a mission, and nothing that runs by
+itself can ask for either. How it is carried out, and what comes back, is in
+*Asking a drone* in `AI_DECISION_WORKFLOW.md`.
+
+**A decision stands until a person makes another.** When the layer assesses a
+situation again after a decision — new events arrived, a drone looked — the
+situation is marked `reassessed_since_decision` and the screens say so. Nothing
+is re-decided, re-opened or carried out because of it.
 
 ## The decision policy
 
@@ -237,7 +250,7 @@ their role, the site, the source, the request id and the result:
 | `intel.recommendation.view` | A person opens what was suggested, the first time for each assessment |
 | `intel.decision.record` | A decision — with the step, the basis, whether it is an override, the reason code, what was suggested first, the assessment, the risk and how the policy let it be made |
 | `intel.decision.approve`, `intel.decision.reject` | A second person's verdict |
-| `intel.action.<step>` | Each step carried out — guard dispatched, escalation, incident opened or resolved — with the function it went through and how it ended |
+| `intel.action.<step>` | Each step carried out — guard dispatched, escalation, incident opened or resolved, a flight asked to hold, a mission started — with the function it went through and how it ended. The drone module writes its own entry as well (`drone.event.verify_with_drone`, `drone.mission.run`), under the same person |
 | `intel.decision_policy.update`, `intel.decision_policy.delete` | A change to who may decide |
 | `intel.observation.record` | A report from the ground — that one was made, its kind and whether it carried a position. Not what was said |
 
@@ -265,7 +278,12 @@ the audit log from it would have meant giving that up.
   that they exist, are active, and for an escalation hold a senior role. It
   does not choose them.
 - **Nothing is undone.** A decision cannot be withdrawn. What it set off is
-  reversed, if at all, on the platform's own screens.
+  reversed, if at all, on the platform's own screens. A flight started from a
+  decision is stopped, if it must be, from the drone screens, by someone who
+  may abort one.
+- **A drone cannot be sent to a place.** The installed providers cannot be
+  re-tasked in flight: a flight holds where it is, or flies the route its
+  mission already has.
 
 ## Tests
 

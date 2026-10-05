@@ -138,11 +138,22 @@ def _coded_confidences() -> dict[str, set[str]]:
     return found
 
 
+def _added_by_0139(name: str) -> set[str]:
+    """What migration 0139 added to one of the layer's lists of allowed values."""
+    migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0139_security_drone_looks.py").read_text("utf-8")
+    added = re.search(rf'^{name} = {name}_BEFORE \+ "(.*?)"$', migration, re.M)
+    assert added, f"0139 does not extend {name}"
+    return set(re.findall(r"'([A-Za-z_]+)'", added.group(1)))
+
+
 def test_the_correlation_document_names_every_method_the_database_accepts():
     migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0134_security_situations.py").read_text("utf-8")
     accepted = set(re.findall(r"'([A-Z_]+)'", re.search(r"METHODS = \((.*?)\)\n", migration, re.S).group(1)))
     assert len(accepted) >= 10, "the migration's list of methods was not found"
-    assert set(_rule_rows()) == accepted
+    # Phase 10 made the list one longer: what came back from a look a person asked for.
+    added = _added_by_0139("METHODS")
+    assert added == {"DRONE_LOOK"}
+    assert set(_rule_rows()) == accepted | added
 
 
 def test_the_correlation_document_states_the_confidences_the_code_uses():
@@ -213,7 +224,8 @@ def test_the_risk_document_lists_every_factor_with_the_points_the_code_gives():
                           ("ZONE", intel_risk.ZONE_POINTS), ("ZONE", intel_risk.DRONE_ZONE_POINTS)):
         coded.setdefault(factor, set()).update(v for v in table.values() if v)
     drone = re.search(r'\{"CRITICAL": (\d+), "HIGH": (\d+)\}\.get\(lvl', RISK_SOURCE.read_text(encoding="utf-8"))
-    coded["DRONE"] = {int(drone.group(1)), int(drone.group(2))}
+    # …and what a second look is worth, either way, which is a named constant.
+    coded["DRONE"] = {int(drone.group(1)), int(drone.group(2)), intel_risk.LOOK_POINTS, -intel_risk.LOOK_POINTS}
     for factor in intel_risk.FACTORS:
         assert coded.get(factor), f"{factor}: found no points in the code to compare"
         stated = {int(n) for n in re.findall(SIGNED, rows[factor])}
@@ -401,10 +413,13 @@ def test_the_workflow_document_names_the_function_and_permission_each_step_goes_
     # The permission the planner asks for each step, gathered from every decision it can plan.
     alerts = [{"id": uuid.uuid4(), "status": "open"}]
     needs: dict = {}
+    # A drone is asked only as the officer chose: both choices, and none.
+    choices = (None, {"event_id": str(uuid.uuid4())}, {"mission_id": str(uuid.uuid4())})
     for decision in intel_decisions.DECISIONS:
         for incident in (None, {"id": uuid.uuid4(), "status": "open"}):
-            for step in intel_decisions.plan(decision, alerts=alerts, incident=incident):
-                needs[step.action] = step.permission
+            for drone in choices:
+                for step in intel_decisions.plan(decision, alerts=alerts, incident=incident, drone=drone):
+                    needs[step.action] = step.permission
     assert set(needs) == set(rows), "a step the planner never plans, or plans without the document listing it"
     for step, (through, needed) in rows.items():
         if step == "INCIDENT_CONFIRM":
@@ -430,7 +445,11 @@ def test_the_database_and_the_code_agree_about_decisions_reasons_steps_and_statu
     assert _migration_set("BASES") == set(intel_decisions.BASES)
     assert _migration_set("REASONS") == set(intel_decisions.REASONS)
     assert _migration_set("STATUSES") == set(intel_decisions.STATUSES)
-    assert _migration_set("ACTIONS") == set(intel_actions.THROUGH) | {"INCIDENT_CONFIRM", "NONE"}
+    assert _added_by_0139("ACTIONS") == {"DRONE_HOLD", "DRONE_LAUNCH"}
+    assert _migration_set("ACTIONS") | _added_by_0139("ACTIONS") == \
+        set(intel_actions.THROUGH) | {"INCIDENT_CONFIRM", "NONE"}
+    # What a drone step can point at, and nothing a step could steer by.
+    assert _added_by_0139("TARGETS") == {"drone_event", "drone_look", "drone_mission", "drone_flight"}
     assert _migration_set("RISK_LEVELS") == set(intel_risk.LEVELS)
 
 

@@ -365,7 +365,10 @@ _SITUATION_COLUMNS = """
     x.primary_camera_id, c.name AS primary_camera_name, x.location_label, x.latitude, x.longitude,
     x.correlation_confidence, x.settled_at, x.created_at, x.updated_at,
     x.risk_score, x.risk_level, x.assessed_at,
-    x.decision_status, x.last_decided_at, x.closed_at, x.incident_id, x.incident_confirmed_at
+    x.decision_status, x.last_decided_at, x.closed_at, x.incident_id, x.incident_confirmed_at,
+    (x.closed_at IS NULL AND x.last_decision_id IS NOT NULL
+        AND x.assessment_id IS DISTINCT FROM (SELECT ld.assessment_id FROM security_decisions ld
+                                               WHERE ld.id = x.last_decision_id)) AS reassessed_since_decision
 """
 _SITUATION_FROM = """
       FROM security_situations x
@@ -406,7 +409,12 @@ async def list_situations(
     `decision_status` is where the situation stands with the people responsible
     for it — `AWAITING` until someone has decided anything — and `open=true`
     leaves out those a person has closed. Neither is the layer's opinion: both
-    are set only by a person's decision."""
+    are set only by a person's decision.
+
+    `reassessed_since_decision` is true when the layer has assessed the
+    situation again since the last decision on it — new events arrived, a drone
+    looked — and the situation is still open. The decision stands; it is a
+    prompt for a person to look again, and nothing more."""
     _one_of(status, SITUATION_STATUSES, "status")
     _one_of(severity, SEVERITIES, "severity")
     _one_of(source_type, SOURCE_TYPES, "source type")
@@ -460,7 +468,10 @@ async def get_situation(
     """One situation with every event in it, oldest first, and for each event
     why it is here: the method, the reason in words, how sure the link is, and
     whether it added anything new. `sources` is the short list an officer reads
-    first — which cameras and which other sources reported.
+    first — which cameras and which other sources reported. Each event carries
+    its `attributes` as its source recorded them: for a virtual patrol's
+    exception the question, the officer's answer and what they noted; for a
+    drone look a person asked for, how long it held and what more it saw.
 
     `assessment` is the latest assessment, or null when the situation has not
     been assessed yet: what it appears to be, the risk and every factor behind
@@ -481,6 +492,7 @@ async def get_situation(
         SELECT e.id, e.source_type, e.source_table, e.source_id, e.event_type, e.occurred_at, e.severity,
                e.title, e.camera_id, cam.name AS camera_name, e.drone_id, e.alert_id, e.incident_id,
                e.subject_kind, e.subject_ref, e.subject_verdict, e.confidence, e.location_label,
+               e.attributes,
                l.method, l.reason, l.confidence AS link_confidence, l.is_duplicate, l.matched_event_id,
                l.linked_at
           FROM security_situation_events l
@@ -503,7 +515,8 @@ async def get_situation(
         "SELECT * FROM security_assessments WHERE situation_id = CAST(:id AS uuid) ORDER BY sequence DESC LIMIT 1"),
         {"id": str(situation_id)})).mappings().first()
     found = (await intel_decisions.facts(db, {**dict(row), "assessment_id": None})).incident
-    return {**dict(row), "sources": list(sources.values()), "events": [dict(e) for e in events],
+    return {**dict(row), "sources": list(sources.values()),
+            "events": [{**dict(e), "attributes": _loads(e["attributes"]) or {}} for e in events],
             "assessment": _assessment(latest, with_context=True) if latest is not None else None,
             "incident": {"state": intel_decisions.incident_state(row, found),
                          "id": found["id"] if found else None,

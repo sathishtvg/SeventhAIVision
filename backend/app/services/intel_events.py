@@ -3,6 +3,7 @@
   alerts ──────────────┐   CCTV AI, LPR, face, access control, alarm panels,
                        │   sensors, and the drone module's flight alerts
   drone_events ────────┤   verified drone sightings
+  drone looks ─────────┤   what a drone saw when a person asked it to hold and look again
   incidents (SOS) ─────┼─► from_*()  ─►  security_events
   virtual patrol ──────┤   an officer's exception on a camera patrol
   camera_health_events ┘   a camera going dark
@@ -268,6 +269,55 @@ def from_drone_event(e: Mapping) -> Normalised:
     )
 
 
+def from_drone_look(v: Mapping) -> Normalised:
+    """What a drone saw when a person asked it to hold where it was and look
+    again at a sighting. The drone module ran the look and re-scored its own
+    sighting; what it reports is carried here as it reported it.
+
+    It carries neither the sighting's alert nor its incident: this is a new
+    observation of the same thing, not a second record of the same alert, and
+    must not be folded away as a duplicate of it."""
+    module = v["module_type"]
+    result = _obj(v.get("result"))
+    added = int(result.get("detections_added") or 0)
+    after = result.get("risk_after") or v.get("risk_level")
+    what = str(v.get("label") or f"drone sighting: {module.replace('_', ' ')}")
+    lat = v.get("estimated_latitude") if v.get("estimated_latitude") is not None else v.get("drone_latitude")
+    lon = v.get("estimated_longitude") if v.get("estimated_longitude") is not None else v.get("drone_longitude")
+    return Normalised(
+        source_type="DRONE_PATROL",
+        source_table="drone_verification_requests",
+        source_id=v["id"],
+        event_type="drone.verification",
+        occurred_at=v["completed_at"],
+        # A look that saw nothing more is information, not an alarm.
+        severity=_severity(after) if added > 0 else "info",
+        title=(f"Drone looked again: {added} more detection(s) — {what}" if added > 0
+               else f"Drone looked again and saw nothing more — {what}")[:255],
+        site_id=v.get("site_id"),
+        drone_id=v.get("drone_id"),
+        subject_kind=_subject_kind(module),
+        confidence=_num(v.get("ai_confidence")),
+        latitude=_num(lat),
+        longitude=_num(lon),
+        location_label=(str(v["zone_name"])[:255] if v.get("zone_name") else None),
+        attributes=_clean({
+            "module_type": module,
+            "drone_event_id": str(v["event_id"]),
+            "session_id": str(v["session_id"]) if v.get("session_id") else None,
+            "zone_type": v.get("zone_type"),
+            "hold_seconds": v.get("hold_seconds"),
+            "detections_before": v.get("detections_before"),
+            "detections_added": added,
+            "risk_before": v.get("risk_before"),
+            "drone_risk_level": after,
+            "drone_risk_score": _num(v.get("risk_score")),
+            "verification_state": v.get("verification_state"),
+            "asked_by_user_id": str(v["requested_by_user_id"]) if v.get("requested_by_user_id") else None,
+        }),
+    )
+
+
 def from_guard_sos(i: Mapping) -> Normalised:
     """A guard's SOS — pressed, or a man-down that nobody cancelled.
 
@@ -296,7 +346,9 @@ def from_guard_sos(i: Mapping) -> Normalised:
 
 def from_patrol_exception(x: Mapping) -> Normalised:
     """An officer's exception on a virtual patrol: a camera question answered
-    with something wrong."""
+    with something wrong. What the officer was asked, what they answered, why
+    it is an exception, what they noted about the camera, and whether a
+    snapshot was kept at the check — all as the patrol recorded them."""
     return Normalised(
         source_type="VIRTUAL_PATROL",
         source_table="virtual_patrol_session_answers",
@@ -315,7 +367,13 @@ def from_patrol_exception(x: Mapping) -> Normalised:
             "session_id": str(x["session_id"]) if x.get("session_id") else None,
             "patrol_number": x.get("patrol_number"),
             "question": (str(x["question_text"])[:500] if x.get("question_text") else None),
+            "answer": (str(x["answer_text"])[:500] if x.get("answer_text") else None),
             "exception_reason": (str(x["exception_reason"])[:500] if x.get("exception_reason") else None),
+            "failure_action": x.get("failure_action"),
+            "observation": (str(x["officer_notes"])[:500] if x.get("officer_notes") else None),
+            "session_camera_id": str(x["session_camera_id"]) if x.get("session_camera_id") else None,
+            "has_snapshot": True if x.get("has_snapshot") else None,
+            "snapshot_taken_at": x["snapshot_taken_at"].isoformat() if x.get("snapshot_taken_at") else None,
             "officer_user_id": str(x["answered_by_user_id"]) if x.get("answered_by_user_id") else None,
         }),
     )
@@ -417,6 +475,28 @@ SOURCES: tuple[Source, ...] = (
              LIMIT :batch
         """),
     Source(
+        name="drone_looks", time_column="completed_at", normalise=from_drone_look,
+        # A look that was held and finished, at a sighting the drone module has
+        # verified. A look that could not be held saw nothing; a look at a
+        # sighting that module never verified raises nothing here, as the
+        # sighting itself does not. Read after the sightings, so that a look
+        # which is what verified one finds it already there.
+        select=f"""
+            SELECT v.id, v.event_id, v.session_id, v.hold_seconds, v.detections_before, v.risk_before,
+                   v.completed_at, v.result, v.requested_by_user_id,
+                   de.site_id, de.drone_id, de.module_type, de.label, de.zone_name, de.zone_type,
+                   de.risk_level, de.risk_score, de.ai_confidence, de.verification_state,
+                   de.estimated_latitude, de.estimated_longitude, de.drone_latitude, de.drone_longitude
+              FROM drone_verification_requests v
+              JOIN drone_events de ON de.id = v.event_id
+             WHERE v.status = 'COMPLETED' AND v.completed_at IS NOT NULL
+               AND de.verification_state = 'VERIFIED'
+               AND v.completed_at > :floor
+               AND {_NOT_YET.format(table="drone_verification_requests", alias="v")}
+             ORDER BY v.completed_at, v.id
+             LIMIT :batch
+        """),
+    Source(
         name="guard_sos", time_column="created_at", normalise=from_guard_sos,
         select=f"""
             SELECT i.id, i.severity, i.created_at, i.message_params,
@@ -440,8 +520,9 @@ SOURCES: tuple[Source, ...] = (
         name="virtual_patrol", time_column="answered_at", normalise=from_patrol_exception,
         select=f"""
             SELECT ans.id, ans.answered_at, ans.answered_by_user_id, ans.exception_reason, ans.incident_id,
-                   q.question_text, q.failure_action,
-                   sc.camera_id, sc.camera_name, sc.session_id,
+                   ans.answer_text, q.question_text, q.failure_action,
+                   sc.camera_id, sc.camera_name, sc.session_id, sc.id AS session_camera_id, sc.officer_notes,
+                   (sc.snapshot_path IS NOT NULL) AS has_snapshot, sc.snapshot_taken_at,
                    vs.site_id, vs.patrol_number,
                    c.latitude AS camera_latitude, c.longitude AS camera_longitude
               FROM virtual_patrol_session_answers ans

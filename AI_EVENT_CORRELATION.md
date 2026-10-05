@@ -1,7 +1,7 @@
 # AI Security Intelligence — Event Correlation
 
-**As of:** 2026-10-05 · Phase 4 of 15 · migration `0134` ·
-`backend/app/services/intel_correlation.py`
+**As of:** 2026-10-05 · Phase 4 of 15 · migration `0134` (and `0139`, phase 10,
+for `DRONE_LOOK`) · `backend/app/services/intel_correlation.py`
 
 A denied door, the camera above it and the drone overhead a minute later are, to
 the officer, one matter. Until this phase they were three alerts in a list. A
@@ -62,6 +62,8 @@ and neither are two events that have no site.
 | `PATROL_FINDING` | A virtual-patrol exception and something on the same camera | 60 min | 0.70 | no |
 | `PATROL_FINDING` | A virtual-patrol exception and a drone sighting at the site, or a camera within 150 m | 60 min | 0.50 | no |
 | `GUARD_SOS_AT_SITE` | A guard's SOS and a high or critical event at the site | 10 min | 0.55 | no |
+| `DRONE_LOOK` | What a drone saw when a person asked it to hold and look again, and the sighting it looked at | — | 0.95 | no |
+| `DRONE_LOOK` | A sighting from a flight a person's decision started, and the situation that decision was about | — | 0.60 | no |
 | `FIRST_EVENT` | The event that opened the situation | — | 1.00 | no |
 
 `ADJACENT_CAMERA` needs both events to be about the same kind of moving thing: a
@@ -70,6 +72,26 @@ cameras is not somebody walking between them.
 
 When several rules apply the strongest is recorded. The same plate at two
 neighbouring cameras is `SAME_IDENTITY`, not `ADJACENT_CAMERA`.
+
+### What a person asked a drone to look at
+
+`DRONE_LOOK` is not found by comparing two events. It is a fact on record: an
+officer asked for this look, about this situation.
+
+- **A hold.** The look's event carries the sighting it looked at; it goes to the
+  situation that sighting is in. This is so whether the look was asked for by a
+  decision here or from the drone screens.
+- **A flight.** A decision that started a mission left an action pointing at
+  the flight; a verified sighting from that flight goes to that decision's
+  situation, at 0.60 and saying why — *the flight follows its own route: this
+  may be the same matter, or something else it passed*. If an ordinary rule
+  ties the sighting more surely to another situation, that rule wins.
+- **Never into a situation a person has closed.** Something seen after a matter
+  was ended is placed by the ordinary rules, which means a situation of its
+  own, in front of an officer — not a line added to a closed one.
+- **A quiet situation is woken.** One that had settled for lack of news, and
+  that nobody closed, takes events again when a look it was waiting on comes
+  back.
 
 **The reason is a sentence an officer can read**, generated from the two events:
 "The same number plate, SGX1234A, 8 min apart." · "An access event at the door

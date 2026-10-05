@@ -73,6 +73,7 @@ jest.mock('@/api/securityIntelligence', () => {
 })
 
 import { SituationDetailScreen } from '@/screens/SituationDetailScreen'
+import { SituationsScreen } from '@/screens/SituationsScreen'
 
 const GUARD = ['intel:read', 'intel:recommendation:read', 'intel:decide', 'camera:read']
 const ALL = ['MONITOR', 'VERIFY', 'VIEW_CAMERA', 'VERIFY_WITH_DRONE', 'DISPATCH_GUARD', 'ESCALATE', 'INVESTIGATE',
@@ -250,5 +251,18 @@ describe('situation screen', () => {
     expect(await s.findByText('This situation is closed. Nothing more can be decided on it.')).toBeTruthy()
     expect(s.queryByText('Accept')).toBeNull()
     expect(s.queryByText('Record what I see')).toBeNull()
+  })
+
+  it('the list says which situations were assessed again since the last decision', async () => {
+    const row = { ...SITUATION, site_id: 'site1', severity: 'high', last_event_at: '2026-10-05T02:19:30Z',
+                  label: 'Activity in a restricted zone', kind: 'RESTRICTED_ZONE', assigned_to_me: false,
+                  dispatched_at: null, dispatch_notes: null, my_last: null }
+    mockMine = [{ ...row, id: 's1', label: 'Seen again by the drone', reassessed_since_decision: true },
+                { ...row, id: 's2', label: 'Nothing new here', reassessed_since_decision: false }]
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    const s = render(<QueryClientProvider client={qc}><SituationsScreen /></QueryClientProvider>)
+    expect(await s.findByText('Seen again by the drone')).toBeTruthy()
+    expect(s.getByText('Nothing new here')).toBeTruthy()
+    expect(s.getAllByText('Assessed again since the last decision')).toHaveLength(1)
   })
 })
