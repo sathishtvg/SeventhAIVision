@@ -260,7 +260,7 @@ export function DroneEventDetailScreen({ route }: Props) {
             {can('incident:read') && (
               <Pressable style={styles.linkBtn}
                          onPress={() => navigation.navigate('Incidents', {
-                           screen: 'IncidentDetail', params: { incidentId: incident.id }, initial: false })}>
+                           screen: 'IncidentDetail', params: { incidentId: incident.id }, initial: false, pop: true })}>
                 <Ionicons name="open-outline" size={16} color={colors.primary} />
                 <Text style={styles.linkText}>Open the incident to update it</Text>
               </Pressable>

@@ -32,17 +32,20 @@ const DUTY_ICON: Record<ActionItem['category'], React.ComponentProps<typeof Ioni
   doc_expiry: 'document-text-outline',
 }
 
+// `pop: true` throughout this file: go back to the screen if that tab already
+// has it open, as navigate() always did before React Navigation 7. Without it
+// a second copy is pushed on top — "My Shifts" over a patrol in progress.
 function navigateToDuty(navigation: any, item: ActionItem) {
   switch (item.category) {
     case 'check_in':
     case 'patrol_due':
-      navigation.navigate('Patrol', { screen: 'Shifts' })
+      navigation.navigate('Patrol', { screen: 'Shifts', pop: true })
       break
     case 'respond_incident':
-      navigation.navigate('Incidents', { screen: 'IncidentDetail', params: { incidentId: item.entity_id } })
+      navigation.navigate('Incidents', { screen: 'IncidentDetail', params: { incidentId: item.entity_id }, pop: true })
       break
     case 'doc_expiry':
-      navigation.navigate('More', { screen: 'MyRecord' })
+      navigation.navigate('More', { screen: 'MyRecord', pop: true })
       break
     default:
       break
@@ -217,7 +220,7 @@ export function DashboardScreen() {
         <KpiCard icon="videocam"     label="Cameras Online"  value={summary?.active_cameras ?? 0} color={colors.success}
           onPress={() => navigation.navigate('Cameras')} />
         <KpiCard icon="scan"         label="Detections Today" value={summary?.detections_today ?? 0} color={colors.primary}
-          onPress={() => navigation.navigate('More', { screen: 'Detections' })} />
+          onPress={() => navigation.navigate('More', { screen: 'Detections', pop: true })} />
       </View>
 
       {/* Live feed section */}
@@ -240,9 +243,9 @@ export function DashboardScreen() {
           scrollEnabled={false}
           renderItem={({ item }) => {
             const onPress = item.type === 'alert_created'
-              ? () => navigation.navigate('Alerts', { screen: 'AlertDetail', params: { alertId: item.id } })
+              ? () => navigation.navigate('Alerts', { screen: 'AlertDetail', params: { alertId: item.id }, pop: true })
               : item.type === 'incident_created'
-              ? () => navigation.navigate('Incidents', { screen: 'IncidentDetail', params: { incidentId: item.id } })
+              ? () => navigation.navigate('Incidents', { screen: 'IncidentDetail', params: { incidentId: item.id }, pop: true })
               : item.type === 'camera_status_changed'
               ? () => navigation.navigate('Cameras')
               : undefined

@@ -142,6 +142,6 @@ describe('drone event screen', () => {
     expect(s.getByText(/Ravi dispatched/)).toBeTruthy()
     fireEvent.press(s.getByText('Open the incident to update it'))
     expect(mockNavigate).toHaveBeenCalledWith('Incidents', {
-      screen: 'IncidentDetail', params: { incidentId: 'i1' }, initial: false })
+      screen: 'IncidentDetail', params: { incidentId: 'i1' }, initial: false, pop: true })
   })
 })
