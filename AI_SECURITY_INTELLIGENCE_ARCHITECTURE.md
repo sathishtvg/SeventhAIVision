@@ -1,10 +1,12 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-05 · **Phases 1–5 of 15 built**: the gap analysis, the
+**As of:** 2026-10-05 · **Phases 1–6 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
-described in `AI_EVENT_CORRELATION.md`), and normality and risk (`0135`,
-described in `AI_RISK_ENGINE.md`).
+described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
+in `AI_RISK_ENGINE.md`), and recommendations (`0136`, described in
+`AI_DECISION_WORKFLOW.md`). **Nothing built so far acts**: the layer reads,
+records and suggests, and a person can read what it suggests.
 
 This document describes what exists. What is not yet built is listed at the end
 and is not described as if it were. The analysis and the plan are in
@@ -44,7 +46,7 @@ CORRELATE ─► security_situations                    yes  (phase 4)
    ▼
 NORMALITY · RISK ─► security_assessments            yes  (phase 5)
    ▼
-RECOMMEND                                           no   (phase 6)
+RECOMMEND ─► security_recommendations               yes  (phase 6) — suggestions only
    ▼
 HUMAN DECISION ─► ACTION                            no   (phase 7)
 ```
@@ -60,6 +62,7 @@ HUMAN DECISION ─► ACTION                            no   (phase 7)
 | `security_situations` | One matter, however many alerts fed it: number, title and severity of its most severe event, counts, sources, `ACTIVE` or `SETTLED` |
 | `security_situation_events` | Each event's place in a situation, with the method, the reason in words and the confidence of the link. An event is in at most one situation |
 | `security_camera_links` | Cameras an administrator has said are next to each other, and the walk between them |
+| `security_recommendations` | What the layer suggests an officer do, per assessment: the step, the reason, how sure, whether it can be done now and if not why. A suggestion and nothing else; added to, never changed |
 | `security_assessments` | What the layer made of a situation, each time the answer changed: a label, the risk and every factor behind it, how unusual it is, three confidences, and what was known then. Added to, never changed: the application's role may only insert and read |
 
 All have `FORCE ROW LEVEL SECURITY` with the platform's standard tenant policy.
@@ -216,6 +219,22 @@ and the confidence of the risk are three numbers and are never made one. And an
 assessment is written once: a different answer is a new row beside the old one,
 which the application's database role cannot alter.
 
+## Recommendations
+
+`backend/app/services/intel_recommend.py`; the rules, the steps and the limits
+are in `AI_DECISION_WORKFLOW.md`. In short: each new assessment gets a set of
+suggested steps — watch, verify, view a camera, verify with a drone,
+investigate, dispatch a guard, escalate, contact the site, open an incident —
+chosen by rule from the kind of situation and its risk, each with a reason.
+
+**A recommendation is a row. It does nothing**, and every response that carries
+one says `is_decision: false`. A step that cannot be taken right now — nobody
+on shift, no drone ready, an incident already open — is kept and says why. A
+step that only looks is as sure as its rule; a step that sends someone or
+raises something is no surer than the detection, the correlation or the risk it
+rests on, so an incomplete picture puts looking first. A guard's SOS is the
+exception: help is not held back by what is not known about the site.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -242,7 +261,7 @@ own process so that nothing it does can hold up the API or the scheduler.
 
 | | |
 |---|---|
-| Pass | Every tenant with the feature on, under that tenant's setting, in its own sessions: normalise what is new from every source, place each new event in a situation and announce it, then assess the situations that changed and announce each new assessment |
+| Pass | Every tenant with the feature on, under that tenant's setting, in its own sessions: normalise what is new from every source, place each new event in a situation and announce it, assess the situations that changed and announce each new assessment, then write what it suggests for each new assessment and announce that it is ready |
 | Cadence | `INTEL_RUNNER_TICK_SECONDS` (3) |
 | Wake | Early, when a tenant's event channel announces an alert, incident, SOS or camera change. A nudge only: the database is what is read, so a missed message costs a tick and never an event |
 | Rest | At least `INTEL_RUNNER_MIN_GAP_SECONDS` (0.5) between passes, so an alert storm cannot turn it into a busy loop |
@@ -259,7 +278,7 @@ own process so that nothing it does can hold up the API or the scheduler.
 | `INTEL_RUNNER_TICK_SECONDS`, `INTEL_RUNNER_MIN_GAP_SECONDS` | Runner environment | 3, 0.5 |
 | `INTEL_BACKFILL_MINUTES`, `INTEL_OVERLAP_SECONDS`, `INTEL_INGEST_BATCH` | Runner environment | 60, 120, 200 |
 | `INTEL_SITUATION_QUIET_MINUTES`, `INTEL_CORRELATE_BATCH` | Runner environment | 30, 100 |
-| `INTEL_ASSESS_BATCH` | Runner environment | 50 |
+| `INTEL_ASSESS_BATCH`, `INTEL_RECOMMEND_BATCH` | Runner environment | 50, 50 |
 | Camera links | Per site, through the API (`intel:manage`) | none |
 
 ## API
@@ -286,11 +305,12 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations` | `intel:read` | Situations with their latest risk, the one heard from most recently first, or the highest risk first with `sort=risk`. Filters: `status`, `site_id`, `severity`, `risk_level`, `source_type`, `from`, `to` |
 | GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, and its latest assessment with the reasons behind it |
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
+| GET | `/security-intelligence/situations/{situation_id}/recommendations` | `intel:read` `intel:recommendation:read` | What the layer suggests doing, surest first, with the reason for each and why any cannot be done now. Always `is_decision: false` |
 
 ## Permissions
 
-Seeded by `0132`. `intel:read` and `intel:manage` are used so far; the rest are
-in place for the phases that need them.
+Seeded by `0132`. `intel:read`, `intel:recommendation:read` and `intel:manage`
+are used so far; the rest are in place for the phases that need them.
 
 | Permission | Admin, Manager | Supervisor | Operator | Guard | Viewer |
 |---|:-:|:-:|:-:|:-:|:-:|
@@ -332,8 +352,8 @@ administrator sets one it lets no guard decide.
 
 Published on the tenant's existing channel, `tenant_events:{tenant}`, and
 forwarded to that tenant's clients by the existing listener with no change to it:
-`intel_situation_opened`, `intel_situation_updated` and
-`intel_assessment_ready`. Each is saved before it is announced, and an
+`intel_situation_opened`, `intel_situation_updated`, `intel_assessment_ready`
+and `intel_recommendation_ready`. Each is saved before it is announced, and an
 assessment that says what the last one said is not announced at all.
 
 ## Touch points in existing files
@@ -377,13 +397,16 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_risk.py` (39): see `AI_RISK_ENGINE.md`.
 
-`backend/tests/test_intel_docs.py` (13) checks the API tables of these documents
-against the application's route table, and the rules written in the correlation
-and risk documents against the code.
+`backend/tests/test_intel_recommend.py` (82): see `AI_DECISION_WORKFLOW.md`.
+
+`backend/tests/test_intel_docs.py` (18) checks the API tables of these documents
+against the application's route table, and the rules written in the
+correlation, risk and workflow documents against the code — the recommendation
+rules by running the engine for every kind at every level.
 
 ## Not built yet
 
-Recommendations (6) · human decisions, actions and the decision
+Human decisions, actions and the decision
 policy (7) · the command centre screens (8) · the guard's phone (9) · drone and
 virtual patrol integration beyond reading their events (10) · the unified
 timeline (11) · evidence and summaries (12) · the dashboard and site security
