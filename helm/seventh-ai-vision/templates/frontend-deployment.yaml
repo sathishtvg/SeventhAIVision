@@ -27,8 +27,10 @@ spec:
           image: "{{ .Values.images.frontend.repository }}:{{ .Values.images.frontend.tag }}"
           imagePullPolicy: {{ .Values.images.frontend.pullPolicy }}
           ports:
+            # 8080: the image runs as the unprivileged nginx user. The Service
+            # still exposes its own port and targets this one by name.
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
           livenessProbe:
             httpGet:

@@ -12,6 +12,7 @@ Cadence, each overridable by environment:
   DRONE_RUNNER_SCHEDULE_SECONDS 30   sessions the schedules owe
   DRONE_RUNNER_AI_SECONDS        3   flights' new AI detections into drone events
   DRONE_RUNNER_REPORT_SECONDS   60   finished flights' reports, and the report emails
+  DRONE_RUNNER_RETENTION_SECONDS 21600  expired footage and flight tracks (0 = never)
 
 Everything it does is also a function in services/drone_runner.py that tests call
 directly, with a fixed clock.
@@ -27,7 +28,7 @@ from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.services import drone_platform_health, drone_runner
+from app.services import drone_platform_health, drone_retention, drone_runner
 
 logger = logging.getLogger("drone_runner")
 
@@ -36,6 +37,7 @@ HEALTH_SECONDS = float(os.environ.get("DRONE_RUNNER_HEALTH_SECONDS", "15"))
 SCHEDULE_SECONDS = float(os.environ.get("DRONE_RUNNER_SCHEDULE_SECONDS", "30"))
 AI_SECONDS = float(os.environ.get("DRONE_RUNNER_AI_SECONDS", "3"))
 REPORT_SECONDS = float(os.environ.get("DRONE_RUNNER_REPORT_SECONDS", "60"))
+RETENTION_SECONDS = float(os.environ.get("DRONE_RUNNER_RETENTION_SECONDS", "21600"))
 
 
 def _worth_logging(name: str, r: dict) -> bool:
@@ -50,7 +52,7 @@ def _worth_logging(name: str, r: dict) -> bool:
         return bool(r.get("recovered") or r.get("lost") or r.get("gateways_offline"))
     if name == "ai":
         return bool(r.get("accepted") or r.get("failed"))
-    if name == "reports":
+    if name in ("reports", "retention"):
         return any(r.values())
     return bool(r.get("ready") or r.get("blocked") or r.get("missed"))
 
@@ -92,7 +94,10 @@ async def main() -> None:
     logger.info("drone runner started: tick %.1fs, health %.0fs, schedule %.0fs, ai %.0fs, reports %.0fs",
                 TICK_SECONDS, HEALTH_SECONDS, SCHEDULE_SECONDS, AI_SECONDS, REPORT_SECONDS)
     last_health = last_schedule = last_ai = last_reports = float("-inf")
+    # Not at start-up: a runner that is restarted often should not purge often.
+    last_retention = loop.time()
     report_task: asyncio.Task | None = None
+    retention_task: asyncio.Task | None = None
     try:
         while not stop.is_set():
             now = loop.time()
@@ -114,6 +119,13 @@ async def main() -> None:
                 report_task = asyncio.create_task(
                     _guarded("reports", drone_runner.run_report_tick(AsyncSessionLocal)))
                 last_reports = now
+            # Deleting old footage is the least urgent thing here. Its own task,
+            # one at a time, and never in front of a flight.
+            if (RETENTION_SECONDS > 0 and now - last_retention >= RETENTION_SECONDS
+                    and (retention_task is None or retention_task.done())):
+                retention_task = asyncio.create_task(_guarded(
+                    "retention", drone_retention.run_retention(AsyncSessionLocal, drone_runner.ds.utcnow())))
+                last_retention = now
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
             except asyncio.TimeoutError:
@@ -124,6 +136,10 @@ async def main() -> None:
             # A row it had claimed stays PROCESSING and is taken again later.
             report_task.cancel()
             await asyncio.gather(report_task, return_exceptions=True)
+        if retention_task is not None and not retention_task.done():
+            # Stopped between two files: the rest are found again next time.
+            retention_task.cancel()
+            await asyncio.gather(retention_task, return_exceptions=True)
         await redis.aclose()
 
 

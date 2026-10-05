@@ -235,6 +235,58 @@ they must be moved by hand, do exactly that, one table per transaction.
 
 ---
 
+## The Scheduler's Daily Cycle Runs at Start
+
+The scheduler runs its daily cycle — partition maintenance, the evidence purge,
+the audit archive, the database backup — when it starts, and every 24 hours after.
+It always did on a server that had been up for more than a day. On a machine
+booted more recently it used to wait until the machine had been up a full day,
+so a computer switched off every night never ran it. Restarting the scheduler
+therefore takes a backup (seven are kept) and runs the purge, every time.
+
+## The Web Container Runs Without Root
+
+The `frontend` container runs as the image's unprivileged `nginx` user (uid 101).
+What that changes for an operator:
+
+- **Ports inside the container** are 8080 (HTTP) and 8443 (HTTPS). The ports
+  `docker-compose.yml` publishes — 5173 and 443 — are unchanged, and so is the
+  Helm chart's Service, which targets the container port by name. Anything of your
+  own that addressed the container's port 80 or 443 directly (a compose override,
+  an ingress, a health check) must use 8080 / 8443.
+- **An existing certificate volume** was written by root and holds a private key
+  only root can read. `docker compose up` deals with it: the one-shot
+  `frontend-certs` service hands the volume to the nginx user before the web
+  container starts, and your certificate is kept. If the container is started
+  some other way and exits with `[ssl-init] ERROR: … cannot read it`, run
+  `docker compose run --rm frontend-certs` once.
+- **Replacing the certificate** is as before — copy `server.crt` and `server.key`
+  into the volume — and then run `frontend-certs` again, or make them owned by
+  uid 101 yourself.
+
+## The Default API Rate Limit
+
+Every read (GET) is limited per caller and per route:
+
+| Setting | Default | Applies to |
+|---|---|---|
+| `API_READ_RATE_LIMIT` | `300/minute` | Every read |
+| `API_MEDIA_RATE_LIMIT` | `1200/minute` | Video playlists and segments, the live detection overlay, stored pictures and files |
+
+A caller is the signed-in user when the request carries a valid token, otherwise
+the client address. A refused request answers **429** with a `Retry-After`
+header. Requests that change something are never refused by the default; sign-in,
+alarm ingest and the drone gateway keep their own explicit limits.
+
+The defaults are sized from what the screens do: ordinary polling asks any one
+route a few times a minute, while one operator's sixteen-camera live wall asks
+its overlay route 480 times a minute. Lower them only with that in mind. If Redis,
+where the counts live, cannot be reached, requests are let through and a warning
+is logged.
+
+Until this release the configured default of 100 a minute was never applied to
+any route.
+
 ## Versioning Policy
 
 | Change type | Version bump | Notes |

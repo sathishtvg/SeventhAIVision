@@ -81,6 +81,9 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "face.match_threshold": _range_validator(0.0, 1.0),
     "intrusion.breach_cooldown_seconds": _positive_int_validator,
     "evidence.retention_days": _positive_int_validator,
+    # How long a drone flight's second-by-second track is kept (default a year).
+    # Drone footage follows evidence.retention_days; see services/drone_retention.py.
+    "drone.telemetry_retention_days": _positive_int_validator,
     # Phase 3
     "ppe.confidence_threshold": _range_validator(0.0, 1.0),
     "crowd.alert_threshold_ratio": _range_validator(0.0, 1.0),

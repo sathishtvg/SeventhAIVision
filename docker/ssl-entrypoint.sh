@@ -12,6 +12,17 @@ set -e
 
 CERT_DIR=/etc/nginx/certs
 
+# nginx runs as the unprivileged `nginx` user. A certificate volume made while
+# the container still ran as root holds a key only root can read; nginx would
+# fail on it with a permission error that does not say why. Say why.
+if [ -f "$CERT_DIR/server.key" ] && [ ! -r "$CERT_DIR/server.key" ]; then
+    echo "[ssl-init] ERROR: $CERT_DIR/server.key exists but $(id -un) cannot read it." >&2
+    echo "[ssl-init] The certificate volume was created when this container ran as root." >&2
+    echo "[ssl-init] Fix it once:  docker compose run --rm frontend-certs" >&2
+    echo "[ssl-init]   (or: chown -R 101:101 on the certs volume)" >&2
+    exit 1
+fi
+
 if [ ! -f "$CERT_DIR/server.crt" ] || [ ! -f "$CERT_DIR/server.key" ]; then
     echo "[ssl-init] No certificate found — generating self-signed cert..."
     mkdir -p "$CERT_DIR"

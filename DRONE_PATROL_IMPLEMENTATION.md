@@ -1,6 +1,8 @@
 # Drone Patrol — implementation summary
 
-**As of:** 2026-10-04 · migration head **`0130`** · all 14 phases complete.
+**As of:** 2026-10-05 · the module's last migration **`0130`** (platform head `0131`) ·
+all 14 phases complete, and everything left open at the final validation closed
+(*After the final validation*, below).
 
 An autonomous drone security patrol, built into Seventh AI Vision rather than
 beside it. A drone is assigned to a site and flies a planned route on a schedule
@@ -171,6 +173,7 @@ changed.
 | Sessions owed by schedules | 30 s | `DRONE_RUNNER_SCHEDULE_SECONDS` |
 | Detections to events, CCTV correlation | 3 s | `DRONE_RUNNER_AI_SECONDS` |
 | Reports stored, emails sent (beside the loop) | 60 s | `DRONE_RUNNER_REPORT_SECONDS` |
+| Expired footage and flight tracks deleted (beside the loop) | 6 h | `DRONE_RUNNER_RETENTION_SECONDS` |
 
 **Events:** announced on the platform's existing realtime channel, in its
 existing envelope, after the transaction that made them true has committed:
@@ -227,7 +230,7 @@ and dispatch a guard — plus a link from a drone alert to its event. No new
 dependency.
 
 **Desktop:** no code of its own — it is the web build in the Electron shell. The
-released 1.0.1 installers predate the drone screens; see *Deployment*.
+1.0.1 installers predate the drone screens; 1.0.2 carries them — see *Deployment*.
 
 ---
 
@@ -362,9 +365,8 @@ session, and says so.
   containers on the development machine (their processes were run inside the API
   container instead, because its image predates the module and the machine has
   7.7 GB of memory).
-- **The desktop release predates the drone screens** (see *Deployment*).
-- **Nothing deletes drone footage, reports or telemetry.** How long they are kept
-  is an open decision.
+- **The desktop installers are unsigned**, as 1.0.1 was: Windows warns on first
+  run until a code-signing certificate is supplied.
 - **Load is measured, not tested.** A year of a 20-drone fleet was timed once;
   telemetry at fleet scale was not.
 - **No Python linter, type checker, dependency audit or secret scanner** is
@@ -373,16 +375,26 @@ session, and says so.
   recommendation thresholds are judgements stated in the API so they can be
   argued with.
 
-### Reported, not changed
+### After the final validation
 
-Outside the module, present before it, and left for a decision: the
-platform-wide default rate limit is not applied; the migration-safety check fails
-on migration 0104 and the container-hardening check on the web image; and the
-client apps have published dependency advisories (gap analysis §24.6, §25.5).
+The final validation reported five things outside the module and left three
+decisions open. On 2026-10-05, on the owner's instruction, all were closed except
+the two design decisions below (gap analysis §26):
 
-The fifth — the scheduler's nightly partition maintenance, which had never made a
-partition — was fixed on 2026-10-05 on the owner's decision, in migration `0131`
-(the platform's head; the module's own last migration is `0130`).
+| Was | Now |
+|---|---|
+| Nightly partition maintenance had never made a partition | Fixed: migration `0131`, the scheduler job on its superuser session, and a scheduler that runs its daily cycle at start instead of after a day of uptime |
+| The platform's default rate limit was configured but never applied | Replaced by one that is: every read, per signed-in user and per route |
+| Nothing deleted drone footage or flight tracks | Footage follows the organisation's evidence retention, keeping anything an incident or an open confirmed event depends on; tracks are kept a year by default |
+| Migration-safety check failed on migration 0104 | Passes |
+| Container-hardening check failed on the web image | Passes: the web container no longer runs as root |
+| Published advisories in the client apps | None left in what the web app ships; the desktop's high one fixed; the phone's HTTP client updated. Remaining: the phone's build tooling (an Expo SDK upgrade) and four moderate ones in the desktop's settings store |
+| Desktop 1.0.1 without the drone screens | 1.0.2 built with them |
+| Development API and scheduler running pre-module images | Rebuilt and recreated; the drone runner starts as its own container |
+
+With those, the platform's suite is 3,220 backend tests and 1,119
+repository-inspection tests, and the module's own is 413 (343 backend in 22
+files, 34 web, 36 phone).
 
 ### Open decisions
 
@@ -391,7 +403,8 @@ partition — was fixed on 2026-10-05 on the owner's decision, in migration `013
    repeating it.
 2. Should a gateway launch scheduled runs while it cannot reach the centre?
    Built: no — it finishes what it has and starts nothing new.
-3. How long is drone footage kept? Built: nothing deletes it.
+
+How long drone footage is kept was the third; it is decided and built (above).
 
 ---
 
@@ -408,6 +421,8 @@ and the `S3_*` settings, `SMTP_*`, `CREDENTIALS_ENCRYPTION_KEY`).
 | `DRONE_RUNNER_SCHEDULE_SECONDS` | runner | 30 | Sessions owed by schedules |
 | `DRONE_RUNNER_AI_SECONDS` | runner | 3 | Detections to events |
 | `DRONE_RUNNER_REPORT_SECONDS` | runner | 60 | Reports and their emails |
+| `DRONE_RUNNER_RETENTION_SECONDS` | runner | 21600 | Expired footage and flight tracks; `0` never deletes |
+| `DRONE_TELEMETRY_RETENTION_DAYS` | runner | 365 | How long flight tracks are kept, unless the organisation sets `drone.telemetry_retention_days` |
 | `DRONE_EDGE_KEY` | gateway | — | The credential shown once at registration. Required |
 | `DRONE_EDGE_CENTRAL_URL` | gateway | `http://api:8000` | Where the centre is |
 | `DRONE_EDGE_DATA_DIR` | gateway | `/data/drone-edge` | Its local store and files |
@@ -450,11 +465,16 @@ The backend image must be rebuilt before the drone services are started: an
 image built before the module does not contain it. The phone app needs a new
 build through its usual release to carry the two drone screens.
 
-**The desktop app.** Its installers bundle the web build. The released 1.0.1 was
-built before the drone screens and does not contain them; a new version must be
-built and released for desktop users to see them (bump `version` in
-`desktop/package.json`; never `appId` or the MSI upgrade code). It was not
-released here.
+**The desktop app.** Its installers bundle the web build, so the drone screens
+reach desktop users only in a release built after them. **1.0.2** is that
+release: built on 2026-10-05, unsigned like 1.0.1, with the same app id and MSI
+upgrade code so it installs over it. The installers are in `desktop/release/`
+(not in the repository). To build again: `cd desktop && npm run dist`.
+
+**The web container** runs without root and listens on 8080 and 8443 inside; the
+published ports are unchanged, and `docker compose up` hands an existing
+certificate volume to it. **Rate limits** are `API_READ_RATE_LIMIT` and
+`API_MEDIA_RATE_LIMIT`. Both are described in `docs/UPGRADE.md`.
 
 ---
 

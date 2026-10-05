@@ -21,6 +21,7 @@ scheduler's once-a-minute tick.
 | Sessions owed by schedules | every 30 s | `DRONE_RUNNER_SCHEDULE_SECONDS` |
 | Flights' new AI detections into drone events; closing unconfirmed sightings; CCTV correlation | every 3 s | `DRONE_RUNNER_AI_SECONDS` |
 | Finished flights' reports stored; report emails queued and sent | every 60 s, beside the loop | `DRONE_RUNNER_REPORT_SECONDS` |
+| Footage and flight tracks past their period deleted | every 6 h, beside the loop, not at start-up | `DRONE_RUNNER_RETENTION_SECONDS` (`0` never deletes) |
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d drone-runner
@@ -252,19 +253,56 @@ The checksum of an exported report is of the exact bytes that person was given:
 a document produced later can be matched to the download that made it. Emails are
 not in this list — they are in the Deliveries tab, with who they went to.
 
+## How long footage and tracks are kept
+
+| What | Kept for | Changed by |
+|---|---|---|
+| Snapshots and clips | The organisation's evidence retention — 90 days unless it has set otherwise | The tenant setting `evidence.retention_days`, the same one fixed-camera evidence follows |
+| Flight tracks (the second-by-second telemetry) | A year | The tenant setting `drone.telemetry_retention_days` (`PUT /api/v1/settings/drone.telemetry_retention_days`); the installation's default is `DRONE_TELEMETRY_RETENTION_DAYS` |
+
+Footage is **kept, whatever its age**, while it belongs to an event that became
+an incident, to a confirmed event that is still open, or to a flight in progress.
+What is deleted is what nobody acted on: footage of events that were resolved,
+marked false or never confirmed, and routine footage attached to no event.
+Deleting cannot be undone — resolve or escalate an event deliberately.
+
+Never deleted: events, incidents, and the stored report PDFs and workbooks.
+
+After a track is deleted the flight is still listed with its times, distance and
+events; its replay and its report show the planned route without the flown line.
+
+A period of `0` is read as "not set", never as "delete everything". A file that
+cannot be deleted keeps its record and is tried again next time. Footage still
+held only at a site is the gateway's to prune, not the centre's.
+
+Each purge that deletes anything writes one `drone.retention.purge` entry to the
+organisation's audit log: how many files and track samples, how many bytes, and
+the periods that applied.
+
 ## Releasing the desktop app with the drone screens
 
 The desktop app bundles the web build when it is built, so the drone screens
-reach desktop users only in a new release — the 1.0.1 installers predate them.
-Bump `version` in `desktop/package.json` (never `appId` or the MSI upgrade code),
-then `cd desktop && npm run dist`. Until then desktop users can use the web app
-in a browser.
+reach desktop users only in a release built after them. **1.0.2** is the first:
+bump `version` in `desktop/package.json` and its two entries in the lockfile
+(never `appId` or the MSI upgrade code), then
+
+```bash
+cd desktop && npm run dist
+```
+
+On a machine whose application-control policy blocks the MSI validation step,
+`npm run dist -- -c.msi.warningsAsErrors=false`. The installers are unsigned
+until a code-signing certificate is supplied (`CSC_LINK`, `CSC_KEY_PASSWORD`,
+`WIN_PUBLISHER_NAME`); Windows will warn on first run.
 
 ## When something goes wrong
 
 | Symptom | Likely cause | Do |
 |---|---|---|
 | A finished flight shows no distance | It was flown before the fix in Phase 14, or it never left the ground | Older flights keep an empty distance; their track is still stored |
+| A screen says "Too many requests" | It asked one route more than 300 times in a minute (1,200 for video and pictures) | Wait the seconds it says. If a normal screen does this, the limit is too low for it: see *The Default API Rate Limit* in `docs/UPGRADE.md` |
+| An old flight's replay shows no track | Its telemetry is past the organisation's track period | Nothing: the flight's record and report remain. Lengthen `drone.telemetry_retention_days` for the future |
+| An old event has lost its snapshot | It was resolved, marked false or never confirmed, and is past the evidence retention period | Nothing can bring it back. Footage of incidents and of confirmed open events is never deleted |
 | "Too many requests in a short time" on a report download | One person took 30 reports in a minute | Wait a minute. For many flights at once, use the period summary workbook |
 | Platform console shows `drone-patrol` `down` | The runner is not running | See *What the platform owner sees* |
 | Mission `BLOCKED` | A pre-flight check failed | Read `blocked_reason` or `preflight_result`; every failing check is listed. `GET /drone-missions/{id}/preflight` re-checks without creating anything |

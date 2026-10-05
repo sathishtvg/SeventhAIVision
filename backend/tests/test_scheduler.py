@@ -413,3 +413,24 @@ async def test_a_committed_set_local_poisons_the_pooled_connection(db_session):
         "SET LOCAL should leave the GUC as an empty string after commit; if this "
         "changed, the archive job may no longer need its own connection"
     )
+
+
+def test_every_job_is_due_when_the_scheduler_starts_whatever_the_machines_uptime():
+    """The loop compares each job's last run with the event loop's clock, which
+    counts from when the machine booted. A last run of 0.0 therefore meant "due
+    once the machine has been up for the job's whole interval": on a computer
+    switched off every night the daily cycle - backup, evidence purge, partition
+    maintenance - never ran at all. Pinned on the source, because the loop itself
+    never returns."""
+    import inspect
+    import re
+
+    source = inspect.getsource(scheduler_main.main)
+    timers = re.findall(r"^\s+(last_\w+) = (\S+)$", source, flags=re.M)
+    first = {}
+    for name, value in timers:
+        first.setdefault(name, value)          # where it starts, not where the loop moves it on
+    assert len(first) >= 12, first
+    assert set(first.values()) == {"_NOT_YET"}, first
+    for uptime in (5.0, 3600.0, 30 * 86400.0):
+        assert uptime - scheduler_main._NOT_YET >= scheduler_main.RUN_INTERVAL_SECONDS

@@ -1,7 +1,7 @@
 # Autonomous Drone Security Patrol — Gap Analysis
 
 **Date:** 2026-09-24
-**Status:** All 14 phases complete as of 2026-10-04 — on the simulator; no physical aircraft has been connected. Decisions D1–D7 approved 2026-09-24; three later decisions are open (§24.8, §25.6). What was built is summarised in `DRONE_PATROL_IMPLEMENTATION.md`.
+**Status:** All 14 phases complete as of 2026-10-04 — on the simulator; no physical aircraft has been connected. Decisions D1–D7 approved 2026-09-24. Everything left open at the final validation was closed on 2026-10-05 (§26); two design decisions remain as built. What was built is summarised in `DRONE_PATROL_IMPLEMENTATION.md`.
 No code, schema, configuration or data was changed to produce this document.
 **Rules followed:**
 - Inspect before modifying; integrate, never duplicate.
@@ -703,7 +703,8 @@ so they were written up for a decision rather than fixed here.
    and rows stranded in a default are moved with the foreign-key triggers
    suspended, because pg_partman's own move was measured to cascade-delete every
    event row linked to a moved detection. See `docs/UPGRADE.md`.
-2. **The default rate limit of 100 a minute is not applied.** On this FastAPI
+2. **The default rate limit of 100 a minute is not applied** (*fixed 2026-10-05,
+   §26.2*)**.** On this FastAPI
    version the limiter's middleware cannot match a request to its handler and
    exempts every route that is not explicitly limited: 115 requests in a few
    seconds to one route were all answered. Only the nine decorated endpoints are
@@ -736,6 +737,8 @@ on any drone screen and is the first candidate if a larger fleet makes it
 matter. Telemetry volume was not measured: nothing was flown at that scale.
 
 ### 24.8 Open: how long drone footage is kept
+
+*Decided and built on 2026-10-05 — §26.3.*
 
 The brief asks for retention to follow the platform's policy. Drone media was
 deliberately kept out of the platform's evidence purge (§1.5, D5), because that
@@ -818,6 +821,8 @@ every line the module added for credentials (none).
 
 ### 25.6 The desktop release does not contain the drone screens
 
+*Released as 1.0.2 on 2026-10-05 — §26.5.*
+
 The desktop app is the web build inside an Electron shell, bundled at build time.
 The released 1.0.1 installers were built on 2026-09-24, before the screens
 existed, and contain none of them. The current code packages correctly — an
@@ -825,3 +830,81 @@ unpacked build made in a scratch folder contains the drone screens — but it wa
 not released: a release needs a version number and, when the owner is ready, the
 code-signing certificate. Until then the drone screens are in the web app and on
 the phone, not on the desktop.
+
+## 26. Addendum — the open items, closed (2026-10-05)
+
+On the owner's instruction to finish everything left open. Each of these changes
+existing platform behaviour, which is why none was done without being asked.
+
+### 26.1 Partition maintenance
+
+Migration `0131` and the scheduler job, described under §24.6. One more cause
+turned up when the fixed job still did not run on the development machine: the
+scheduler compares each job's last run with the event loop's clock, which counts
+from when the machine booted, and every "last run" started at zero. On a server
+up for weeks that made every job due at start. On a machine booted an hour ago it
+made the daily cycle wait for a full day of uptime — so a computer switched off
+every night never ran its backup, its evidence purge or its partition
+maintenance at all. Every job now starts as "never run".
+
+### 26.2 The default rate limit
+
+Replaced by one that is applied (`dependencies/rate_limit.py`). The original was
+100 a minute per address. Sent as written, that would have broken the product:
+behind the web proxy every browser has the same address, and one operator's
+sixteen-camera live wall legitimately asks a single route 480 times a minute.
+So the limit is per signed-in user and per route — 300 a minute, 1,200 for video,
+live overlays and stored pictures — on reads only, because an abort or an SOS
+refused for being "too many requests" would be worse than the load. If the
+counter cannot be reached, requests go through.
+
+The drone module's own limits are unchanged: report exports 30 a minute per
+person; the gateway's explicit limits.
+
+### 26.3 Retention
+
+Built as proposed in §24.8, with two things made more conservative than the
+proposal. Footage of a *confirmed event that is still open* is kept as well as
+footage of an incident — nobody has finished with it. And a period of zero,
+which the platform's setting validator accepts, is read as "not set" rather than
+"delete everything tonight". Flight tracks are kept a year by default, per
+organisation. Stored report documents are kept. See the operations guide.
+
+### 26.4 The repository's security checks
+
+- **Migration safety** passes: 0104's reason for dropping a table was written
+  beside it without the marker the policy looks for.
+- **Container hardening** passes: the web container runs as the unprivileged
+  nginx user. It cannot bind ports below 1024, so it listens on 8080 and 8443
+  inside and the published ports are unchanged; a one-shot compose step hands an
+  existing certificate volume to the new user so an upgrade keeps its certificate.
+  Tried on a volume left as root had it: the container now says what is wrong
+  instead of failing on a bare permission error.
+- **Dependencies:** the web app has no advisories left in what it ships (axios
+  1.20.0, react-router 7.18.4); the desktop app's one high advisory is gone
+  (js-yaml 4.3.2) and four moderate ones remain behind a breaking upgrade of its
+  settings store; the phone's HTTP client is updated, and its remaining 1 critical
+  and 47 high are all in Expo and React Native build tooling, which needs an SDK
+  upgrade — a project of its own, not attempted.
+
+### 26.5 The desktop release
+
+1.0.2: the first build with the drone screens, and with the updated HTTP client
+and router. Unsigned, as 1.0.1 was — signing waits for the certificate. Same app
+id and MSI upgrade code, so it installs over 1.0.1.
+
+### 26.6 The development stack
+
+The API, scheduler and web containers were rebuilt from the current code and
+recreated; until then the API had been running files copied into an image built
+before the module, and the scheduler was two weeks behind the repository. The
+drone runner now starts as its own container. On restart the scheduler ran its
+daily cycle at once: partition maintenance for all fourteen tables, a backup, and
+an evidence purge that found nothing past its period.
+
+### 26.7 Still as built
+
+Two design decisions, neither a defect: the AI workers still raise their own
+alerts for drone cameras (the drone pipeline links and escalates them rather than
+repeating them), and a gateway that cannot reach the centre finishes its flights
+and starts no new ones.

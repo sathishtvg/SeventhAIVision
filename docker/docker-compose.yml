@@ -382,6 +382,9 @@ services:
       DRONE_RUNNER_SCHEDULE_SECONDS: "${DRONE_RUNNER_SCHEDULE_SECONDS:-30}"
       DRONE_RUNNER_AI_SECONDS: "${DRONE_RUNNER_AI_SECONDS:-3}"
       DRONE_RUNNER_REPORT_SECONDS: "${DRONE_RUNNER_REPORT_SECONDS:-60}"
+      # Expired drone footage and flight tracks, every six hours; 0 never deletes.
+      DRONE_RUNNER_RETENTION_SECONDS: "${DRONE_RUNNER_RETENTION_SECONDS:-21600}"
+      DRONE_TELEMETRY_RETENTION_DAYS: "${DRONE_TELEMETRY_RETENTION_DAYS:-365}"
     volumes:
       - evidence_data:/data/evidence
     restart: unless-stopped
@@ -413,15 +416,34 @@ services:
     build:
       context: ..
       dockerfile: docker/frontend.Dockerfile
+    # The container runs as the unprivileged nginx user and listens on 8080 and
+    # 8443 inside; the ports outside are the ones they have always been.
     ports:
-      - "5173:80"   # HTTP — redirects to HTTPS
-      - "443:443"   # HTTPS (TLS terminates here)
+      - "5173:8080"   # HTTP — redirects to HTTPS
+      - "443:8443"    # HTTPS (TLS terminates here)
     volumes:
       - certs_data:/etc/nginx/certs  # persists self-signed cert; replace with real cert here
     depends_on:
       api:
         condition: service_healthy
+      frontend-certs:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  # Runs once before `frontend`, and exits. A certificate volume from before the
+  # web container stopped running as root holds a private key only root can
+  # read; this hands the volume to the nginx user (uid 101) so the upgrade does
+  # not take the site down. On a volume that is already right it changes nothing.
+  # The only thing here that runs as root, for one chown, with no port and no
+  # network use.
+  frontend-certs:
+    image: nginx:alpine
+    user: root
+    entrypoint: ["sh", "-c", "chown -R 101:101 /etc/nginx/certs"]
+    volumes:
+      - certs_data:/etc/nginx/certs
+    network_mode: none
+    restart: "no"
 
   prometheus:
     image: prom/prometheus:v2.55.1

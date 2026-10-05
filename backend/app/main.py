@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from redis.asyncio import Redis
@@ -16,6 +16,7 @@ from app.middleware.error_capture import ErrorCaptureMiddleware
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.metrics import PrometheusMiddleware
+from app.dependencies.rate_limit import default_rate_limit
 from app.realtime.redis_listener import redis_pubsub_listener
 from app.realtime.router import router as realtime_router
 from app.routers import (
@@ -328,6 +329,10 @@ app = FastAPI(
         "tryItOutEnabled": True,
     },
     lifespan=lifespan,
+    # The default rate limit on reads. Here, as a dependency of every route,
+    # because slowapi's middleware below cannot find the handler of a route that
+    # came in through include_router and so never applied its default to any.
+    dependencies=[Depends(default_rate_limit)],
 )
 
 app.state.limiter = limiter

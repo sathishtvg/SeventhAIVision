@@ -111,7 +111,7 @@ services:
     build:
       context: ..
       dockerfile: docker/frontend.Dockerfile
-    ports: ["5173:80"]
+    ports: ["5173:8080"]   # the container is unprivileged and listens on 8080
     depends_on:
       api:
         condition: service_healthy

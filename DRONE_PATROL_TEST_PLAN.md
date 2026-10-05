@@ -1,10 +1,10 @@
 # Drone Patrol — Test Plan
 
-**As of:** 2026-10-04 · all 14 phases. **405 drone tests** — 335 backend, 34 web, 36 phone —
-all passing, inside a platform suite of 3,200 backend tests, 1,119
-repository-inspection tests, 132 web tests and 170 phone tests that CI runs on
-every push. This describes the tests that exist, what they prove, and what no
-test here can prove.
+**As of:** 2026-10-05 · all 14 phases, and the items closed after them. **413 drone tests** —
+343 backend, 34 web, 36 phone — all passing, inside a platform suite of 3,220
+backend tests, 1,119 repository-inspection tests, 132 web tests and 170 phone
+tests that CI runs on every push. This describes the tests that exist, what they
+prove, and what no test here can prove.
 
 ## How to run
 
@@ -88,6 +88,7 @@ inspection, and the frontend and mobile checks on every push; nothing merges to
 | `test_drone_security.py` | 30 | DB + API + pure | Phase 13, walking the application's own route table: every partition under forced row security, one read by name as the application's role, and a later one protected by the daily sweep; all 100 operations behind a permission or a gateway credential, none answering without credentials, a user with no drone permission refused by every one; another tenant's ids answering 404 from all 66 id-addressed operations and another site's hidden from a supervisor, with every row of the victim's unchanged; no response carrying a stored secret, a credential hash, a password hash or a stream address; evidence and reports taken out recorded with their checksums, and every changing operation writing an audit entry; what a gateway may send; an unexpected failure and a failed email saying nothing of this system; the platform health verdicts, the heartbeat, and the counts seeing every tenant; reports limited per person, not per address; a request body unable to name a column it was not given |
 | `test_drone_analytics.py` | 10 | pure + API | Phase 12: the score as weighted events per week, capped and levelled; nothing recommended below the thresholds, and each recommendation stating what it saw and marked system-generated; patrol statistics, mission success (cancelled and in-flight flights neither), the false-positive and incident-conversion rates; hours, weekdays and the daily trend in the organisation's own zone; areas ranked with false positives weighing nothing; hot spots and repeated intrusion locations; permission, site scope, tenant isolation; an empty period as zeros and no rate, not an error |
 | `frontend/src/pages/drones/droneAnalytics.test.tsx` | 9 | UI | Equal values drawn as equal bars with only the largest labelled; headline numbers each saying what they are a share of; trends as separate charts; the risk map labelled as an analytical score with every level written, not only coloured; recommendations marked system-generated; the period control; the Analytics tab offered to those who may read reports |
+| `test_drone_retention.py` | 8 | DB + API | Retention, as the application's database role on two organisations: old footage nobody acted on deleted file and record, and everything else kept — an incident's, a confirmed open event's, a flight in progress, anything not yet past its period; each organisation's own period and nobody else's footage; a period of zero read as not set; flight tracks deleted after their period while the flight's record stays and its report still renders; a file that will not delete keeping its record; nothing outside the evidence store ever deleted |
 | `test_drone_cctv_pipeline.py` | 7 | DB | Which cameras, best first; a fixed camera's matching detection verifying an event and raising its risk; same-plate only; live view and playback at the right offset with no stream address or credential exposed; correlation settling; surveying a camera and correlating again; coverage validation |
 
 Beyond the drone suites: migration round trips (each drone migration down and up
@@ -96,6 +97,14 @@ loop and stop cleanly; the gateway refuses to start without a credential), and
 the neighbouring suites — alerts, alert rules, licences, billing, platform
 licences, tenants, Virtual Patrolling, cameras, recording policy, evidence,
 incidents and dispatch.
+
+Three platform suites were rewritten after the phases, because the tests they
+held could not fail: `test_rate_limit.py` (sends one more than the limit and
+expects to be refused; per person, per route, reads only, the larger allowance
+for video, and a counter that cannot be reached letting requests through),
+`test_scheduler.py` (a missing month made and protected; rows stranded in a
+default partition moved with everything linked to them; one table's failure
+staying that table's; every job due at start whatever the machine's uptime).
 
 ## Final validation (Phase 14)
 
