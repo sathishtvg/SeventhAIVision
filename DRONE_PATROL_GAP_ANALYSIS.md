@@ -885,13 +885,14 @@ organisation. Stored report documents are kept. See the operations guide.
   (js-yaml 4.3.2) and four moderate ones remain behind a breaking upgrade of its
   settings store; the phone's HTTP client is updated, and its remaining 1 critical
   and 47 high are all in Expo and React Native build tooling, which needs an SDK
-  upgrade — a project of its own, not attempted.
+  upgrade — a project of its own, not attempted. *The desktop's four are gone and
+  the phone's are fewer — §27.4, §27.5.*
 
 ### 26.5 The desktop release
 
 1.0.2: the first build with the drone screens, and with the updated HTTP client
 and router. Unsigned, as 1.0.1 was — signing waits for the certificate. Same app
-id and MSI upgrade code, so it installs over 1.0.1.
+id and MSI upgrade code, so it installs over 1.0.1. *Followed by 1.0.3 — §27.4.*
 
 ### 26.6 The development stack
 
@@ -908,3 +909,96 @@ Two design decisions, neither a defect: the AI workers still raise their own
 alerts for drone cameras (the drone pipeline links and escalates them rather than
 repeating them), and a gateway that cannot reach the centre finishes its flights
 and starts no new ones.
+
+---
+
+## 27. The leftovers (2026-10-05)
+
+§26 ended with four things not done: the phone app's build tooling, the desktop
+app's four advisories, an ingestion container on an old image, and a line in
+the restarted scheduler's log that had not been explained. All four were taken up
+the same day.
+
+### 27.1 The scheduler said every recording was missing
+
+Restarted on current code, the scheduler ran its recording integrity sweep and
+marked all ten recordings it checked `FILE_MISSING`. The files were all there.
+The sweep re-reads each recorded file and compares its checksum — and the
+scheduler had never been given the volume the files are on, so it was looking at
+an empty directory. It has it now, read-only. The ten verify as `PASSED`.
+
+A recording wrongly marked missing corrects itself: each sweep takes the hundred
+least recently checked per organisation, so the marked ones come round again.
+
+**The Kubernetes chart had the same gap and a worse one beside it.** It claims a
+recordings volume and mounted it on the API alone. The recorder runs in the
+ingestion pod, which had no such mount: on a cluster it wrote every recording to
+its own pod's disk, where the API could not play it and a restart lost it. Both
+pods now mount the claim the API already used, the scheduler's read-only.
+
+What that fix is worth, exactly: Helm is not installed on this machine or in CI
+(the chart's render and lint tests skip), so the chart was **not rendered**.
+Three tests read the templates as text — the recorder and the API share a disk,
+the scheduler can read it, every volume a pod mounts is one it declares. Render
+it once (`helm template`) before relying on it.
+
+One limit left as found: with `minio.enabled` the chart creates neither claim,
+for any pod. Recordings are always files on disk, whatever the evidence store
+is, so on that configuration they still have no volume. Changing it would give
+every such installation a new 200 Gi shared claim it has never had — the
+owner's decision, not made here.
+
+### 27.2 One backup a day
+
+Rotation kept "the newest seven files". That was sound while the daily cycle ran
+once a day. Since §26.1 it also runs whenever the scheduler starts, so a machine
+restarted seven times in a day would have kept seven copies of today and nothing
+of the week before. Rotation is now by day: the newest of each day, for seven
+days. A file whose name carries no date is never rotated.
+
+### 27.3 The ingestion container
+
+Rebuilt from the current code and recreated; healthy. With it, every backend
+container running on the development machine runs the repository's code.
+
+### 27.4 The desktop app: 1.0.3
+
+The four moderate advisories were one: the schema validator inside the app's
+settings store. The store went from 7.0.3 to 8.2.0 — the newest the app can load
+as written — and the audit of what the desktop app ships now reports nothing.
+The app's use of the store did not change and neither does the settings file:
+tried with the app's own schema, an existing file is read, a value written, a
+wrong type refused, a missing file given its defaults; then the packaged 1.0.3
+code was started in the Electron runtime with an empty profile and wrote its
+settings.
+
+An attempt to keep the old store and replace only the validator under it was
+abandoned: it loaded, and then could not report a refused setting properly.
+
+Released as **1.0.3**: unsigned, same app id and MSI upgrade code, installs over
+1.0.1 and 1.0.2.
+
+### 27.5 The phone app's build tooling
+
+`npm audit fix` was tried and undone. It "fixed" the tooling by installing a
+second React Native, 0.87, inside the 0.74 the app is built on; the two screen
+tests that mount a real component failed on it at once. The lockfile was put
+back, and the seven packages with a fixed release inside the versions the app
+already allows were updated by name — fourteen lockfile entries, none added or
+removed, nothing the app imports. Type check, 170 tests and a real Android
+bundle build pass.
+
+| | Critical | High | Moderate | Low |
+|---|---:|---:|---:|---:|
+| Before | 1 | 47 | 22 | 1 |
+| Now | 1 | 41 | 21 | 1 |
+
+What is left is all in packages that run on the build machine, not in the app,
+and every one of them is fixed by the same thing: moving the app from Expo SDK
+51 to a current one (57 today), which takes React Native from 0.74 to 0.87 and
+React Navigation and the notifications library to new major versions with it.
+That was **assessed and not attempted**. Six SDK versions change the native
+build, the navigation library and the notifications library under an app whose
+job includes SOS and man-down alerts, and none of it can be proven without the
+app on real Android and iOS devices. It is a project of its own, to be planned
+with device testing.

@@ -282,8 +282,9 @@ the periods that applied.
 ## Releasing the desktop app with the drone screens
 
 The desktop app bundles the web build when it is built, so the drone screens
-reach desktop users only in a release built after them. **1.0.2** is the first:
-bump `version` in `desktop/package.json` and its two entries in the lockfile
+reach desktop users only in a release built after them. **1.0.2** was the first
+and **1.0.3** is the current one. For the next: bump `version` in
+`desktop/package.json` and its two entries in the lockfile
 (never `appId` or the MSI upgrade code), then
 
 ```bash

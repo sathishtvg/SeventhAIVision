@@ -27,6 +27,27 @@ BACKUP_ROOT     = Path(os.environ.get("BACKUP_ROOT", "/data/backups"))
 BACKUP_KEEP_DAILY = int(os.environ.get("BACKUP_KEEP_DAILY", "7"))
 
 
+def to_rotate(names: list[str], keep_days: int) -> list[str]:
+    """Which backup files to delete: all but the newest of each day, and every
+    day beyond the newest `keep_days`.
+
+    By DAY, not by count. The scheduler takes a backup whenever it starts as well
+    as every 24 hours, so on a machine restarted several times in one day a rule
+    of "keep the newest N files" kept N copies of today and pushed every earlier
+    day out. A name that does not carry a date is left alone."""
+    by_day: dict[str, list[str]] = {}
+    for name in names:
+        stamp = name.removeprefix("backup_").split(".")[0]          # YYYYMMDD_HHMMSS
+        day = stamp.split("_")[0]
+        if len(day) == 8 and day.isdigit():
+            by_day.setdefault(day, []).append(name)
+    doomed: list[str] = []
+    for rank, day in enumerate(sorted(by_day, reverse=True)):
+        files = sorted(by_day[day], reverse=True)
+        doomed += files if rank >= keep_days else files[1:]
+    return sorted(doomed)
+
+
 async def run_database_backup() -> dict:
     """Run pg_dump, gzip-compress the output, rotate old files.
 
@@ -78,11 +99,9 @@ async def run_database_backup() -> dict:
         outfile.unlink(missing_ok=True)
         raise RuntimeError(f"Backup file suspiciously small ({size} bytes) — aborting")
 
-    # Rotate: keep only the N most-recent daily backups
-    all_backups = sorted(daily_dir.glob("backup_*.sql.gz"), reverse=True)
-    for old in all_backups[BACKUP_KEEP_DAILY:]:
-        old.unlink(missing_ok=True)
-        logger.info("backup: rotated %s", old.name)
+    for name in to_rotate([p.name for p in daily_dir.glob("backup_*.sql.gz")], BACKUP_KEEP_DAILY):
+        (daily_dir / name).unlink(missing_ok=True)
+        logger.info("backup: rotated %s", name)
 
     logger.info("backup: complete %s (%d bytes)", outfile.name, size)
     return {

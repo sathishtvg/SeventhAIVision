@@ -105,6 +105,8 @@ services:
     volumes:
       - evidence_data:/data/evidence
       - audit_archive:/data/archive
+      # Read-only: the recording integrity sweep runs here (see docker-compose.yml).
+      - recordings_data:/data/recordings:ro
     restart: unless-stopped
 
   frontend:

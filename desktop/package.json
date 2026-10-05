@@ -1,6 +1,6 @@
 {
   "name": "seventh-ai-vision-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "7th AI Vision — Windows Desktop Application",
   "author": "Seventh AI",
   "main": "electron/main.js",
@@ -15,7 +15,7 @@
     "dist": "npm run build:frontend && npm run copy:dist && electron-builder --win"
   },
   "dependencies": {
-    "electron-store": "^7.0.3",
+    "electron-store": "^8.2.0",
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
