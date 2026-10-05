@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { Platform } from 'react-native'
+import { isRunningInExpoGo } from 'expo'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/api/client'
 
 let _notificationsModule: any = null
 
 async function loadNotifications() {
+  // Expo Go on Android has had no push since SDK 53, and from SDK 55 the
+  // module throws while it loads there — a full-screen error at every sign-in
+  // during development. A real build is not Expo Go and registers as before.
+  if (Platform.OS === 'android' && isRunningInExpoGo()) return null
   if (_notificationsModule) return _notificationsModule
   try {
     _notificationsModule = await import('expo-notifications')
