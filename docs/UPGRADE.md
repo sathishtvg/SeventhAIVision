@@ -242,7 +242,34 @@ the audit archive, the database backup — when it starts, and every 24 hours af
 It always did on a server that had been up for more than a day. On a machine
 booted more recently it used to wait until the machine had been up a full day,
 so a computer switched off every night never ran it. Restarting the scheduler
-therefore takes a backup (seven are kept) and runs the purge, every time.
+therefore takes a backup and runs the purge, every time.
+
+Backups are rotated by day: the newest of each day is kept, for seven days.
+Several restarts in one day leave one backup of that day and do not push earlier
+days out. A file in the backup folder whose name carries no date is left alone.
+
+## The Scheduler and the Recorder Need the Recordings Volume
+
+The scheduler's recording integrity sweep re-reads recorded files. It was never
+given the volume they are on, so it marked every recording it checked
+`FILE_MISSING` while the files were intact.
+
+- **Docker Compose:** the `scheduler` service now mounts `recordings_data`
+  read-only. `docker compose up -d scheduler` recreates it with the mount.
+- **Kubernetes:** the chart mounted the recordings claim on the API only. The
+  `ingestion` pod — which is the recorder — and the `scheduler` pod now mount it
+  too. **Before `helm upgrade`:** recordings made so far are on the ingestion
+  pod's own disk, not on the claim, and go when the pod is replaced. If they
+  matter, copy them out of the pod first (`kubectl cp <ingestion-pod>:/data/recordings ./recordings`)
+  and into the claim afterwards. The chart was changed without being rendered
+  (Helm is not installed where it was written): run `helm template` on it once
+  before upgrading.
+- With `minio.enabled: true` the chart creates no recordings claim at all, as
+  before. Recordings are files on disk whatever the evidence store is, so on
+  that configuration they are still on the pod's own disk.
+
+Recordings already marked missing need nothing done: each sweep re-checks the
+hundred least recently checked per organisation and corrects them.
 
 ## The Web Container Runs Without Root
 

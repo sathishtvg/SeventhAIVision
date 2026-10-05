@@ -230,7 +230,8 @@ and dispatch a guard — plus a link from a drone alert to its event. No new
 dependency.
 
 **Desktop:** no code of its own — it is the web build in the Electron shell. The
-1.0.1 installers predate the drone screens; 1.0.2 carries them — see *Deployment*.
+1.0.1 installers predate the drone screens; 1.0.2 and 1.0.3 carry them — see
+*Deployment*.
 
 ---
 
@@ -388,11 +389,20 @@ the two design decisions below (gap analysis §26):
 | Nothing deleted drone footage or flight tracks | Footage follows the organisation's evidence retention, keeping anything an incident or an open confirmed event depends on; tracks are kept a year by default |
 | Migration-safety check failed on migration 0104 | Passes |
 | Container-hardening check failed on the web image | Passes: the web container no longer runs as root |
-| Published advisories in the client apps | None left in what the web app ships; the desktop's high one fixed; the phone's HTTP client updated. Remaining: the phone's build tooling (an Expo SDK upgrade) and four moderate ones in the desktop's settings store |
-| Desktop 1.0.1 without the drone screens | 1.0.2 built with them |
-| Development API and scheduler running pre-module images | Rebuilt and recreated; the drone runner starts as its own container |
+| Published advisories in the client apps | None left in what the web app or the desktop app ships; the phone's HTTP client updated, and its build tooling where that could be done in place. Remaining: the rest of the phone's build tooling, which needs an Expo SDK upgrade |
+| Desktop 1.0.1 without the drone screens | 1.0.2 built with them, then 1.0.3 with the settings store upgraded |
+| Development API and scheduler running pre-module images | Rebuilt and recreated, the ingestion container too; the drone runner starts as its own container |
 
-With those, the platform's suite is 3,220 backend tests and 1,119
+Four leftovers from that list were taken up next (gap analysis §27):
+
+| Was | Now |
+|---|---|
+| The scheduler's integrity sweep marked every recording missing | It had never been given the recordings volume. Mounted read-only; the recordings verify. In the Kubernetes chart the recorder had no recordings volume either — both pods now mount the claim the API uses (**not rendered**: Helm is not installed here) |
+| Backup rotation kept the newest seven files | Keeps the newest of each day for seven days, so restarts do not push earlier days out |
+| Four moderate advisories in the desktop's settings store | None: the store upgraded, released as 1.0.3 |
+| 1 critical and 47 high in the phone's build tooling | 1 and 41: seven packages updated in place. `npm audit fix` was tried and undone — it broke the app. The rest needs the Expo SDK upgrade, assessed and not attempted |
+
+With those, the platform's suite is 3,220 backend tests and 1,129
 repository-inspection tests, and the module's own is 413 (343 backend in 22
 files, 34 web, 36 phone).
 
@@ -466,10 +476,16 @@ image built before the module does not contain it. The phone app needs a new
 build through its usual release to carry the two drone screens.
 
 **The desktop app.** Its installers bundle the web build, so the drone screens
-reach desktop users only in a release built after them. **1.0.2** is that
-release: built on 2026-10-05, unsigned like 1.0.1, with the same app id and MSI
-upgrade code so it installs over it. The installers are in `desktop/release/`
-(not in the repository). To build again: `cd desktop && npm run dist`.
+reach desktop users only in a release built after them. **1.0.2** was the first
+such release and **1.0.3** is the current one: built on 2026-10-05, unsigned like
+1.0.1, with the same app id and MSI upgrade code so it installs over either. The
+installers are in `desktop/release/` (not in the repository). To build again:
+`cd desktop && npm run dist`.
+
+**Recordings storage.** The scheduler needs the recordings volume as well as the
+API and the recorder; compose and the Kubernetes chart now give it one. See
+`docs/UPGRADE.md` before upgrading a Kubernetes installation — recordings made
+before the upgrade are on a pod's own disk.
 
 **The web container** runs without root and listens on 8080 and 8443 inside; the
 published ports are unchanged, and `docker compose up` hands an existing
