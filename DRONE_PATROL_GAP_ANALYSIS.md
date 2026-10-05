@@ -687,8 +687,22 @@ so they were written up for a decision rather than fixed here.
    policy casts the tenant setting, and on a pooled connection that setting is an
    empty string. It is logged as a warning and skipped. On the development
    database the newest partition of `audit_logs`, `detections` and the others is
-   September's, so October's rows are in the default partitions. `drone_telemetry`
-   has partitions to December only because its migration created them recently.
+   September's, so the first row dated October goes to a default partition.
+   `drone_telemetry` has partitions to December only because its migration
+   created them recently.
+
+   *Fixed on 2026-10-05, on the owner's decision (migration `0131`).* Two things
+   in the paragraph above turned out to be incomplete. The cast error was the
+   second reason, not the only one: the job ran as the app role, which does not
+   own the tables and cannot add a partition to them at all, so it had never made
+   one on any installation. And nothing had yet landed in a default partition on
+   the development database — no audit or detection row had been written in
+   October — so the first version of this note, which said rows were already
+   there, stated an inference as a fact. The job now runs on the superuser
+   session the audit archive uses; partitions keep being made for a quiet table;
+   and rows stranded in a default are moved with the foreign-key triggers
+   suspended, because pg_partman's own move was measured to cascade-delete every
+   event row linked to a moved detection. See `docs/UPGRADE.md`.
 2. **The default rate limit of 100 a minute is not applied.** On this FastAPI
    version the limiter's middleware cannot match a request to its handler and
    exempts every route that is not explicitly limited: 115 requests in a few
@@ -791,8 +805,8 @@ Outside the module, and present before it:
   (axios, react-router), the desktop 1 high (js-yaml), the phone 1 critical and
   48 high, nearly all in Expo and React Native build tooling. The module added no
   dependency to any of the four manifests.
-- The two from Phase 13 (§24.6): nightly partition maintenance failing, and the
-  default rate limit not applied.
+- The two from Phase 13 (§24.6): nightly partition maintenance failing (since
+  fixed, migration `0131`), and the default rate limit not applied.
 
 No Python linter, type checker, dependency audit or secret scanner is installed
 on this machine or in the backend image, and none was installed to run once.

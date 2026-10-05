@@ -472,9 +472,11 @@ nobody is licensed and nothing is owed reads `ok` without a runner.
 behind one address is many people. It is counted inside the operation, after the
 permission check has verified the token.
 
-Two findings belong to the platform rather than the module and were reported,
-not changed: the scheduler's nightly partition maintenance is failing, and the
-platform-wide default rate limit is not being applied (gap analysis §24.6).
+Two findings belonged to the platform rather than the module and were reported
+rather than changed here: the scheduler's nightly partition maintenance had never
+worked — fixed afterwards, on the owner's decision, in migration `0131` — and the
+platform-wide default rate limit is not being applied, which is still open (gap
+analysis §24.6).
 
 ## A flight's distance
 

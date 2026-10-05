@@ -375,11 +375,14 @@ session, and says so.
 
 ### Reported, not changed
 
-Outside the module, present before it, and left for a decision: the scheduler's
-nightly partition maintenance is failing; the platform-wide default rate limit is
-not applied; the migration-safety check fails on migration 0104 and the
-container-hardening check on the web image; and the client apps have published
-dependency advisories (gap analysis §24.6, §25.5).
+Outside the module, present before it, and left for a decision: the
+platform-wide default rate limit is not applied; the migration-safety check fails
+on migration 0104 and the container-hardening check on the web image; and the
+client apps have published dependency advisories (gap analysis §24.6, §25.5).
+
+The fifth — the scheduler's nightly partition maintenance, which had never made a
+partition — was fixed on 2026-10-05 on the owner's decision, in migration `0131`
+(the platform's head; the module's own last migration is `0130`).
 
 ### Open decisions
 
