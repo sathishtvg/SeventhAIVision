@@ -128,6 +128,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 }))
 
+/**
+ * Requests whose own 401 is the answer, and never a reason to refresh.
+ *
+ * The refresh is itself a POST through this client. With a refresh token that
+ * had expired, its 401 was taken by the interceptor below as a reason to
+ * refresh, which posted again, and so on until the server's rate limit
+ * answered 429: five refused refreshes and a rate-limited sixth from one page
+ * load, which could then refuse the sign-in that followed. And a wrong
+ * password — a 401 from the login itself — was "refreshed" and posted twice.
+ */
+const ITS_OWN_ANSWER = ['/api/v1/auth/refresh', '/api/v1/auth/login']
+
+let _refreshing: Promise<void> | null = null
+
+/** One refresh at a time. A page that opens fires several requests at once;
+ *  when the access token has expired each answers 401, and each used to start
+ *  a refresh of its own. They now wait for the same one. */
+function refreshOnce(): Promise<void> {
+  if (!_refreshing) {
+    _refreshing = useAuthStore.getState().refresh().finally(() => { _refreshing = null })
+  }
+  return _refreshing
+}
+
 // Wire axios interceptors once (idempotent because of the eject pattern).
 let _requestInterceptorId: number | null = null
 
@@ -152,12 +176,18 @@ export function initAxiosInterceptors() {
         await useAuthStore.getState().exitSupportSession()
         return Promise.reject(error)
       }
-      if (error.response?.status === 401 && !original._retry) {
+      const url: string = original?.url ?? ''
+      const itsOwnAnswer = ITS_OWN_ANSWER.some((path) => url.includes(path))
+      if (error.response?.status === 401 && original && !original._retry && !itsOwnAnswer) {
         original._retry = true
         try {
-          await useAuthStore.getState().refresh()
+          await refreshOnce()
           const newToken = useAuthStore.getState().accessToken
-          if (newToken) original.headers.Authorization = `Bearer ${newToken}`
+          // No token after a refresh means there was nothing to refresh with
+          // and the session is over: sending the request again unsigned would
+          // only be refused a second time.
+          if (!newToken) return Promise.reject(error)
+          original.headers.Authorization = `Bearer ${newToken}`
           return apiClient(original)
         } catch {
           useAuthStore.getState().logout()

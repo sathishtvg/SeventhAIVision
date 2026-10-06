@@ -14,13 +14,43 @@ export function registerRefreshFn(fn: () => Promise<boolean>) {
   _refresh = fn
 }
 
+/**
+ * Requests whose own 401 is the answer, and never a reason to refresh.
+ *
+ * WHY THIS EXISTS. The refresh itself is a POST through this client. When the
+ * stored refresh token had expired, that POST answered 401, this interceptor
+ * took the 401 as a reason to refresh, which posted again, which answered 401
+ * — and so on, until the server's rate limit answered 429 instead. One app
+ * start with a stale token was five refused refreshes and a rate-limited
+ * sixth, which could then refuse the sign-in that followed.
+ */
+const ITS_OWN_ANSWER = ['/api/v1/auth/refresh', '/api/v1/auth/login']
+
+let _refreshing: Promise<boolean> | null = null
+
+/** One refresh at a time. A screen that opens fires several requests at once;
+ *  when the access token has expired every one of them answers 401, and each
+ *  used to start a refresh of its own — spending the refresh token on the
+ *  first and failing the rest. They now wait for the same one. */
+function refreshOnce(): Promise<boolean> {
+  if (!_refresh) return Promise.resolve(false)
+  if (!_refreshing) {
+    _refreshing = _refresh()
+      .catch(() => false)
+      .finally(() => { _refreshing = null })
+  }
+  return _refreshing
+}
+
 apiClient.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config
-    if (error.response?.status === 401 && !original._retry && _refresh) {
+    const url: string = original?.url ?? ''
+    const itsOwnAnswer = ITS_OWN_ANSWER.some((path) => url.includes(path))
+    if (error.response?.status === 401 && original && !original._retry && !itsOwnAnswer && _refresh) {
       original._retry = true
-      const ok = await _refresh()
+      const ok = await refreshOnce()
       if (ok) {
         original.headers['Authorization'] = apiClient.defaults.headers.common['Authorization']
         return apiClient(original)
