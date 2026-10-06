@@ -773,15 +773,19 @@ held against the result. What exists is described in
   table and partition that carried it, and `test_app_role_privileges.py` asks
   the catalogue that none carries it again.
 - **Rendering the chart with Helm for the first time showed two things in its
-  older templates**, reported and not changed. With `minio.enabled=true` the
-  chart creates no recordings claim and the API, ingestion and scheduler pods
-  mount no recordings volume: continuous recordings would be written to the
-  ingestion pod's own disk, where the API cannot play them, the scheduler's
-  integrity sweep cannot find them, and a restart loses them (the eleven AI
-  worker deployments also render empty `volumes:` and `volumeMounts:` keys in
-  that configuration, which is harmless). And the chart has no deployment for
-  the drone runner, so the Drone Patrol module cannot fly or report on a
-  cluster deployed from it.
+  older templates.** They were reported, the owner asked for both to be fixed,
+  and they are (2026-10-06). With `minio.enabled=true` the chart created no
+  recordings claim and the API, ingestion and scheduler pods mounted no
+  recordings volume: continuous recordings were written to the ingestion pod's
+  own disk, where the API could not play them, the scheduler's integrity sweep
+  could not find them, and a restart lost them. Recordings are files whatever
+  the evidence store is, so the claim and the three mounts no longer depend on
+  MinIO. And the chart had no deployment for the drone runner, so Drone Patrol
+  could not fly or report on a cluster installed from it; it has one now
+  (`droneRunner` in the values). An installation without MinIO renders exactly
+  as it did, plus that one deployment. Still as found, and harmless: with
+  MinIO the eleven AI worker deployments render empty `volumes:` and
+  `volumeMounts:` keys.
 - **Two earlier tests proved nothing.** A check that a module "only reads"
   removed the module's SQL along with its docstrings before looking for writes
   (found and fixed in phase 12).

@@ -397,7 +397,7 @@ Four leftovers from that list were taken up next (gap analysis §27):
 
 | Was | Now |
 |---|---|
-| The scheduler's integrity sweep marked every recording missing | It had never been given the recordings volume. Mounted read-only; the recordings verify. In the Kubernetes chart the recorder had no recordings volume either — both pods now mount the claim the API uses (**not rendered**: Helm is not installed here) |
+| The scheduler's integrity sweep marked every recording missing | It had never been given the recordings volume. Mounted read-only; the recordings verify. In the Kubernetes chart the recorder had no recordings volume either — both pods now mount the claim the API uses. Rendered with Helm on 2026-10-06, which showed the same gap again with MinIO enabled — no recordings claim at all; the claim and the three mounts no longer depend on the evidence store |
 | Backup rotation kept the newest seven files | Keeps the newest of each day for seven days, so restarts do not push earlier days out |
 | Four moderate advisories in the desktop's settings store | None: the store upgraded, released as 1.0.3 |
 | 1 critical and 47 high in the phone's build tooling | 1 and 41: seven packages updated in place. `npm audit fix` was tried and undone — it broke the app. The rest needed the Expo SDK upgrade — done next, below |
@@ -458,6 +458,14 @@ and the `S3_*` settings, `SMTP_*`, `CREDENTIALS_ENCRYPTION_KEY`).
 
 **Services.** `drone-runner` (central, always) and `drone-edge` (per site, only
 where aircraft are flown from the site). Neither publishes a port.
+
+On a cluster the drone runner is the chart's `drone-runner` deployment
+(`helm/seventh-ai-vision/templates/drone-runner-deployment.yaml`, added
+2026-10-06 — until then the chart had none, and an installation from it could
+show the drone screens and fly nothing). It runs the command compose runs with
+the same seven settings, takes the evidence disk when there is no object store,
+and is left out with `droneRunner.enabled: false`. The site gateway is not in
+the chart: it runs at a site, on the site's own hardware.
 
 **Migration commands.**
 

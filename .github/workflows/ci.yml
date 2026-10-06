@@ -367,7 +367,8 @@ jobs:
 
       - name: Render the other configurations
         run: |
-          helm template ci helm/seventh-ai-vision --set intelligenceRunner.enabled=false > /tmp/runner-off.yaml
+          helm template ci helm/seventh-ai-vision --set intelligenceRunner.enabled=false \
+            --set droneRunner.enabled=false > /tmp/runner-off.yaml
           helm template ci helm/seventh-ai-vision --set minio.enabled=true > /tmp/minio.yaml
           helm template ci helm/seventh-ai-vision \
             --set postgres.enabled=false --set postgres.externalUrl=postgresql+asyncpg://db:5432/app \
@@ -375,9 +376,23 @@ jobs:
 
       # What the chart's own tests hold of the template as text, held of what
       # Helm actually made of it.
-      - name: The intelligence runner is deployed by default, and left out when told to
+      - name: The two runners are deployed by default, and left out when told to
         run: |
           grep -q 'name: ci-seventh-ai-vision-intelligence-runner' /tmp/default.yaml
           grep -q '"app.intelligence_main"' /tmp/default.yaml
+          grep -q 'name: ci-seventh-ai-vision-drone-runner' /tmp/default.yaml
+          grep -q '"app.drone_runner_main"' /tmp/default.yaml
           grep -q 'name: ci-seventh-ai-vision-scheduler' /tmp/default.yaml
           ! grep -q 'intelligence-runner' /tmp/runner-off.yaml
+          ! grep -q 'drone-runner' /tmp/runner-off.yaml
+
+      # Recordings are files whatever the evidence store is. With MinIO the
+      # chart used to make no recordings claim at all, and the recorder wrote
+      # to its own pod's disk.
+      - name: Recordings have a shared disk with and without MinIO
+        run: |
+          grep -q 'name: ci-seventh-ai-vision-recordings' /tmp/default.yaml
+          grep -q 'name: ci-seventh-ai-vision-evidence' /tmp/default.yaml
+          grep -q 'name: ci-seventh-ai-vision-recordings' /tmp/minio.yaml
+          test "$(grep -c 'claimName: ci-seventh-ai-vision-recordings' /tmp/minio.yaml)" = "3"
+          ! grep -q 'claimName: ci-seventh-ai-vision-evidence' /tmp/minio.yaml

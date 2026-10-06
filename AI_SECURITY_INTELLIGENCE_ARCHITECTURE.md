@@ -878,7 +878,7 @@ and an assessment that says what the last one said is not announced at all.
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
 | `backend/app/services/platform_health.py` | One probe: an import, a call, and its row at the end of the list the console already shows |
 | `helm/seventh-ai-vision/values.yaml` | One block, `intelligenceRunner` |
-| `.github/workflows/ci.yml` | One job, *Helm chart*: lints the chart and renders it in four configurations |
+| `.github/workflows/ci.yml` | One job, *Helm chart*: lints the chart, renders it in four configurations, and holds that the two runners and the recordings disk are there |
 | `frontend/src/App.tsx` | Six routes |
 | `frontend/src/components/layout/Sidebar.tsx` | One section, five entries |
 | `frontend/src/hooks/usePermission.ts` | The seven `intel:*` permissions, per role as migration `0132` grants them |
@@ -1045,7 +1045,7 @@ hand on 2026-10-06 with Helm 4.3, when every workload's selector, volumes,
 claims and config references were cross-checked and the runner's deployment
 came out exactly as the stand-in had made it. It has not been installed on a
 cluster from this work. What the render showed in the chart's older templates
-is in the gap analysis (§19.3).
+— and that both were then fixed — is in the gap analysis (§19.3).
 
 **The layer has read demonstration alerts, not a detector's.** On the
 development machine it is switched on for the demo organisation and the runner
