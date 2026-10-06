@@ -253,6 +253,8 @@ their role, the site, the source, the request id and the result:
 | `intel.action.<step>` | Each step carried out — guard dispatched, escalation, incident opened or resolved, a flight asked to hold, a mission started — with the function it went through and how it ended. The drone module writes its own entry as well (`drone.event.verify_with_drone`, `drone.mission.run`), under the same person |
 | `intel.decision_policy.update`, `intel.decision_policy.delete` | A change to who may decide |
 | `intel.observation.record` | A report from the ground — that one was made, its kind and whether it carried a position. Not what was said |
+| `intel.feedback.record` | A review of a closed situation — that one was made, the outcome and the verdicts. Not what was written in its note |
+| `intel.feedback.export` | The feedback dataset was exported — who took it, the period, the format and how many rows |
 | `intel.evidence.open` | A person opened a piece of a situation's evidence — which situation, which kind, which item and its checksum. For a frame or a clip the platform's own chain-of-custody log gets its entry too |
 
 **Assessments and recommendations being generated** are not entries in that
@@ -260,6 +262,16 @@ log. The record of each is the row itself, which the application can add but
 not alter, and every decision's entry names the assessment and the suggestion
 it was made on. The runner writes only the layer's own tables, and writing to
 the audit log from it would have meant giving that up.
+
+## What is learned from decisions
+
+Nothing, by itself. What people decide, the reasons they give for going against
+a suggestion, and what a reviewer later says a situation turned out to be are
+kept, counted and can be exported (`AI_SECURITY_INTELLIGENCE_ARCHITECTURE.md`,
+*Feedback*). No model is trained on them and no weight or rule changes because
+of them. A person who reads them may change a setting or propose a change to a
+rule; that change is theirs, is made in the open, and is stamped on every
+assessment made after it as a new `engine_version`.
 
 ## Limits
 

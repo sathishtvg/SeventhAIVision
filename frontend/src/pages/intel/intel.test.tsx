@@ -7,17 +7,19 @@ import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/securityIntelligence'
 import type {
-  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, EvidenceItem, Insight as InsightData,
-  Recommendations, SiteScores, SituationDetail, SituationEvidence, SituationSummary, Timeline, TimelineEntry, Trail,
+  Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, EvidenceItem, FeedbackAnalytics,
+  Insight as InsightData, Recommendations, SiteScores, SituationDetail, SituationEvidence, SituationFeedback,
+  SituationSummary, Timeline, TimelineEntry, Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
-import { duration } from '@/components/intel/intelFormat'
+import { duration, rate } from '@/components/intel/intelFormat'
 import Situations from './Situations'
 import Situation from './Situation'
 import Decisions from './Decisions'
 import IntelSetup from './IntelSetup'
 import Insight from './Insight'
+import Feedback from './Feedback'
 
 vi.mock('@/components/common/HlsPlayer', () => ({ HlsPlayer: () => <div data-testid="hls" /> }))
 vi.mock('@/store/auth', () => ({ useAuthStore: vi.fn() }))
@@ -206,6 +208,14 @@ const EVIDENCE: SituationEvidence = {
       served_at: { path: '/api/v1/virtual-patrol/sessions/vs1/cameras/sc1/snapshot', token_in_query: true } })],
 }
 
+const REVIEW_LISTS = {
+  outcomes: [{ code: 'REAL_INCIDENT', label: 'A real security incident' }, { code: 'AUTHORISED_ACTIVITY', label: 'Authorised activity' },
+             { code: 'UNDETERMINED', label: 'Could not be determined' }],
+  assessment_verdicts: [{ code: 'ABOUT_RIGHT', label: 'About right' }, { code: 'TOO_HIGH', label: 'Assessed too high' }],
+  recommendation_verdicts: [{ code: 'USEFUL', label: 'Useful' }, { code: 'NOT_USEFUL', label: 'Not useful' }],
+}
+const NO_FEEDBACK: SituationFeedback = { situation_id: 'sit1', closed: false, may_review: false, reviews: [], ...REVIEW_LISTS }
+
 /** A site with no drone in the picture: nothing to ask, nothing asked. */
 const NO_DRONE: DronePicture = {
   situation_id: 'sit1', closed: false, licence: { ok: true, problem: null },
@@ -233,6 +243,7 @@ function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRA
   vi.mocked(api.getTimeline).mockResolvedValue(NO_TIMELINE)
   vi.mocked(api.getSummary).mockResolvedValue(SUMMARY)
   vi.mocked(api.getSituationEvidence).mockResolvedValue(NO_EVIDENCE)
+  vi.mocked(api.getSituationFeedback).mockResolvedValue(NO_FEEDBACK)
   vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
   vi.mocked(api.getSituation).mockResolvedValue(situation)
   vi.mocked(api.getRecommendations).mockResolvedValue(recs)
@@ -674,6 +685,46 @@ describe('the situation view', () => {
     expect(screen.getByText('reported this · online')).toBeInTheDocument()
   })
 
+  it('offers a review of a closed situation to someone who may give one, and says it changes nothing', async () => {
+    const closed = { ...SITUATION, decision_status: 'RESOLVED' as const, closed_at: '2026-10-05T02:30:00Z' }
+    const view = open(SUPERVISOR)
+    await screen.findByTestId('ai-summary')
+    await waitFor(() => expect(api.getSituationFeedback).toHaveBeenCalledWith('sit1'))
+    expect(screen.queryByTestId('review-card')).toBeNull()           // still open: what it turned out to be is not asked yet
+    view.unmount()
+    open(SUPERVISOR, authority(), EMPTY_TRAIL, NO_DRONE, closed)
+    vi.mocked(api.getSituationFeedback).mockResolvedValue({ ...NO_FEEDBACK, closed: true, may_review: true })
+    vi.mocked(api.reviewSituation).mockResolvedValue({})
+    const card = await screen.findByTestId('review-card')
+    expect(within(card).getByText(/nothing in the platform\s+learns from it by itself/)).toBeInTheDocument()
+    const record = within(card).getByRole('button', { name: 'Record my review' })
+    expect(record).toBeDisabled()
+    fireEvent.mouseDown(within(card).getByLabelText('What it turned out to be'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Could not be determined' }))
+    expect(record).toBeDisabled()                                    // undetermined has to say what is not known
+    fireEvent.change(within(card).getByLabelText('What is still not known (required)'), { target: { value: 'Camera was down.' } })
+    expect(record).toBeEnabled()
+    fireEvent.click(record)
+    await waitFor(() => expect(api.reviewSituation).toHaveBeenCalledWith('sit1', {
+      outcome: 'UNDETERMINED', assessment_verdict: undefined, recommendation_verdict: undefined, note: 'Camera was down.' }))
+  })
+
+  it('shows what reviewers said as people’s statements, and no form to someone who may not review', async () => {
+    const closed = { ...SITUATION, decision_status: 'RESOLVED' as const, closed_at: '2026-10-05T02:30:00Z' }
+    open(OPERATOR, authority(), EMPTY_TRAIL, NO_DRONE, closed)
+    vi.mocked(api.getSituationFeedback).mockResolvedValue({
+      ...NO_FEEDBACK, closed: true, may_review: false,
+      reviews: [{ id: 'f1', outcome: 'AUTHORISED_ACTIVITY', assessment_verdict: 'TOO_HIGH', recommendation_verdict: 'NOT_USEFUL',
+                  note: 'Night cleaner on the rota.', reviewed_at: '2026-10-05T03:00:00Z', user_id: 'sv1', name: 'Priya',
+                  role_id: SUPERVISOR }] })
+    const review = await screen.findByTestId('review')
+    expect(within(review).getByText('Priya · Supervisor')).toBeInTheDocument()
+    expect(within(review).getByText('Authorised activity')).toBeInTheDocument()
+    expect(within(review).getByText(/The assessment: Assessed too high · The suggestion: Not useful/)).toBeInTheDocument()
+    expect(within(review).getByText('Night cleaner on the rota.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Record my review' })).toBeNull()
+  })
+
   it('a closed situation offers nothing more to decide', async () => {
     asRole(OPERATOR)
     vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
@@ -684,6 +735,7 @@ describe('the situation view', () => {
     vi.mocked(api.getTimeline).mockResolvedValue(NO_TIMELINE)
     vi.mocked(api.getSummary).mockResolvedValue(SUMMARY)
     vi.mocked(api.getSituationEvidence).mockResolvedValue(NO_EVIDENCE)
+    vi.mocked(api.getSituationFeedback).mockResolvedValue({ ...NO_FEEDBACK, closed: true })
     vi.mocked(api.getTrail).mockResolvedValue({ ...EMPTY_TRAIL, decision_status: 'RESOLVED', closed_at: '2026-10-05T02:30:00Z' })
     vi.mocked(api.recordReview).mockResolvedValue({ recorded: false, assessment_id: 'a1' })
     vi.mocked(api.getObservations).mockResolvedValue([])
@@ -961,5 +1013,72 @@ describe('the insight page', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Last 30 days' }))
     await waitFor(() => expect(api.getSiteScores).toHaveBeenCalledWith(30))
     await waitFor(() => expect(api.getInsight).toHaveBeenCalledWith({ site_id: 's1', days: 30 }))
+  })
+})
+
+
+describe('the feedback page', () => {
+  const ANALYTICS: FeedbackAnalytics = {
+    from: '2026-09-05T00:00:00Z', to: '2026-10-05T00:00:00Z', situations: 20, with_a_suggestion: 18, decided: 16,
+    followed: 12, overridden: 4, acceptance_rate: 0.75, closed_false: 5, false_positive_rate: 0.25,
+    override_reasons: { GUARD_RESPONDING: 3, AUTHORISED_ACTIVITY: 1 },
+    by_suggested_action: { DISPATCH_GUARD: { suggested: 9, followed: 5, overridden: 4, closed_false: 2 },
+                           VIEW_CAMERA: { suggested: 9, followed: 7, overridden: 0, closed_false: 3 } },
+    by_kind: {}, reviewed: 6, review_outcomes: { AUTHORISED_ACTIVITY: 4, REAL_INCIDENT: 2 },
+    review_of_assessment: { TOO_HIGH: 3 }, review_of_recommendation: {},
+    use: 'For people to read. Nothing in the platform is trained on this dataset or changes because of it; a rule or '
+      + 'a weight is changed only by a person, as a setting or as released code.',
+  }
+
+  function openFeedback(role: number, data: FeedbackAnalytics = ANALYTICS) {
+    asRole(role)
+    vi.mocked(api.getIntelStatus).mockResolvedValue(ON)
+    vi.mocked(api.getFeedbackAnalytics).mockResolvedValue(data)
+    return renderAt('/security-feedback', '/security-feedback', <Feedback />)
+  }
+
+  it('says in the server’s own words that nothing learns from it, and counts how the suggestions fared', async () => {
+    openFeedback(SUPERVISOR)
+    const use = await screen.findByTestId('feedback-use')
+    expect(use).toHaveTextContent('Nothing in the platform is trained on this dataset or changes because of it')
+    const rows = screen.getAllByTestId('suggested-row')
+    expect(rows).toHaveLength(2)
+    expect(within(rows[0]).getByText('Dispatch guard')).toBeInTheDocument()
+    expect(rows[0]).toHaveTextContent('Dispatch guard9542')
+    expect(screen.getByText('75%')).toBeInTheDocument()
+    expect(screen.getByText('Guard Responding')).toBeInTheDocument()
+    expect(screen.getByText('No reviewer has said.')).toBeInTheDocument()
+    expect(screen.getByText(/Going against a suggestion is a person using their judgement\./)).toBeInTheDocument()
+  })
+
+  it('gives no rate where there is nothing to divide by', async () => {
+    openFeedback(SUPERVISOR, { ...ANALYTICS, situations: 0, with_a_suggestion: 0, decided: 0, followed: 0, overridden: 0,
+                               acceptance_rate: null, closed_false: 0, false_positive_rate: null, override_reasons: {},
+                               by_suggested_action: {}, reviewed: 0, review_outcomes: {}, review_of_assessment: {} })
+    expect(await screen.findByText('No situation with a suggestion was closed in the period.')).toBeInTheDocument()
+    expect(screen.getAllByText('not enough to say').length).toBeGreaterThanOrEqual(2)
+    expect(rate(null)).toBe('not enough to say')
+    expect(rate(0)).toBe('0%')
+    expect(rate(0.746)).toBe('75%')
+  })
+
+  it('offers the export only to someone given it', async () => {
+    const view = openFeedback(SUPERVISOR)
+    await screen.findByTestId('feedback-use')
+    expect(screen.queryByRole('button', { name: /Export the dataset/ })).toBeNull()
+    view.unmount()
+    openFeedback(ADMIN)
+    vi.mocked(api.exportFeedbackCsv).mockResolvedValue(new Blob(['situation_number\n']))
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:x')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    const saved: string[] = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push(this.download)
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Export the dataset (CSV)' }))
+    await waitFor(() => expect(api.exportFeedbackCsv).toHaveBeenCalledWith(30))
+    await waitFor(() => expect(saved).toEqual(['security-feedback-last-30-days.csv']))
+    click.mockRestore()
+    expect(screen.getByText(/No names and none of what anyone wrote\. Each export is in the audit log\./)).toBeInTheDocument()
   })
 })

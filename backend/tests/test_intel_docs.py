@@ -516,3 +516,44 @@ def test_the_architecture_document_states_the_score_and_the_findings_as_the_code
     text_ = ARCHITECTURE.read_text(encoding="utf-8")
     assert "`intel.score_weights`" in text_ and "fewer than five" in text_
     assert intel_insight.FLOOR == 5 and intel_insight.REPEATED_AT == 3
+
+
+def test_the_architecture_document_lists_the_dataset_as_it_is_exported_and_what_a_review_may_say():
+    from app.services import intel_feedback
+
+    section = ARCHITECTURE.read_text(encoding="utf-8").split("\n## Feedback\n", 1)[1].split("\n## ", 1)[0]
+    listed = section.split("Its\n  columns, in order:", 1)[1].split("\n- **No names", 1)[0]
+    assert tuple(re.findall(r"`([a-z_]+)`", listed)) == intel_feedback.COLUMNS, "the columns, in the order exported"
+    for words in (intel_feedback.OUTCOMES, intel_feedback.ASSESSMENT_VERDICTS, intel_feedback.RECOMMENDATION_VERDICTS):
+        for code in words:
+            assert f"`{code}`" in section, code
+    assert f"{intel_feedback.MAX_ROWS:,} rows" in section and "`intel:feedback:export`" in section
+    assert "Nothing learns from it by itself" in section
+
+
+def test_the_additions_to_existing_files_and_the_settings_are_listed_as_they_are():
+    """The layer may touch existing files by additions only, and says which.
+    A list that has fallen behind the code is a claim nobody can check."""
+    from app.core.config_keys import SETTING_VALIDATORS
+
+    document = ARCHITECTURE.read_text(encoding="utf-8")
+    touched = document.split("\n## Touch points in existing files\n", 1)[1].split("\n## ", 1)[0]
+    settings = document.split("\n## Configuration\n", 1)[1].split("\n## ", 1)[0]
+    words = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight", 9: "Nine"}
+
+    web = (REPO_ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    pages = set(re.findall(r"import (\w+) from '@/pages/intel/\w+'", web))
+    routes = [page for page in re.findall(r'<Route path="[^"]+" element=\{<(\w+) />\} />', web) if page in pages]
+    assert len(routes) == len(pages) >= 6, "every page of the layer has one route"
+    assert f"| `frontend/src/App.tsx` | {words[len(routes)]} routes |" in touched
+
+    sidebar = (REPO_ROOT / "frontend" / "src" / "components" / "layout" / "Sidebar.tsx").read_text(encoding="utf-8")
+    entries = [line for line in sidebar.splitlines() if "permission: 'intel:" in line]
+    assert f"| One section, {words[len(entries)].lower()} entries |" in touched
+
+    keys = sorted(key for key in SETTING_VALIDATORS if key.startswith("intel."))
+    assert len(keys) >= 3
+    row = next(line for line in touched.splitlines() if "config_keys.py" in line)
+    assert sorted(re.findall(r"`(intel\.[a-z_]+)`", row)) == keys
+    for key in keys:
+        assert f"| `{key}` | Tenant setting" in settings, f"{key} is a setting nobody is told about"

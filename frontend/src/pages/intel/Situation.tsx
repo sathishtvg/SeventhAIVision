@@ -49,6 +49,7 @@ import {
   STEP_LABEL, fmt, fmtTime, newClientRef, pct, pretty, useIntelRealtime,
 } from '@/components/intel/intelFormat'
 import { SituationEvidence } from '@/components/intel/SituationEvidence'
+import { SituationReview } from '@/components/intel/SituationReview'
 import { SituationSummary } from '@/components/intel/SituationSummary'
 import { SituationTimeline } from '@/components/intel/SituationTimeline'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
@@ -116,6 +117,7 @@ export default function Situation() {
                   seenAssessmentId={a?.id} closed={situation.closed_at != null} drone={drone} />
           <Ground situationId={situation.id} />
           <History trail={trail} />
+          <SituationReview situationId={situation.id} />
         </Grid>
       </Grid>
     </Box>

@@ -92,6 +92,9 @@ export function duration(seconds: number | null | undefined): string {
   return `${(seconds / 3600).toFixed(1)} h`
 }
 
+/** A share as a percentage, or that there is nothing to divide by. */
+export const rate = (v: number | null | undefined) => (v == null ? 'not enough to say' : `${Math.round(v * 100)}%`)
+
 /** A confidence as a percentage, or a dash when the source gave none. */
 export const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 

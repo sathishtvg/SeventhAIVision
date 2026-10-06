@@ -95,6 +95,7 @@ import Situation from '@/pages/intel/Situation'
 import SituationDecisions from '@/pages/intel/Decisions'
 import IntelSetup from '@/pages/intel/IntelSetup'
 import SecurityInsight from '@/pages/intel/Insight'
+import SecurityFeedback from '@/pages/intel/Feedback'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -249,6 +250,7 @@ export default function App() {
         <Route path="situations/:id" element={<Situation />} />
         <Route path="situation-decisions" element={<SituationDecisions />} />
         <Route path="security-insight" element={<SecurityInsight />} />
+        <Route path="security-feedback" element={<SecurityFeedback />} />
         <Route path="intelligence-setup" element={<IntelSetup />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
