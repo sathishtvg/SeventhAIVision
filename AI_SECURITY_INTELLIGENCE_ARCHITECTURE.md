@@ -922,7 +922,7 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_risk.py` (39): see `AI_RISK_ENGINE.md`.
 
-`backend/tests/test_intel_recommend.py` (82): see `AI_DECISION_WORKFLOW.md`.
+`backend/tests/test_intel_recommend.py` (83): see `AI_DECISION_WORKFLOW.md`.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 

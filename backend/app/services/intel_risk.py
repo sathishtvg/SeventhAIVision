@@ -48,8 +48,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import intel_context as ctx
 
-ENGINE_VERSION = "rules-2"
+ENGINE_VERSION = "rules-3"
 LEVELS = ("INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL")
+#: What the corroboration factor says when one kind of source saw the matter
+#: from more than one camera. It is corroboration, and it is not "more than one
+#: kind of source": the recommender reads this to tell the two apart.
+SEEN_BY_CAMERAS = "Seen by more than one camera."
 #: Score at or above which each level starts — the drone engine's own bands, so
 #: a "HIGH" means the same thing wherever an officer reads it.
 THRESHOLDS = {"LOW": 15, "MEDIUM": 35, "HIGH": 55, "CRITICAL": 80}
@@ -285,7 +289,7 @@ def assess(situation: Mapping, events: list[Mapping], context: Mapping, baseline
     elif len(kinds) == 2:
         add("CORROBORATION", 10, f"Reported by two kinds of source: {', '.join(kinds)}.")
     elif any(e.get("method") == "ADJACENT_CAMERA" for e in events):
-        add("CORROBORATION", 5, "Seen by more than one camera.")
+        add("CORROBORATION", 5, SEEN_BY_CAMERAS)
 
     repeats = sum(1 for e in events if e.get("is_duplicate"))
     if repeats >= 10:
