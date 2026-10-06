@@ -330,6 +330,17 @@ def _tenant_today() -> str:
     return datetime.now(TENANT_TZ).strftime("%Y-%m-%d")
 
 
+async def _started(rec_id: uuid.UUID) -> datetime:
+    """When a seeded recording began, read back from its row."""
+    engine = _admin_engine()
+    try:
+        async with engine.connect() as conn:
+            return (await conn.execute(text("SELECT started_at FROM recordings WHERE id = :id"),
+                                       {"id": rec_id})).scalar_one()
+    finally:
+        await engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_crec_timeline_empty_day():
     """Timeline for a camera with no footage returns empty segments + alerts."""
@@ -347,23 +358,32 @@ async def test_crec_timeline_empty_day():
 
 @pytest.mark.asyncio
 async def test_crec_timeline_returns_segments_and_alert_markers():
-    """Seeded recording + alert for today both appear on the timeline."""
+    """A seeded recording and an alert raised during it both appear on the
+    timeline of the day they happened.
+
+    The day asked for is the day the recording began, as the tenant counts
+    days — not "today". The recording is seeded half an hour back, so for the
+    first half hour after midnight in Singapore it began yesterday; asking for
+    today then found nothing, and this failed in CI at 16:03 UTC on a tree that
+    had passed all day."""
     tenant_id, _, token = await _seed_tenant_and_token()
     camera_id, stream_id = await _seed_camera_and_stream(tenant_id)
     rec_id = await _seed_recording(tenant_id, camera_id, stream_id,
                                    status="completed", started_offset_minutes=30)
+    began = await _started(rec_id)
     alert_id = uuid.uuid4()
     engine = _admin_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as s:
+        # Raised at the moment the recording began, so the two cannot fall on different days.
         await s.execute(
-            text("INSERT INTO alerts (id, tenant_id, camera_id, module_type, severity, title, status) "
-                 "VALUES (:id, :tid, :cid, 'intrusion', 'high', 'Timeline Alert', 'open')"),
-            {"id": alert_id, "tid": tenant_id, "cid": camera_id},
+            text("INSERT INTO alerts (id, tenant_id, camera_id, module_type, severity, title, status, created_at) "
+                 "VALUES (:id, :tid, :cid, 'intrusion', 'high', 'Timeline Alert', 'open', :at)"),
+            {"id": alert_id, "tid": tenant_id, "cid": camera_id, "at": began},
         )
         await s.commit()
     await engine.dispose()
-    today = _tenant_today()
+    today = began.astimezone(TENANT_TZ).strftime("%Y-%m-%d")
     async with await _authed(token) as c:
         r = await c.get(f"/api/v1/recordings/timeline?camera_id={camera_id}&date={today}")
     body = r.json()
