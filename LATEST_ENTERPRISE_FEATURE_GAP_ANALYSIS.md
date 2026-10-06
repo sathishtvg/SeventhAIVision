@@ -226,6 +226,11 @@ Abbreviations: *R* router (`backend/app/routers/`), *S* service
 
 ## 4. Decisions for the owner
 
+**Decided by the owner on 2026-10-06: the recommended answer to each of the
+four.** Additions only (E1); without a language model (E2); a guard's last
+recorded position, shown with its age (E3); an optional model of buildings,
+floors and places (E4). The table is kept as the record of what was asked.
+
 | # | Decision | Recommended | Why it is the owner's |
 |---|---|---|---|
 | **E1** | May this expansion extend existing modules by **additions only** — new tables beside them, new operations on new routers, new menu entries and screens, and writing to existing columns that were made for the purpose and are never written (`incidents.sla_breached`, `escalated_at`)? Each existing file touched is listed in its phase's commit | **Yes, additions only** | The standing rule is that what works is not changed. Almost every item above extends something that works |
@@ -339,3 +344,47 @@ evidence, evidence → case, case → report, visitor → access → CCTV → al
 device health → maintenance, risk → recommendation → human decision — and the
 whole-layer sweep over every new table and operation, taken from the catalogue
 and the route table rather than from a list.
+
+---
+
+## 9. As built
+
+Sections 1 to 8 are the audit as it stood before any code and are kept as
+written. This section is added to as each phase is finished.
+
+| # | Phase | State | Where it is described |
+|---|---|---|---|
+| 0 | Audit | **Done 2026-10-06** | This document |
+| 1 | Smart investigation | **Built 2026-10-06** — migration `0143` | `SMART_INVESTIGATION_ARCHITECTURE.md` |
+| 2 | Evidence and custody | Not started | |
+| 3 | GIS | Not started | |
+| 4 | Dispatch, SLA, escalation | Not started | |
+| 5 | Occurrence book and handover | Not started | |
+| 6 | SOP | Not started | |
+| 7 | Visitors and contractors | Not started | |
+| 8 | Device health, assets, maintenance | Not started | |
+| 9 | Risk and advisor | Not started | |
+| 10 | Analytics | Not started | |
+| 11 | Workforce intelligence | Not started | |
+| 12 | Case management | Not started | |
+| 13 | Compliance and hardening | Not started | |
+| 14 | Integration testing | Not started | |
+
+### Phase 1 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Search across security data: **PARTIAL** — a word against eight kinds of title | One search across fourteen sources by period, site, camera, kind, event type, severity, risk, plate, name, member of staff and words. Each source read under its own existing permission and the asker's sites; each source left out is named with the reason |
+| Natural-language investigation: **MISSING** | A typed phrase read by fixed rules into that same search (decision E2), reporting which words became which filter and which were not used. No language model. A phrase with nothing understood is refused |
+| Unified investigation timeline: **PARTIAL** | An investigation: why it was opened, and references to records of any of the fourteen kinds with notes, in the order they happened, each read live as the reader may see it |
+| Cross-camera following: **PARTIAL** | A trail for one number plate or one face-watchlist entry: every sighting, with the time and distance between. Still nobody else: an unidentified person is not followed |
+
+**Not done in phase 1, and where it goes:** collecting evidence for an
+investigation, packages, export and custody are phase 2; a report of an
+investigation, and cases, phase 12; searching by a picture of a face is not
+planned. The phone app is unchanged: guards hold neither new permission.
+
+**Existing files changed, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. The existing `GET /api/v1/search` is as
+it was.

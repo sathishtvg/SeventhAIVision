@@ -96,6 +96,9 @@ import SituationDecisions from '@/pages/intel/Decisions'
 import IntelSetup from '@/pages/intel/IntelSetup'
 import SecurityInsight from '@/pages/intel/Insight'
 import SecurityFeedback from '@/pages/intel/Feedback'
+import InvestigationSearch from '@/pages/investigations/InvestigationSearch'
+import Investigations from '@/pages/investigations/Investigations'
+import Investigation from '@/pages/investigations/Investigation'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -252,6 +255,10 @@ export default function App() {
         <Route path="security-insight" element={<SecurityInsight />} />
         <Route path="security-feedback" element={<SecurityFeedback />} />
         <Route path="intelligence-setup" element={<IntelSetup />} />
+        {/* Smart Investigation: search across sources, and the investigations kept from it. */}
+        <Route path="investigate" element={<InvestigationSearch />} />
+        <Route path="investigations" element={<Investigations />} />
+        <Route path="investigations/:id" element={<Investigation />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
