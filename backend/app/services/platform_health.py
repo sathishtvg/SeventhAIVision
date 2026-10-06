@@ -242,7 +242,12 @@ async def collect(session) -> dict:
     # as it did before.
     from app.services.drone_platform_health import check_drone_patrol
     drone = await check_drone_patrol(session)
-    services = [db, redis_status, *workers, *check_storage(), recording, drone]
+    # The security intelligence layer's row (services/intel_platform_health.py),
+    # on the same terms: `ok` while no organisation has switched the layer on,
+    # and counts only — never what any organisation's officers assessed or decided.
+    from app.services.intel_platform_health import check_security_intelligence
+    intelligence = await check_security_intelligence(session)
+    services = [db, redis_status, *workers, *check_storage(), recording, drone, intelligence]
     return {
         "status": worst([s["status"] for s in services]),
         "services": services,

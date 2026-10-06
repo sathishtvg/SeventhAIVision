@@ -42,8 +42,8 @@ from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_s
 from app.dependencies.tenant import get_db_with_tenant
 from app.routers import dispatch as custody_api
 from app.services import (
-    intel_audit, intel_config, intel_context, intel_decisions, intel_evidence, intel_insight, intel_runner,
-    intel_summary, intel_timeline,
+    intel_audit, intel_config, intel_context, intel_decisions, intel_evidence, intel_insight, intel_pipeline,
+    intel_runner, intel_summary, intel_timeline,
 )
 from app.services.intel_events import SEVERITIES, SOURCE_TYPES
 
@@ -953,3 +953,30 @@ async def put_camera_links(
     listed = await _links(db, site_id)
     await db.commit()
     return {"site_id": str(site_id), "links": listed}
+
+
+# ─── How long it takes ───────────────────────────────────────────────────────
+
+@router.get("/pipeline")
+async def get_pipeline(
+    hours: int = Query(24, ge=1, le=intel_pipeline.MAX_HOURS, description="How many hours back, up to a week"),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """How long each stage of the layer took over the last hours, measured
+    from the times its own records carry: from an event happening to its being
+    read, from being read to being placed in a situation, from a situation
+    opening to its first assessment, from that assessment to the first
+    suggestion, and from a situation's first event to a suggestion being ready.
+
+    For each stage: how many were measured (`measured`), the middle value
+    (`median_seconds`) and the value nineteen in twenty came in under
+    (`p95_seconds`). A stage with fewer than `floor` measured gives no figure.
+
+    The alert itself does not wait for any of this — `note` says so. Events
+    that happened before the layer was switched on are not measured. A caller
+    restricted to certain sites is told about those sites."""
+    since, until = intel_pipeline.period(hours)
+    return {"hours": hours, "from": since, "to": until, "floor": intel_pipeline.FLOOR,
+            "stages": await intel_pipeline.measure(db, allowed, since=since, until=until),
+            "note": intel_pipeline.NOTE}

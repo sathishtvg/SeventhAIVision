@@ -243,8 +243,9 @@ Stated so that nobody reads more into a score than is there.
 
 - **The weights are judgement.** They were chosen, not measured against
   outcomes. They are in one file and in a tenant's setting so that they can be
-  argued with. Phase 14 collects what officers decided so that they can be
-  checked.
+  argued with. The feedback dataset collects what officers decided and what
+  reviewers said, so that a person can check them; nothing moves a weight by
+  itself (`AI_SECURITY_INTELLIGENCE_ARCHITECTURE.md`, *Feedback*).
 - **Habit counts alerts, not people.** A camera that was offline for a month
   looks like a camera where nothing happened, and what it then reports looks
   unusual. A camera whose alert rule changed has a past that no longer describes

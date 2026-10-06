@@ -18,11 +18,11 @@ import { usePermission } from '@/hooks/usePermission'
 import { getSites } from '@/api/sites'
 import { upsertSetting } from '@/api/settings'
 import {
-  apiError, deleteSiteDecisionPolicy, getDecisionPolicy, getIntelStatus, listSiteProfiles, putDecisionPolicy,
-  putSiteDecisionPolicy, putSiteProfile,
+  apiError, deleteSiteDecisionPolicy, getDecisionPolicy, getIntelStatus, getPipeline, listSiteProfiles,
+  putDecisionPolicy, putSiteDecisionPolicy, putSiteProfile,
 } from '@/api/securityIntelligence'
 import type { BusinessHours, DecisionPolicy, PolicyRoles, RiskLevel, SiteProfile } from '@/api/securityIntelligence'
-import { SOURCE_LABEL, fmt, pretty } from '@/components/intel/intelFormat'
+import { SOURCE_LABEL, fmt, lag, pretty } from '@/components/intel/intelFormat'
 import { IntelNav } from './IntelNav'
 
 export default function IntelSetup() {
@@ -37,6 +37,7 @@ export default function IntelSetup() {
         <Grid size={{ xs: 12, lg: 5 }}><Running /></Grid>
         <Grid size={{ xs: 12, lg: 7 }}><Policy canManage={canManage} /></Grid>
         <Grid size={{ xs: 12 }}><Sites canManage={canManage} /></Grid>
+        <Grid size={{ xs: 12 }}><Pace /></Grid>
       </Grid>
     </Box>
   )
@@ -83,6 +84,42 @@ function Running() {
         <Alert severity="warning" sx={{ mt: 1 }}>
           Could not read: {data.sources.filter((s) => s.last_error).map((s) => `${s.source} (${s.last_error})`).join(', ')}
         </Alert>)}
+    </GlassCard>
+  )
+}
+
+// ── How long it takes ────────────────────────────────────────────────────────
+
+/** Each stage of the layer, timed from what its own records carry. A stage
+ *  with too few to say gives how many there were and no figure. */
+function Pace() {
+  const { data, error } = useQuery({ queryKey: ['intel-pipeline'], queryFn: () => getPipeline(24), refetchInterval: 60_000 })
+  return (
+    <GlassCard sx={{ p: 2 }} data-testid="pace-card">
+      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>How long it takes</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        Over the last 24 hours, measured from the times the layer's own records carry.
+      </Typography>
+      {error ? <Alert severity="error">{apiError(error)}</Alert> : !data ? <Skeleton height={160} /> : (
+        <>
+          <Table size="small">
+            <TableHead><TableRow><TableCell>Stage</TableCell><TableCell align="right">Measured</TableCell>
+              <TableCell align="right">Usually</TableCell><TableCell align="right">19 in 20 within</TableCell></TableRow></TableHead>
+            <TableBody>
+              {data.stages.map((s) => (
+                <TableRow key={s.code} data-testid="pace-row">
+                  <TableCell sx={s.code === 'IN_ALL' ? { fontWeight: 700 } : undefined}>{s.label}</TableCell>
+                  <TableCell align="right">{s.measured}</TableCell>
+                  <TableCell align="right">{lag(s.median_seconds)}</TableCell>
+                  <TableCell align="right">{lag(s.p95_seconds)}</TableCell>
+                </TableRow>))}
+            </TableBody>
+          </Table>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {data.note} A stage with fewer than {data.floor} measured gives no figure.
+          </Typography>
+        </>
+      )}
     </GlassCard>
   )
 }

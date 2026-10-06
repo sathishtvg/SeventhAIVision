@@ -228,7 +228,9 @@ site's situation. A situation not yet assessed returns an empty list.
 
 - **The rules are judgement.** Which step for which kind, and how sure, were
   chosen and not measured. They are one table in one file so that they can be
-  argued with; phase 14 collects what officers actually decided.
+  argued with. The feedback dataset collects what officers actually decided
+  and what reviewers said of it, for a person to read; nothing changes a rule
+  by itself (`AI_SECURITY_INTELLIGENCE_ARCHITECTURE.md`, *Feedback*).
 - **Availability is a snapshot**, as above. When a decision is taken, what it
   would carry out is worked out again from the situation as it then is.
 - **"On shift" is not "nearby" or "free".** The layer counts guards on shift at

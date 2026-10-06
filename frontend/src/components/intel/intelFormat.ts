@@ -92,6 +92,12 @@ export function duration(seconds: number | null | undefined): string {
   return `${(seconds / 3600).toFixed(1)} h`
 }
 
+/** A short delay: tenths of a second while that is the size of it. */
+export function lag(seconds: number | null | undefined): string {
+  if (seconds == null) return 'not enough to say'
+  return seconds < 10 ? `${seconds.toFixed(1)} s` : duration(seconds)
+}
+
 /** A share as a percentage, or that there is nothing to divide by. */
 export const rate = (v: number | null | undefined) => (v == null ? 'not enough to say' : `${Math.round(v * 100)}%`)
 

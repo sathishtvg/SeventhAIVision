@@ -1,0 +1,64 @@
+{{- if .Values.intelligenceRunner.enabled }}
+# The security intelligence runner (python -m app.intelligence_main).
+#
+# It reads what the platform has already recorded and writes the security_*
+# tables: events, situations, assessments and suggestions for people to act on.
+# It takes no security action of any kind, so it is given nothing to act with —
+# no port, no volume, no service of its own. Stopped, it stops only this layer:
+# alerts, pushes, incidents and video do not pass through it.
+#
+# One replica. Two would not place an event twice (each is locked while it is
+# placed), but two would do the same reading twice for nothing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-intelligence-runner
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: intelligence-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: intelligence-runner
+  template:
+    metadata:
+      labels:
+        {{- include "seventh-ai-vision.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: intelligence-runner
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "seventh-ai-vision.serviceAccountName" . }}
+      containers:
+        - name: intelligence-runner
+          image: "{{ .Values.images.backend.repository }}:{{ .Values.images.backend.tag }}"
+          imagePullPolicy: {{ .Values.images.backend.pullPolicy }}
+          command: ["python", "-m", "app.intelligence_main"]
+          workingDir: /app/backend
+          envFrom:
+            - configMapRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-config
+            - secretRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-secret
+          env:
+            - name: INTEL_RUNNER_TICK_SECONDS
+              value: {{ .Values.intelligenceRunner.tickSeconds | quote }}
+            # How far back the first read goes when an organisation switches
+            # the layer on, so its whole history does not arrive at once.
+            - name: INTEL_BACKFILL_MINUTES
+              value: {{ .Values.intelligenceRunner.backfillMinutes | quote }}
+          resources:
+            {{- toYaml .Values.intelligenceRunner.resources | nindent 12 }}
+      {{- with .Values.intelligenceRunner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.intelligenceRunner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -358,6 +358,31 @@ export const approveDecision = (decisionId: string, note?: string) =>
 export const rejectDecision = (decisionId: string, note: string) =>
   apiClient.post<Decision>(`${BASE}/decisions/${decisionId}/reject`, { note }).then((r) => r.data)
 
+// ── How long it takes: each stage of the layer, measured from its own records ─
+
+export interface PipelineStage {
+  code: 'READ' | 'PLACED' | 'ASSESSED' | 'SUGGESTED' | 'IN_ALL'
+  /** The server's own words for the stage. */
+  label: string
+  measured: number
+  /** Null when fewer than `floor` were measured: no figure is made of a few. */
+  median_seconds: number | null
+  p95_seconds: number | null
+}
+
+export interface Pipeline {
+  hours: number
+  from: string
+  to: string
+  floor: number
+  stages: PipelineStage[]
+  /** What the figures are not: the alert itself does not wait for any of this. */
+  note: string
+}
+
+export const getPipeline = (hours = 24) =>
+  apiClient.get<Pipeline>(`${BASE}/pipeline`, { params: { hours } }).then((r) => r.data)
+
 // ── Feedback: what it turned out to be, and how the suggestions fared ────────
 
 /** A person's review of a closed situation. It changes nothing, and nothing learns from it by itself. */

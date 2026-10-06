@@ -1,6 +1,6 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-06 · **Phases 1–14 of 15 built**: the gap analysis, the
+**As of:** 2026-10-06 · **All fifteen phases built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
@@ -15,14 +15,15 @@ is read as evidence and context; the unified timeline (phase 11); and
 evidence and the AI-assisted summary (phase 12); and the site security score
 with the daily intelligence (phase 13); and feedback — a person's review of a
 closed situation, and the dataset of suggestion, decision and outcome (phase
-14, `0140`). Phases 11 to 13 have no migration: they are read from records the
-platform and the other phases already keep. **Nothing in the platform learns
-from any of it by itself. The
-runner still does not act**: it reads, records and suggests. Something is
+14, `0140`); and the vendor's view of the layer, how long it takes, its
+deployment on a cluster and a check of the whole (phase 15, `0141`). Phases 11
+to 13 have no migration: they are read from records the platform and the other
+phases already keep. **Nothing in the platform learns from any of it by itself.
+The runner does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
-This document describes what exists. What is not yet built is listed at the end
-and is not described as if it were. The analysis and the plan are in
+This document describes what exists. What was deliberately left out, or could
+not be proven here, is listed at the end under *Limits*. The analysis and the plan are in
 `AI_SECURITY_INTELLIGENCE_GAP_ANALYSIS.md`.
 
 ## Principles
@@ -576,6 +577,86 @@ own process so that nothing it does can hold up the API or the scheduler.
 | Redis down | The tick still runs; the heartbeat is skipped and logged |
 | Ports, volumes | None |
 
+On a cluster the runner is the chart's `intelligence-runner` deployment
+(`helm/seventh-ai-vision/templates/intelligence-runner-deployment.yaml`): the
+same command, one replica, the backend's image, config and secret, and — like
+the compose service — no port and no volume. `intelligenceRunner.enabled: false`
+leaves it out; `tickSeconds` and `backfillMinutes` are the two settings the
+chart passes on, with the code's own defaults.
+
+## Platform health for the vendor
+
+`backend/app/services/intel_platform_health.py`, migration `0141`. One row,
+`security-intelligence`, on the platform owner's existing console
+(`GET /api/v1/platform/health`), built the way the drone module's row is.
+
+| Asked | Of | Answer |
+|---|---|---|
+| Is the runner alive? | Its heartbeat in Redis | No key: no runner |
+| Is it keeping up? | `platform_intel_health()` | Four counts across every organisation with the layer on: `enabled`; `events_waiting`, read over a minute ago and still not placed in a situation; `situations_waiting`, changed over a minute ago and not assessed again; `sources_failing`, whose last read failed |
+
+| Status | When |
+|---|---|
+| `ok` | No organisation has switched the layer on — a runner nobody needs is not a fault — or the runner is alive with nothing waiting |
+| `degraded` | The runner is alive, but its last pass had a failure, or something has waited over a minute, or a source could not be read. The row says which |
+| `down` | Somebody has the layer on and the runner has not reported for 60 s. The row says that nothing new is being assessed or suggested, and that alerts, incidents and video do not depend on it |
+| `unknown` | The tables or the heartbeat could not be asked. Never shown as `ok` |
+
+**Counts, a status and a sentence, and nothing else.** The function returns no
+organisation, site, situation, risk or decision, and a test holds every branch
+of the row to that. The platform owner holds no `intel:*` permission and is
+refused every operation of the layer. Only work owed to an organisation with
+the layer on is counted: one that switched it off is owed nothing.
+
+## How long it takes
+
+`backend/app/services/intel_pipeline.py`, `GET /security-intelligence/pipeline`,
+and the *How long it takes* card on the Setup screen. Nothing new is recorded
+to measure the layer: every stage already stamps what it writes, and this
+subtracts.
+
+| Stage | From | To |
+|---|---|---|
+| `READ` | An event happening | The runner reading it |
+| `PLACED` | Being read | Being placed in a situation |
+| `ASSESSED` | A situation opening | Its first assessment |
+| `SUGGESTED` | That assessment | The first suggestion for it |
+| `IN_ALL` | A situation's first event | A suggestion being ready: what a person at the screen waits for |
+
+For each stage: how many were measured, the middle value, and the value
+nineteen in twenty came in under. A stage with fewer than 5 measured gives no
+figure. Events that happened before the layer was switched on are left out —
+they were read late because they were there first, not because the reader was
+slow. **The alert itself does not wait for any of this**: it reaches the
+operator through the platform's own path, first and unchanged.
+
+### Measured once, under volume
+
+On the development machine (a laptop with 7.7 GB, PostgreSQL in Docker), on
+2026-10-06: one organisation, 2,000 alerts on 100 cameras read back from the
+last 50 minutes, arranged so that every alert became a situation of its own —
+the most work 2,000 alerts can make.
+
+| | |
+|---|---|
+| Read into the common shape | 2,000 in 3.9 s: about 500 a second |
+| Placed in situations | 2,000 in 48 s: about 40 a second, each in its own transaction |
+| Assessed | 2,000 in 24 s: about 80 a second |
+| Suggestions written | For 2,000 assessments in 15 s: about 135 a second |
+| A pass with nothing new, over that history | 33 ms |
+| One new alert on top of that history — read, placed, assessed, suggested | 65 ms; the slowest of five, 75 ms |
+| Each reading of the API over that history | 10 to 24 ms: the list of situations, a situation, its timeline, summary and evidence, events, status, site scores, insight, feedback analytics, the stages above |
+| The console's four counts | Under 1 ms |
+
+What follows from those figures, by arithmetic and not by measurement: a pass
+does at most 200 events a source, 100 placements, 50 assessments and 50 sets of
+suggestions, then rests half a second, so 2,000 separate situations arriving at
+once in one organisation would all be assessed in about three minutes. One
+runner works organisations in turn, and one with nothing new costs it some tens
+of milliseconds, so a few hundred organisations stretch the three-second tick
+by several seconds. Both limits are batch sizes and the tick, which are
+settings (*Configuration*). One machine on one day is not a promise.
+
 ## Configuration
 
 | Setting | Where | Default |
@@ -620,6 +701,7 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}/feedback` | `intel:read` | The reviews of a situation, what a review may say, and whether the caller may add one |
 | GET | `/security-intelligence/feedback/dataset` | `intel:read` `intel:feedback:export` | One row for each situation closed in the period: suggestion, first decision, how it closed, latest review. No names, no free text. `format=json` or `csv`. Audited |
 | GET | `/security-intelligence/feedback/analytics` | `intel:read` | How the suggestions fared over the situations closed in the period: followed, gone against and why, closed as false, by step and by kind, and what reviewers said |
+| GET | `/security-intelligence/pipeline` | `intel:read` | How long each stage of the layer took over the last `hours` (24, at most 168): how many were measured, the middle value and the value nineteen in twenty came in under. No figure from fewer than five. For the caller's sites |
 | GET | `/security-intelligence/site-scores` | `intel:read` | The site security score of every site the caller may see, lowest first: each with its deductions line by line, what went well, what it rests on, and a note when little was recorded. With the rule table and the weights in force. `days` 1 to 90 |
 | GET | `/security-intelligence/insight` | `intel:read` | What the period looked like for one site (`site_id`) or all the caller may see: the counts, the advisory findings, and for one site its score. `days` 1 to 90 |
 | GET | `/security-intelligence/situations/{situation_id}/summary` | `intel:read` | The AI-assisted summary: sentences made by fixed templates from the caller's own timeline, each with the records it was read from. Always marked `is_ai_assisted` |
@@ -690,6 +772,19 @@ for each step.
   `AI_HUMAN_DECISION_MODEL.md`.
 - A decision is not accepted from an API key or from a vendor's support
   session. The platform owner holds no `intel:*` permission.
+- The application's database role can read, add to, change and remove rows of
+  the eight tables it works on — each statement under the tenant policy — and
+  can only read and add to the eight that are records. It can `TRUNCATE` none
+  of them. A `TRUNCATE` is not subject to row security, and the final audit
+  found the eight working tables had been granted it; `0141` takes it away.
+- The two functions that see past a tenant, `security_intel_tenants()` and
+  `platform_intel_health()`, have a pinned search path, cannot be executed by
+  `PUBLIC`, and return tenant ids and counts respectively.
+- The whole layer is swept by `test_intel_platform.py` from the database's own
+  catalogue and the application's own route table, so that a table or an
+  operation added later is checked without being named there: every table
+  tenant-scoped and forced, every operation behind a permission of the layer,
+  and the platform owner and the client role refused every one.
 
 ## The web screens
 
@@ -704,7 +799,7 @@ of their own in the sidebar, and one panel on the existing Command Centre.
 | Decisions | `/situation-decisions` | Every decision, most recent first: what the layer had suggested, what the person decided, the state, what was carried out. Approve and reject for those who may |
 | Insight | `/security-insight` | Each site's security score with every point taken off as a line; what stands out in the period, drawn as AI-assisted advice; and the period counted — where and when situations began, what reported, how people answered |
 | Feedback | `/security-feedback` | How the suggestions fared: followed, gone against and why, closed as false, what reviewers said — under the statement that nothing learns from it by itself; and the dataset export for those given it |
-| Setup | `/intelligence-setup` | The switch; the runner's state; who may decide, with the three policies of the specification each one press; each site's hours and criticality |
+| Setup | `/intelligence-setup` | The switch; the runner's state; who may decide, with the three policies of the specification each one press; each site's hours and criticality; how long each stage of the layer took over the last day |
 | Command Centre panel | on `/command-centre` | A strip of the open situations by risk. A card opens the situation |
 
 What the screens hold to, each with a test:
@@ -781,6 +876,8 @@ and an assessment that says what the last one said is not announced at all.
 | `backend/app/main.py` | Registers the two routers |
 | `backend/app/core/config_keys.py` | The `intel.enabled`, `intel.risk_weights` and `intel.score_weights` settings |
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
+| `backend/app/services/platform_health.py` | One probe: an import, a call, and its row at the end of the list the console already shows |
+| `helm/seventh-ai-vision/values.yaml` | One block, `intelligenceRunner` |
 | `frontend/src/App.tsx` | Six routes |
 | `frontend/src/components/layout/Sidebar.tsx` | One section, five entries |
 | `frontend/src/hooks/usePermission.ts` | The seven `intel:*` permissions, per role as migration `0132` grants them |
@@ -797,9 +894,12 @@ docker compose -f docker/docker-compose.yml up -d intelligence-runner
 Then, as a tenant administrator, `PUT /api/v1/settings/intel.enabled` with
 `{"setting_value": true}`, and read `GET /api/v1/security-intelligence/status`.
 
+On a cluster the chart deploys it unless `intelligenceRunner.enabled` is false.
+
 On the 7.7 GB development machine the runner is left stopped, like the drone
 runner; its behaviour is covered by tests that call its functions against the
-test database.
+test database, and by one that starts the process itself, gives it alerts to
+read, reads what it wrote and stops it.
 
 ## Tests
 
@@ -825,7 +925,7 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (48): the screens' claims above — the
+`frontend/src/pages/intel/intel.test.tsx` (49): the screens' claims above — the
 timeline drawing a source, the layer, a person and the platform each as itself — and
 since phase 10: which flight holds or which mission starts is the officer's
 choice and the layer's never; what was asked of a drone is drawn as a person's
@@ -833,6 +933,26 @@ act with what came back; an assessment made again since the last decision is
 said, with the decision standing; a patrol's finding is shown as recorded.
 
 `backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`backend/tests/test_intel_platform.py` (26): the vendor's row in every state,
+and that no branch of it carries more than counts, a status and a sentence;
+the counts seen across organisations as the application's role, only for what
+is owed; the console showing the row once and every other row as before; the
+whole layer swept from the catalogue and the route table — every table
+tenant-scoped and forced, the records unchangeable, no table emptied by the
+application, the two functions pinned and private, every operation behind a
+permission of the layer, the platform owner and a client refused each one; the
+indexes the runner's questions rest on; how long each stage took, measured
+through the API; and the process itself started as it is deployed, fed three
+alerts, read back, and stopped.
+
+`backend/tests/test_intel_deploy.py` (8): the chart runs the command compose
+runs and gives the runner nothing to act with in either; every value the
+template reads is in the values file and every setting it passes is one the
+code reads; and the template rendered to one deployment a cluster would accept
+— by a stand-in for the constructs it uses, first held to the scheduler's
+long-deployed template, because Helm is installed neither here nor in CI (the
+eighth runs `helm template` where it exists).
 
 `backend/tests/test_intel_feedback.py` (11): what a review may say, and that the
 database's lists are the code's; the dataset's columns, with none that says who
@@ -888,15 +1008,16 @@ the API accepts; the web's permission table gives each role exactly what migrati
 grants; the screens are registered and guarded on both; and the Command Centre page gained one
 panel and nothing else.
 
-`backend/tests/test_intel_docs.py` (27) checks the API tables of these documents
+`backend/tests/test_intel_docs.py` (29) checks the API tables of these documents
 against the application's route table, and the rules written in the
 correlation, risk, workflow and decision documents against the code — the
 recommendation rules by running the engine for every kind at every level, and
 what each decision carries out by running the planner.
 
-## Not built yet
+## Limits
 
-Platform health for the vendor, the Helm deployment and final validation (15).
+All fifteen phases are built. What follows was deliberately left out, or could
+not be proven here, and is not described above as if it were.
 
 Evidence is opened one piece at a time on the web. There is no export of a
 situation's evidence as a bundle: the platform's own export and report screens
@@ -913,3 +1034,21 @@ so there is none here.
 
 The phone lists a situation's sources and does not open its evidence: that is
 on the web.
+
+**The chart has not been rendered by Helm.** Neither the development machine
+nor the CI image has it. The runner's template is checked as text and rendered
+by a stand-in for the constructs it uses; `helm template` should be run once,
+where Helm exists, before the chart is relied on.
+
+**The runner has not been left running on the development machine**, which has
+not the memory for it beside the rest of the platform. It has been started, fed
+and stopped by a test, and measured under volume once (*How long it takes*).
+
+**Webhooks and notification rules for the layer's own events are not added.**
+They would alter existing configuration screens. The layer's events reach the
+web and the phone on the existing live channel; per-alert pushes are as they
+were.
+
+**Access control and alarm panels have no data on the development database.**
+The rules that use them are tested with fixtures and unproven against real
+hardware (`AI_EVENT_CORRELATION.md`).
