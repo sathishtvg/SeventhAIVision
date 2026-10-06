@@ -416,15 +416,22 @@ With those, the platform's suite is 3,220 backend tests and 1,129
 repository-inspection tests, and the module's own is 413 (343 backend in 22
 files, 34 web, 36 phone).
 
-### Open decisions
+### Decisions that were open
+
+All three are decided.
 
 1. Should the AI workers skip their own alerts and incidents for drone cameras?
-   Built: the drone pipeline links and escalates a worker's alert instead of
-   repeating it.
+   **Decided by the owner on 2026-10-06: no — left as built.** The workers
+   alert at once, as they do for every camera; the drone pipeline links and
+   escalates a worker's alert instead of repeating it. No worker is changed.
+   To be looked at again when a real aircraft is connected and there is drone
+   footage to judge it on.
 2. Should a gateway launch scheduled runs while it cannot reach the centre?
-   Built: no — it finishes what it has and starts nothing new.
-
-How long drone footage is kept was the third; it is decided and built (above).
+   **Decided by the owner on 2026-10-06: no — left as built.** A gateway that
+   has lost the centre finishes what it has in the air and starts nothing new:
+   no drone launches without a current licence check, or without an operator
+   able to cancel it.
+3. How long drone footage is kept: decided and built (above).
 
 ---
 

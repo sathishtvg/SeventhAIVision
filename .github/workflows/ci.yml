@@ -337,3 +337,47 @@ jobs:
       - name: Test
         run: npm test -- --ci
         working-directory: mobile
+
+  # ── Helm chart ────────────────────────────────────────────────────────────
+  #
+  # The chart had never been rendered by Helm anywhere. The tests that call
+  # `helm` skip themselves where it is not installed, and it is installed
+  # neither on the development machine nor in the api image those tests run
+  # in — so "the chart renders" rested on reading it. It was first rendered by
+  # hand on 2026-10-06. The runner image has Helm, so this renders it on every
+  # push, in each configuration a deployment can choose between.
+  #
+  # Plain `helm lint`, not --strict: the runner's Helm is whatever the image
+  # ships, and a new release's new warning should not fail a push that did
+  # not touch the chart.
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Helm version
+        run: helm version --short
+
+      - name: Lint
+        run: helm lint helm/seventh-ai-vision
+
+      - name: Render with the default values
+        run: helm template ci helm/seventh-ai-vision > /tmp/default.yaml
+
+      - name: Render the other configurations
+        run: |
+          helm template ci helm/seventh-ai-vision --set intelligenceRunner.enabled=false > /tmp/runner-off.yaml
+          helm template ci helm/seventh-ai-vision --set minio.enabled=true > /tmp/minio.yaml
+          helm template ci helm/seventh-ai-vision \
+            --set postgres.enabled=false --set postgres.externalUrl=postgresql+asyncpg://db:5432/app \
+            --set redis.enabled=false --set redis.externalUrl=redis://cache:6379/0 > /tmp/external.yaml
+
+      # What the chart's own tests hold of the template as text, held of what
+      # Helm actually made of it.
+      - name: The intelligence runner is deployed by default, and left out when told to
+        run: |
+          grep -q 'name: ci-seventh-ai-vision-intelligence-runner' /tmp/default.yaml
+          grep -q '"app.intelligence_main"' /tmp/default.yaml
+          grep -q 'name: ci-seventh-ai-vision-scheduler' /tmp/default.yaml
+          ! grep -q 'intelligence-runner' /tmp/runner-off.yaml

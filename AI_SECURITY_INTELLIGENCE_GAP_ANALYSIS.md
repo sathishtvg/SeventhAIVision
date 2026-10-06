@@ -772,6 +772,16 @@ held against the result. What exists is described in
   who asked for it to be done: migration `0142` takes `TRUNCATE` away from every
   table and partition that carried it, and `test_app_role_privileges.py` asks
   the catalogue that none carries it again.
+- **Rendering the chart with Helm for the first time showed two things in its
+  older templates**, reported and not changed. With `minio.enabled=true` the
+  chart creates no recordings claim and the API, ingestion and scheduler pods
+  mount no recordings volume: continuous recordings would be written to the
+  ingestion pod's own disk, where the API cannot play them, the scheduler's
+  integrity sweep cannot find them, and a restart loses them (the eleven AI
+  worker deployments also render empty `volumes:` and `volumeMounts:` keys in
+  that configuration, which is harmless). And the chart has no deployment for
+  the drone runner, so the Drone Patrol module cannot fly or report on a
+  cluster deployed from it.
 - **Two earlier tests proved nothing.** A check that a module "only reads"
   removed the module's SQL along with its docstrings before looking for writes
   (found and fixed in phase 12).
@@ -785,8 +795,8 @@ held against the result. What exists is described in
   a person's decision; webhooks and notification rules for the layer's events.
   Each is deliberate and is described under *Limits* in the architecture
   document.
-- `helm template` has not been run on the chart: Helm is installed neither on
-  the development machine nor in the CI image.
+- The chart has been rendered by Helm (2026-10-06, and on every push since, in
+  CI) and not yet installed on a cluster.
 - The phone application with these screens has not been on a device: it needs
   a new build first.
 - Access control and alarm panels have no data on the development database;

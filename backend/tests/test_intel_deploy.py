@@ -6,8 +6,9 @@ command, and it must be given nothing it could act with: no port to be reached
 on, no volume to read evidence from. These read the two deployment files and
 hold them to that.
 
-`helm` is not installed everywhere this suite runs. The chart is checked as
-text here, and rendered with `helm template` where the tool exists.
+`helm` is not installed where this suite runs (the development machine, the
+api image). The chart is checked as text here and rendered by a stand-in; Helm
+itself lints and renders it on every push in CI's *Helm chart* job.
 """
 from __future__ import annotations
 
@@ -109,8 +110,9 @@ def test_every_value_the_template_reads_is_in_values_and_every_setting_it_passes
 
 # ─── Rendered without Helm ───────────────────────────────────────────────────
 #
-# Neither the development machine nor the CI image has Helm, so `helm template`
-# has never run on this chart in either place. What follows is not Helm: it is a
+# Neither the development machine nor the api image this suite runs in has
+# Helm. (CI renders the chart with the real thing, in a job of its own, since
+# 2026-10-06.) What follows is not Helm: it is a
 # stand-in for exactly the constructs these two templates use — if / if not /
 # with / end, include, toYaml | nindent, a value, a value | quote — strict about
 # anything else. It exists so that a wrong indent or an unclosed block is found
