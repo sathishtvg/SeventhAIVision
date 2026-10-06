@@ -8,12 +8,12 @@ import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/securityIntelligence'
 import type {
   Authority, AuthorityAction, Decision, DecisionAction, DecisionPolicy, DronePicture, EvidenceItem, FeedbackAnalytics,
-  Insight as InsightData, Recommendations, SiteScores, SituationDetail, SituationEvidence, SituationFeedback,
+  Insight as InsightData, Pipeline, Recommendations, SiteScores, SituationDetail, SituationEvidence, SituationFeedback,
   SituationSummary, Timeline, TimelineEntry, Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
-import { duration, rate } from '@/components/intel/intelFormat'
+import { duration, lag, rate } from '@/components/intel/intelFormat'
 import Situations from './Situations'
 import Situation from './Situation'
 import Decisions from './Decisions'
@@ -852,8 +852,22 @@ describe('setup', () => {
     always_allowed: ['REQUEST_ASSISTANCE'], tenant: null, sites: [],
   }
 
+  const stage = (code: Pipeline['stages'][number]['code'], label: string, measured: number,
+                 median_seconds: number | null, p95_seconds: number | null) => ({ code, label, measured, median_seconds, p95_seconds })
+  const PACE: Pipeline = {
+    hours: 24, from: '2026-10-05T03:00:00Z', to: '2026-10-06T03:00:00Z', floor: 5,
+    stages: [stage('READ', 'From an event happening to its being read', 212, 1.6, 3.4),
+             stage('PLACED', 'From being read to being placed in a situation', 212, 0.2, 0.9),
+             stage('ASSESSED', 'From a situation opening to its first assessment', 3, null, null),
+             stage('SUGGESTED', 'From that assessment to the first suggestion', 3, null, null),
+             stage('IN_ALL', "From a situation's first event to a suggestion being ready", 64, 2.8, 14)],
+    note: "The alert itself does not wait for any of this: it reaches the operator through the platform's own path, "
+      + 'first and unchanged. Events that happened before the layer was switched on are not measured.',
+  }
+
   function setup(role: number) {
     asRole(role)
+    vi.mocked(api.getPipeline).mockResolvedValue(PACE)
     vi.mocked(api.getIntelStatus).mockResolvedValue({ ...ON, enabled: false })
     vi.mocked(api.getDecisionPolicy).mockResolvedValue(policy)
     vi.mocked(api.putDecisionPolicy).mockResolvedValue(policy)
@@ -885,6 +899,21 @@ describe('setup', () => {
     expect(screen.getByText('Not set')).toBeInTheDocument()
     expect(screen.getByText(/Nothing has been set, so the default applies: the command centre decides, a guard does not\./))
       .toBeInTheDocument()
+  })
+
+  it('shows how long each stage took, gives no figure from a few, and says the alert does not wait', async () => {
+    setup(ADMIN)
+    const card = await screen.findByTestId('pace-card')
+    const rows = await within(card).findAllByTestId('pace-row')
+    expect(rows).toHaveLength(5)
+    expect(rows[0]).toHaveTextContent('From an event happening to its being read2121.6 s3.4 s')
+    expect(rows[2]).toHaveTextContent('From a situation opening to its first assessment3not enough to saynot enough to say')
+    expect(rows[4]).toHaveTextContent('642.8 s14 s')
+    expect(within(card).getByText(/The alert itself does not wait for any of this/)).toHaveTextContent(
+      'A stage with fewer than 5 measured gives no figure.')
+    expect(api.getPipeline).toHaveBeenCalledWith(24)
+    expect([lag(null), lag(0), lag(9.96), lag(10), lag(89.6), lag(600)]).toEqual(
+      ['not enough to say', '0.0 s', '10.0 s', '10 s', '90 s', '10 min'])
   })
 
   it('someone who may not manage it can read it and change nothing', async () => {

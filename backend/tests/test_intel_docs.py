@@ -557,3 +557,45 @@ def test_the_additions_to_existing_files_and_the_settings_are_listed_as_they_are
     assert sorted(re.findall(r"`(intel\.[a-z_]+)`", row)) == keys
     for key in keys:
         assert f"| `{key}` | Tenant setting" in settings, f"{key} is a setting nobody is told about"
+
+
+def test_the_architecture_document_describes_the_vendors_row_as_it_is_built():
+    from app.services import intel_platform_health as health
+    from app.services import intel_runner
+
+    section = ARCHITECTURE.read_text(encoding="utf-8").split("\n## Platform health for the vendor\n", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    assert f"`{health.SERVICE}`" in section and "`platform_intel_health()`" in section
+    asked = next(line for line in section.splitlines() if line.startswith("| Is it keeping up?"))
+    assert tuple(re.findall(r"`([a-z_]+)`", asked.split("|")[3])) == health.COUNTS, "the counts, as the function returns them"
+    migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0141_platform_intel_health.py").read_text("utf-8")
+    returns = re.search(r"RETURNS TABLE \(([^)]*)\)", migration).group(1)
+    assert tuple(part.split()[0] for part in returns.split(",")) == health.COUNTS
+    statuses = re.findall(r"^\| `([a-z]+)` \|", section, re.M)
+    assert statuses == ["ok", "degraded", "down", "unknown"]
+    assert f"has not reported for {intel_runner.HEARTBEAT_TTL_SECONDS} s" in section
+    assert health.STILL_WORKS in section
+    # Every state the row can be in is one the document names.
+    for counts, beat, could_ask in ((None, None, True), ({name: 0 for name in health.COUNTS}, None, True),
+                                    ({**{name: 0 for name in health.COUNTS}, "enabled": 1}, None, True),
+                                    ({**{name: 0 for name in health.COUNTS}, "enabled": 1}, None, False),
+                                    ({**{name: 1 for name in health.COUNTS}}, {"ok": True}, True)):
+        assert health.verdict(counts, beat, heartbeat_asked=could_ask)["status"] in statuses
+
+
+def test_the_architecture_document_lists_the_stages_as_they_are_measured():
+    from app.services import intel_pipeline
+
+    section = ARCHITECTURE.read_text(encoding="utf-8").split("\n## How long it takes\n", 1)[1].split("\n## ", 1)[0]
+    listed = re.findall(r"^\| `([A-Z_]+)` \|", section, re.M)
+    assert listed == [code for code, _ in intel_pipeline.STAGES], "every stage, in the order it happens"
+    flat = " ".join(section.split())                    # the sentences, however the lines happen to break
+    assert f"fewer than {intel_pipeline.FLOOR} measured gives no figure" in flat
+    row = next(line for line in ARCHITECTURE.read_text(encoding="utf-8").splitlines()
+               if line.startswith("| GET | `/security-intelligence/pipeline`"))
+    assert f"at most {intel_pipeline.MAX_HOURS}" in row
+    assert "The alert itself does not wait for any of this" in flat and "does not wait for any of this" in intel_pipeline.NOTE
+    # The batch sizes the arithmetic rests on are the code's.
+    from app.services import intel_correlation, intel_events, intel_recommend, intel_risk
+    assert (f"at most {intel_events.BATCH} events a source, {intel_correlation.BATCH} placements, "
+            f"{intel_risk.BATCH} assessments and {intel_recommend.BATCH} sets of suggestions") in flat

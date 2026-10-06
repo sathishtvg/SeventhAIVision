@@ -95,6 +95,29 @@ scheduler:
   nodeSelector: {}
   tolerations: []
 
+# ─── Security intelligence runner ────────────────────────────────────────────
+# Reads what the platform has already recorded and writes situations,
+# assessments and suggestions for people to act on. It takes no security action
+# and is given nothing to act with: no port, no volume. Stopped, it stops only
+# that layer — alerts, incidents and video carry on.
+# The layer is off for every organisation until its own administrator switches
+# it on, so a runner nobody uses costs one small query every few seconds.
+intelligenceRunner:
+  enabled: true
+  # Seconds between two reads of every source, for every organisation with it on.
+  tickSeconds: 3
+  # How far back the first read goes when an organisation switches it on.
+  backfillMinutes: 60
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  nodeSelector: {}
+  tolerations: []
+
 # ─── AI worker pipelines ──────────────────────────────────────────────────────
 # Set enabled: false to skip a particular module.
 # Set gpu.enabled: true on a node with NVIDIA Container Toolkit installed.

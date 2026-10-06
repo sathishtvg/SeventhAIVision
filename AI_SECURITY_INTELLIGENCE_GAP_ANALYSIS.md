@@ -1,6 +1,9 @@
 # AI Security Intelligence & Human Decision Support — Gap Analysis
 
 **As of:** 2026-10-05 · Phase 1 of 15 · written before any code.
+**Since:** all fifteen phases are built (2026-10-06). Sections 1 to 18 are left
+as they were written; what was built, and where it differs from this plan, is
+in §19.
 **Platform state inspected:** main at `1dc6858`, migration head `0131`, 230 tables,
 91 API modules, 167 permissions, 8 roles.
 
@@ -688,3 +691,106 @@ fixed before the next.
   1,129 repository-inspection, 132 web, 174 phone — stay green at every phase.
 - **Documents:** the API document checked against the route table, as for
   Drone Patrol.
+
+---
+
+## 19. As built
+
+**Written 2026-10-06, after phase 15.** Sections 1 to 18 are the analysis and
+the plan as they stood before any code, left as written so that the plan can be
+held against the result. What exists is described in
+`AI_SECURITY_INTELLIGENCE_ARCHITECTURE.md` and the four documents it names.
+
+### 19.1 The fifteen phases
+
+| # | Phase | Migration | What it added |
+|---|---|---|---|
+| 1 | Inspection and gap analysis | — | This document, and the owner's four decisions (§9) |
+| 2 | Normalised event pipeline | `0132` | `security_events`, the cursors, the runner with its heartbeat, the per-tenant switch, a reader for every source |
+| 3 | Context engine | `0133` | Site and camera profiles; what was expected at a place and time, with "not known" kept as not known |
+| 4 | Correlation | `0134` | Situations, every link with a method, a reason and a confidence; duplicates folded |
+| 5 | Normality and risk | `0135` | Assessments that are added to and never changed: the risk and every factor behind it, the confidences, what was known |
+| 6 | Recommendations | `0136` | What the layer suggests, why, how sure, and whether it can be done now |
+| 7 | Human decisions | `0137` | Decisions, overrides with reasons, approvals, the policy of who may decide, and the one module that carries a decision out — through the platform's existing functions |
+| 8 | Command Centre screens | — | Situations, a situation, decisions, setup; one panel on the Command Centre page |
+| 9 | Guard and phone | `0138` | A guard's situations, a decision within policy, reports from the ground |
+| 10 | Drone and virtual patrol | `0139` | A decision can ask a flight to hold and look, or start a planned mission; what was seen comes back as an event; patrol findings as evidence and context |
+| 11 | Unified timeline | — | One situation in the order it happened, each line drawn as what it is |
+| 12 | Evidence and summary | — | A situation's evidence opened through the existing custody log; a summary in fixed words over recorded facts |
+| 13 | Site score and daily intelligence | — | A score whose every point is a stated line; what a period looked like, with advisory findings |
+| 14 | Feedback | `0140` | A person's review of a closed situation; the dataset of suggestion, decision and outcome; how the suggestions fared |
+| 15 | Validation | `0141` | The vendor's row on the console; how long each stage takes; the runner on a cluster; a sweep of the whole layer; these documents |
+
+### 19.2 Where the result differs from the plan
+
+- **§7, tables.** `security_site_scores` was not built: the score is counted
+  when it is asked for, from records that already exist, so there is no
+  snapshot to fall out of date. `security_feedback` holds a person's review and
+  no "export state": that an export was taken is in the audit log. Five tables
+  the plan had folded into others stand on their own — `security_camera_profiles`,
+  `security_camera_links`, `security_reviews`, `security_decision_approvals`,
+  `security_observations`. Sixteen tables in all, where the plan listed twelve.
+- **§8, a path.** What a drone saw for a situation is read at
+  `/situations/{id}/aerial`. No path of the layer contains the word "drone",
+  because the drone module's own tests take every such path for the drone
+  module's.
+- **§10, audit.** Assessments and suggestions being generated are their own
+  unchangeable rows, not entries in the hash-chained log (stated in place, §10).
+- **§12, existing files.** Every addition listed was made, and nothing listed
+  as not touched was touched. Beyond the list: one block in the chart's
+  `values.yaml`; and, between phases 7 and 8, two existing drone **tests** —
+  not the code they test — were corrected because they failed only after
+  midnight in Singapore.
+- **§13, screens.** "AI Security Alerts" is *Situations*; "Security
+  Intelligence" is *Insight*; *Decisions*, *Feedback* and *Setup* are screens of
+  their own. The desktop application wraps the web build and was not rebuilt
+  for this work.
+- **§14, events.** Nine are published rather than seven:
+  `intel_situation_opened`, `intel_situation_updated`,
+  `intel_assessment_ready`, `intel_recommendation_ready`,
+  `intel_decision_recorded`, `intel_decision_pending_approval`,
+  `intel_decision_approved`, `intel_decision_rejected`,
+  `intel_observation_recorded`. `intel_action_completed` and
+  `intel_situation_resolved` are not separate events: what was carried out, and
+  that a matter closed, arrive with the decision that did it.
+- **§16, measurement.** The delay of each stage is read at
+  `/security-intelligence/pipeline`; backlog and failures are the vendor's row;
+  accepted, overridden and false-positive rates are the feedback analytics.
+  Measured once under volume: the architecture document, *How long it takes*.
+
+### 19.3 What the final check found
+
+- **The application's database role could empty eight of the layer's tables.**
+  They had been granted ALL, which includes `TRUNCATE`, and a `TRUNCATE` is not
+  subject to row security. No code used it. `0141` takes it away, and a test
+  now asks the database for every table of the layer rather than naming them.
+- **Thirty-nine tables outside the layer carry the same grant** — the Drone
+  Patrol and Virtual Patrol modules' tables, `report_deliveries`,
+  `report_schedules` and `tenant_pwm_floors`. They are existing schema, so they
+  were **not changed**; taking `TRUNCATE` away from them is one statement a
+  table and is the owner's to decide.
+- **Two earlier tests proved nothing.** A check that a module "only reads"
+  removed the module's SQL along with its docstrings before looking for writes
+  (found and fixed in phase 12).
+- **A list in the architecture document had fallen behind the code** (fixed in
+  phase 14, and now held to the code by a test).
+
+### 19.4 Left open
+
+- An evidence bundle for a situation; the timeline and evidence on the phone;
+  sending a drone to a place no mission was planned for; a drone flown without
+  a person's decision; webhooks and notification rules for the layer's events.
+  Each is deliberate and is described under *Limits* in the architecture
+  document.
+- `helm template` has not been run on the chart: Helm is installed neither on
+  the development machine nor in the CI image.
+- The phone application with these screens has not been on a device: it needs
+  a new build first.
+- Access control and alarm panels have no data on the development database;
+  the rules that use them rest on fixtures.
+
+### 19.5 The suites at the end
+
+Backend 3,629 passed; repository inspection 1,176; web 181; phone 200
+— against 3,220, 1,129, 132 and 174 before the first line of this layer (§18).
+Every suite that passed then passes now.

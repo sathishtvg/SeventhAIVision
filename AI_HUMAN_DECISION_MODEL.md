@@ -1,7 +1,7 @@
 # AI Security Intelligence — The Human Decision Model
 
-**As of:** 2026-10-05 · phases 7, 9 and 10 of 15 · migrations `0137`, `0138`,
-`0139` · `backend/app/services/intel_decisions.py`, `intel_actions.py`,
+**As of:** 2026-10-06 · phases 7, 9, 10 and 14 of 15 · migrations `0137`, `0138`,
+`0139`, `0140` · `backend/app/services/intel_decisions.py`, `intel_actions.py`,
 `intel_field.py`, `intel_drone.py`, `backend/app/routers/security_decisions.py`
 
 > AI detects, understands, correlates, assesses and recommends. Authorised
