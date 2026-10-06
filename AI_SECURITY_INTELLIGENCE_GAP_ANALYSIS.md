@@ -764,11 +764,13 @@ held against the result. What exists is described in
   They had been granted ALL, which includes `TRUNCATE`, and a `TRUNCATE` is not
   subject to row security. No code used it. `0141` takes it away, and a test
   now asks the database for every table of the layer rather than naming them.
-- **Thirty-nine tables outside the layer carry the same grant** — the Drone
+- **Thirty-nine tables outside the layer carried the same grant** — the Drone
   Patrol and Virtual Patrol modules' tables, `report_deliveries`,
-  `report_schedules` and `tenant_pwm_floors`. They are existing schema, so they
-  were **not changed**; taking `TRUNCATE` away from them is one statement a
-  table and is the owner's to decide.
+  `report_schedules` and `tenant_pwm_floors`. They are existing schema, so the
+  layer's own phases did not change them and the finding was put to the owner,
+  who asked for it to be done: migration `0142` takes `TRUNCATE` away from every
+  table and partition that carried it, and `test_app_role_privileges.py` asks
+  the catalogue that none carries it again.
 - **Two earlier tests proved nothing.** A check that a module "only reads"
   removed the module's SQL along with its docstrings before looking for writes
   (found and fixed in phase 12).
