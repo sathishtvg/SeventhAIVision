@@ -186,6 +186,11 @@ and whether any of them agrees.
 
 ## Decision for the owner
 
+*Decided on 2026-10-06: left as built. The workers keep alerting on drone
+cameras as on any other, and no worker is changed; to be looked at again when a
+real aircraft is connected and there is drone footage to judge it on. What
+follows is the question as it was put.*
+
 **The AI workers alert on their own, before any drone context.** Each worker
 raises its alert — and for weapons, fire, PPE and falls, an auto-incident — the
 moment it detects something, under the tenant's alert rules. Those rules are per

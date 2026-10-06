@@ -33,27 +33,28 @@ spec:
                 name: {{ include "seventh-ai-vision.fullname" . }}-config
             - secretRef:
                 name: {{ include "seventh-ai-vision.fullname" . }}-secret
-          {{- if not .Values.minio.enabled }}
           volumeMounts:
+            {{- if not .Values.minio.enabled }}
             - name: evidence
               mountPath: /data/evidence
+            {{- end }}
             # The recorder runs here. Without this it wrote every recording to
             # the pod's own disk, where the API could not play it and a restart
-            # lost it.
+            # lost it. Mounted whatever the evidence store is: with MinIO
+            # enabled it used to be left out with the evidence mount.
             - name: recordings
               mountPath: /data/recordings
-          {{- end }}
           resources:
             {{- toYaml .Values.ingestion.resources | nindent 12 }}
-      {{- if not .Values.minio.enabled }}
       volumes:
+        {{- if not .Values.minio.enabled }}
         - name: evidence
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+        {{- end }}
         - name: recordings
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-recordings
-      {{- end }}
       {{- with .Values.ingestion.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

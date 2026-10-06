@@ -53,13 +53,15 @@ spec:
                 name: {{ include "seventh-ai-vision.fullname" . }}-config
             - secretRef:
                 name: {{ include "seventh-ai-vision.fullname" . }}-secret
-          {{- if not .Values.minio.enabled }}
           volumeMounts:
+            {{- if not .Values.minio.enabled }}
             - name: evidence
               mountPath: /data/evidence
+            {{- end }}
+            # Mounted whatever the evidence store is: recordings are files, and
+            # the API plays what the recorder in the ingestion pod wrote.
             - name: recordings
               mountPath: /data/recordings
-          {{- end }}
           livenessProbe:
             httpGet:
               path: {{ .Values.api.livenessProbe.path }}
@@ -76,15 +78,15 @@ spec:
             failureThreshold: {{ .Values.api.readinessProbe.failureThreshold }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
-      {{- if not .Values.minio.enabled }}
       volumes:
+        {{- if not .Values.minio.enabled }}
         - name: evidence
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+        {{- end }}
         - name: recordings
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-recordings
-      {{- end }}
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

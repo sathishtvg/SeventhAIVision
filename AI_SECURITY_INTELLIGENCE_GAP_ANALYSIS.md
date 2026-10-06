@@ -772,6 +772,20 @@ held against the result. What exists is described in
   who asked for it to be done: migration `0142` takes `TRUNCATE` away from every
   table and partition that carried it, and `test_app_role_privileges.py` asks
   the catalogue that none carries it again.
+- **Rendering the chart with Helm for the first time showed two things in its
+  older templates.** They were reported, the owner asked for both to be fixed,
+  and they are (2026-10-06). With `minio.enabled=true` the chart created no
+  recordings claim and the API, ingestion and scheduler pods mounted no
+  recordings volume: continuous recordings were written to the ingestion pod's
+  own disk, where the API could not play them, the scheduler's integrity sweep
+  could not find them, and a restart lost them. Recordings are files whatever
+  the evidence store is, so the claim and the three mounts no longer depend on
+  MinIO. And the chart had no deployment for the drone runner, so Drone Patrol
+  could not fly or report on a cluster installed from it; it has one now
+  (`droneRunner` in the values). An installation without MinIO renders exactly
+  as it did, plus that one deployment. Still as found, and harmless: with
+  MinIO the eleven AI worker deployments render empty `volumes:` and
+  `volumeMounts:` keys.
 - **Two earlier tests proved nothing.** A check that a module "only reads"
   removed the module's SQL along with its docstrings before looking for writes
   (found and fixed in phase 12).
@@ -785,8 +799,8 @@ held against the result. What exists is described in
   a person's decision; webhooks and notification rules for the layer's events.
   Each is deliberate and is described under *Limits* in the architecture
   document.
-- `helm template` has not been run on the chart: Helm is installed neither on
-  the development machine nor in the CI image.
+- The chart has been rendered by Helm (2026-10-06, and on every push since, in
+  CI) and not yet installed on a cluster.
 - The phone application with these screens has not been on a device: it needs
   a new build first.
 - Access control and alarm panels have no data on the development database;

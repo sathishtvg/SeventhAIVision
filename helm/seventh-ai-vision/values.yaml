@@ -95,6 +95,34 @@ scheduler:
   nodeSelector: {}
   tolerations: []
 
+# ─── Drone runner ────────────────────────────────────────────────────────────
+# The process that flies for the Drone Patrol module: flight commands, drone
+# health and links, scheduled patrols, the drone AI pipeline, patrol reports
+# and the removal of expired footage. With nobody licensed for the module it
+# has nothing to do. Set enabled: false on an installation that will never use
+# the module.
+droneRunner:
+  enabled: true
+  # Seconds between passes of each of its jobs.
+  tickSeconds: 2
+  healthSeconds: 15
+  scheduleSeconds: 30
+  aiSeconds: 3
+  reportSeconds: 60
+  # How often expired footage and flight tracks are removed; 0 never deletes.
+  retentionSeconds: 21600
+  # How long a flight's track is kept.
+  telemetryRetentionDays: 365
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  nodeSelector: {}
+  tolerations: []
+
 # ─── Security intelligence runner ────────────────────────────────────────────
 # Reads what the platform has already recorded and writes situations,
 # assessments and suggestions for people to act on. It takes no security action

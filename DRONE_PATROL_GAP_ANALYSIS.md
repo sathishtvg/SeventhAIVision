@@ -519,8 +519,9 @@ been seen on a device (see the test plan).
 The link from an alert to its event is offered on alerts the drone module raised
 (`module_type = drone_patrol`). When the pipeline links a worker's alert instead
 of raising its own, that alert opens as an ordinary alert; the event is still in
-More → Drone Events. This is the phone-side face of the open decision on whether
-workers should alert at all on drone cameras (`DRONE_PATROL_AI.md`).
+More → Drone Events. This is the phone-side face of the decision on whether
+workers should alert at all on drone cameras (`DRONE_PATROL_AI.md`) — decided on
+2026-10-06: they do, as built.
 
 ### 21.4 The existing dispatch screen cannot name a guard
 

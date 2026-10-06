@@ -195,6 +195,10 @@ item refused, with the reason.
 
 ## Decision for the owner
 
+*Decided on 2026-10-06: no. It stays as built — a drone is not launched without
+a current licence check, or without an operator able to cancel it. What follows
+is the question as it was put.*
+
 **Should a gateway start scheduled patrols on its own while the link is down?**
 Built now: no — it finishes flights already in the air but launches nothing new
 without the centre. The alternative is for the gateway to hold its drones'

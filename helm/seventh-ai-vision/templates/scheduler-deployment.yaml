@@ -33,28 +33,29 @@ spec:
                 name: {{ include "seventh-ai-vision.fullname" . }}-config
             - secretRef:
                 name: {{ include "seventh-ai-vision.fullname" . }}-secret
-          {{- if not .Values.minio.enabled }}
           volumeMounts:
+            {{- if not .Values.minio.enabled }}
             - name: evidence
               mountPath: /data/evidence
+            {{- end }}
             # Read-only: the recording integrity sweep runs here and re-hashes
             # the recorded files. Without this it saw an empty directory and
-            # marked every recording it checked as missing.
+            # marked every recording it checked as missing. Mounted whatever
+            # the evidence store is.
             - name: recordings
               mountPath: /data/recordings
               readOnly: true
-          {{- end }}
           resources:
             {{- toYaml .Values.scheduler.resources | nindent 12 }}
-      {{- if not .Values.minio.enabled }}
       volumes:
+        {{- if not .Values.minio.enabled }}
         - name: evidence
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+        {{- end }}
         - name: recordings
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-recordings
-      {{- end }}
       {{- with .Values.scheduler.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

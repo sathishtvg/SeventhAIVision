@@ -878,6 +878,7 @@ and an assessment that says what the last one said is not announced at all.
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
 | `backend/app/services/platform_health.py` | One probe: an import, a call, and its row at the end of the list the console already shows |
 | `helm/seventh-ai-vision/values.yaml` | One block, `intelligenceRunner` |
+| `.github/workflows/ci.yml` | One job, *Helm chart*: lints the chart, renders it in four configurations, and holds that the two runners and the recordings disk are there |
 | `frontend/src/App.tsx` | Six routes |
 | `frontend/src/components/layout/Sidebar.tsx` | One section, five entries |
 | `frontend/src/hooks/usePermission.ts` | The seven `intel:*` permissions, per role as migration `0132` grants them |
@@ -952,8 +953,9 @@ runs and gives the runner nothing to act with in either; every value the
 template reads is in the values file and every setting it passes is one the
 code reads; and the template rendered to one deployment a cluster would accept
 — by a stand-in for the constructs it uses, first held to the scheduler's
-long-deployed template, because Helm is installed neither here nor in CI (the
-eighth runs `helm template` where it exists).
+long-deployed template, because Helm is not installed where this suite runs
+(the eighth runs `helm template` where it is). Helm itself renders the chart in
+CI: the *Helm chart* job, below.
 
 `backend/tests/test_intel_feedback.py` (11): what a review may say, and that the
 database's lists are the code's; the dataset's columns, with none that says who
@@ -1036,17 +1038,24 @@ so there is none here.
 The phone lists a situation's sources and does not open its evidence: that is
 on the web.
 
-**The chart has not been rendered by Helm.** Neither the development machine
-nor the CI image has it. The runner's template is checked as text and rendered
-by a stand-in for the constructs it uses; `helm template` should be run once,
-where Helm exists, before the chart is relied on.
+**The chart is rendered, not deployed.** Helm lints it and renders it on every
+push (CI job *Helm chart*): with the default values, with the runner left out,
+with MinIO, and with an external database and Redis. It was first rendered by
+hand on 2026-10-06 with Helm 4.3, when every workload's selector, volumes,
+claims and config references were cross-checked and the runner's deployment
+came out exactly as the stand-in had made it. It has not been installed on a
+cluster from this work. What the render showed in the chart's older templates
+— and that both were then fixed — is in the gap analysis (§19.3).
 
-**The layer has not yet read a live alert outside its tests.** On the
+**The layer has read demonstration alerts, not a detector's.** On the
 development machine it is switched on for the demo organisation and the runner
-is running, and every screen has been opened there against the real API — but
-no detector runs on that machine, so nothing has happened for it to read. What
-it does with alerts is known from the tests, from the process started and fed
-by one of them, and from the measurement under volume (*How long it takes*).
+is running; no detector runs there, so on 2026-10-06 four alerts marked
+`[DEMO]` were raised through the platform's own alert API. The running layer
+read them, joined each pair into a situation, assessed it and wrote its
+suggestions within seconds, and every screen was opened on the result — which
+is how the fault corrected in `rules-3` was found. What it does with a
+detector's alerts at volume is known from the tests and from the measurement
+(*How long it takes*).
 
 **Webhooks and notification rules for the layer's own events are not added.**
 They would alter existing configuration screens. The layer's events reach the

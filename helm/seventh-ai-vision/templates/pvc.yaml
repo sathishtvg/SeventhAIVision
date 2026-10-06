@@ -15,7 +15,14 @@ spec:
   {{- if .Values.persistence.evidence.storageClass }}
   storageClassName: {{ .Values.persistence.evidence.storageClass | quote }}
   {{- end }}
+{{- end }}
 ---
+# Recordings are files whatever the evidence store is. The recorder (in the
+# ingestion pod) writes them, the API plays them and the scheduler verifies and
+# purges them, so the three must share one disk. With MinIO enabled this claim
+# was left out along with the evidence claim: evidence had moved to the object
+# store, recordings had not, and they landed on the ingestion pod's own disk —
+# where the API could not play them and a restart lost them.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -31,4 +38,3 @@ spec:
   {{- if .Values.persistence.recordings.storageClass }}
   storageClassName: {{ .Values.persistence.recordings.storageClass | quote }}
   {{- end }}
-{{- end }}

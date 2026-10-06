@@ -13,16 +13,22 @@ export interface Evidence {
   created_at: string
 }
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000'
-
 export const getEvidence = (params?: { incident_id?: string; limit?: number }) =>
   apiClient
     .get<Evidence[]>('/api/v1/evidence', { params: { limit: 50, ...params } })
     .then((r) => r.data)
 
-// Absolute URL for an evidence file, for an Image source in React Native.
+/**
+ * Absolute URL for an evidence file, for an Image source in React Native.
+ *
+ * Built from the server the app is talking to — the one chosen on the sign-in
+ * screen — at the moment it is asked for. It used to be built from a constant
+ * read once from the build's environment, defaulting to localhost: on a phone
+ * that is the phone itself, so every evidence picture was requested from a
+ * server that was not there, whichever server the guard had signed in to.
+ */
 export const evidenceFileUrl = (evidenceId: string): string =>
-  `${BASE_URL}/api/v1/evidence/${evidenceId}/file`
+  `${(apiClient.defaults.baseURL ?? '').replace(/\/$/, '')}/api/v1/evidence/${evidenceId}/file`
 
 // Auth header for evidence file requests — an <Image> cannot carry one itself,
 // so the caller passes these as headers on the source.

@@ -1,0 +1,89 @@
+{{- if .Values.droneRunner.enabled }}
+# The drone runner (python -m app.drone_runner_main).
+#
+# The process that flies: it carries out the commands operators give a flight,
+# watches the drones' health and their links, starts scheduled patrols, runs
+# the drone AI pipeline, sends the patrol reports and removes expired footage.
+# The chart had no deployment for it, so on a cluster installed from this
+# chart the Drone Patrol screens worked and nothing ever flew or reported.
+#
+# With nobody licensed for the module it has nothing to do, and costs a small
+# query every few seconds.
+#
+# One replica, as compose runs one: it was written and tested as a single
+# process, and nothing here has shown that two can share the work.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-drone-runner
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: drone-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: drone-runner
+  template:
+    metadata:
+      labels:
+        {{- include "seventh-ai-vision.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: drone-runner
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "seventh-ai-vision.serviceAccountName" . }}
+      containers:
+        - name: drone-runner
+          image: "{{ .Values.images.backend.repository }}:{{ .Values.images.backend.tag }}"
+          imagePullPolicy: {{ .Values.images.backend.pullPolicy }}
+          command: ["python", "-m", "app.drone_runner_main"]
+          workingDir: /app/backend
+          envFrom:
+            - configMapRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-config
+            - secretRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-secret
+          env:
+            - name: DRONE_RUNNER_TICK_SECONDS
+              value: {{ .Values.droneRunner.tickSeconds | quote }}
+            - name: DRONE_RUNNER_HEALTH_SECONDS
+              value: {{ .Values.droneRunner.healthSeconds | quote }}
+            - name: DRONE_RUNNER_SCHEDULE_SECONDS
+              value: {{ .Values.droneRunner.scheduleSeconds | quote }}
+            - name: DRONE_RUNNER_AI_SECONDS
+              value: {{ .Values.droneRunner.aiSeconds | quote }}
+            - name: DRONE_RUNNER_REPORT_SECONDS
+              value: {{ .Values.droneRunner.reportSeconds | quote }}
+            # Expired drone footage and flight tracks; 0 never deletes.
+            - name: DRONE_RUNNER_RETENTION_SECONDS
+              value: {{ .Values.droneRunner.retentionSeconds | quote }}
+            - name: DRONE_TELEMETRY_RETENTION_DAYS
+              value: {{ .Values.droneRunner.telemetryRetentionDays | quote }}
+          {{- if not .Values.minio.enabled }}
+          volumeMounts:
+            # Drone footage is evidence: it is written here and, once expired,
+            # removed from here.
+            - name: evidence
+              mountPath: /data/evidence
+          {{- end }}
+          resources:
+            {{- toYaml .Values.droneRunner.resources | nindent 12 }}
+      {{- if not .Values.minio.enabled }}
+      volumes:
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+      {{- end }}
+      {{- with .Values.droneRunner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.droneRunner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
