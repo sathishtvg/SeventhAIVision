@@ -6,7 +6,9 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getIncidents, type Incident } from '@/api/incidents'
-import { dispatchToIncident, markArrived, type DispatchRecord } from '@/api/dispatch'
+import { dispatchToIncident, markArrived } from '@/api/dispatch'
+import { getLiveAttendance } from '@/api/attendance'
+import { dispatchNotes, dispatchable, guardLine } from '@/lib/dispatchGuards'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -69,23 +71,36 @@ export function DispatchScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [target, setTarget] = useState<Incident | null>(null)
   const [form, setForm] = useState({ eta: '', notes: '' })
+  const [guardId, setGuardId] = useState<string | null>(null)
 
   const { data: incidents = [], isLoading } = useQuery({
     queryKey: ['incidents-open'],
     queryFn: () => getIncidents('open'),
   })
 
+  // Who can be sent: the guards on duty now, asked for when the sheet opens.
+  // A dispatch names a guard; this screen used to send none, and the server
+  // refused every one.
+  const { data: board, isLoading: loadingGuards, isError: guardsFailed } = useQuery({
+    queryKey: ['attendance-live', 'dispatch'],
+    queryFn: () => getLiveAttendance(),
+    enabled: target !== null,
+  })
+  const guards = dispatchable(board?.shifts ?? [], target?.site_id)
+
+  const closeSheet = () => {
+    setTarget(null)
+    setGuardId(null)
+    setForm({ eta: '', notes: '' })
+  }
+
   const dispatchMutation = useMutation({
-    mutationFn: ({ incident, form }: { incident: Incident; form: { eta: string; notes: string } }) =>
-      dispatchToIncident(incident.id, {
-        guard_user_id: '', // would come from a guard picker in a full impl
-        eta_minutes: form.eta ? parseInt(form.eta, 10) : undefined,
-        notes: form.notes || undefined,
-      }),
+    mutationFn: ({ incident, guard, form }: { incident: Incident; guard: string; form: { eta: string; notes: string } }) =>
+      dispatchToIncident(incident.id, { guard_user_id: guard, dispatch_notes: dispatchNotes(form.eta, form.notes) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['incidents-open'] })
-      setTarget(null)
-      setForm({ eta: '', notes: '' })
+      qc.invalidateQueries({ queryKey: ['incidents'] })
+      closeSheet()
     },
     onError: () => Alert.alert('Error', 'Failed to dispatch guard.'),
   })
@@ -131,16 +146,35 @@ export function DispatchScreen() {
       )}
 
       {/* Dispatch modal */}
-      <Modal visible={target !== null} transparent animationType="slide">
+      <Modal visible={target !== null} transparent animationType="slide" onRequestClose={closeSheet}>
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Dispatch Guard</Text>
-              <Pressable onPress={() => setTarget(null)}>
+              <Pressable onPress={closeSheet} accessibilityLabel="Close">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={styles.modalSub} numberOfLines={2}>{target?.title}</Text>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Guard to send</Text>
+              <ScrollView style={styles.guardList}>
+                {loadingGuards && <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.sm }} />}
+                {guards.map((g) => (
+                  <Pressable key={g.user_id} style={[styles.guardRow, guardId === g.user_id && styles.guardRowActive]}
+                             onPress={() => setGuardId(g.user_id)}
+                             accessibilityRole="radio" accessibilityState={{ selected: guardId === g.user_id }}>
+                    <Text style={styles.guardName}>{g.name}</Text>
+                    <Text style={styles.guardSub}>{guardLine(g)}</Text>
+                  </Pressable>
+                ))}
+                {guardsFailed && <Text style={styles.guardSub}>The guards on duty could not be loaded.</Text>}
+                {!loadingGuards && !guardsFailed && guards.length === 0 && (
+                  <Text style={styles.guardSub}>No guard is on duty right now.</Text>
+                )}
+              </ScrollView>
+            </View>
 
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>ETA (minutes)</Text>
@@ -166,9 +200,10 @@ export function DispatchScreen() {
             </View>
 
             <Pressable
-              style={[styles.confirmBtn, dispatchMutation.isPending && { opacity: 0.5 }]}
-              onPress={() => target && dispatchMutation.mutate({ incident: target, form })}
-              disabled={dispatchMutation.isPending}
+              style={[styles.confirmBtn, (dispatchMutation.isPending || !guardId) && { opacity: 0.5 }]}
+              onPress={() => target && guardId && dispatchMutation.mutate({ incident: target, guard: guardId, form })}
+              disabled={dispatchMutation.isPending || !guardId}
+              accessibilityRole="button" accessibilityState={{ disabled: dispatchMutation.isPending || !guardId }}
             >
               {dispatchMutation.isPending
                 ? <ActivityIndicator size="small" color="#fff" />
@@ -210,6 +245,11 @@ const styles = StyleSheet.create({
   modalTitle:     { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
   modalSub:       { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md },
   fieldGroup:     { marginBottom: spacing.sm },
+  guardList:      { maxHeight: 190 },
+  guardRow:       { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: 'transparent' },
+  guardRowActive: { borderColor: colors.primary, backgroundColor: colors.primaryMuted },
+  guardName:      { fontSize: fontSize.md, color: colors.text, fontWeight: '600' },
+  guardSub:       { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 1 },
   fieldLabel:     { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: 4 },
   textInput:      { borderRadius: radius.sm, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: fontSize.md, height: 42 },
   confirmBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: 12, borderRadius: radius.sm, backgroundColor: colors.primary, marginTop: spacing.md },

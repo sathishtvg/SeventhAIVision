@@ -530,6 +530,10 @@ dispatch cannot name anyone. Left as found; dispatch from a drone event uses the
 drone endpoint, which lists the guards on shift or picks the nearest free one.
 Worth fixing separately.
 
+*Fixed 2026-10-06:* the sheet lists the guards on duty now, from the live
+attendance board, with those at the incident's site first; nothing is sent
+until one is chosen, and the notes go under the name the server reads.
+
 ### 21.5 Registration in existing files
 
 Four existing mobile files gained lines, nothing changed: the navigator, the More
