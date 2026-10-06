@@ -14,6 +14,8 @@ export interface Incident {
   id: string
   camera_id: string
   camera_name?: string
+  /** The site of the incident's camera, when it has one. */
+  site_id?: string | null
   site_name?: string
   title: string
   description: string | null
@@ -45,6 +47,10 @@ export const getIncidents = (status?: string, siteId?: string, moduleType?: stri
     .get<{ items: Incident[] }>('/api/v1/incidents', { params })
     .then((r) => rows(r.data))
 }
+
+/** One incident by its id — not by where it happens to be in a list. */
+export const getIncident = (id: string) =>
+  apiClient.get<Incident>(`/api/v1/incidents/${id}`).then((r) => r.data)
 
 /** One entry of the incident timeline: a note, or a status change. */
 interface TimelineEntry {

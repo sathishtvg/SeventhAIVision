@@ -111,6 +111,49 @@ async def list_alerts(
     return await paginate(db, data_sql, count_sql, params, limit, offset)
 
 
+@router.get("/{alert_id:uuid}", dependencies=[Depends(require_permission("alert:read"))])
+async def get_alert(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """One alert, as the list gives its rows, with the alert's message.
+
+    For a screen that was handed an id and nothing else — a row on a dashboard,
+    a link from a drone event, a notification — and so cannot depend on the
+    alert happening to be on the first page of the list. The phone's detail
+    screen looked for its alert in that first page and told a guard "Alert not
+    found" for every alert that was not on it.
+
+    The list's permission and the list's site scope: an alert at a site the
+    caller may not see answers 404, exactly as one that does not exist does.
+    The path takes a UUID only, so it can never be mistaken for another path
+    under /alerts."""
+    params: dict = {"id": str(alert_id)}
+    scope = site_scope_clause(allowed_sites, "c.site_id", params)
+    row = (await db.execute(text(f"""
+        SELECT a.id, a.detection_id, a.camera_id, a.module_type, a.severity,
+               a.alert_code, a.title, a.message, a.status, a.created_at,
+               a.assigned_to_user_id, a.assigned_at,
+               au.full_name AS assigned_to_name, au.email AS assigned_to_email,
+               a.acknowledged_by_user_id, a.acknowledged_at, a.acknowledged_via,
+               au2.full_name AS acknowledged_by_name,
+               a.fp_reason, a.fp_marked_by_user_id, a.fp_marked_at, a.fp_marked_via,
+               au3.full_name AS fp_marked_by_name,
+               c.site_id, s.name AS site_name, c.name AS camera_name
+        FROM alerts a
+        LEFT JOIN cameras c ON c.id = a.camera_id
+        LEFT JOIN sites s ON s.id = c.site_id
+        LEFT JOIN users au ON au.id = a.assigned_to_user_id
+        LEFT JOIN users au2 ON au2.id = a.acknowledged_by_user_id
+        LEFT JOIN users au3 ON au3.id = a.fp_marked_by_user_id
+        WHERE a.id = CAST(:id AS uuid) {f'AND {scope}' if scope else ''}
+    """), params)).mappings().first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Alert not found")
+    return dict(row)
+
+
 _VALID_RESPONSE_CHANNELS = ("web", "mobile")
 
 

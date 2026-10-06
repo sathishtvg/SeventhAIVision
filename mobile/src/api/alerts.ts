@@ -36,6 +36,10 @@ export const getAlerts = (status?: string, siteId?: string, moduleType?: string)
     .then((r) => rows(r.data))
 }
 
+/** One alert by its id — not by where it happens to be in a list. */
+export const getAlert = (id: string) =>
+  apiClient.get<Alert>(`/api/v1/alerts/${id}`).then((r) => r.data)
+
 // Responses from this app are tagged 'mobile' so a supervisor reviewing the
 // alert log can tell a guard's in-field phone response from a desk response.
 export const acknowledgeAlert = (id: string) =>

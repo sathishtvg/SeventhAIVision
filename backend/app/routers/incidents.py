@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -120,6 +121,36 @@ async def list_incidents(
         {where}
     """
     return await paginate(db, data_sql, count_sql, params, limit, offset)
+
+
+@router.get("/{incident_id:uuid}", dependencies=[Depends(require_permission("incident:read"))])
+async def get_incident(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed_sites: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """One incident, as the list gives its rows, with its description and
+    when it was last changed and resolved.
+
+    For a screen that was handed an id and nothing else, and so cannot depend
+    on the incident happening to be on the first page of the list (see
+    `get_alert`). The list's permission and the list's site scope: an incident
+    at a site the caller may not see answers 404, as one that does not exist
+    does. The path takes a UUID only."""
+    params: dict = {"id": str(incident_id)}
+    scope = site_scope_clause(allowed_sites, "c.site_id", params)
+    row = (await db.execute(text(f"""
+        SELECT i.id, i.alert_id, i.camera_id, i.title, i.description, i.severity, i.status,
+               i.is_auto_created, i.assigned_to_user_id, i.created_at, i.updated_at, i.resolved_at,
+               c.site_id, s.name AS site_name, c.name AS camera_name
+        FROM incidents i
+        LEFT JOIN cameras c ON c.id = i.camera_id
+        LEFT JOIN sites s ON s.id = c.site_id
+        WHERE i.id = CAST(:id AS uuid) {f'AND {scope}' if scope else ''}
+    """), params)).mappings().first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Incident not found")
+    return dict(row)
 
 
 @router.post("/{incident_id}/notes", dependencies=[Depends(require_permission("incident:update"))])

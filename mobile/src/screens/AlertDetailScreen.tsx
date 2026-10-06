@@ -7,9 +7,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
-import { getAlerts, acknowledgeAlert, markFalsePositive, type Alert } from '@/api/alerts'
+import { getAlert, acknowledgeAlert, markFalsePositive, type Alert } from '@/api/alerts'
 import { findDroneEventForAlert } from '@/api/drones'
 import { canSee } from '@/lib/access'
+import { listed } from '@/lib/listed'
 import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -33,12 +34,19 @@ export function AlertDetailScreen() {
   const { params } = useRoute<RoutePropType>()
   const qc = useQueryClient()
 
-  const { data: alerts = [], isLoading } = useQuery({
-    queryKey: ['alerts', 'all'],
-    queryFn: () => getAlerts(undefined),
+  // The alert is asked for by its id. This screen used to load the first page
+  // of the unfiltered list and look for the alert in it, so every alert that
+  // was not among the newest fifty opened as "Alert not found" — on a busy
+  // site, nearly all of them. Under the 'alerts' key so that acknowledging or
+  // marking it, which refresh that key, refresh this too.
+  const { data: fetched, isLoading: fetching } = useQuery({
+    queryKey: ['alerts', 'one', params.alertId],
+    queryFn: () => getAlert(params.alertId),
   })
-
-  const alert = alerts.find((a: Alert) => a.id === params.alertId)
+  // Whichever list it was opened from already holds its row: shown at once,
+  // and shown offline, until the alert itself arrives.
+  const alert = fetched ?? listed<Alert>(qc.getQueriesData({ queryKey: ['alerts'] }), params.alertId)
+  const isLoading = fetching && !alert
 
   // A drone alert is the headline of a drone event, which holds the picture,
   // the place and the response actions. Looked up only for drone alerts, and
