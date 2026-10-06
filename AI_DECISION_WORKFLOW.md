@@ -51,8 +51,9 @@ Every response and every live message that carries a recommendation says
 Rules, not a model: the same assessment and the same availability always give
 the same suggestions. `Kind` and `Risk` come from the assessment
 (`AI_RISK_ENGINE.md`). *Sources* is whether more than one kind of source
-reported the situation. The number after each step is the rule's own
-confidence in it.
+reported the situation — a door and a camera, an alarm and a drone. Two cameras
+of one kind seeing it is one kind of source seen twice, and is not. The number
+after each step is the rule's own confidence in it.
 
 | Kind | Risk | Sources | Suggested, surest first |
 |---|---|---|---|
@@ -199,7 +200,7 @@ why a camera misfires is not what is urgent tonight.
 | `confidence`, `confidence_limited_by` | The fourth confidence and what held it down |
 | `available`, `unavailable_reason` | Whether it can be done now, and if not, why — always one or the other |
 | `supporting` | What it rests on: the risk level and score, the sentences of the top risk factors, and for the step itself the cameras to look at, how many guards were on shift, the drone's state, or the incident already open |
-| `engine_version` | `rules-2` (`rules-1` before phase 10, which stopped suggesting a second drone look) |
+| `engine_version` | `rules-3`. `rules-1` before phase 10, which stopped suggesting a second drone look. `rules-2` until 2026-10-06: it took two neighbouring cameras for "more than one kind of source", suggested a guard first on that ground and said so in the reason, which nothing had recorded — found on the first situation read on a running stack |
 
 **One set per assessment, written once.** A new assessment gets a new set; the
 earlier one stays. The application's database role is granted `SELECT` and
@@ -246,7 +247,7 @@ site's situation. A situation not yet assessed returns an empty list.
 
 ## Tests
 
-`backend/tests/test_intel_recommend.py` (82):
+`backend/tests/test_intel_recommend.py` (83):
 
 - **The rules, with nothing running:** each level and each kind; one source
   looks first and two send first; an incomplete picture puts looking first while

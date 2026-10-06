@@ -210,7 +210,12 @@ def match(event: Mapping, member: Mapping, *, camera_links: Mapping[frozenset, i
         elif walk is None and distance is not None and distance <= ADJACENT_METERS:
             allowance = timedelta(seconds=max(60.0, distance / WALK_SPEED * 2 + 30))
             if apart <= allowance:
-                add("ADJACENT_CAMERA", f"A {noun} at {_where(member)}, then {round(distance)} m away, {_ago(apart)}. "
+                # Two cameras with the very same coordinates were usually both given
+                # the site's: "0 m away" would state a distance nobody measured. Say
+                # what the record says — the same recorded position.
+                then = (f"then {round(distance)} m away" if round(distance) > 0
+                        else "then at another camera recorded at the same position")
+                add("ADJACENT_CAMERA", f"A {noun} at {_where(member)}, {then}, {_ago(apart)}. "
                                        f"Nearby and moments later — not identified as the same {noun}.",
                     0.7 - 0.2 * (distance / ADJACENT_METERS))
 

@@ -97,6 +97,38 @@ def test_at_high_risk_one_kind_of_source_looks_first_and_two_send_first():
     assert {r.priority for r in alone} == {"HIGH"}
 
 
+def test_two_cameras_of_one_kind_are_not_a_second_kind_of_source():
+    """A person seen on two neighbouring cameras is one kind of source seen
+    twice. The assessment counts that for a little; the rule about sources
+    means kinds — a door and a camera, an alarm and a drone. Until rules-3 the
+    two cameras were taken for it: at high risk a guard was suggested first,
+    and the reason given was "more than one kind of source reported this",
+    which no record said. Found on the first situation the layer read on a
+    running stack."""
+    from app.services import intel_risk
+
+    two_cameras = {"factor": "CORROBORATION", "points": 5, "detail": intel_risk.SEEN_BY_CAMERAS}
+    alone = rec.recommend(_a(level="HIGH"), _can())
+    seen_twice = rec.recommend(_a(level="HIGH", factors=[SEVERITY, two_cameras], corr_=0.7), _can())
+    assert _steps(seen_twice) == _steps(alone) == ["VIEW_CAMERA", "DISPATCH_GUARD", "CREATE_INCIDENT"]
+    assert _step(seen_twice, "VIEW_CAMERA").reason == "Only one kind of source reported this: look before sending anyone."
+
+    critical = rec.recommend(_a(level="CRITICAL", factors=[SEVERITY, two_cameras], score=95), _can())
+    send = _step(critical, "DISPATCH_GUARD")
+    assert send.reason == "Send a guard now." and send.confidence == 0.75
+    assert not any("More than one kind of source" in r.reason for r in seen_twice + critical)
+    # Two kinds still send first, and say so.
+    agreed = rec.recommend(_a(level="CRITICAL", factors=[SEVERITY, TWO_SOURCES], score=95), _can())
+    assert _step(agreed, "DISPATCH_GUARD").reason == "More than one kind of source reported this: send a guard now."
+
+    # And the sentence the recommender tells them apart by is the one the risk engine writes.
+    from tests.test_intel_risk import NIGHT, _context, _ev, _situation
+
+    assessed = intel_risk.assess(_situation(), [_ev(), _ev(method="ADJACENT_CAMERA")], _context(NIGHT))
+    said = [f["detail"] for f in assessed.risk_factors if f["factor"] == "CORROBORATION"]
+    assert said == [intel_risk.SEEN_BY_CAMERAS]
+
+
 def test_critical_risk_sends_escalates_and_opens_an_incident():
     recs = rec.recommend(_a(level="CRITICAL", factors=[SEVERITY, TWO_SOURCES], det=0.94, corr_=0.85, score=95),
                          _can(drones_at_site=1, drones_ready=1))

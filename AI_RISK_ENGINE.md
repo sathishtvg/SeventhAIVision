@@ -1,8 +1,10 @@
 # AI Security Intelligence — Normality and Risk
 
 **As of:** 2026-10-05 · phase 5 of 15 · migration `0135` ·
-`backend/app/services/intel_risk.py` · rules `rules-2` since phase 10, which
-added what a drone's second look is worth
+`backend/app/services/intel_risk.py` · rules `rules-3` — the risk rules
+themselves are as they were in `rules-2` (phase 10, which added what a drone's
+second look is worth); the label is shared with the recommendations, whose
+rule about sources was corrected on 2026-10-06 (`AI_DECISION_WORKFLOW.md`)
 
 A situation says *what happened*: these events, at this place, joined for these
 reasons. This stage says two more things about it and nothing else — **how
@@ -198,7 +200,7 @@ model writes it.
 | `normality_score`, `anomaly_score`, `normality_factors` | Both set or both empty |
 | `detection_confidence`, `correlation_confidence`, `risk_confidence` | The three, separately |
 | `context` | What was known about the place and the moment when it was scored: the statements with their sources, what was expected, and what was not known |
-| `event_count`, `engine_version` | How many events it rested on; `rules-2` (`rules-1` before phase 10) |
+| `event_count`, `engine_version` | How many events it rested on; `rules-3` (`rules-1` before phase 10, `rules-2` until 2026-10-06 — the same risk rules under the earlier label) |
 
 **Written once, never changed.** A situation is assessed again whenever its
 events change. If the answer is the same — the same score, label and factor

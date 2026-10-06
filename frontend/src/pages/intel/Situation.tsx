@@ -91,7 +91,8 @@ export default function Situation() {
       <PageHeader title={a?.label ?? situation.title}
                   subtitle={`${situation.situation_number} · ${situation.site_name ?? 'No site'}`
                     + `${situation.primary_camera_name ? ` · ${situation.primary_camera_name}` : ''} · started ${fmt(situation.started_at)}`}
-                  action={<Stack direction="row" sx={{ gap: 1 }}><RiskChip level={situation.risk_level} score={situation.risk_score} />
+                  action={<Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <RiskChip level={situation.risk_level} score={situation.risk_score} />
                     <DecisionStatusChip status={situation.decision_status} /></Stack>} />
       <IntelNav />
       <IntelStatusBanner />

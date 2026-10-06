@@ -43,7 +43,9 @@ from typing import Mapping
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-ENGINE_VERSION = "rules-2"
+from app.services.intel_risk import SEEN_BY_CAMERAS
+
+ENGINE_VERSION = "rules-3"
 ACTIONS = ("MONITOR", "VERIFY", "VIEW_CAMERA", "VERIFY_WITH_DRONE", "DISPATCH_GUARD", "ESCALATE", "INVESTIGATE",
            "CONTACT_SITE", "CREATE_INCIDENT")
 #: Steps that only look. The rest send someone or raise something.
@@ -124,7 +126,14 @@ def recommend(assessment: Mapping, avail: Availability) -> list[Recommendation]:
     points: dict[str, int] = {}
     for f in factors:
         points[f["factor"]] = points.get(f["factor"], 0) + f["points"]
-    corroborated = points.get("CORROBORATION", 0) > 0
+    # More than one KIND of source — a door and a camera, an alarm and a drone.
+    # Two cameras seeing it is one kind of source seen twice: the assessment
+    # counts that for a little, and it is not what this rule means. Until
+    # rules-3 it was taken for it, so a person seen on two neighbouring cameras
+    # was suggested a guard first "because more than one kind of source
+    # reported this", which nothing had recorded.
+    corroborated = any(f["factor"] == "CORROBORATION" and f["points"] > 0 and f.get("detail") != SEEN_BY_CAMERAS
+                       for f in factors)
     serious = level in ("HIGH", "CRITICAL")
     watchable = [c for c in avail.cameras if c.get("state") not in ("offline", "disabled")]
     rests_on = [f["detail"] for f in sorted(factors, key=lambda f: -f["points"])[:3] if f["points"] > 0]

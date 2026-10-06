@@ -283,7 +283,7 @@ def test_once_a_drone_has_looked_looking_again_is_not_suggested():
         after = _steps(rec.recommend(_a(level=level), _can(**site, drone_looked=True)))
         assert "VERIFY_WITH_DRONE" not in after and after, level
     assert rec.Availability().drone_looked is False
-    assert risk.ENGINE_VERSION == rec.ENGINE_VERSION == "rules-2", "the rules changed, and the records say which made them"
+    assert risk.ENGINE_VERSION == rec.ENGINE_VERSION == "rules-3", "the rules changed, and the records say which made them"
 
 
 def test_the_last_virtual_patrol_check_of_a_camera_is_said_as_what_was_recorded():
@@ -530,7 +530,7 @@ async def test_an_officer_asks_the_flight_to_look_again_and_what_it_sees_comes_b
     # Assessed again, on what came back — and looking again is no longer suggested.
     assert after["assessment_id"] != s["assessment_id"]
     a2 = dict((await _sql("SELECT * FROM security_assessments WHERE id = :a", {"a": after["assessment_id"]}))[0])
-    assert a2["sequence"] == 2 and a2["event_count"] == after["event_count"] and a2["engine_version"] == "rules-2"
+    assert a2["sequence"] == 2 and a2["event_count"] == after["event_count"] and a2["engine_version"] == "rules-3"
     assert any(f["factor"] == "DRONE" and f["points"] == 5 and "3 more detection(s) of the same thing" in f["detail"]
                for f in _j(a2["risk_factors"]))
     second = await _recs(after)

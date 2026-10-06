@@ -226,7 +226,7 @@ async def test_the_dataset_puts_suggestion_decision_and_outcome_on_one_row_with_
     assert (row["review_outcome"], row["review_assessment"], row["review_recommendation"], row["reviews"]) == (
         "AUTHORISED_ACTIVITY", "TOO_HIGH", "NOT_USEFUL", 1)
     assert (row["decisions"], row["overrides"]) == (2, 1) and row["seconds_to_first_decision"] >= 0
-    assert row["first_risk_level"] == row["last_risk_level"] == "HIGH" and row["engine_version"] == "rules-2"
+    assert row["first_risk_level"] == row["last_risk_level"] == "HIGH" and row["engine_version"] == "rules-3"
     # No name, no id of a person, and none of what anybody wrote.
     for hidden in ("Role 4 User", "Role 3 User", "Night cleaner", str(w["users"][OPERATOR]),
                    str(w["users"][SUPERVISOR])):

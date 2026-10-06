@@ -154,6 +154,14 @@ def test_a_person_at_the_next_camera_is_nearby_and_moments_later_and_said_to_be_
     assert "not identified as the same person" in link.reason
     too_late = _at_14(occurred_at=NOW + timedelta(minutes=10))
     assert corr.match(too_late, _e()) is None, "ten minutes is too long for 78 metres"
+    # Two cameras given the same coordinates — a site's, usually — are not "0 m apart":
+    # nobody measured that. The sentence says what is recorded.
+    here = _e()
+    beside = _e(camera_id=uuid.uuid4(), occurred_at=_ago(seconds=10))
+    same_place = corr.match(beside, here)
+    assert same_place.method == "ADJACENT_CAMERA" and same_place.confidence == 0.7
+    assert "then at another camera recorded at the same position, " in same_place.reason
+    assert "0 m away" not in same_place.reason
     far = _e(camera_id=CAM_FAR, latitude=1.3040)                    # about 445 m
     assert corr.match(far, _e()) is None
     assert corr.match(_at_14(subject_kind="VEHICLE"), _e()) is None, "a vehicle there is not the person here"
