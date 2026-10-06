@@ -24,10 +24,12 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import PlainTextResponse
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +39,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_actions, intel_audit, intel_drone, intel_field
+from app.services import intel_actions, intel_audit, intel_drone, intel_feedback, intel_field
 from app.services import intel_decisions as decisions
 from app.services.intel_risk import LEVELS
 
@@ -846,3 +848,166 @@ async def delete_site_decision_policy(
     await db.commit()
     await decisions.scope(db, token.tenant_id)
     return await _policy_view(db, allowed)
+
+
+# ─── Feedback: what it turned out to be, and how the suggestions fared ───────
+
+class FeedbackIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: str
+    assessment_verdict: str | None = None
+    recommendation_verdict: str | None = None
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.post("/situations/{situation_id}/feedback", status_code=201,
+             dependencies=[Depends(require_permission("intel:approve"))])
+async def record_feedback(
+    situation_id: uuid.UUID,
+    body: FeedbackIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """A review of a closed situation by someone who may approve decisions:
+    what it turned out to be (`outcome`), whether the layer's assessment was
+    about right (`assessment_verdict`), and whether what it suggested was
+    useful (`recommendation_verdict`).
+
+    A review is a person's statement and nothing more. It changes no
+    situation, decision, alert or incident; nothing in the platform is trained
+    on it or adjusts itself because of it. One per reviewer per situation, and
+    it cannot be edited afterwards. `UNDETERMINED` needs a note saying what is
+    still not known."""
+    _person(token)
+    try:
+        intel_feedback.validate(body.outcome, body.assessment_verdict, body.recommendation_verdict, body.note)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    situation = await _situation(db, situation_id, allowed)
+    if situation["closed_at"] is None:
+        raise HTTPException(409, "This situation is still open. What it turned out to be is said once it is closed.")
+    try:
+        row = await intel_feedback.record(
+            db, situation=situation, outcome=body.outcome, assessment_verdict=body.assessment_verdict,
+            recommendation_verdict=body.recommendation_verdict, note=body.note, user_id=token.user_id,
+            role_id=token.role_id, request_id=getattr(request.state, "request_id", None))
+    except IntegrityError as exc:
+        await db.rollback()
+        if "uq_secfb_reviewer" in str(exc.orig):
+            raise HTTPException(409, "You have already reviewed this situation. A review is not edited; a second "
+                                     "view is a second person's.") from exc
+        raise
+    await intel_audit.record(
+        db, request, token, "intel.feedback.record", "security_situation", situation["id"],
+        site_id=situation["site_id"],
+        detail={"feedback_id": str(row["id"]), "situation_number": situation["situation_number"],
+                "outcome": body.outcome, "assessment_verdict": body.assessment_verdict,
+                "recommendation_verdict": body.recommendation_verdict})
+    await db.commit()
+    return {"id": row["id"], "situation_id": situation["id"], "reviewed_at": row["reviewed_at"],
+            "outcome": body.outcome, "assessment_verdict": body.assessment_verdict,
+            "recommendation_verdict": body.recommendation_verdict}
+
+
+@router.get("/situations/{situation_id}/feedback")
+async def list_feedback(
+    situation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The reviews of a situation, oldest first, and what a review may say.
+    `may_review` is whether the caller could add one now: they may approve
+    decisions, the situation is closed, and they have not reviewed it yet."""
+    situation = await _situation(db, situation_id, allowed)
+    reviews = await intel_feedback.for_situation(db, situation["id"])
+    mine = await decisions.permissions_of(db, token.role_id)
+    already = any(str(r["user_id"]) == str(token.user_id) for r in reviews)
+    return {
+        "situation_id": situation["id"], "closed": situation["closed_at"] is not None,
+        "may_review": ("intel:approve" in mine and situation["closed_at"] is not None and not already
+                       and not token.via_api_key and not token.support_session_id),
+        "outcomes": [{"code": c, "label": label} for c, label in intel_feedback.OUTCOMES.items()],
+        "assessment_verdicts": [{"code": c, "label": label} for c, label in intel_feedback.ASSESSMENT_VERDICTS.items()],
+        "recommendation_verdicts": [{"code": c, "label": label}
+                                    for c, label in intel_feedback.RECOMMENDATION_VERDICTS.items()],
+        "reviews": reviews,
+    }
+
+
+def _period(since: datetime | None, until: datetime | None, days: int) -> tuple[datetime, datetime]:
+    until = until or datetime.now(timezone.utc)
+    since = since or until - timedelta(days=days)
+    if since > until:
+        raise HTTPException(422, "The period ends before it starts.")
+    return since, until
+
+
+_FEEDBACK_DAYS = Query(30, ge=1, le=366, description="How many days back, when `from` is not given")
+
+
+@router.get("/feedback/dataset", dependencies=[Depends(require_permission("intel:feedback:export"))])
+async def export_feedback_dataset(
+    request: Request,
+    since: datetime | None = Query(None, alias="from"),
+    until: datetime | None = Query(None, alias="to"),
+    days: int = _FEEDBACK_DAYS,
+    site_id: uuid.UUID | None = Query(None),
+    fmt: Literal["json", "csv"] = Query("json", alias="format"),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The feedback dataset: one row for each situation closed in the period
+    — what the layer suggested first, what a person decided first and on what
+    basis, how the matter was closed, and the latest review of it.
+
+    For people to read. **Nothing in the platform is trained on it or changes
+    because of it.** It carries roles, codes, numbers and times: no user's name
+    or id, and none of the free text anyone wrote. Each export is in the audit
+    log with who took it, the period and how many rows. At most 5,000 rows;
+    `truncated` says when the period held more."""
+    start, end = _period(since, until, days)
+    if site_id is not None and not is_site_allowed(allowed, site_id):
+        raise HTTPException(404, "Site not found")
+    rows = await intel_feedback.dataset(db, allowed, since=start, until=end, site_id=site_id,
+                                        limit=intel_feedback.MAX_ROWS + 1)
+    truncated = len(rows) > intel_feedback.MAX_ROWS
+    rows = rows[:intel_feedback.MAX_ROWS]
+    await intel_audit.record(
+        db, request, token, "intel.feedback.export", "security_feedback", None, site_id=site_id,
+        detail={"rows": len(rows), "from": start.isoformat(), "to": end.isoformat(), "format": fmt,
+                "truncated": truncated})
+    await db.commit()
+    if fmt == "csv":
+        return PlainTextResponse(intel_feedback.to_csv(rows), media_type="text/csv", headers={
+            "Content-Disposition": f'attachment; filename="security-feedback-{start:%Y%m%d}-{end:%Y%m%d}.csv"'})
+    return {"from": start, "to": end, "columns": list(intel_feedback.COLUMNS), "rows": rows, "count": len(rows),
+            "truncated": truncated, "use": intel_feedback.USE}
+
+
+@router.get("/feedback/analytics")
+async def feedback_analytics(
+    since: datetime | None = Query(None, alias="from"),
+    until: datetime | None = Query(None, alias="to"),
+    days: int = _FEEDBACK_DAYS,
+    site_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """How the suggestions fared over the situations closed in the period:
+    how often the first decision followed what was suggested and how often it
+    went against it (and for which reasons), how many were closed as false
+    positives, by suggested step and by kind of situation, and what reviewers
+    said. Counts and rates only; a rate with nothing to divide by is null.
+
+    It is a description for people, and it says so (`use`): nothing in the
+    platform adjusts itself from these numbers."""
+    start, end = _period(since, until, days)
+    if site_id is not None and not is_site_allowed(allowed, site_id):
+        raise HTTPException(404, "Site not found")
+    rows = await intel_feedback.dataset(db, allowed, since=start, until=end, site_id=site_id)
+    return {"from": start, "to": end, **intel_feedback.analyse(rows)}

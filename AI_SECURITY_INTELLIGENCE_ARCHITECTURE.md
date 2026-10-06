@@ -1,6 +1,6 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-06 · **Phases 1–13 of 15 built**: the gap analysis, the
+**As of:** 2026-10-06 · **Phases 1–14 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
@@ -13,9 +13,11 @@ through the drone module's own functions, what the drone saw comes back as an
 event and the situation is assessed again, and what a virtual patrol recorded
 is read as evidence and context; the unified timeline (phase 11); and
 evidence and the AI-assisted summary (phase 12); and the site security score
-with the daily intelligence (phase 13). Phases 11 to 13 have no migration: all
-three are read from records the platform and the other phases already keep.
-**The
+with the daily intelligence (phase 13); and feedback — a person's review of a
+closed situation, and the dataset of suggestion, decision and outcome (phase
+14, `0140`). Phases 11 to 13 have no migration: they are read from records the
+platform and the other phases already keep. **Nothing in the platform learns
+from any of it by itself. The
 runner still does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
@@ -85,6 +87,7 @@ AUTHORISED ACTION ─► security_actions               yes  (phase 7) — throu
 | `security_decision_approvals` | A second person's verdict on a decision that needed one. One per decision |
 | `security_actions` | What the platform then did for a decision: the step, the existing function it went through, how it ended, and under whose authority. Since `0139` a step can be asking a flight to hold (`DRONE_HOLD`) or starting a mission (`DRONE_LAUNCH`), pointing at the look or the flight |
 | `security_decision_policies` | Who may decide: per role, how far alone and how far with approval. One for the organisation, at most one per site |
+| `security_feedback` | A person's review of a closed situation: what it turned out to be, whether the assessment was about right, whether what was suggested was useful. One per reviewer per situation. Added to, never changed; nothing is trained on it |
 | `security_observations` | What a person reported from the ground about a situation: accepted, arrived, or what they saw, with a position when the phone gave one. A statement, not a decision. Added to, never changed |
 | `security_recommendations` | What the layer suggests an officer do, per assessment: the step, the reason, how sure, whether it can be done now and if not why. A suggestion and nothing else; added to, never changed |
 | `security_assessments` | What the layer made of a situation, each time the answer changed: a label, the risk and every factor behind it, how unusual it is, three confidences, and what was known then. Added to, never changed: the application's role may only insert and read |
@@ -487,6 +490,58 @@ repeated vehicle is its number plate, which is what the platform read; a
 repeated person is a watchlist entry's id and is only counted on the screen;
 someone nobody identified is not counted as anybody.
 
+## Feedback
+
+`backend/app/services/intel_feedback.py`, migration `0140`.
+
+```
+AI recommendation ─► human decision ─► actual outcome
+   dispatch a guard      monitor         an authorised maintenance worker
+```
+
+The three are already recorded, each in its own place: the suggestion, the
+decision, and how the matter was closed with its reason. This phase adds a
+fourth thing a person may say afterwards, and puts all of it on one row.
+
+- **A review** is a statement about a closed situation by someone who may
+  approve decisions: what it turned out to be (`REAL_INCIDENT`,
+  `AUTHORISED_ACTIVITY`, `FALSE_DETECTION`, `EQUIPMENT_FAULT`, `UNDETERMINED`),
+  whether the layer's assessment was `ABOUT_RIGHT`, `TOO_HIGH`, `TOO_LOW` or of
+  the `WRONG_KIND`, and whether what it suggested was `USEFUL`, `NOT_USEFUL`,
+  `MISSED_A_STEP` or `NOTHING_SUGGESTED`. It changes nothing about the
+  situation. One per reviewer per situation; it is not edited — a second view
+  is a second person's. `UNDETERMINED` has to say what is still not known.
+- **The dataset** is one row for each situation closed in a period. Its
+  columns, in order: `situation_number`, `site_id`, `started_at`, `closed_at`,
+  `kind`, `event_count`, `source_types`, `first_risk_level`,
+  `first_risk_score`, `last_risk_level`, `last_risk_score`, `assessments`,
+  `engine_version`, `suggested_action`, `suggestion_confidence`,
+  `first_decision`, `first_decision_basis`, `first_decision_reason`,
+  `first_decision_role`, `seconds_to_first_decision`, `decisions`,
+  `overrides`, `closed_as`, `closing_reason`, `review_outcome`,
+  `review_assessment`, `review_recommendation`, `reviews`.
+- **No names and no free text.** A row carries roles, codes, numbers and times:
+  no user's name or id, and none of what anyone wrote in a note. A note can
+  hold anything, and a dataset travels.
+- **Exported only by those given it** (`intel:feedback:export`: administrators
+  and managers), for their own sites, as JSON or CSV, at most 5,000 rows — and
+  **every export is in the audit log** with who took it, the period and how
+  many rows.
+- **How the suggestions fared** is counted from the same rows: how often the
+  first decision followed what was suggested and how often it went against it,
+  with the reasons given; how many were closed as false, by suggested step and
+  by kind of situation; what reviewers said. A rate with nothing to divide by
+  is not given.
+
+**Nothing learns from it by itself.** No model is trained on these rows, no
+weight is moved by them and no rule reads them. The runner cannot see the
+table: a test holds that none of the modules that run by themselves mentions
+it. A threshold, a weight or a rule is changed only by a person, in the open —
+a setting an administrator changes (`intel.risk_weights`,
+`intel.score_weights`), or code that is reviewed and released, which changes
+the `engine_version` stamped on every assessment and suggestion. The dataset is
+what such a person would read first.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -527,6 +582,7 @@ own process so that nothing it does can hold up the API or the scheduler.
 |---|---|---|
 | `intel.enabled` | Tenant setting, through the settings API (`settings:write`) | off |
 | `intel.risk_weights` | Tenant setting, the same way: a multiplier from 0 to 3 per risk factor | every factor as shipped |
+| `intel.score_weights` | Tenant setting, the same way: a multiplier from 0 to 3 per factor of the site security score | every factor as shipped |
 | `INTEL_RUNNER_TICK_SECONDS`, `INTEL_RUNNER_MIN_GAP_SECONDS` | Runner environment | 3, 0.5 |
 | `INTEL_BACKFILL_MINUTES`, `INTEL_OVERLAP_SECONDS`, `INTEL_INGEST_BATCH` | Runner environment | 60, 120, 200 |
 | `INTEL_SITUATION_QUIET_MINUTES`, `INTEL_CORRELATE_BATCH` | Runner environment | 30, 100 |
@@ -560,6 +616,10 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, its latest assessment with the reasons behind it, where it stands, and what stands behind any incident |
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/timeline` | `intel:read` | The situation in the order it happened: what sources reported, what the layer assessed and suggested, what people looked at, decided and reported, what the platform then did — each entry with whose it is and the record it was read from. Suggestions are left out for a caller without `intel:recommendation:read` |
+| POST | `/security-intelligence/situations/{situation_id}/feedback` | `intel:read` `intel:approve` | Records the caller's review of a closed situation: the outcome, and optionally a verdict on the assessment and on the suggestion. 409 while it is open, or if the caller has already reviewed it. Audited |
+| GET | `/security-intelligence/situations/{situation_id}/feedback` | `intel:read` | The reviews of a situation, what a review may say, and whether the caller may add one |
+| GET | `/security-intelligence/feedback/dataset` | `intel:read` `intel:feedback:export` | One row for each situation closed in the period: suggestion, first decision, how it closed, latest review. No names, no free text. `format=json` or `csv`. Audited |
+| GET | `/security-intelligence/feedback/analytics` | `intel:read` | How the suggestions fared over the situations closed in the period: followed, gone against and why, closed as false, by step and by kind, and what reviewers said |
 | GET | `/security-intelligence/site-scores` | `intel:read` | The site security score of every site the caller may see, lowest first: each with its deductions line by line, what went well, what it rests on, and a note when little was recorded. With the rule table and the weights in force. `days` 1 to 90 |
 | GET | `/security-intelligence/insight` | `intel:read` | What the period looked like for one site (`site_id`) or all the caller may see: the counts, the advisory findings, and for one site its score. `days` 1 to 90 |
 | GET | `/security-intelligence/situations/{situation_id}/summary` | `intel:read` | The AI-assisted summary: sentences made by fixed templates from the caller's own timeline, each with the records it was read from. Always marked `is_ai_assisted` |
@@ -643,6 +703,7 @@ of their own in the sidebar, and one panel on the existing Command Centre.
 | A situation | `/situations/:id` | The situation in one card (risk, location, started, sources, AI assessment, AI recommendation, human decision, incident); why the risk is what it is, factor by factor; the confidences; what was not known; what was known and from where; the related events and why each is there; the cameras worth opening; what the layer suggests; the buttons a person decides with; the decision history |
 | Decisions | `/situation-decisions` | Every decision, most recent first: what the layer had suggested, what the person decided, the state, what was carried out. Approve and reject for those who may |
 | Insight | `/security-insight` | Each site's security score with every point taken off as a line; what stands out in the period, drawn as AI-assisted advice; and the period counted — where and when situations began, what reported, how people answered |
+| Feedback | `/security-feedback` | How the suggestions fared: followed, gone against and why, closed as false, what reviewers said — under the statement that nothing learns from it by itself; and the dataset export for those given it |
 | Setup | `/intelligence-setup` | The switch; the runner's state; who may decide, with the three policies of the specification each one press; each site's hours and criticality |
 | Command Centre panel | on `/command-centre` | A strip of the open situations by risk. A card opens the situation |
 
@@ -718,10 +779,10 @@ and an assessment that says what the last one said is not announced at all.
 | File | Addition |
 |---|---|
 | `backend/app/main.py` | Registers the two routers |
-| `backend/app/core/config_keys.py` | The `intel.enabled` and `intel.risk_weights` settings |
+| `backend/app/core/config_keys.py` | The `intel.enabled`, `intel.risk_weights` and `intel.score_weights` settings |
 | `docker/docker-compose.yml` | The `intelligence-runner` service |
-| `frontend/src/App.tsx` | Four routes |
-| `frontend/src/components/layout/Sidebar.tsx` | One section, three entries |
+| `frontend/src/App.tsx` | Six routes |
+| `frontend/src/components/layout/Sidebar.tsx` | One section, five entries |
 | `frontend/src/hooks/usePermission.ts` | The seven `intel:*` permissions, per role as migration `0132` grants them |
 | `frontend/src/pages/CommandCentre.tsx` | One import and one line: the panel, between the figures and the site grid |
 | `mobile/src/navigation/index.tsx` | Three screens in the More stack |
@@ -764,7 +825,7 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (43): the screens' claims above — the
+`frontend/src/pages/intel/intel.test.tsx` (48): the screens' claims above — the
 timeline drawing a source, the layer, a person and the platform each as itself — and
 since phase 10: which flight holds or which mission starts is the officer's
 choice and the layer's never; what was asked of a drone is drawn as a person's
@@ -772,6 +833,16 @@ act with what came back; an assessment made again since the last decision is
 said, with the decision standing; a patrol's finding is shown as recorded.
 
 `backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`backend/tests/test_intel_feedback.py` (11): what a review may say, and that the
+database's lists are the code's; the dataset's columns, with none that says who
+or what was written; how the suggestions fared counted from rows, and no rate
+given from nothing; that nothing which runs by itself can read a review; then
+through the API: a review that changes nothing else and is audited without its
+note; who may review; the dataset with suggestion, decision and outcome on one
+row and no name in it, each export audited; that it is exported only by those
+given it and only for their own sites; and that a review saying "too high"
+changes no assessment.
 
 `backend/tests/test_intel_insight.py` (14): the score's lines adding up, caps,
 weights and bands; nothing recorded not reported as nothing wrong; every
@@ -817,7 +888,7 @@ the API accepts; the web's permission table gives each role exactly what migrati
 grants; the screens are registered and guarded on both; and the Command Centre page gained one
 panel and nothing else.
 
-`backend/tests/test_intel_docs.py` (25) checks the API tables of these documents
+`backend/tests/test_intel_docs.py` (27) checks the API tables of these documents
 against the application's route table, and the rules written in the
 correlation, risk, workflow and decision documents against the code — the
 recommendation rules by running the engine for every kind at every level, and
@@ -825,8 +896,7 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-Feedback (14) · platform health for the vendor, the Helm deployment and final
-validation (15).
+Platform health for the vendor, the Helm deployment and final validation (15).
 
 Evidence is opened one piece at a time on the web. There is no export of a
 situation's evidence as a bundle: the platform's own export and report screens

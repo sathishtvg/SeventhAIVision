@@ -8,6 +8,7 @@ const LINKS = [
   { path: '/situations', label: 'Situations', perm: 'intel:read' },
   { path: '/situation-decisions', label: 'Decisions', perm: 'intel:read' },
   { path: '/security-insight', label: 'Insight', perm: 'intel:read' },
+  { path: '/security-feedback', label: 'Feedback', perm: 'intel:read' },
   { path: '/intelligence-setup', label: 'Setup', perm: 'intel:read' },
 ]
 

@@ -358,6 +358,71 @@ export const approveDecision = (decisionId: string, note?: string) =>
 export const rejectDecision = (decisionId: string, note: string) =>
   apiClient.post<Decision>(`${BASE}/decisions/${decisionId}/reject`, { note }).then((r) => r.data)
 
+// ── Feedback: what it turned out to be, and how the suggestions fared ────────
+
+/** A person's review of a closed situation. It changes nothing, and nothing learns from it by itself. */
+export interface SituationReviewRow {
+  id: string
+  outcome: string
+  assessment_verdict: string | null
+  recommendation_verdict: string | null
+  note: string | null
+  reviewed_at: string
+  user_id: string | null
+  name: string | null
+  role_id: number
+}
+
+export interface SituationFeedback {
+  situation_id: string
+  closed: boolean
+  /** The caller may approve decisions, the situation is closed, and they have not reviewed it yet. */
+  may_review: boolean
+  outcomes: { code: string; label: string }[]
+  assessment_verdicts: { code: string; label: string }[]
+  recommendation_verdicts: { code: string; label: string }[]
+  reviews: SituationReviewRow[]
+}
+
+export const getSituationFeedback = (id: string) =>
+  apiClient.get<SituationFeedback>(`${BASE}/situations/${id}/feedback`).then((r) => r.data)
+
+export const reviewSituation = (id: string, body: {
+  outcome: string; assessment_verdict?: string; recommendation_verdict?: string; note?: string
+}) => apiClient.post(`${BASE}/situations/${id}/feedback`, body).then((r) => r.data)
+
+/** How the suggestions fared over the situations closed in a period. Counts and rates; a rate with nothing under it is null. */
+export interface FeedbackAnalytics {
+  from: string
+  to: string
+  situations: number
+  with_a_suggestion: number
+  decided: number
+  followed: number
+  overridden: number
+  acceptance_rate: number | null
+  closed_false: number
+  false_positive_rate: number | null
+  override_reasons: Record<string, number>
+  by_suggested_action: Record<string, { suggested: number; followed: number; overridden: number; closed_false: number }>
+  by_kind: Record<string, { situations: number; closed_false: number; reviewed_real: number; assessed_too_high: number
+                            assessed_too_low: number }>
+  reviewed: number
+  review_outcomes: Record<string, number>
+  review_of_assessment: Record<string, number>
+  review_of_recommendation: Record<string, number>
+  /** The server's own statement of what this is for: people, and nothing that learns by itself. */
+  use: string
+}
+
+export const getFeedbackAnalytics = (days = 30) =>
+  apiClient.get<FeedbackAnalytics>(`${BASE}/feedback/analytics`, { params: { days } }).then((r) => r.data)
+
+/** The dataset as a file: one row a closed situation, no names and no free text. The export is audited. */
+export const exportFeedbackCsv = (days = 30) =>
+  apiClient.get<Blob>(`${BASE}/feedback/dataset`, { params: { days, format: 'csv' }, responseType: 'blob' })
+    .then((r) => r.data)
+
 // ── Insight: the site security score, and what a period looked like ──────────
 
 /** One thing that took points off a site's score. The lines add up to the score. */
