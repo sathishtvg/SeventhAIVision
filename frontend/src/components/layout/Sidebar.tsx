@@ -65,6 +65,8 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import RuleIcon from '@mui/icons-material/Rule'
 import CableIcon from '@mui/icons-material/Cable'
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff'
+import ManageSearchIcon from '@mui/icons-material/ManageSearch'
+import FolderSpecialIcon from '@mui/icons-material/FolderSpecial'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -216,6 +218,8 @@ const NAV_SECTIONS: {
   {
     title: 'Investigate',
     items: [
+      { label: 'Search Records', path: '/investigate',     icon: <ManageSearchIcon fontSize="small" />,  permission: 'investigation:read' },
+      { label: 'Investigations', path: '/investigations',  icon: <FolderSpecialIcon fontSize="small" />, permission: 'investigation:read' },
       { label: 'Detections',  path: '/detections', icon: <SearchIcon fontSize="small" />,        permission: 'detection:read' },
       { label: 'Evidence',    path: '/evidence',   icon: <PhotoLibraryIcon fontSize="small" />,  permission: 'evidence:read' },
       { label: 'Recordings',  path: '/recordings', icon: <VideoFileIcon fontSize="small" />,     permission: 'recording:read' },
