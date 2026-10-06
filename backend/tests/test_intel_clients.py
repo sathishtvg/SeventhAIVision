@@ -146,11 +146,12 @@ def test_the_web_gives_each_role_exactly_the_intel_permissions_the_migration_gra
 
 def test_the_web_registers_the_screens_and_the_sidebar_guards_them():
     routes = WEB_ROUTES.read_text(encoding="utf-8")
-    for route in ('path="situations"', 'path="situations/:id"', 'path="situation-decisions"', 'path="intelligence-setup"'):
+    for route in ('path="situations"', 'path="situations/:id"', 'path="situation-decisions"', 'path="intelligence-setup"',
+                  'path="security-insight"'):
         assert route in routes, route
     sidebar = WEB_SIDEBAR.read_text(encoding="utf-8")
     for path, permission in (("/situations", "intel:read"), ("/situation-decisions", "intel:read"),
-                             ("/intelligence-setup", "intel:manage")):
+                             ("/security-insight", "intel:read"), ("/intelligence-setup", "intel:manage")):
         row = next(line for line in sidebar.splitlines() if f"path: '{path}'" in line)
         assert f"permission: '{permission}'" in row, row
 

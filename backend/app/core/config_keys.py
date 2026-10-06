@@ -82,6 +82,15 @@ def _risk_weights_validator(v: Any) -> None:
     validate_weights(v)
 
 
+def _score_weights_validator(v: Any) -> None:
+    """intel.score_weights: how much each thing that lowers a site's security
+    score counts for this tenant. The factor names live with the code that
+    counts them."""
+    from app.services.intel_insight import validate_weights
+
+    validate_weights(v)
+
+
 SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     # Tenant-authored page titles/descriptions; defaults live in the frontend.
     "ui.page_labels": _page_labels_validator,
@@ -132,4 +141,6 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "intel.enabled": _bool_validator,
     # A multiplier per risk factor, 0 to 3; a factor left out counts as shipped.
     "intel.risk_weights": _risk_weights_validator,
+    # A multiplier per factor of the site security score, 0 to 3.
+    "intel.score_weights": _score_weights_validator,
 }

@@ -1,6 +1,6 @@
 # AI Security Intelligence — Architecture
 
-**As of:** 2026-10-06 · **Phases 1–12 of 15 built**: the gap analysis, the
+**As of:** 2026-10-06 · **Phases 1–13 of 15 built**: the gap analysis, the
 normalised security event pipeline (migration `0132`), the context engine with
 site and camera profiles (`0133`), correlation into situations (`0134`,
 described in `AI_EVENT_CORRELATION.md`), normality and risk (`0135`, described
@@ -12,9 +12,10 @@ patrol integration (phase 10, `0139`): a decision can ask a drone to look
 through the drone module's own functions, what the drone saw comes back as an
 event and the situation is assessed again, and what a virtual patrol recorded
 is read as evidence and context; the unified timeline (phase 11); and
-evidence and the AI-assisted summary (phase 12). Phases 11 and 12 have no
-migration: both are read from records the platform and the other phases
-already keep. **The
+evidence and the AI-assisted summary (phase 12); and the site security score
+with the daily intelligence (phase 13). Phases 11 to 13 have no migration: all
+three are read from records the platform and the other phases already keep.
+**The
 runner still does not act**: it reads, records and suggests. Something is
 carried out only when a person decides it through the API.
 
@@ -421,6 +422,71 @@ situation*.
   reader's own timeline.
 - Times are in the site's time zone, and the summary says which.
 
+## The site security score and daily intelligence
+
+`backend/app/services/intel_insight.py`. Counted when asked from recorded rows;
+nothing is stored for it, predicted by it or learned from it.
+
+**The score is arithmetic an officer can check.** It starts at 100 and loses
+stated points for stated things. Every deduction is a line — the factor, how
+many, the points, the sentence — and the lines add up to the score.
+
+| Factor | Counts | Points each | At most |
+|---|---|---|---|
+| `OPEN_INCIDENTS` | each unresolved incident | 5 | 20 |
+| `HIGH_RISK_OPEN` | each open situation assessed HIGH or CRITICAL | 5 | 20 |
+| `UNATTENDED` | each situation waiting more than 15 minutes for a decision | 5 | 15 |
+| `CAMERAS_OFFLINE` | each camera not sending | 5 | 20 |
+| `SLA_BREACHED` | each incident past its response time in the period | 5 | 15 |
+| `REPEATED_LOCATION` | each place where three or more situations began in the period | 5 | 10 |
+| `PATROLS_MISSED` | each patrol missed or failed in the period | 3 | 9 |
+
+| Band | From |
+|---|---|
+| `GOOD` | 85 |
+| `FAIR` | 65 |
+| `NEEDS_ATTENTION` | 40 |
+| `POOR` | 0 |
+
+- **Configurable.** A tenant weighs each factor from 0 to 3 with the setting
+  `intel.score_weights`; a factor's cap is weighed with it. The answer carries
+  the rule table with the weights in force.
+- **What went right is said and moves no points**: patrols completed, every
+  camera sending, nothing waiting.
+- **Nothing recorded is not nothing wrong.** A site with no cameras, situations,
+  incidents or patrols in the period scores 100 because nothing was found. The
+  answer says exactly that in `note`, and its band is `NOTHING_RECORDED`, not
+  `GOOD`.
+- **It is not a prediction and not a grade of anybody.** It is a count of what
+  is open and what went wrong, made one number so that sites can be put side by
+  side, the lowest first.
+
+**Daily intelligence** is the same period counted more fully, for one site or
+for every site the caller may see: situations and their assessed risk, what
+reported, where and in which hours they began, how many were closed as false,
+how long the first decision and a dispatched guard took, cameras not sending,
+patrols missed, and what was seen in more than one situation.
+
+**Findings are advisory.** Fixed rules over those counts; each says what it
+rests on and what a person might consider, carries `is_advisory`, and changes
+nothing.
+
+| Finding | When |
+|---|---|
+| `CONCENTRATED_PLACE` | One place is where 40% or more of the situations began |
+| `CONCENTRATED_HOURS` | A four-hour band holds 50% or more of them |
+| `MOSTLY_FALSE` | 50% or more of those closed were closed as false positives |
+| `SLOW_DECISIONS` | The median wait for a first decision is over ten minutes |
+| `CAMERAS_OFFLINE` | Any camera is not sending |
+| `PATROLS_MISSED` | Any patrol was missed or failed |
+| `REPEATED_VEHICLE` | A number plate was part of three or more situations |
+| `OFTEN_OVERRIDDEN` | 40% or more of decisions went against what was suggested |
+
+A rule about a share stays silent on fewer than five. **Nobody is named**: a
+repeated vehicle is its number plate, which is what the platform read; a
+repeated person is a watchlist entry's id and is only counted on the screen;
+someone nobody identified is not counted as anybody.
+
 ## Reading
 
 - **Once per source record.** The select skips what is already in
@@ -494,6 +560,8 @@ refuse fields they do not know.
 | GET | `/security-intelligence/situations/{situation_id}` | `intel:read` | One situation, its sources, every event with the reason it is there, its latest assessment with the reasons behind it, where it stands, and what stands behind any incident |
 | GET | `/security-intelligence/situations/{situation_id}/assessments` | `intel:read` | Every assessment of the situation, oldest first |
 | GET | `/security-intelligence/situations/{situation_id}/timeline` | `intel:read` | The situation in the order it happened: what sources reported, what the layer assessed and suggested, what people looked at, decided and reported, what the platform then did — each entry with whose it is and the record it was read from. Suggestions are left out for a caller without `intel:recommendation:read` |
+| GET | `/security-intelligence/site-scores` | `intel:read` | The site security score of every site the caller may see, lowest first: each with its deductions line by line, what went well, what it rests on, and a note when little was recorded. With the rule table and the weights in force. `days` 1 to 90 |
+| GET | `/security-intelligence/insight` | `intel:read` | What the period looked like for one site (`site_id`) or all the caller may see: the counts, the advisory findings, and for one site its score. `days` 1 to 90 |
 | GET | `/security-intelligence/situations/{situation_id}/summary` | `intel:read` | The AI-assisted summary: sentences made by fixed templates from the caller's own timeline, each with the records it was read from. Always marked `is_ai_assisted` |
 | GET | `/security-intelligence/situations/{situation_id}/evidence` | `intel:read` | References to what the platform kept that belongs to the situation — frames, clips, recordings, a drone's media, a patrol's snapshot — each with the existing endpoint that serves it, the permission that endpoint asks for and whether the caller holds it. No media and no storage path |
 | POST | `/security-intelligence/situations/{situation_id}/evidence/open` | `intel:read` and the item's own permission | Records that the caller is opening one item — the platform's chain-of-custody entry for a frame or clip, and an audit entry naming the situation — and answers where the platform serves it. 404 for an item that is not this situation's |
@@ -574,6 +642,7 @@ of their own in the sidebar, and one panel on the existing Command Centre.
 | Situations | `/situations` | The open situations, highest risk first: risk as the layer assessed it, and beside it where each stands with people. Filters by site, risk and standing |
 | A situation | `/situations/:id` | The situation in one card (risk, location, started, sources, AI assessment, AI recommendation, human decision, incident); why the risk is what it is, factor by factor; the confidences; what was not known; what was known and from where; the related events and why each is there; the cameras worth opening; what the layer suggests; the buttons a person decides with; the decision history |
 | Decisions | `/situation-decisions` | Every decision, most recent first: what the layer had suggested, what the person decided, the state, what was carried out. Approve and reject for those who may |
+| Insight | `/security-insight` | Each site's security score with every point taken off as a line; what stands out in the period, drawn as AI-assisted advice; and the period counted — where and when situations began, what reported, how people answered |
 | Setup | `/intelligence-setup` | The switch; the runner's state; who may decide, with the three policies of the specification each one press; each site's hours and criticality |
 | Command Centre panel | on `/command-centre` | A strip of the open situations by risk. A card opens the situation |
 
@@ -695,7 +764,7 @@ validation, site scope and audit entries; the schema.
 
 `backend/tests/test_intel_decisions.py` (39): see `AI_HUMAN_DECISION_MODEL.md`.
 
-`frontend/src/pages/intel/intel.test.tsx` (37): the screens' claims above — the
+`frontend/src/pages/intel/intel.test.tsx` (43): the screens' claims above — the
 timeline drawing a source, the layer, a person and the platform each as itself — and
 since phase 10: which flight holds or which mission starts is the officer's
 choice and the layer's never; what was asked of a drone is drawn as a person's
@@ -703,6 +772,13 @@ act with what came back; an assessment made again since the last decision is
 said, with the decision standing; a patrol's finding is shown as recorded.
 
 `backend/tests/test_intel_field.py` (11): see `AI_HUMAN_DECISION_MODEL.md`.
+
+`backend/tests/test_intel_insight.py` (14): the score's lines adding up, caps,
+weights and bands; nothing recorded not reported as nothing wrong; every
+finding with what it rests on, and silent on too few; nobody named and nothing
+written; then from real records a site's score and its period through the API,
+a person seeing only their own sites, an organisation's weights through its
+settings, and that asking writes nothing.
 
 `backend/tests/test_intel_evidence.py` (15): where each kind of evidence is
 served, and that it is never this layer; that no storage path is selected and
@@ -741,7 +817,7 @@ the API accepts; the web's permission table gives each role exactly what migrati
 grants; the screens are registered and guarded on both; and the Command Centre page gained one
 panel and nothing else.
 
-`backend/tests/test_intel_docs.py` (24) checks the API tables of these documents
+`backend/tests/test_intel_docs.py` (25) checks the API tables of these documents
 against the application's route table, and the rules written in the
 correlation, risk, workflow and decision documents against the code — the
 recommendation rules by running the engine for every kind at every level, and
@@ -749,8 +825,8 @@ what each decision carries out by running the planner.
 
 ## Not built yet
 
-The dashboard and site security score (13) · feedback (14) · platform health for
-the vendor, the Helm deployment and final validation (15).
+Feedback (14) · platform health for the vendor, the Helm deployment and final
+validation (15).
 
 Evidence is opened one piece at a time on the web. There is no export of a
 situation's evidence as a bundle: the platform's own export and report screens
