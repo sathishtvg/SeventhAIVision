@@ -8,11 +8,12 @@ import { useRoute, useNavigation, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import {
-  getIncidents, getIncidentNotes, addIncidentNote, updateIncidentStatus,
+  getIncident, getIncidentNotes, addIncidentNote, updateIncidentStatus,
   type Incident, type IncidentStatus,
 } from '@/api/incidents'
 import { getStreams, type Stream } from '@/api/cameras'
 import { triggerSOS } from '@/api/sos'
+import { listed } from '@/lib/listed'
 import { Card } from '@/components/Card'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -48,11 +49,16 @@ export function IncidentDetailScreen() {
   const [note, setNote] = useState('')
   const [sosSending, setSosSending] = useState(false)
 
-  const { data: incidents = [], isLoading: loadingInc } = useQuery({
-    queryKey: ['incidents', 'all'],
-    queryFn: () => getIncidents(undefined),
+  // Asked for by its id, not looked for in the first page of the list — see
+  // AlertDetailScreen. Under the 'incidents' key so that a change of status,
+  // which refreshes that key, refreshes this too.
+  const { data: fetched, isLoading: fetching } = useQuery({
+    queryKey: ['incidents', 'one', params.incidentId],
+    queryFn: () => getIncident(params.incidentId),
   })
-  const incident = incidents.find((i: Incident) => i.id === params.incidentId)
+  const incident = fetched
+    ?? listed<Incident>(qc.getQueriesData({ queryKey: ['incidents'] }), params.incidentId)
+  const loadingInc = fetching && !incident
 
   const { data: streams = [] } = useQuery<Stream[]>({
     queryKey: ['streams', incident?.camera_id],

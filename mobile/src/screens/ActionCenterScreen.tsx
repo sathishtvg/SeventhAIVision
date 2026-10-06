@@ -47,16 +47,29 @@ function severityColour(sev: ActionItem['severity']): string {
   }
 }
 
-/** Where tapping an item should take the guard/operator, when anywhere. */
-function targetScreen(category: ActionCategory): string | null {
+/**
+ * Where tapping an item takes the guard or operator, when anywhere: the
+ * arguments for navigate().
+ *
+ * Checking in and a patrol that is due both go to My Shifts, which is where a
+ * guard checks in and from where a patrol is started with the shift it belongs
+ * to — the same place the dashboard sends the same reminders. They used to
+ * name 'Shift', a screen that does not exist, and 'PatrolSelect', a screen in
+ * another tab's stack that cannot be opened without a shift: tapping either
+ * did nothing at all.
+ *
+ * `pop: true` goes back to My Shifts if it is already open under a patrol in
+ * progress, instead of laying a second copy on top of it.
+ */
+export function destination(category: ActionCategory): [string, Record<string, unknown>?] | null {
   switch (category) {
-    case 'check_in': return 'Shift'
+    case 'check_in':
     case 'patrol_due':
-    case 'overdue_checkpoint': return 'PatrolSelect'
-    case 'respond_incident': return 'Incidents'
-    case 'ack_alert': return 'Alerts'
-    case 'camera_offline': return 'Cameras'
-    case 'doc_expiry': return 'MyRecord'
+    case 'overdue_checkpoint': return ['Patrol', { screen: 'Shifts', pop: true }]
+    case 'respond_incident': return ['Incidents']
+    case 'ack_alert': return ['Alerts']
+    case 'camera_offline': return ['Cameras']
+    case 'doc_expiry': return ['MyRecord']
     default: return null
   }
 }
@@ -122,11 +135,11 @@ export function ActionCenterScreen() {
         </Card>
       }
       renderItem={({ item }) => {
-        const dest = targetScreen(item.category)
+        const dest = destination(item.category)
         const colour = severityColour(item.severity)
         return (
           <Pressable
-            onPress={() => { if (dest) nav.navigate(dest as never) }}
+            onPress={() => { if (dest) nav.navigate(dest[0], dest[1]) }}
             disabled={!dest}
           >
             <Card>

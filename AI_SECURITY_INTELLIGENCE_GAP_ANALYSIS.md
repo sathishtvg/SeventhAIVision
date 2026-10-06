@@ -743,8 +743,9 @@ held against the result. What exists is described in
   midnight in Singapore.
 - **§13, screens.** "AI Security Alerts" is *Situations*; "Security
   Intelligence" is *Insight*; *Decisions*, *Feedback* and *Setup* are screens of
-  their own. The desktop application wraps the web build and was not rebuilt
-  for this work.
+  their own. The desktop application wraps the web build; it was rebuilt with
+  these screens as 1.0.4 on 2026-10-06 (unsigned, same app id and upgrade
+  code).
 - **§14, events.** Nine are published rather than seven:
   `intel_situation_opened`, `intel_situation_updated`,
   `intel_assessment_ready`, `intel_recommendation_ready`,
@@ -764,11 +765,13 @@ held against the result. What exists is described in
   They had been granted ALL, which includes `TRUNCATE`, and a `TRUNCATE` is not
   subject to row security. No code used it. `0141` takes it away, and a test
   now asks the database for every table of the layer rather than naming them.
-- **Thirty-nine tables outside the layer carry the same grant** — the Drone
+- **Thirty-nine tables outside the layer carried the same grant** — the Drone
   Patrol and Virtual Patrol modules' tables, `report_deliveries`,
-  `report_schedules` and `tenant_pwm_floors`. They are existing schema, so they
-  were **not changed**; taking `TRUNCATE` away from them is one statement a
-  table and is the owner's to decide.
+  `report_schedules` and `tenant_pwm_floors`. They are existing schema, so the
+  layer's own phases did not change them and the finding was put to the owner,
+  who asked for it to be done: migration `0142` takes `TRUNCATE` away from every
+  table and partition that carried it, and `test_app_role_privileges.py` asks
+  the catalogue that none carries it again.
 - **Two earlier tests proved nothing.** A check that a module "only reads"
   removed the module's SQL along with its docstrings before looking for writes
   (found and fixed in phase 12).
