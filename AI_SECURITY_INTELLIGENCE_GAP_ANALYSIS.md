@@ -743,8 +743,9 @@ held against the result. What exists is described in
   midnight in Singapore.
 - **§13, screens.** "AI Security Alerts" is *Situations*; "Security
   Intelligence" is *Insight*; *Decisions*, *Feedback* and *Setup* are screens of
-  their own. The desktop application wraps the web build and was not rebuilt
-  for this work.
+  their own. The desktop application wraps the web build; it was rebuilt with
+  these screens as 1.0.4 on 2026-10-06 (unsigned, same app id and upgrade
+  code).
 - **§14, events.** Nine are published rather than seven:
   `intel_situation_opened`, `intel_situation_updated`,
   `intel_assessment_ready`, `intel_recommendation_ready`,

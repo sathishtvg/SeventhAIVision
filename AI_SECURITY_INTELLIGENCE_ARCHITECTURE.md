@@ -896,10 +896,11 @@ Then, as a tenant administrator, `PUT /api/v1/settings/intel.enabled` with
 
 On a cluster the chart deploys it unless `intelligenceRunner.enabled` is false.
 
-On the 7.7 GB development machine the runner is left stopped, like the drone
-runner; its behaviour is covered by tests that call its functions against the
-test database, and by one that starts the process itself, gives it alerts to
-read, reads what it wrote and stops it.
+On the development machine the runner has run beside the core services since
+2026-10-06, for the demo organisation, in about 55 MB. Its behaviour is covered
+by tests that call its functions against the test database, and by one that
+starts the process itself, gives it alerts to read, reads what it wrote and
+stops it.
 
 ## Tests
 
@@ -1040,9 +1041,12 @@ nor the CI image has it. The runner's template is checked as text and rendered
 by a stand-in for the constructs it uses; `helm template` should be run once,
 where Helm exists, before the chart is relied on.
 
-**The runner has not been left running on the development machine**, which has
-not the memory for it beside the rest of the platform. It has been started, fed
-and stopped by a test, and measured under volume once (*How long it takes*).
+**The layer has not yet read a live alert outside its tests.** On the
+development machine it is switched on for the demo organisation and the runner
+is running, and every screen has been opened there against the real API — but
+no detector runs on that machine, so nothing has happened for it to read. What
+it does with alerts is known from the tests, from the process started and fed
+by one of them, and from the measurement under volume (*How long it takes*).
 
 **Webhooks and notification rules for the layer's own events are not added.**
 They would alter existing configuration screens. The layer's events reach the
