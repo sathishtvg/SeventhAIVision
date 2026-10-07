@@ -359,7 +359,7 @@ written. This section is added to as each phase is finished.
 | 2 | Evidence and custody | **Built 2026-10-07** — migration `0144` | `EVIDENCE_CHAIN_OF_CUSTODY.md` |
 | 3 | GIS | **Built 2026-10-07** — migration `0145` | `GIS_SECURITY_ARCHITECTURE.md` |
 | 4 | Dispatch, SLA, escalation | **Built 2026-10-07** — migration `0146` | `GUARD_RESPONSE_ARCHITECTURE.md` |
-| 5 | Occurrence book and handover | Not started | |
+| 5 | Occurrence book and handover | **Built 2026-10-07** — migration `0147` | `DIGITAL_OCCURRENCE_BOOK.md` |
 | 6 | SOP | Not started | |
 | 7 | Visitors and contractors | Not started | |
 | 8 | Device health, assets, maintenance | Not started | |
@@ -476,3 +476,42 @@ alerts are not escalated to people (their severity is raised, as before);
 response times are not turned into a judgement of a guard (phase 11, and
 advisory there); and the phone's part has been type-checked and its rules
 tested, not run on a device.
+
+### Phase 5 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Occurrence book: **PARTIAL** — written and listed by date; no search, review or correction | Searched by words, kind, site, author, shift, period, review and correction. Reviewed by a supervisor — noted, to be followed up, followed up — each review kept. Corrected by a further entry that records which entry it corrects and why; the first stays as written. Two more kinds of entry: a delivery, and unusual activity |
+| Shift handover: **COMPLETE** — but pending instructions were not carried forward | Instructions in force at a site: issued with or without a date they run out on, read, closed with a reason. The guards on shift are told, and each one is written into the summary of every shift at the site until it ends |
+| AI-assisted shift summary: **MISSING** | A summary of a shift drafted from what was recorded — the book, incidents, alerts, patrols, dispatches, visitors, what the site has in hand, instructions, follow-ups — in fixed sentences that count and quote (decision E2: no language model, and the database allows no other method). A person reads it, corrects it and confirms it; what the platform drafted is kept beside it; once confirmed it cannot be changed |
+
+**What section 3 asked for and was built differently, and why.** It listed
+"instructions and supervisor notes as types" of entry. They are not entry
+types: the existing list endpoint shows every entry to the client role, and a
+supervisor's note about a guard is not for a client. A supervisor's note is a
+review of an entry, and an instruction is a thing of its own; both are served
+only to the people who keep the book or read handovers.
+
+**Found while building, and left for the owner (phase 13).** The occurrence
+book is described as append-only and no code edits or removes an entry, but
+the application's database role is permitted to update and delete rows of
+`occurrence_book_entries`. Taking that away would change an existing table's
+grants. Also: the existing endpoint that writes an entry takes no position, so
+an occurrence book entry gives a guard's whereabouts only when it was written
+by an SOS. The security map lists it as a source of a guard's position; in
+practice it rarely is one.
+
+**Existing files changed in phase 5, by additions only:** `backend/app/main.py`,
+`backend/app/routers/dob.py`, `frontend/src/App.tsx`,
+`frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`, `frontend/src/pages/GuardOps.tsx`,
+`mobile/src/api/dob.ts`, `mobile/src/screens/OccurrenceBookScreen.tsx`,
+`mobile/src/screens/DashboardScreen.tsx`. The existing endpoint that writes
+and lists entries accepts two more kinds and is otherwise as it was; the
+handover and how it is made are unchanged.
+
+**Not done in phase 5, and why:** the summary is not copied into the handover
+— it is read beside it; nothing reminds anybody of an unread instruction or an
+open follow-up; an entry still has no position; the summary writes no prose
+and draws no conclusion; and the phone's part has been type-checked and its
+rules tested, not run on a device.
