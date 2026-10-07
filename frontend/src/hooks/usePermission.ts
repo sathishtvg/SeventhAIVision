@@ -140,6 +140,8 @@ const ALL_PERMISSIONS = [
   'dob:review',
   // The SOP library (migration 0148). The platform owner and the client role hold none.
   'sop:read', 'sop:write', 'sop:approve',
+  // Visitor and contractor authorisation (migration 0149). The platform owner and the client role hold none.
+  'visitorauth:read', 'visitorauth:write', 'visitorauth:manage',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -256,6 +258,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'response:read', 'response:act', // Guard response (0146)
     'dob:review', // The occurrence book (0147): reviews entries, issues and closes instructions
     'sop:read', 'sop:write', // The SOP library (0148): writes procedures; does not approve them
+    'visitorauth:read', 'visitorauth:write', 'visitorauth:manage', // Visitor authorisation (0149)
   ],
   4: [ // operator
     'camera:read',
@@ -306,6 +309,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'sitemap:read', // The security map (0145)
     'response:read', 'response:act', // Guard response (0146)
     'sop:read', // The SOP library (0148)
+    'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks; answers as a host
   ],
   5: [ // security_guard
     'camera:read',
@@ -342,6 +346,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'intel:read', 'intel:recommendation:read', 'intel:decide',
     'response:act', // Guard response (0146): answers for a dispatch they were sent on
     'sop:read', // The SOP library (0148)
+    'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks at the gate; records the ID seen
   ],
   6: [ // viewer
     'camera:read',
@@ -380,6 +385,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'sitemap:read', // The security map (0145)
     'response:read', // Guard response (0146): reads the desk
     'sop:read', // The SOP library (0148)
+    'visitorauth:read', // Visitor authorisation (0149): reads; answers only as a host
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

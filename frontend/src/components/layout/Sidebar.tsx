@@ -73,6 +73,7 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import AvTimerIcon from '@mui/icons-material/AvTimer'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
+import HowToRegIcon from '@mui/icons-material/HowToReg'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -309,6 +310,7 @@ const NAV_SECTIONS: {
     title: 'People & Vehicles',
     items: [
       { label: 'Visitor Pre-Reg', path: '/visitor-prereg', icon: <PersonPinIcon fontSize="small" />,     permission: 'visitor:read' },
+      { label: 'Visitor Authorisations', path: '/visitor-authorisations', icon: <HowToRegIcon fontSize="small" />, permission: 'visitorauth:read' },
       { label: 'Watchlists',      path: '/watchlists',     icon: <DirectionsCarIcon fontSize="small" />, permission: 'watchlist:manage' },
       { label: 'Contractors',     path: '/contractors',    icon: <EngineeringIcon fontSize="small" />,   permission: 'contractor:read' },
     ],

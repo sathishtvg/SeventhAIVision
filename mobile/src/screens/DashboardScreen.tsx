@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { useWebSocket, RealtimeEvent } from '@/hooks/useWebSocket'
 import { InstructionsCard, ShiftSummaryCard } from '@/components/HandoverCards'
 import { SentCard } from '@/components/ResponseCard'
+import { WaitingVisitorsCard } from '@/components/VisitorAuthCards'
 import { ShiftCheckInCard } from '@/components/ShiftCheckInCard'
 import { VirtualPatrolCard } from '@/components/VirtualPatrolCard'
 import { useAuthStore } from '@/store/auth'
@@ -198,6 +199,9 @@ export function DashboardScreen() {
           the next. Each hides itself when there is nothing to show. */}
       <InstructionsCard />
       <ShiftSummaryCard />
+
+      {/* Visits waiting for this person's yes or no. There only while one is. */}
+      <WaitingVisitorsCard />
 
       {/* Virtual patrol: the phone's way in to a feature it never exposed. */}
       <VirtualPatrolCard />
