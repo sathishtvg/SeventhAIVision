@@ -22,6 +22,11 @@ vi.mock('@/api/incidents', () => ({ getIncidents: vi.fn().mockResolvedValue({
   items: [{ id: 'inc1', title: 'Zone breach at the fence', created_at: '2026-10-05T17:10:00Z' }], has_more: false }) }))
 // PageHeader reads the tenant's page names from the settings.
 vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), upsertSetting: vi.fn().mockResolvedValue({}) }))
+vi.mock('@/api/evidencePackages', async (orig) => {
+  const real = await orig<typeof import('@/api/evidencePackages')>()
+  return { ...real, listPackages: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0, has_more: false }),
+           createPackage: vi.fn().mockResolvedValue({ id: 'pkg9', package_number: 'EVP-20261006-0009' }) }
+})
 vi.mock('@/api/investigations', async (orig) => {
   const real = await orig<typeof import('@/api/investigations')>()
   const fns = Object.fromEntries(Object.entries(real).map(([k, v]) => [k, typeof v === 'function' ? vi.fn() : v]))

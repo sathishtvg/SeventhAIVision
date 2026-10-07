@@ -220,6 +220,7 @@ const NAV_SECTIONS: {
     items: [
       { label: 'Search Records', path: '/investigate',     icon: <ManageSearchIcon fontSize="small" />,  permission: 'investigation:read' },
       { label: 'Investigations', path: '/investigations',  icon: <FolderSpecialIcon fontSize="small" />, permission: 'investigation:read' },
+      { label: 'Evidence Packages', path: '/evidence-packages', icon: <Inventory2Icon fontSize="small" />, permission: 'evidence:package:read' },
       { label: 'Detections',  path: '/detections', icon: <SearchIcon fontSize="small" />,        permission: 'detection:read' },
       { label: 'Evidence',    path: '/evidence',   icon: <PhotoLibraryIcon fontSize="small" />,  permission: 'evidence:read' },
       { label: 'Recordings',  path: '/recordings', icon: <VideoFileIcon fontSize="small" />,     permission: 'recording:read' },

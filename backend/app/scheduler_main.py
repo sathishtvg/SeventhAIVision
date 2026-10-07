@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.backup import run_database_backup
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal, engine
+from app.services.evidence_hold import FRAMES_AND_CLIPS, not_held
 from app.services.violations import VIOLATION_POINTS, create_violation
 
 logger = logging.getLogger(__name__)
@@ -190,7 +191,9 @@ async def purge_expired_evidence(db: AsyncSession) -> int:
 
         expired = (
             await db.execute(
-                text("SELECT id, storage_path FROM evidence WHERE captured_at < now() - (:days * INTERVAL '1 day')"),
+                # Anything under a hold is left alone, however old (services/evidence_hold.py).
+                text("SELECT id, storage_path FROM evidence WHERE captured_at < now() - (:days * INTERVAL '1 day') "
+                     "AND " + not_held(FRAMES_AND_CLIPS, "evidence.id")),
                 {"days": retention_days},
             )
         ).fetchall()
