@@ -102,6 +102,8 @@ import Investigation from '@/pages/investigations/Investigation'
 import EvidencePackages from '@/pages/evidencePackages/EvidencePackages'
 import EvidencePackage from '@/pages/evidencePackages/EvidencePackage'
 import EvidenceHolds from '@/pages/evidencePackages/EvidenceHolds'
+import SecurityMap from '@/pages/securityMap/SecurityMap'
+import SitePlaces from '@/pages/securityMap/SitePlaces'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -266,6 +268,9 @@ export default function App() {
         <Route path="evidence-packages" element={<EvidencePackages />} />
         <Route path="evidence-packages/:id" element={<EvidencePackage />} />
         <Route path="evidence-holds" element={<EvidenceHolds />} />
+        {/* The security map: what is where, in layers, and the places of a site. */}
+        <Route path="security-map" element={<SecurityMap />} />
+        <Route path="site-places" element={<SitePlaces />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

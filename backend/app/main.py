@@ -80,6 +80,7 @@ from app.routers import (
     security_decisions,
     investigations,
     evidence_packages,
+    site_map,
     drone_edge,
     platform_drone_licenses,
     payroll,
@@ -380,6 +381,7 @@ app.include_router(security_decisions.router)
 app.include_router(investigations.router)
 app.include_router(evidence_packages.router)
 app.include_router(evidence_packages.holds_router)
+app.include_router(site_map.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)
