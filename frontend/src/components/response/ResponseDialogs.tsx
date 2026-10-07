@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { SeverityChip } from '@/components/common/SeverityChip'
+import { ProcedureForIncident } from '@/components/sop/SopDialogs'
 import { dispatchGuard } from '@/api/guards'
 import { apiError, getResponse, recommend, standDown } from '@/api/incidentResponses'
 import type { ClockName, Clocks, DeskItem, RankedGuard } from '@/api/incidentResponses'
@@ -219,6 +220,8 @@ function ResponseDetailView({ incident, onClose }: DetailProps & { incident: Inc
                   {e.recipients > 0 && !e.notification_sent ? ' · could not be delivered' : ''}
                 </Typography>))}
             </Box>
+            {/* The approved procedure for an incident of this kind, word for word (phase 6). */}
+            <ProcedureForIncident incidentId={incident.id} />
           </Stack>
         )}
       </DialogContent>

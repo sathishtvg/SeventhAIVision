@@ -107,6 +107,7 @@ import SitePlaces from '@/pages/securityMap/SitePlaces'
 import ResponseDesk from '@/pages/response/ResponseDesk'
 import ResponseSettings from '@/pages/response/ResponseSettings'
 import OccurrenceBook from '@/pages/occurrenceBook/OccurrenceBook'
+import SopLibrary from '@/pages/sop/SopLibrary'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -277,6 +278,7 @@ export default function App() {
         <Route path="response-desk" element={<ResponseDesk />} />
         <Route path="response-settings" element={<ResponseSettings />} />
         <Route path="occurrence-book" element={<OccurrenceBook />} />
+        <Route path="sop-library" element={<SopLibrary />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

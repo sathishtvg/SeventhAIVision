@@ -27,6 +27,12 @@ vi.mock('@/api/sites', () => ({ getSites: vi.fn().mockResolvedValue([{ id: 's1',
 vi.mock('@/api/cameras', () => ({ getStreams: vi.fn().mockResolvedValue([{ id: 'st1' }]) }))
 // PageHeader reads the tenant's page names from the settings.
 vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), upsertSetting: vi.fn().mockResolvedValue({}) }))
+// The situation screen also shows the approved procedure, when there is one (phase 6). None here.
+vi.mock('@/api/sop', async (orig) => {
+  const real = await orig<typeof import('@/api/sop')>()
+  const fns = Object.fromEntries(Object.entries(real).map(([k, v]) => [k, typeof v === 'function' ? vi.fn() : v]))
+  return { ...fns, apiError: real.apiError }
+})
 vi.mock('@/api/securityIntelligence', async (orig) => {
   const real = await orig<typeof import('@/api/securityIntelligence')>()
   const fns = Object.fromEntries(Object.entries(real).map(([k, v]) => [k, typeof v === 'function' ? vi.fn() : v]))

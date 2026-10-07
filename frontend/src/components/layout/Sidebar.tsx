@@ -72,6 +72,7 @@ import PlaceIcon from '@mui/icons-material/Place'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import AvTimerIcon from '@mui/icons-material/AvTimer'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
+import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -253,6 +254,7 @@ const NAV_SECTIONS: {
       { label: 'Payroll',         path: '/payroll',     icon: <PaymentsIcon fontSize="small" />,     permission: 'payroll:read' },
       { label: 'Guard Training',  path: '/training',    icon: <SchoolIcon fontSize="small" />,       permission: 'training:read' },
       { label: 'SOP',              path: '/post-orders', icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
+      { label: 'SOP Library',      path: '/sop-library', icon: <LibraryBooksIcon fontSize="small" />, permission: 'sop:read' },
       { label: 'Key Register',     path: '/key-register', icon: <VpnKeyIcon fontSize="small" />,      permission: 'keyreg:read' },
       { label: 'Lost & Found',     path: '/lost-found',  icon: <Inventory2Icon fontSize="small" />,  permission: 'lostfound:read' },
       { label: 'Defect Log',       path: '/defects',     icon: <BuildIcon fontSize="small" />,        permission: 'defect:read' },
