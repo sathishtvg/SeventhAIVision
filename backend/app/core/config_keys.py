@@ -143,4 +143,9 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "intel.risk_weights": _risk_weights_validator,
     # A multiplier per factor of the site security score, 0 to 3.
     "intel.score_weights": _score_weights_validator,
+    # The response clocks (services/response_sla.py). Off until an organisation
+    # switches them on; when this row was last changed is the moment they judge
+    # incidents from, so it is switched through /api/v1/incident-responses/settings,
+    # which leaves the row alone when nothing changes.
+    "response.sla_enabled": _bool_validator,
 }

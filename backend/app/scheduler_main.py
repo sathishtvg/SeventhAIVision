@@ -1583,6 +1583,18 @@ async def main() -> None:
                     logger.exception("check_no_show_shifts failed")
                 last_no_show = now
 
+            # Guard response: every iteration. A guard who has just been sent
+            # is told, and a clock that has run out is recorded and told to
+            # somebody. It reassigns and re-dispatches nothing. Each tenant
+            # is its own session and its own transaction inside.
+            try:
+                from app.services import response_sla
+                counts = await response_sla.run(AsyncSessionLocal, redis)
+                if counts["sendings"] or counts["escalations"]:
+                    logger.info("guard response: %s", counts)
+            except Exception:
+                logger.exception("guard response pass failed")
+
             # Man down: every iteration, not on a slower cadence. A guard is
             # on the floor and the countdown they were shown has already
             # elapsed — a minute is the tightest this loop offers and every

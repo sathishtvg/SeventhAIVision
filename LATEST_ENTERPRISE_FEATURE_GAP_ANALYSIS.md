@@ -358,7 +358,7 @@ written. This section is added to as each phase is finished.
 | 1 | Smart investigation | **Built 2026-10-06** — migration `0143` | `SMART_INVESTIGATION_ARCHITECTURE.md` |
 | 2 | Evidence and custody | **Built 2026-10-07** — migration `0144` | `EVIDENCE_CHAIN_OF_CUSTODY.md` |
 | 3 | GIS | **Built 2026-10-07** — migration `0145` | `GIS_SECURITY_ARCHITECTURE.md` |
-| 4 | Dispatch, SLA, escalation | Not started | |
+| 4 | Dispatch, SLA, escalation | **Built 2026-10-07** — migration `0146` | `GUARD_RESPONSE_ARCHITECTURE.md` |
 | 5 | Occurrence book and handover | Not started | |
 | 6 | SOP | Not started | |
 | 7 | Visitors and contractors | Not started | |
@@ -435,3 +435,44 @@ are records of what a person did); a hold placed by hand on one item has an
 API and no screen; a virtual patrol's snapshot cannot be packaged; and the
 object-store path of an export has not been run against a real store on the
 development machine.
+
+### Phase 4 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Dispatch: **PARTIAL** — send a named guard, mark arrived | A response: the record of one sending and the steps the guard takes on it — accepted, set off, arrived, reported, or cannot attend with a reason — each written through to the incident's own status, history and arrival time. The guard is told on their phone. A guard who is not coming, or is stood down, gives the incident back; sending somebody else closes the first response. The dispatch itself is the existing endpoint, unchanged |
+| Intelligent guard recommendation: **PARTIAL** — for drone events only | For any incident: the guards on shift at its site, ranked by a score made of stated parts — free or already sent, distance by last recorded position and how old that position is, what they were already sent on this shift, and the certifications the site requires. A suggestion with its reasons; a person chooses and dispatches |
+| Response SLA: **PARTIAL** — settings and a deadline, no evaluator | **The evaluator.** Three clocks per incident — acknowledge, arrive, resolve — judged every minute against the existing settings, once an organisation switches them on and only for incidents opened since. A clock that runs out sets `sla_breached`, is recorded once, and is told to the person the settings name. The settings have a screen for the first time |
+| Escalation: **PARTIAL** — alert severity raised; an unwritten table | Escalation policies: when an incident is still not acknowledged, reached or resolved after so long, tell a role or a person — by site and severity. Each step recorded once, with how many people it reached; told on the organisation's screens, the phones of those addressed, and through the existing notification rules. `escalation_events` is written for the first time |
+
+**Two things the audit had wrong, found while building.** The incident status
+workflow the audit described (`dispatched`, `en_route`, `on_scene`, …) exists,
+but a guard could never use it: the status endpoint needs `incident:update`,
+which guards do not hold. And the existing dispatch moves an incident to
+`in_progress`, a status that workflow does not contain, so the phone's *Mark
+as…* button offered nothing on a dispatched incident. Neither is changed; the
+response steps are the guard's way, and they treat `in_progress` as what it
+means — sent, not yet set off.
+
+**Existing files changed in phase 4, by additions only:** `backend/app/main.py`,
+`backend/app/core/config_keys.py`, `backend/app/scheduler_main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`,
+`mobile/src/screens/DashboardScreen.tsx`,
+`mobile/src/screens/IncidentDetailScreen.tsx`. The existing dispatch, incident
+and SLA endpoints and the Incidents screen are as they were. The scheduler
+gained one job, which with the clocks off — the default — writes only the
+record of a sending and tells the guard who was sent.
+
+**Existing columns and a table written for the first time, only once an
+organisation switches the clocks on:** `incidents.sla_breached`,
+`incidents.escalated_at`, `incidents.escalated_to_user_id`, and
+`escalation_events`. The incident report and the site security score already
+read `sla_breached` and will then show breaches where they showed none.
+
+**Not done in phase 4, and why:** nothing dispatches, reassigns or re-dispatches
+by itself; a guard is not tracked on the way and no arrival time is estimated;
+alerts are not escalated to people (their severity is raised, as before);
+response times are not turned into a judgement of a guard (phase 11, and
+advisory there); and the phone's part has been type-checked and its rules
+tested, not run on a device.
