@@ -12,6 +12,7 @@ import { Card } from '@/components/Card'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { useWebSocket, RealtimeEvent } from '@/hooks/useWebSocket'
+import { SentCard } from '@/components/ResponseCard'
 import { ShiftCheckInCard } from '@/components/ShiftCheckInCard'
 import { VirtualPatrolCard } from '@/components/VirtualPatrolCard'
 import { useAuthStore } from '@/store/auth'
@@ -182,6 +183,10 @@ export function DashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
+      {/* Sent to an incident: above everything, and there only while it is
+          so. A dispatch used to tell the guard nothing. */}
+      <SentCard />
+
       {/* Attendance first: checking on and off a shift is the thing a guard
           opens this app to do, and it used to be three taps away under
           Patrol → My Shifts. The card hides itself for roles that never work

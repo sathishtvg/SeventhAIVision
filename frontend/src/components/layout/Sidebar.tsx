@@ -69,6 +69,8 @@ import ManageSearchIcon from '@mui/icons-material/ManageSearch'
 import FolderSpecialIcon from '@mui/icons-material/FolderSpecial'
 import TravelExploreIcon from '@mui/icons-material/TravelExplore'
 import PlaceIcon from '@mui/icons-material/Place'
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
+import AvTimerIcon from '@mui/icons-material/AvTimer'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -212,6 +214,7 @@ const NAV_SECTIONS: {
       { label: 'Dashboard',      path: '/',            icon: <DashboardIcon fontSize="small" />,    permission: 'alert:read' },
       { label: 'Alerts',         path: '/alerts',      icon: <NotificationsIcon fontSize="small" />, permission: 'alert:read' },
       { label: 'Incidents',      path: '/incidents',   icon: <ReportProblemIcon fontSize="small" />, permission: 'incident:read' },
+      { label: 'Response Desk',  path: '/response-desk', icon: <AssignmentIndIcon fontSize="small" />, permission: 'response:read' },
       { label: 'Live Wall',      path: '/live',        icon: <LiveTvIcon fontSize="small" />,       permission: 'camera:read' },
       { label: 'Site Map',       path: '/map',         icon: <MapIcon fontSize="small" />,          permission: 'camera:read' },
       { label: 'Security Map',   path: '/security-map', icon: <TravelExploreIcon fontSize="small" />, permission: 'sitemap:read' },
@@ -324,6 +327,7 @@ const NAV_SECTIONS: {
       { label: 'Alert Rules',      path: '/alert-rules',      icon: <RuleIcon fontSize="small" />,         permission: 'alert_rule:read' },
       { label: 'Device Protocols', path: '/device-protocols', icon: <CableIcon fontSize="small" />,        permission: 'device_config:read' },
       { label: 'Notifications',    path: '/notifications',    icon: <NotificationsActiveIcon fontSize="small" />, permission: 'notification:manage' },
+      { label: 'Response Settings', path: '/response-settings', icon: <AvTimerIcon fontSize="small" />,     permission: 'sla:manage' },
       { label: 'Users',            path: '/users',            icon: <PeopleIcon fontSize="small" />,       permission: 'user:read' },
       { label: 'Roles',            path: '/roles',            icon: <PeopleIcon fontSize="small" />,       permission: 'role:manage' },
       // Alert Dedup, API Keys, IP Allowlist and Developer were dropped from

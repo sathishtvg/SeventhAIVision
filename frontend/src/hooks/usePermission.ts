@@ -133,6 +133,9 @@ const ALL_PERMISSIONS = [
   // The security map (migration 0145). The platform owner, the client role
   // and guards hold neither.
   'sitemap:read', 'sitemap:manage',
+  // Guard response (migration 0146). The platform owner and the client role
+  // hold neither; a guard answers for a dispatch and does not read the desk.
+  'response:read', 'response:act',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -246,6 +249,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     // Evidence packages (0144): puts together, seals and exports; does not lift a hold
     'evidence:package:read', 'evidence:package:manage', 'evidence:package:export',
     'sitemap:read', // The security map (0145): reads; does not draw places
+    'response:read', 'response:act', // Guard response (0146)
   ],
   4: [ // operator
     'camera:read',
@@ -294,6 +298,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'investigation:read', 'investigation:manage', // Smart Investigation (0143)
     'evidence:package:read', 'evidence:package:manage', // Evidence packages (0144): puts together and seals
     'sitemap:read', // The security map (0145)
+    'response:read', 'response:act', // Guard response (0146)
   ],
   5: [ // security_guard
     'camera:read',
@@ -328,6 +333,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     // AI Security Intelligence (0132). Deciding still needs the decision
     // policy to let a guard decide; by default it does not.
     'intel:read', 'intel:recommendation:read', 'intel:decide',
+    'response:act', // Guard response (0146): answers for a dispatch they were sent on
   ],
   6: [ // viewer
     'camera:read',
@@ -364,6 +370,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'investigation:read', // Smart Investigation (0143): searches and reads, files nothing
     'evidence:package:read', // Evidence packages (0144): reads
     'sitemap:read', // The security map (0145)
+    'response:read', // Guard response (0146): reads the desk
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

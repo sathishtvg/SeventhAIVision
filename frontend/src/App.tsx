@@ -104,6 +104,8 @@ import EvidencePackage from '@/pages/evidencePackages/EvidencePackage'
 import EvidenceHolds from '@/pages/evidencePackages/EvidenceHolds'
 import SecurityMap from '@/pages/securityMap/SecurityMap'
 import SitePlaces from '@/pages/securityMap/SitePlaces'
+import ResponseDesk from '@/pages/response/ResponseDesk'
+import ResponseSettings from '@/pages/response/ResponseSettings'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -271,6 +273,8 @@ export default function App() {
         {/* The security map: what is where, in layers, and the places of a site. */}
         <Route path="security-map" element={<SecurityMap />} />
         <Route path="site-places" element={<SitePlaces />} />
+        <Route path="response-desk" element={<ResponseDesk />} />
+        <Route path="response-settings" element={<ResponseSettings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
