@@ -71,6 +71,7 @@ from app.routers import (
     notifications,
     nvr,
     occurrence_book,
+    sop,
     patrols,
     virtual_patrol,
     drones,
@@ -386,6 +387,7 @@ app.include_router(evidence_packages.holds_router)
 app.include_router(site_map.router)
 app.include_router(incident_responses.router)
 app.include_router(occurrence_book.router)
+app.include_router(sop.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)

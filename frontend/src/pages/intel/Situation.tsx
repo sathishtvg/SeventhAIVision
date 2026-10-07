@@ -52,6 +52,7 @@ import { SituationEvidence } from '@/components/intel/SituationEvidence'
 import { SituationReview } from '@/components/intel/SituationReview'
 import { SituationSummary } from '@/components/intel/SituationSummary'
 import { SituationTimeline } from '@/components/intel/SituationTimeline'
+import { ProcedureForSituation } from '@/components/sop/SopDialogs'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
 
 export default function Situation() {
@@ -102,6 +103,8 @@ export default function Situation() {
           <SituationSummary situationId={situation.id} />
           <Why situation={situation} recommendationConfidence={first?.recommendation_confidence} />
           <Events situation={situation} />
+          {/* The organisation's approved procedure for events of these kinds (enterprise expansion, phase 6). */}
+          <ProcedureForSituation situationId={situation.id} />
           <Cameras situation={situation} recs={recs} />
           <SituationEvidence situationId={situation.id} />
           <Drones picture={drone} />

@@ -138,6 +138,8 @@ const ALL_PERMISSIONS = [
   'response:read', 'response:act',
   // Reviewing the occurrence book (migration 0147): admin, manager and supervisor.
   'dob:review',
+  // The SOP library (migration 0148). The platform owner and the client role hold none.
+  'sop:read', 'sop:write', 'sop:approve',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -253,6 +255,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'sitemap:read', // The security map (0145): reads; does not draw places
     'response:read', 'response:act', // Guard response (0146)
     'dob:review', // The occurrence book (0147): reviews entries, issues and closes instructions
+    'sop:read', 'sop:write', // The SOP library (0148): writes procedures; does not approve them
   ],
   4: [ // operator
     'camera:read',
@@ -302,6 +305,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'evidence:package:read', 'evidence:package:manage', // Evidence packages (0144): puts together and seals
     'sitemap:read', // The security map (0145)
     'response:read', 'response:act', // Guard response (0146)
+    'sop:read', // The SOP library (0148)
   ],
   5: [ // security_guard
     'camera:read',
@@ -337,6 +341,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     // policy to let a guard decide; by default it does not.
     'intel:read', 'intel:recommendation:read', 'intel:decide',
     'response:act', // Guard response (0146): answers for a dispatch they were sent on
+    'sop:read', // The SOP library (0148)
   ],
   6: [ // viewer
     'camera:read',
@@ -374,6 +379,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'evidence:package:read', // Evidence packages (0144): reads
     'sitemap:read', // The security map (0145)
     'response:read', // Guard response (0146): reads the desk
+    'sop:read', // The SOP library (0148)
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

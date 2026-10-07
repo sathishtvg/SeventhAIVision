@@ -7,6 +7,7 @@ import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import { dispatchGuard } from '@/api/guards'
 import * as api from '@/api/incidentResponses'
+import * as sop from '@/api/sop'
 import type {
   Clock, Clocks, Desk, DeskItem, Escalation, GuardResponse, Policy, RankedGuard, Recommendation, ResponseDetail,
   ResponseSettings as Settings,
@@ -29,6 +30,12 @@ vi.mock('@/api/users', () => ({ getUsers: vi.fn().mockResolvedValue([
 vi.mock('@/api/guards', () => ({ dispatchGuard: vi.fn() }))
 // PageHeader reads the tenant's page names from the settings.
 vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), upsertSetting: vi.fn().mockResolvedValue({}) }))
+// The approved procedure for the incident is shown beside its response (phase 6).
+vi.mock('@/api/sop', async (orig) => {
+  const real = await orig<typeof import('@/api/sop')>()
+  const fns = Object.fromEntries(Object.entries(real).map(([k, v]) => [k, typeof v === 'function' ? vi.fn() : v]))
+  return { ...fns, apiError: real.apiError }
+})
 vi.mock('@/api/incidentResponses', async (orig) => {
   const real = await orig<typeof import('@/api/incidentResponses')>()
   const fns = Object.fromEntries(Object.entries(real).map(([k, v]) => [k, typeof v === 'function' ? vi.fn() : v]))
@@ -150,6 +157,10 @@ beforeEach(() => {
   vi.mocked(api.getResponse).mockResolvedValue(DETAIL)
   vi.mocked(api.standDown).mockResolvedValue(DETAIL)
   vi.mocked(dispatchGuard).mockResolvedValue({})
+  vi.mocked(sop.getProceduresForIncident).mockResolvedValue({ incident_types: ['intrusion'], why_none: null, procedures: [{
+    id: 'd1', code: 'SOP-0002', title: 'Intruder', category: 'incident_response', site_name: null, for_types: ['intrusion'],
+    version: { id: 'v1', version_no: 3, approved_at: '2026-10-01T00:00:00Z', approved_by_name: 'Lim Mei Ling', has_attachment: false },
+    text: 'Do not approach alone. Radio the supervisor.', passages: [] }] })
   vi.mocked(api.getResponseSettings).mockResolvedValue(SETTINGS)
   vi.mocked(api.listPolicies).mockResolvedValue({ items: [policy({})], can_manage: true })
   vi.mocked(api.listEscalations).mockResolvedValue({ items: [escalation({}), STEP, NOBODY] })
@@ -299,6 +310,12 @@ describe('The response desk', () => {
     const told = within(dialog).getAllByTestId('told-line').map((s) => s.textContent ?? '')
     expect(told[0]).toMatch(/“Forced gate” was not acknowledged in time · Lim Mei Ling$/)
     expect(told[1]).toMatch(/“Forced gate” — Unacknowledged after ten minutes · Supervisors \(2 people\)$/)
+    // And the approved procedure for an incident of this kind, word for word.
+    const procedure = await within(dialog).findByTestId('procedure-for')
+    expect(sop.getProceduresForIncident).toHaveBeenCalledWith('i2')
+    expect(procedure).toHaveTextContent('SOP-0002 · Intruder')
+    expect(procedure).toHaveTextContent('version 3, approved by Lim Mei Ling · every site')
+    expect(procedure).toHaveTextContent('Do not approach alone. Radio the supervisor.')
   })
 
   it('choosing a site or a view asks again for that, and an empty view says what is empty', async () => {

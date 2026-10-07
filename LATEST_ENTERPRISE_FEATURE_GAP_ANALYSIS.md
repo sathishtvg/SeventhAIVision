@@ -360,7 +360,7 @@ written. This section is added to as each phase is finished.
 | 3 | GIS | **Built 2026-10-07** — migration `0145` | `GIS_SECURITY_ARCHITECTURE.md` |
 | 4 | Dispatch, SLA, escalation | **Built 2026-10-07** — migration `0146` | `GUARD_RESPONSE_ARCHITECTURE.md` |
 | 5 | Occurrence book and handover | **Built 2026-10-07** — migration `0147` | `DIGITAL_OCCURRENCE_BOOK.md` |
-| 6 | SOP | Not started | |
+| 6 | SOP | **Built 2026-10-07** — migration `0148` | `SECURITY_SOP_ARCHITECTURE.md` |
 | 7 | Visitors and contractors | Not started | |
 | 8 | Device health, assets, maintenance | Not started | |
 | 9 | Risk and advisor | Not started | |
@@ -515,3 +515,27 @@ handover and how it is made are unchanged.
 open follow-up; an entry still has no position; the summary writes no prose
 and draws no conclusion; and the phone's part has been type-checked and its
 rules tested, not run on a device.
+
+### Phase 6 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| SOP library: **PARTIAL** — post orders: a text per site, a version number, acknowledgements | A library of procedures beside post orders. Each has a code, a category, a site or every site, and versions that are kept: drafted, submitted, approved by somebody other than their author to be in force from a date, or rejected with a reason. A version may run out. An approved version cannot be changed — a trigger holds it. The document as issued can be attached with its checksum. A procedure names the kinds of incident it is for |
+| SOP assistant: **MISSING** | Asking the library returns the passages of procedures in force that use the words asked — word for word, most of the words first, each with its procedure, version and who approved it. Nothing composes an answer and no language model is involved (decision E2); when no passage uses those words it says so |
+| Incident SOP assistance: **MISSING** | The procedures in force for an incident of that kind at its site are put beside it, word for word: on the response desk, on the phone's incident screen, and — for the kinds of event a situation is made of — on the situation screen |
+
+**Existing files changed in phase 6, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`, `frontend/src/pages/intel/Situation.tsx`,
+`mobile/src/screens/IncidentDetailScreen.tsx`. Post orders, their endpoints,
+their screen and their acknowledgements are as they were. The document as
+issued is stored on the existing documents volume, in a folder of its own.
+
+**Not done in phase 6, and why:** it finds passages by their words and does
+not understand a question — a question in words no procedure uses finds
+nothing; an attached PDF is kept and not read; nobody is recorded as having
+read a procedure (post orders still do that for their own texts); an incident
+raised by hand has no kind and gets no procedure put beside it; nobody is told
+when a procedure runs out; the search reads English; the phone's situation
+screen does not show the procedure, only its incident screen does; and the
+phone's part has been type-checked and its rules tested, not run on a device.

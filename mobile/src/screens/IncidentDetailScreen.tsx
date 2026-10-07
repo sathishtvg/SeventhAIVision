@@ -15,6 +15,7 @@ import { getStreams, type Stream } from '@/api/cameras'
 import { triggerSOS } from '@/api/sos'
 import { listed } from '@/lib/listed'
 import { Card } from '@/components/Card'
+import { ProcedureCard } from '@/components/ProcedureCard'
 import { ResponseCard } from '@/components/ResponseCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -157,6 +158,9 @@ export function IncidentDetailScreen() {
       {/* The guard who was sent here answers for it: accept, set off, arrive,
           report. Shows nothing to anybody who was not sent on this incident. */}
       <ResponseCard incidentId={params.incidentId} />
+
+      {/* The approved procedure for an incident of this kind, word for word. */}
+      <ProcedureCard incidentId={params.incidentId} />
 
       {/* Live Camera Feed */}
       {liveStream && incident.camera_id && (
