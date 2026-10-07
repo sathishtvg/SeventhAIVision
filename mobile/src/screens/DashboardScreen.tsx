@@ -12,6 +12,7 @@ import { Card } from '@/components/Card'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { useWebSocket, RealtimeEvent } from '@/hooks/useWebSocket'
+import { InstructionsCard, ShiftSummaryCard } from '@/components/HandoverCards'
 import { SentCard } from '@/components/ResponseCard'
 import { ShiftCheckInCard } from '@/components/ShiftCheckInCard'
 import { VirtualPatrolCard } from '@/components/VirtualPatrolCard'
@@ -192,6 +193,11 @@ export function DashboardScreen() {
           Patrol → My Shifts. The card hides itself for roles that never work
           a shift. */}
       <ShiftCheckInCard />
+
+      {/* What the last shift left for this one, and what this one leaves for
+          the next. Each hides itself when there is nothing to show. */}
+      <InstructionsCard />
+      <ShiftSummaryCard />
 
       {/* Virtual patrol: the phone's way in to a feature it never exposed. */}
       <VirtualPatrolCard />

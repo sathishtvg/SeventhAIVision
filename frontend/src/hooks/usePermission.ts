@@ -136,6 +136,8 @@ const ALL_PERMISSIONS = [
   // Guard response (migration 0146). The platform owner and the client role
   // hold neither; a guard answers for a dispatch and does not read the desk.
   'response:read', 'response:act',
+  // Reviewing the occurrence book (migration 0147): admin, manager and supervisor.
+  'dob:review',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -250,6 +252,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'evidence:package:read', 'evidence:package:manage', 'evidence:package:export',
     'sitemap:read', // The security map (0145): reads; does not draw places
     'response:read', 'response:act', // Guard response (0146)
+    'dob:review', // The occurrence book (0147): reviews entries, issues and closes instructions
   ],
   4: [ // operator
     'camera:read',

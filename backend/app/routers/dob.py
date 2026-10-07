@@ -21,6 +21,8 @@ VALID_ENTRY_TYPES = {
     "general", "incident", "patrol_start", "patrol_end", "visitor_arrival",
     "visitor_departure", "guard_relief", "equipment_check", "maintenance",
     "alarm_activation", "fire_drill", "sos", "handover",
+    # Phase 5 of the enterprise expansion: two more things a guard writes down.
+    "delivery", "unusual_activity",
 }
 
 

@@ -398,7 +398,7 @@ function DOBTab() {
             select label="Entry Type" value={form.entry_type}
             onChange={(e) => setForm({ ...form, entry_type: e.target.value })} fullWidth
           >
-            {['general', 'incident', 'patrol_start', 'patrol_end', 'visitor_arrival',
+            {['general', 'incident', 'unusual_activity', 'delivery', 'patrol_start', 'patrol_end', 'visitor_arrival',
               'visitor_departure', 'guard_relief', 'equipment_check', 'handover'].map((t) => (
               <MenuItem key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</MenuItem>
             ))}

@@ -27,6 +27,8 @@ const ENTRY_TYPE_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['na
   maintenance: 'construct',
   alarm_activation: 'alarm',
   fire_drill: 'flame',
+  unusual_activity: 'eye',
+  delivery: 'cube',
   handover: 'clipboard',
 }
 

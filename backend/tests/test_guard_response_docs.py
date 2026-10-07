@@ -278,7 +278,6 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     gaps = GAPS.read_text(encoding="utf-8")
     built = gaps.split("## 9. As built", 1)[1]
     assert "| 4 | Dispatch, SLA, escalation | **Built 2026-10-07**" in built and "GUARD_RESPONSE_ARCHITECTURE.md" in built
-    assert "| 5 | Occurrence book and handover | Not started | |" in built
     phase = built.split("### Phase 4", 1)[1]
     assert re.findall(r"`((?:backend|frontend|mobile)/[A-Za-z_/.]+)`",
                       phase.split("**Existing files changed in phase 4, by additions only:**", 1)[1]

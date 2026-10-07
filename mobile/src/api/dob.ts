@@ -26,7 +26,7 @@ export interface DOBEntryCreate {
 }
 
 export const ENTRY_TYPES = [
-  'general', 'incident', 'patrol_start', 'patrol_end',
+  'general', 'incident', 'unusual_activity', 'delivery', 'patrol_start', 'patrol_end',
   'visitor_arrival', 'visitor_departure', 'guard_relief',
   'equipment_check', 'maintenance', 'alarm_activation',
   'fire_drill', 'handover',
