@@ -112,6 +112,7 @@ from app.routers import (
     two_fa,
     violations,
     users,
+    visitor_authorizations,
     visitors,
     wall_layouts,
     wall_profiles,
@@ -388,6 +389,7 @@ app.include_router(site_map.router)
 app.include_router(incident_responses.router)
 app.include_router(occurrence_book.router)
 app.include_router(sop.router)
+app.include_router(visitor_authorizations.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)

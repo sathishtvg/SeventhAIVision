@@ -361,7 +361,7 @@ written. This section is added to as each phase is finished.
 | 4 | Dispatch, SLA, escalation | **Built 2026-10-07** — migration `0146` | `GUARD_RESPONSE_ARCHITECTURE.md` |
 | 5 | Occurrence book and handover | **Built 2026-10-07** — migration `0147` | `DIGITAL_OCCURRENCE_BOOK.md` |
 | 6 | SOP | **Built 2026-10-07** — migration `0148` | `SECURITY_SOP_ARCHITECTURE.md` |
-| 7 | Visitors and contractors | Not started | |
+| 7 | Visitors and contractors | **Built 2026-10-07** — migration `0149` | `VISITOR_CONTRACTOR_SECURITY.md` |
 | 8 | Device health, assets, maintenance | Not started | |
 | 9 | Risk and advisor | Not started | |
 | 10 | Analytics | Not started | |
@@ -539,3 +539,34 @@ raised by hand has no kind and gets no procedure put beside it; nobody is told
 when a procedure runs out; the search reads English; the phone's situation
 screen does not show the procedure, only its incident screen does; and the
 phone's part has been type-checked and its rules tested, not run on a device.
+
+### Phase 7 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Visitors: **PARTIAL** — missing host approval, zones a visitor is authorised for, escort, pass expiry as a state, ID verification | An authorisation of a visit: asked for, approved or declined by the host (or by somebody who manages visits when no host is named), for a period, for named places of the site's map or the site in general, with or without an escort, and with the kind of ID a named person says they saw. Where it stands — waiting, valid, run out, never answered — is its answer and the hour, worked out when it is read. The gate reads it as sentences made from the record; it informs, and check-in is the existing endpoint, unchanged, which does not look at it |
+| Contractors: **PARTIAL** — missing zone authorisation; check-in against a permit | The same authorisation, of a work permit: places, escort, a period, an answer. The permit's own approval is the existing one. Nobody is checked in against a permit, and the people working under one are not followed: a permit has no badge on record |
+| Visitor security integration: **NEEDS INTEGRATION** — movements as events; "authorised for zone A, seen in zone C" as context for a person to review, never an accusation | The door events of the badge a visitor was given, while they had it, are set against the places and the period the visit is authorised for. One outside either is listed for somebody who manages visits to look at, who records that it was in order or how it was followed up. Nothing is raised, and it is not written into the intelligence layer |
+
+**Existing files changed in phase 7, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`, `mobile/src/screens/DashboardScreen.tsx`,
+`mobile/src/screens/VisitorsScreen.tsx`. Registering a visitor, checking one
+in or out, the QR pass, work permits and their approval, and both existing
+screens are as they were. No existing table is altered.
+
+**Not done in phase 7, and why:** visitor and access events are not fed to the
+intelligence layer, which section 6 planned for this phase — it would change
+what the existing layer scores and could put a visitor into a situation before
+a person had looked, so it is left for its own decision; `restricted_zones`
+are not used, because they are areas drawn on a camera's picture and not
+places of a site — an authorisation names places of the site map, and a site
+with no map authorises "the site in general"; nothing opens or locks a door,
+and check-in does not look at an authorisation; an ID is not verified — a
+named person records that they saw one, and its number is not taken; a visitor
+is followed only through doors their badge number opened, so a visitor given
+no badge leaves nothing; nobody is told that an authorisation is about to run
+out or was never answered; the visitor's QR pass does not carry the
+authorisation; the development organisation has no door events, so that part
+has run on test data only; and the phone's part has been type-checked and its
+rules tested, not run on a device.

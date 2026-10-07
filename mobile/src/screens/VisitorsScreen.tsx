@@ -12,6 +12,7 @@ import {
   type Visitor, type VisitorCreate,
 } from '@/api/visitors'
 import { Card } from '@/components/Card'
+import { VisitStanding } from '@/components/VisitorAuthCards'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 // Status values from the DB: pending | arrived | departed | cancelled | expired
@@ -233,6 +234,8 @@ function ListTab() {
               {confirmTarget?.action === 'out' ? 'Check Out' : 'Check In'}
             </Text>
             <Text style={styles.modalBody}>{confirmTarget?.visitor.full_name}</Text>
+            {/* What stands on the record for the visit. It informs; Confirm works as it always has. */}
+            {confirmTarget?.action === 'in' && <VisitStanding visitorId={confirmTarget.visitor.id} />}
             <View style={styles.modalBtns}>
               <Pressable style={styles.cancelBtn} onPress={() => setConfirmTarget(null)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
