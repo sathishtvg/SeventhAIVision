@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.audit import write_audit_log
+from app.services.evidence_hold import DRONE_MEDIA, not_held
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ async def purge_media(db: AsyncSession, tenant_id: str, now: datetime, days: int
                     OR (e.incident_id IS NULL
                         AND NOT (e.verification_state = 'VERIFIED' AND e.status IN ({OPEN_EVENT}))))
                AND (s.id IS NULL OR s.status NOT IN ({LIVE_FLIGHT}))
+               AND {not_held(DRONE_MEDIA, 'm.id')}
              ORDER BY m.captured_at
              LIMIT :n
         """), {"cutoff": cutoff, "n": MEDIA_BATCH})).mappings().all()

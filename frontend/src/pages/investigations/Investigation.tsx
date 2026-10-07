@@ -14,6 +14,7 @@ import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import NoteAddIcon from '@mui/icons-material/NoteAdd'
 import SearchIcon from '@mui/icons-material/Search'
+import Inventory2Icon from '@mui/icons-material/Inventory2'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
@@ -22,6 +23,9 @@ import {
   addNote, apiError, closeInvestigation, getInvestigation, reopenInvestigation, setAside,
 } from '@/api/investigations'
 import type { Entry } from '@/api/investigations'
+import { listPackages } from '@/api/evidencePackages'
+import { usePermission } from '@/hooks/usePermission'
+import { CreatePackageDialog } from '@/components/evidence/EvidenceDialogs'
 import { TrailDialog, WhyDialog } from '@/components/investigations/InvestigationDialogs'
 import { KIND_LABEL, fmt, followable, home, pretty, subject } from '@/components/investigations/investigationFormat'
 import { InvestigationNav } from './InvestigationNav'
@@ -76,8 +80,14 @@ export default function Investigation() {
   const qc = useQueryClient()
   const [asking, setAsking] = useState<Asking>(null)
   const [following, setFollowing] = useState<{ plate?: string; watchlist_entry_id?: string } | null>(null)
+  const [packaging, setPackaging] = useState(false)
+  const seesPackages = usePermission('evidence:package:read')
+  const makesPackages = usePermission('evidence:package:manage')
   const { data: file, isLoading, error } = useQuery({
     queryKey: ['investigation', id], queryFn: () => getInvestigation(id), enabled: !!id })
+  const { data: packages } = useQuery({
+    queryKey: ['evidence-packages', 'of-investigation', id], queryFn: () => listPackages({ investigation_id: id }),
+    enabled: !!id && seesPackages })
   const done = () => Promise.all([
     qc.invalidateQueries({ queryKey: ['investigation', id] }), qc.invalidateQueries({ queryKey: ['investigations'] })])
 
@@ -137,6 +147,35 @@ export default function Investigation() {
             not shown to you — a kind you may not read, a site you are not assigned to, or no longer held.</Alert>)}
       </GlassCard>
 
+      {seesPackages && (
+        <GlassCard sx={{ p: 2, mb: 2 }} data-testid="evidence-of">
+          <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Evidence</Typography>
+            <Box sx={{ flex: 1 }} />
+            {makesPackages && (
+              <Button size="small" variant="outlined" startIcon={<Inventory2Icon />}
+                      disabled={!file.counts.records} onClick={() => setPackaging(true)}>
+                Put the evidence together</Button>)}
+          </Stack>
+          {!(packages?.items.length) ? (
+            <Typography variant="body2" color="text.secondary">
+              No evidence package has been made for this investigation. A package gathers the frames, clips and
+              recordings that belong to the records filed here, seals them and keeps them past retention.
+            </Typography>
+          ) : packages.items.map((p) => (
+            <Stack key={p.id} direction="row" sx={{ gap: 1, alignItems: 'center', mt: 0.75 }}>
+              <Chip size="small" color={p.status === 'SEALED' ? 'primary' : 'default'}
+                    variant={p.status === 'SEALED' ? 'filled' : 'outlined'}
+                    label={p.status === 'SEALED' ? 'Sealed' : 'Draft'} />
+              <Link component="button" variant="body2" onClick={() => navigate(`/evidence-packages/${p.id}`)}>
+                {p.package_number} — {p.title}</Link>
+              <Typography variant="caption" color="text.secondary">
+                {p.items} item{p.items === 1 ? '' : 's'}</Typography>
+            </Stack>
+          ))}
+        </GlassCard>
+      )}
+
       <GlassCard sx={{ p: 2 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>In the order it happened</Typography>
         {!file.items.length ? (
@@ -187,6 +226,9 @@ export default function Investigation() {
                  onConfirm={(text) => asking?.what === 'aside' ? setAside(id, asking.entry.id, text).then(done)
                    : Promise.resolve()} />
       <TrailDialog subject={following} onClose={() => setFollowing(null)} />
+      <CreatePackageDialog open={packaging} onClose={() => setPackaging(false)}
+                           investigation={{ id, label: `${file.investigation_number} — ${file.title}` }}
+                           onCreated={(made) => { setPackaging(false); navigate(`/evidence-packages/${made}`) }} />
     </Box>
   )
 }

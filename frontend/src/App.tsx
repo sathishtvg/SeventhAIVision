@@ -99,6 +99,9 @@ import SecurityFeedback from '@/pages/intel/Feedback'
 import InvestigationSearch from '@/pages/investigations/InvestigationSearch'
 import Investigations from '@/pages/investigations/Investigations'
 import Investigation from '@/pages/investigations/Investigation'
+import EvidencePackages from '@/pages/evidencePackages/EvidencePackages'
+import EvidencePackage from '@/pages/evidencePackages/EvidencePackage'
+import EvidenceHolds from '@/pages/evidencePackages/EvidenceHolds'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -259,6 +262,10 @@ export default function App() {
         <Route path="investigate" element={<InvestigationSearch />} />
         <Route path="investigations" element={<Investigations />} />
         <Route path="investigations/:id" element={<Investigation />} />
+        {/* Evidence packages: what was kept about a matter, sealed, held and accounted for. */}
+        <Route path="evidence-packages" element={<EvidencePackages />} />
+        <Route path="evidence-packages/:id" element={<EvidencePackage />} />
+        <Route path="evidence-holds" element={<EvidenceHolds />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

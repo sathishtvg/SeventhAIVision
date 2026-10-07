@@ -28,6 +28,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.evidence_hold import RECORDINGS, not_held
+
 logger = logging.getLogger(__name__)
 
 SUPERVISOR_INTERVAL = int(os.environ.get("RECORDING_SUPERVISOR_INTERVAL_SECONDS", "60"))
@@ -151,8 +153,9 @@ async def purge_expired_recordings(
     value ("keep nothing centrally", what a local-only site wants) and must not
     be confused with NULL ("inherit").
     """
+    # A recording under a hold is left alone, however old (services/evidence_hold.py).
     result = await session.execute(
-        text("""
+        text(f"""
             SELECT r.id, r.file_path
             FROM recordings r
             LEFT JOIN recording_policies p
@@ -160,6 +163,7 @@ async def purge_expired_recordings(
             WHERE r.status IN ('completed', 'failed')
               AND r.started_at < now() - make_interval(
                       days => COALESCE(p.central_retention_days, :days))
+              AND {not_held(RECORDINGS, 'r.id')}
             LIMIT 500
         """),
         {"days": retention_days},

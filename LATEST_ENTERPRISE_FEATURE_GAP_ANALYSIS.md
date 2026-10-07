@@ -356,7 +356,7 @@ written. This section is added to as each phase is finished.
 |---|---|---|---|
 | 0 | Audit | **Done 2026-10-06** | This document |
 | 1 | Smart investigation | **Built 2026-10-06** — migration `0143` | `SMART_INVESTIGATION_ARCHITECTURE.md` |
-| 2 | Evidence and custody | Not started | |
+| 2 | Evidence and custody | **Built 2026-10-07** — migration `0144` | `EVIDENCE_CHAIN_OF_CUSTODY.md` |
 | 3 | GIS | Not started | |
 | 4 | Dispatch, SLA, escalation | Not started | |
 | 5 | Occurrence book and handover | Not started | |
@@ -388,3 +388,31 @@ planned. The phone app is unchanged: guards hold neither new permission.
 `frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
 `frontend/src/hooks/usePermission.ts`. The existing `GET /api/v1/search` is as
 it was.
+
+### Phase 2 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Automatic evidence collection: **PARTIAL** — for a situation only | What the platform kept that belongs to the records of an investigation or an incident is found — the frame of that detection, the recording of that camera at that moment, the drone media of that sighting — and offered. A person chooses what goes in |
+| Evidence package: **MISSING** | A package: a draft put together from what belongs, then sealed. Sealing writes a manifest of every item with its checksum, and the SHA-256 of the manifest; a database trigger then refuses every change. Exported as a ZIP of the manifest as sealed, each original byte for byte with its checksum computed again and compared, and a marked viewing copy of each picture |
+| Chain of custody: **PARTIAL** — four actions, no reason, no package, no lock | One chain per package, from capture to release: captured, collected, accessed (the existing access log, unaltered), sealed, placed under a hold, exported, downloaded, shared, released, hold lifted — each with who, in what role, and why |
+| Retention: no hold that stops a purge | A hold stops all three retention jobs. Sealing places one on every item; one is lifted by a person with a reason |
+
+**The one change of behaviour to existing code in phase 2:** the three
+retention jobs — `backend/app/scheduler_main.py` (frames and clips),
+`backend/app/services/continuous_recording.py` (recordings) and
+`backend/app/services/drone_retention.py` (drone media) — each gained one
+predicate and now leave alone anything under a hold in force. With no hold,
+each deletes exactly what it deleted before; the existing tests of all three
+pass unchanged. The other existing files changed are by additions only:
+`backend/app/main.py`, `frontend/src/App.tsx`,
+`frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. The existing evidence, recording and
+drone endpoints and the existing `evidence_access_log` are as they were.
+
+**Not done in phase 2, and why:** video is not watermarked; nothing is
+digitally signed; the platform sends evidence to nobody (sharing and release
+are records of what a person did); a hold placed by hand on one item has an
+API and no screen; a virtual patrol's snapshot cannot be packaged; and the
+object-store path of an export has not been run against a real store on the
+development machine.
