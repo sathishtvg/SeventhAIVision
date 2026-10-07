@@ -130,6 +130,9 @@ const ALL_PERMISSIONS = [
   // Evidence packages (migration 0144). The platform owner, the client role
   // and guards hold none.
   'evidence:package:read', 'evidence:package:manage', 'evidence:package:export', 'evidence:hold:manage',
+  // The security map (migration 0145). The platform owner, the client role
+  // and guards hold neither.
+  'sitemap:read', 'sitemap:manage',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -242,6 +245,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'investigation:read', 'investigation:manage', // Smart Investigation (0143)
     // Evidence packages (0144): puts together, seals and exports; does not lift a hold
     'evidence:package:read', 'evidence:package:manage', 'evidence:package:export',
+    'sitemap:read', // The security map (0145): reads; does not draw places
   ],
   4: [ // operator
     'camera:read',
@@ -289,6 +293,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'intel:read', 'intel:recommendation:read', 'intel:decide', 'intel:override', // AI Security Intelligence (0132)
     'investigation:read', 'investigation:manage', // Smart Investigation (0143)
     'evidence:package:read', 'evidence:package:manage', // Evidence packages (0144): puts together and seals
+    'sitemap:read', // The security map (0145)
   ],
   5: [ // security_guard
     'camera:read',
@@ -358,6 +363,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'intel:read', // AI Security Intelligence (0132): situations and assessments, not the suggestions
     'investigation:read', // Smart Investigation (0143): searches and reads, files nothing
     'evidence:package:read', // Evidence packages (0144): reads
+    'sitemap:read', // The security map (0145)
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

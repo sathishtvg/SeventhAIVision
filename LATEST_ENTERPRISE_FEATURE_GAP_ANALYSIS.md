@@ -357,7 +357,7 @@ written. This section is added to as each phase is finished.
 | 0 | Audit | **Done 2026-10-06** | This document |
 | 1 | Smart investigation | **Built 2026-10-06** — migration `0143` | `SMART_INVESTIGATION_ARCHITECTURE.md` |
 | 2 | Evidence and custody | **Built 2026-10-07** — migration `0144` | `EVIDENCE_CHAIN_OF_CUSTODY.md` |
-| 3 | GIS | Not started | |
+| 3 | GIS | **Built 2026-10-07** — migration `0145` | `GIS_SECURITY_ARCHITECTURE.md` |
 | 4 | Dispatch, SLA, escalation | Not started | |
 | 5 | Occurrence book and handover | Not started | |
 | 6 | SOP | Not started | |
@@ -409,6 +409,25 @@ pass unchanged. The other existing files changed are by additions only:
 `frontend/src/components/layout/Sidebar.tsx`,
 `frontend/src/hooks/usePermission.ts`. The existing evidence, recording and
 drone endpoints and the existing `evidence_access_log` are as they were.
+
+### Phase 3 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Operational map: **PARTIAL** — sites with counts; separate maps in the drone and vehicle screens | One map in ten layers: sites, cameras, guards, open incidents, live alerts, open situations, drones, patrol checkpoints, places and drone zones — each under its own screen's existing permission and the reader's sites. What has no position is counted under the map, not hidden |
+| Site security map configuration: **PARTIAL** — no buildings, floors, gates, access points or emergency points | `site_places` (decision E4): a point, an outline, or a level of a building, drawn by an administrator. Optional; retired, never removed. An access point can name a door the platform knows, which gives door events a place to appear |
+| Live incident map: **MISSING** | Incidents, alerts and situations are on the map; selecting one lists the cameras, drones, checkpoints and places within a radius and every guard on shift at the site, nearest first |
+| Guard positions: none live | Still none live (decision E3). `guard_positions` reads the last position each guard recorded this shift and always gives its age; over an hour old is marked stale |
+
+**Existing files changed in phase 3, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. The existing Site Map (`/map`) is as it
+was.
+
+**Not done in phase 3, and why:** alarm panels and sensors are not drawn —
+they have no position of their own; there are no floor plans; distances are
+straight lines, not routes; and the map dispatches nobody (that is phase 4,
+and remains a person's act there too).
 
 **Not done in phase 2, and why:** video is not watermarked; nothing is
 digitally signed; the platform sends evidence to nobody (sharing and release

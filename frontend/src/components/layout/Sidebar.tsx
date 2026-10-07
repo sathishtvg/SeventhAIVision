@@ -67,6 +67,8 @@ import CableIcon from '@mui/icons-material/Cable'
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff'
 import ManageSearchIcon from '@mui/icons-material/ManageSearch'
 import FolderSpecialIcon from '@mui/icons-material/FolderSpecial'
+import TravelExploreIcon from '@mui/icons-material/TravelExplore'
+import PlaceIcon from '@mui/icons-material/Place'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -212,6 +214,7 @@ const NAV_SECTIONS: {
       { label: 'Incidents',      path: '/incidents',   icon: <ReportProblemIcon fontSize="small" />, permission: 'incident:read' },
       { label: 'Live Wall',      path: '/live',        icon: <LiveTvIcon fontSize="small" />,       permission: 'camera:read' },
       { label: 'Site Map',       path: '/map',         icon: <MapIcon fontSize="small" />,          permission: 'camera:read' },
+      { label: 'Security Map',   path: '/security-map', icon: <TravelExploreIcon fontSize="small" />, permission: 'sitemap:read' },
       { label: 'Emergency Alert', path: '/emergency',  icon: <CampaignIcon fontSize="small" />,     permission: 'broadcast:read' },
     ],
   },
@@ -283,6 +286,7 @@ const NAV_SECTIONS: {
     title: 'Sites & Devices',
     items: [
       { label: 'Sites',            path: '/sites',    icon: <ApartmentIcon fontSize="small" />,   permission: 'site:manage' },
+      { label: 'Site Places',      path: '/site-places', icon: <PlaceIcon fontSize="small" />,    permission: 'sitemap:manage' },
       { label: 'Cameras',          path: '/cameras',  icon: <VideocamIcon fontSize="small" />,    permission: 'camera:read' },
       { label: 'Zones',            path: '/zones',    icon: <LocationOnIcon fontSize="small" />,  permission: 'zone:manage' },
       { label: 'Barriers',         path: '/barriers', icon: <LockOpenIcon fontSize="small" />,    permission: 'barrier:read' },
