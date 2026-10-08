@@ -151,6 +151,8 @@ const ALL_PERMISSIONS = [
   'board:read', 'briefing:read', 'briefing:manage',
   // Taking an operations report out as a file (migration 0153). Admin, manager and supervisor only.
   'opsreport:export',
+  // Workforce readings and recommendations (migration 0154). The platform owner, a viewer and the client role hold none.
+  'workforce:read', 'workforce:answer', 'workforce:own',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -272,6 +274,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'advice:read', 'advice:answer', // Risk and advice (0151): reads it, and answers it
     'board:read', 'briefing:read', 'briefing:manage', // Operations board and briefing (0152): reads; drafts and publishes
     'opsreport:export', // Operations reports (0153): takes a report out as a file
+    'workforce:read', 'workforce:answer', 'workforce:own', // Workforce readings (0154): reads, answers; and their own
   ],
   4: [ // operator
     'camera:read',
@@ -326,6 +329,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'asset:read', 'maintenance:read', // Assets and maintenance (0150): reads; works the orders they are given
     'advice:read', // Risk and advice (0151): reads
     'board:read', 'briefing:read', // Operations board and briefing (0152): reads
+    'workforce:own', // Workforce readings (0154): their own reading, nobody else's
   ],
   5: [ // security_guard
     'camera:read',
@@ -363,6 +367,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'response:act', // Guard response (0146): answers for a dispatch they were sent on
     'sop:read', // The SOP library (0148)
     'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks at the gate; records the ID seen
+    'workforce:own', // Workforce readings (0154): their own reading, nobody else's
   ],
   6: [ // viewer
     'camera:read',
