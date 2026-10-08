@@ -392,3 +392,256 @@ it: tables named `security_…` are the intelligence layer's own.
   response, virtual patrols, shifts, cameras and visitors. That organisation
   has no guard tours, drone patrols or work orders in the last month, so those
   have run on test data only.
+
+---
+
+# Part two — Workforce readings and recommendations
+
+**Phase 11 of the enterprise expansion.** Built 2026-10-08, migration `0154`.
+
+Before this phase a guard's attendance, patrols, responses, violations,
+training and handovers were each on a screen of their own. Nothing read them
+together for a guard or for a site, nothing said what a manager might do about
+a certificate about to lapse or a tour missed again and again, and nothing set
+a site's busy hours beside the hours it rosters.
+
+```
+ what is recorded of a guard's work ──► A READING, counted when somebody asks:
+ shifts · patrols · responses ·          counts, each beside how much there was to do;
+ violations · training · handovers       no score, no rank, in order of name
+                │
+                ▼
+ A RECOMMENDATION for a manager ── training for a guard, cover for a site:
+ a statement with its counts, and one thing to consider
+                │
+                ▼
+ the manager's ANSWER, kept:  ACCEPTED │ NOT_ACCEPTED, with why
+ (it assigns no course and changes no roster)
+```
+
+---
+
+## 10. The rules of a reading and a recommendation
+
+1. **A reading is not an appraisal.** It is counts, and each count stands
+   beside how much there was to do: shifts late beside shifts worked, tours
+   missed beside tours due, responses declined beside responses sent. A guard
+   given more shifts has more chances to be late.
+2. **Nothing is scored and nobody is ranked.** There is no total, index or
+   grade of a person. A list of guards is in order of name, and the table has
+   nothing to sort it by. Two guards are not compared by anything here.
+3. **What a reviewer set aside is not counted against anybody.** A violation
+   that was waived is said to be waived, one that is disputed is said to be
+   disputed, and the column that counts violations counts those not waived.
+4. **A recommendation is never an employment decision and never a change to a
+   roster.** It is a statement of what is recorded, with the counts in it, and
+   one thing a manager might consider.
+5. **Training is recommended from what a guard was not given, not from what
+   they did wrong.** A certificate a rostered shift needs; a course whose pass
+   has lapsed; tours missed often enough that the route, or the time for it,
+   is worth a look. Lateness and violations are not turned into
+   recommendations: they have their own review, by a person.
+6. **Coverage compares a site with itself.** Its busy hours against the hours
+   rostered in them; its nights against its days. No site is compared with
+   another.
+7. **No course is invented.** A recommendation names the courses the library
+   holds under a category, or says it holds none.
+8. **Fixed rules, counted when asked.** No model, nothing learned and nothing
+   stored of a reading (owner decision E2).
+9. **An answer is a manager's, and changes nothing else.** Accepting a
+   recommendation assigns no course, moves no shift and records nothing
+   against anybody. The course is assigned in Training and the roster is
+   changed in the roster, by a person, as before. An answer is added and never
+   rewritten.
+10. **Each section is read under its own existing permission.** A person's own
+    reading is theirs, and is given whole.
+11. **Another person's reading is read by the organisation's own people, and
+    that it was read is written down.** A support session reads none.
+12. **Super Admin, a viewer and the client role hold none of the new
+    permissions; an operator and a guard hold only the one to read their own.**
+
+---
+
+## 11. A reading
+
+Six sections, each from rows the platform already keeps
+(`services/workforce_readings.py`):
+
+| Section | Read under | Its figures |
+|---|---|---|
+| `SHIFTS` | `shift:read` | `shifts`, `worked`, `late`, `late_minutes`, `not_started` |
+| `PATROLS` | `patrol:read` | `tours_done`, `tours_missed`, `walked`, `checkpoints_scanned`, `checkpoints_total` |
+| `RESPONSES` | `response:read` | `sent`, `accepted`, `declined`, `arrived`, `arrive_seconds` |
+| `VIOLATIONS` | `violation:read` | `recorded`, `waived`, `disputed`, `by_type` |
+| `TRAINING` | `training:read` | `completed`, `courses_lapsed_now`, `courses_lapsing_now`, `certificates_lapsed_now`, `certificates_lapsing_now`, `shifts_at_risk_now` |
+| `HANDOVERS` | `handover:read` | `given`, `accepted`, `disputed` |
+
+- **Shifts** are those due to begin in the period: worked, started late with
+  the minutes late in all, and never started.
+- **Patrols** are the tours assigned to the guard that fell due and are over,
+  and the patrols they walked with the checkpoints scanned of those on the
+  route.
+- **Responses** are each time the guard was sent to an incident: accepted,
+  declined, arrived, and the middle time from being sent to arriving.
+- **Violations** are those recorded in the period, with how many a reviewer
+  waived and how many the guard disputes, and by kind those not waived.
+- **Training** is courses passed in the period; and, as they stand today,
+  courses still run and certificates that have lapsed or lapse within 30
+  days, and rostered shifts whose requirement the guard does not meet — as the
+  existing certification sweep found them.
+- **Handovers** are those the guard gave, and how many the incoming guard
+  disputed.
+
+A period is the last 7, 28 or 90 days. The same figures are given for each
+guard, for each site, and for the sites together. Training is a person's and
+not a site's: it is in a guard's reading and in no site's.
+
+**Who is on the list.** Everybody with something recorded at the sites shown,
+and every guard in use who is posted to them — one with nothing recorded is
+still a guard. Somebody held to particular sites reads what is recorded at
+those sites, of the guards posted to them or with a shift at them.
+
+**One's own.** `GET /me` gives the caller their own reading: every section, at
+every site, and what is recommended for them — and nobody else's.
+
+---
+
+## 12. Recommendations
+
+Made of the last 4 weeks' records, whatever period a reading is for
+(`services/workforce_advice.py`):
+
+| Code | For | Speaks when |
+|---|---|---|
+| `CERTIFICATION` | A guard | A rostered shift from today on needs a certificate the guard does not hold, or one that will have lapsed, is marked not valid, or is close to lapsing — as the existing sweep recorded it |
+| `COURSE_LAPSED` | A guard | Their latest pass in a course that is still run has lapsed |
+| `COURSE_LAPSING` | A guard | It lapses within 30 days |
+| `MISSED_TOURS` | A guard | 3 or more of the tours assigned to them were missed |
+| `UNSTARTED_SHIFTS` | A site | 3 or more of its shifts were not started |
+| `HOURS_COVER` | A site | It had 10 or more incidents, half or more of them in one band of 4 hours, and fewer guard-hours were rostered in that band than in an average four hours of its day |
+| `SLOW_AT_NIGHT` | A site | 5 or more guards sent between 20:00 and 06:00 arrived, and 5 or more in the rest of the day, and the middle time at night is at least one and a half times the day's |
+
+What one looks like:
+
+> Mei Lin missed 3 of the 5 tours assigned to them that fell due in the last 4 weeks.
+> 3 of the 6 shifts due at Factory A in the last 4 weeks were not started.
+
+each followed by one thing to consider — for the first, whether the route can
+be walked in the time given and whether they have been shown it, with the
+courses the library files under `security`, or that it files none.
+
+**A manager's answer** is `ACCEPTED`, or `NOT_ACCEPTED` with a reason. The
+server counts the recommendation again first; if it no longer stands the
+answer is refused (409). What is kept in `workforce_advice_answers` is the
+statement as it stood, what it rested on, the answer, the reason, who and
+when. The application's role may read and add rows, and nothing else. Shown
+again, a recommendation carries its latest answer, and what it said then when
+that has changed (`said_then`).
+
+---
+
+## 13. The workforce API
+
+Under `/api/v1/workforce`:
+
+| | | Needs |
+|---|---|---|
+| `GET` | `/readings` | `workforce:read` |
+| `GET` | `/readings/{id}` | `workforce:read` |
+| `GET` | `/me` | `workforce:own` |
+| `GET` | `/recommendations` | `workforce:read` |
+| `POST` | `/recommendations/answer` | `workforce:read`, `workforce:answer` |
+| `GET` | `/recommendations/answers` | `workforce:read` |
+
+Nothing is changed or removed by any of them but an answer being added.
+Audited: `workforce.readings.read`, `workforce.reading.read`,
+`workforce.answer`. Reading one's own is not audited: it is not a look at
+somebody else.
+
+**Workforce permissions** (migration `0154`):
+
+| | Admin 2 | Manager 8 | Supervisor 3 | Operator 4 | Guard 5 | Viewer 6 | Client 7 | Super Admin 1 |
+|---|---|---|---|---|---|---|---|---|
+| `workforce:read` | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `workforce:answer` | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `workforce:own` | – | – | ✓ | ✓ | ✓ | – | – | – |
+
+---
+
+## 14. The workforce screens
+
+- **Workforce Readings** (`/workforce-readings`), under Guard Operations, in
+  three parts — **Guards**: the guards in order of name, each cell a count
+  beside how much there was to do, with nothing to sort them by; a guard's row
+  opens their whole reading, section by section and site by site, with what
+  is recommended for them. **Sites**: the same counts for each site and the
+  sites together. **Recommendations**: training for guards and cover for
+  sites, each with what to consider and its answer; accepting, or not
+  accepting with a reason; the answers given.
+- **My Reading** (`/my-reading`): a person's own reading, whole, with nothing
+  to answer.
+
+The phone is not changed in this phase. The existing attendance, shifts,
+roster, tour compliance, violations, training and certification screens are
+unchanged.
+
+---
+
+## 15. The workforce files
+
+| | |
+|---|---|
+| `backend/alembic/versions/0154_workforce_advice_answers.py` | One table, its policy and grants, three permissions |
+| `backend/app/services/workforce_readings.py` | The sections, how each is counted, who is on the list. Reads only |
+| `backend/app/services/workforce_advice.py` | The rules, and what they are made of. Reads only |
+| `backend/app/routers/workforce.py` | Readings, one's own, recommendations, answering |
+| `frontend/src/api/workforce.ts` | The typed client |
+| `frontend/src/pages/workforce/` | The two screens |
+| `frontend/src/components/workforce/` | Their wording |
+
+Existing files changed in this part, by additions only: `backend/app/main.py`
+(the router is registered), `frontend/src/App.tsx` (two routes),
+`frontend/src/components/layout/Sidebar.tsx` (two menu entries),
+`frontend/src/hooks/usePermission.ts` (the three permissions).
+
+No existing table is altered by this part either. The new table refers to
+`users` and `sites`. The roster, the auto-scheduler, the training module, the
+violations review and the certification sweep are not called, changed or
+written to.
+
+---
+
+## 16. The workforce tests
+
+| | |
+|---|---|
+| `backend/tests/test_workforce.py` | The rules line by line; a reading counted from the database for a guard, a site and a period; whose reading somebody may read; recommendations and a manager's answer; what the application's role and the database refuse |
+| `backend/tests/test_workforce_docs.py` | That this part says what the code does |
+| `frontend/src/pages/workforce/workforceReadings.test.tsx` | The two screens: their words, the guards and sites, a guard's reading, recommendations and answering, one's own |
+
+---
+
+## 17. What the workforce part does not do
+
+- **It appraises nobody.** No score, grade, rank or league table is made, and
+  two guards are never set side by side.
+- **It decides nothing about anybody's employment**, records nothing against
+  anybody, and tells nobody anything: no notice goes to a guard or to anybody
+  else.
+- **It assigns no course and changes no roster.** Accepting a recommendation
+  is a manager's note. The roster's own auto-scheduler is not run by it.
+- **It does not say why.** A shift not started is counted as not started
+  whether the guard was ill, on leave that was never put into the roster, or
+  absent; leave is not read. That is one reason a count is not a judgement.
+- **It makes no recommendation out of lateness or violations.** They are
+  counted in the reading, with what was waived and what is disputed.
+- **It compares rostered hours, not who stood where.** `HOURS_COVER` is made
+  of shifts as scheduled.
+- **It relies on the existing certification sweep** for what a rostered shift
+  needs. A shift the sweep has not looked at is not in it.
+- **It is not taken out as a file.** There is no report of readings.
+- **The phone is not part of it.** A guard reads their own reading on the web.
+- **It has run on the development organisation's shifts, violations and
+  certification findings.** That organisation has no assigned tours,
+  handovers or lapsed courses in the last four weeks, so those have run on
+  test data only.

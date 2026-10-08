@@ -77,6 +77,7 @@ import HowToRegIcon from '@mui/icons-material/HowToReg'
 import HandymanIcon from '@mui/icons-material/Handyman'
 import QueryStatsIcon from '@mui/icons-material/QueryStats'
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
+import FactCheckIcon from '@mui/icons-material/FactCheck'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -258,6 +259,8 @@ const NAV_SECTIONS: {
       { label: 'Leave',           path: '/leave',       icon: <EventBusyIcon fontSize="small" />,    permission: 'leave:read' },
       { label: 'Payroll',         path: '/payroll',     icon: <PaymentsIcon fontSize="small" />,     permission: 'payroll:read' },
       { label: 'Guard Training',  path: '/training',    icon: <SchoolIcon fontSize="small" />,       permission: 'training:read' },
+      { label: 'Workforce Readings', path: '/workforce-readings', icon: <FactCheckIcon fontSize="small" />, permission: 'workforce:read' },
+      { label: 'My Reading',      path: '/my-reading',  icon: <FactCheckIcon fontSize="small" />,    permission: 'workforce:own' },
       { label: 'SOP',              path: '/post-orders', icon: <SecurityIcon fontSize="small" />,     permission: 'shift:read' },
       { label: 'SOP Library',      path: '/sop-library', icon: <LibraryBooksIcon fontSize="small" />, permission: 'sop:read' },
       { label: 'Key Register',     path: '/key-register', icon: <VpnKeyIcon fontSize="small" />,      permission: 'keyreg:read' },

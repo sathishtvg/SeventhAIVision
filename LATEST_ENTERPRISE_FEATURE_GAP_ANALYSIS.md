@@ -365,7 +365,7 @@ written. This section is added to as each phase is finished.
 | 8 | Device health, assets, maintenance | **Built 2026-10-08** — migration `0150` | `DEVICE_HEALTH_ARCHITECTURE.md` |
 | 9 | Risk and advisor | **Built 2026-10-08** — migration `0151` | `SECURITY_RISK_ARCHITECTURE.md` |
 | 10 | Analytics | **Built 2026-10-08** — migrations `0152`, `0153` | `SECURITY_ANALYTICS_ARCHITECTURE.md` |
-| 11 | Workforce intelligence | Not started | |
+| 11 | Workforce intelligence | **Built 2026-10-08** — migration `0154` | `SECURITY_ANALYTICS_ARCHITECTURE.md`, part two |
 | 12 | Case management | Not started | |
 | 13 | Compliance and hardening | Not started | |
 | 14 | Integration testing | Not started | |
@@ -674,3 +674,35 @@ value as it is. One that begins with `=`, `+`, `-` or `@` — an incident's
 title, say — is run as a formula by a spreadsheet that opens the file. The new
 reports make such text plain; changing the existing exports is a change to
 existing behaviour and was not made.
+
+### Phase 11 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Performance analysis: **PARTIAL** — missing one reading per guard and per site across attendance, lateness, patrols, violations, training, certification and handovers; response times. Never an employment decision | One reading for each guard and each site, over 7, 28 or 90 days, in six sections — shifts, patrols, responses, violations, training and certifications, handovers — each a count beside how much there was to do, with the middle time from being sent to arriving. Nothing is scored, nobody is ranked, and a list of guards is in order of name. A violation that was waived or is disputed is said to be. Each section is read under its own permission; a guard, an operator and a supervisor read their own, whole |
+| Training recommendations: **MISSING** — a recommendation from repeated misses, for a manager to assign or not | For a guard: a certificate a rostered shift needs and they do not hold or will not; a course whose latest pass has lapsed or lapses within 30 days; three or more assigned tours missed in four weeks, with the courses the library files under security or that it files none. A manager answers each — accepted, or not accepted with a reason — and the course is assigned in Training, by a person, as before |
+| Coverage optimisation: **PARTIAL** — missing a recommendation from incident volume, night activity and response times. Never a change to a roster | For a site, compared with itself: three or more shifts not started; its busiest four hours holding half its incidents and rostered more thinly than an average four hours of its day; guards arriving half as slowly again at night as in the day. Each a statement with its counts and one thing to consider. Nothing touches the roster |
+
+**Existing files changed in phase 11, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. The attendance, shift, roster, tour
+compliance, violation, training and certification screens and services are as
+they were, and none of them is called by the new code. No existing table is
+altered.
+
+**Not done in phase 11, and why:** nobody is appraised, scored or ranked, and
+nothing is decided about anybody's employment — the brief forbids it and the
+code has nowhere to keep such a thing; accepting a recommendation assigns no
+course and changes no roster; lateness and violations are counted and not
+turned into recommendations, because they already have a person's review;
+nothing says why a shift was not started, and leave is not read, which is one
+reason a count is not a judgement; cover is compared from shifts as rostered,
+not from who stood where; what a rostered shift needs is as the existing
+certification sweep recorded it; a reading is not taken out as a file — the
+"guard performance" report the gap analysis lists is deliberately not made,
+since a file of guards and counts is a league table waiting to be sorted;
+nothing is sent to a guard; the phone has no part of it, and a guard reads
+their own reading on the web; and it has run on the development
+organisation's shifts, violations and certification findings — that
+organisation has no assigned tours, handovers or lapsed courses in the last
+four weeks, so those have run on test data only.
