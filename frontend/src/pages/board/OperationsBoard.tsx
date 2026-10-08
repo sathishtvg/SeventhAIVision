@@ -9,6 +9,8 @@
  * score. A section the reader may not read is left out and named.
  *
  * A briefing is drafted by the server and published by a person.
+ *
+ * A report is the records themselves, taken out as a file by somebody who may.
  */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -26,13 +28,14 @@ import { usePermission } from '@/hooks/usePermission'
 import { apiError, getBoard, getBoardSites, listBriefings } from '@/api/operationsBoard'
 import type { Board, Briefing, Figures, NotRead, SectionKey } from '@/api/operationsBoard'
 import { BriefingDialog, DraftDialog } from '@/components/board/BriefingDialogs'
+import { ReportsTab } from '@/components/board/ReportsTab'
 import {
   COLUMNS, DEVICE_COLOUR, DEVICE_LABEL, DEVICE_ORDER, PATROL_KINDS, PATROL_LABEL, PERIODS, STATE_COLOUR, STATE_LABEL,
   briefingFor, briefingLine, cell, fmt, fmtDay, lasting, patrolLine, periodLabel,
 } from '@/components/board/boardFormat'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
-type Part = 'board' | 'sites' | 'briefings'
+type Part = 'board' | 'sites' | 'briefings' | 'reports'
 
 /** One figure with its label. "now" says it is as things stand, not what fell in the period. */
 function Tile({ label, value, now, of }: { label: string; value: ReactNode; now?: boolean; of?: string }) {
@@ -367,7 +370,8 @@ function BriefingsTab() {
 export default function OperationsBoard() {
   const board = usePermission('board:read')
   const briefings = usePermission('briefing:read')
-  const [part, setPart] = useState<Part>(board ? 'board' : 'briefings')
+  const reports = usePermission('opsreport:export')
+  const [part, setPart] = useState<Part>(board ? 'board' : briefings ? 'briefings' : 'reports')
   const [siteId, setSiteId] = useState('')
   const [clientId, setClientId] = useState('')
   const [days, setDays] = useState(1)
@@ -379,12 +383,14 @@ export default function OperationsBoard() {
         {board && <Tab value="board" label="Board" />}
         {board && <Tab value="sites" label="Sites and customers" />}
         {briefings && <Tab value="briefings" label="Daily briefing" />}
+        {reports && <Tab value="reports" label="Reports" />}
       </Tabs>
       {part === 'board' && board && (
         <BoardTab siteId={siteId} setSiteId={setSiteId} clientId={clientId} setClientId={setClientId} days={days} setDays={setDays} />)}
       {part === 'sites' && board && (
         <SitesTab days={days} setDays={setDays} onOpen={(id) => { setClientId(''); setSiteId(id); setPart('board') }} />)}
       {part === 'briefings' && briefings && <BriefingsTab />}
+      {part === 'reports' && reports && <ReportsTab />}
     </Box>
   )
 }

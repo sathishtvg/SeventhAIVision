@@ -11,8 +11,9 @@ from pathlib import Path
 from app.main import app
 from app.routers import daily_briefings as briefings_api
 from app.routers import operations_board as board_api
+from app.routers import operations_reports as reports_api
 from app.services import daily_briefing as briefing
-from app.services import device_health, ops_board, response_sla, risk_patterns
+from app.services import device_health, ops_board, ops_reports, response_sla, risk_patterns
 from tests._repo import REPO_ROOT, requires_repo_tree
 
 pytestmark = requires_repo_tree
@@ -21,8 +22,9 @@ DOC = REPO_ROOT / "SECURITY_ANALYTICS_ARCHITECTURE.md"
 GAPS = REPO_ROOT / "LATEST_ENTERPRISE_FEATURE_GAP_ANALYSIS.md"
 WEB = REPO_ROOT / "frontend" / "src"
 MIGRATION = REPO_ROOT / "backend" / "alembic" / "versions" / "0152_daily_briefings.py"
-BOARD, BRIEFINGS = "/api/v1/operations-board", "/api/v1/daily-briefings"
-CODES = ("board:read", "briefing:read", "briefing:manage")
+REPORT_MIGRATION = REPO_ROOT / "backend" / "alembic" / "versions" / "0153_operations_reports.py"
+BOARD, BRIEFINGS, REPORTS = "/api/v1/operations-board", "/api/v1/daily-briefings", "/api/v1/operations-reports"
+CODES = ("board:read", "briefing:read", "briefing:manage", "opsreport:export")
 CHANGED = ["backend/app/main.py", "frontend/src/App.tsx", "frontend/src/components/layout/Sidebar.tsx",
            "frontend/src/hooks/usePermission.ts"]
 EVERYTHING = frozenset(board_api.SOURCE_PERMISSIONS)
@@ -136,7 +138,7 @@ def test_the_board_only_reads_and_the_document_names_what_it_reads():
     named = set(re.findall(r"`([a-z_]+)`", _flat(_doc()).split("The board reads ", 1)[1].split("and writes to none", 1)[0]))
     assert named == read and len(read) == 15
     doc = _flat(_doc())
-    for said in ("The board stores nothing and writes nothing.", "Nothing is scored and nobody is named.",
+    for said in ("The board stores nothing and writes nothing.", "Nothing is scored, and the board and a briefing name nobody.",
                  "A figure is a count of what is recorded, and says what it counts.",
                  "When there were none it is nothing, not zero.",
                  "Each section is read under its own existing permission.",
@@ -234,7 +236,7 @@ def test_the_platform_drafts_a_person_publishes_and_what_is_published_is_held_st
         assert "_a_person(token)" in router.split(f"async def {name}", 1)[1].split("@router.", 1)[0], name
     scheduler = (REPO_ROOT / "backend" / "app" / "scheduler_main.py").read_text(encoding="utf-8")
     assert "daily_briefing" not in scheduler and "ops_board" not in scheduler
-    not_done = _flat(_doc().split("## 8. What this does not do", 1)[1])
+    not_done = _flat(_doc().split("## 9. What this does not do", 1)[1])
     assert "It drafts nothing by itself." in not_done and "No scheduler writes one each morning." in not_done
     for path in (briefings_api.__file__, briefing.__file__):
         code = _code(path).lower()
@@ -257,21 +259,25 @@ def test_the_platform_drafts_a_person_publishes_and_what_is_published_is_held_st
 
 
 def test_the_document_lists_every_route_what_each_needs_and_every_audited_act():
-    section = _section("## 4. API", "**Permissions**")
+    section = _section("## 5. API", "**Permissions**")
     first, second = section.split("Under `/api/v1/daily-briefings`", 1)
+    second, third = second.split("Under `/api/v1/operations-reports`", 1)
 
     def table(text: str) -> dict:
         return {(method, path): frozenset(re.findall(r"`([a-z:]+)`", needs))
                 for method, path, needs in re.findall(r"^\| `(GET|POST|PUT|PATCH|DELETE)` \| `([^`]*)` \|([^|]*)\|$",
                                                       text, re.M)}
 
-    for base, text, always, count in ((BOARD, first, "board:read", 2), (BRIEFINGS, second, "briefing:read", 7)):
+    for base, text, always, count in ((BOARD, first, "board:read", 2), (BRIEFINGS, second, "briefing:read", 7),
+                                      (REPORTS, third, "opsreport:export", 2)):
         served = {(method, path): needs - {always} for method, path, needs in _routes(base)}
         assert all(always in needs for _, _, needs in _routes(base)), f"every route under {base} needs {always}"
         assert table(text) == served and len(served) == count, base
         assert not [m for m, _ in served if m in ("PUT", "DELETE")]
-    assert {m for m, _, _ in _routes(BOARD)} == {"GET"}
-    assert "There is no `PUT` or `DELETE` under either, and nothing but `GET` under the board." in _flat(section)
+    assert {m for m, _, _ in _routes(BOARD)} == {"GET"} == {m for m, _, _ in _routes(REPORTS)}
+    assert "There is no `PUT` or `DELETE` under any, and nothing but `GET` under the board and the reports." in _flat(section)
+    assert "`GET /{key}` also needs what that report's records are read under" in _flat(section)
+    assert "`report.export`" in section
     router = Path(briefings_api.__file__).read_text(encoding="utf-8")
     written = set(re.findall(r'"(briefing\.[a-z_.]+)"', router))
     assert written == set(re.findall(r"`(briefing\.[a-z_.]+)`", section)) and len(written) == 5
@@ -279,21 +285,23 @@ def test_the_document_lists_every_route_what_each_needs_and_every_audited_act():
 
 
 def test_the_document_says_who_holds_what_and_the_migration_and_the_web_agree():
-    migration = MIGRATION.read_text(encoding="utf-8")
+    migration = MIGRATION.read_text(encoding="utf-8") + REPORT_MIGRATION.read_text(encoding="utf-8")
     granted: dict[str, set[int]] = {}
-    for role, code in re.findall(r"\((\d), '((?:board|briefing):[a-z]+)'\)", migration):
+    for role, code in re.findall(r"\((\d), '((?:board|briefing|opsreport):[a-z]+)'\)", migration):
         granted.setdefault(code, set()).add(int(role))
-    assert granted == {"board:read": {2, 3, 4, 6, 8}, "briefing:read": {2, 3, 4, 6, 8}, "briefing:manage": {2, 3, 8}}
+    assert granted == {"board:read": {2, 3, 4, 6, 8}, "briefing:read": {2, 3, 4, 6, 8}, "briefing:manage": {2, 3, 8},
+                       "opsreport:export": {2, 3, 8}}
+    assert "(migrations `0152`, `0153`)" in _doc()
     header = re.search(r"^\| \| Admin 2 \|.*$", _doc(), re.M).group(0)
     roles = [int(n) for n in re.findall(r" (\d) \|", header)]
     for code, holders in granted.items():
         cells = re.search(rf"^\| `{code}` \|(.*)\|$", _doc(), re.M).group(1).split("|")
         assert {role for role, cell in zip(roles, cells) if "✓" in cell} == holders, code
     assert "Super Admin, a guard and the client role hold none of the new permissions." in _flat(_doc())
-    assert briefings_api.PERMISSIONS == CODES[1:]
+    assert briefings_api.PERMISSIONS == CODES[1:3]
 
     src = (WEB / "hooks" / "usePermission.ts").read_text(encoding="utf-8")
-    pattern = r"'((?:board|briefing):[a-z]+)'"
+    pattern = r"'((?:board|briefing|opsreport):[a-z]+)'"
     assert set(re.findall(pattern, src.split("const PLATFORM_PERMISSIONS")[0])) == set(CODES)
     table = src.split("const ROLE_PERMISSIONS", 1)[1].split("export function usePermission", 1)[0]
     web = {role: set(re.findall(pattern, re.search(rf"\n  {role}: \[(.*?)\n  \],", table, re.S).group(1)))
@@ -312,14 +320,16 @@ def test_the_screen_is_in_the_menu_and_the_existing_ones_are_as_they_were():
     for path in ('path="operations-board"', 'path="command-centre"', 'path="analytics"', 'path="reports"'):
         assert path in routes
     doc = _flat(_doc())
-    assert "(`/operations-board`), under Monitoring, in three parts" in doc
+    assert "(`/operations-board`), under Monitoring, in four parts" in doc
     assert "The phone is not changed in this phase." in doc
     assert ("The existing dashboard (`/`), command centre (`/command-centre`), analytics (`/analytics`) and reports "
             "(`/reports`) are unchanged.") in doc
     page = (WEB / "pages" / "board" / "OperationsBoard.tsx").read_text(encoding="utf-8")
-    for label, part in (("Board", "Board"), ("Sites and customers", "Sites and customers"), ("Daily briefing", "Daily briefing")):
+    for label, part in (("Board", "Board"), ("Sites and customers", "Sites and customers"), ("Daily briefing", "Daily briefing"),
+                        ("Reports", "Reports")):
         assert f'label="{label}"' in page and f"**{part}**" in _doc(), part
     assert "usePermission('board:read')" in page and "usePermission('briefing:read')" in page
+    assert "usePermission('opsreport:export')" in page
     assert "usePermission('briefing:manage')" not in page, "whether somebody may draft is the server's to say"
     assert "data?.can_manage" in page
     client = (WEB / "api" / "operationsBoard.ts").read_text(encoding="utf-8")
@@ -344,9 +354,9 @@ def test_the_screen_is_in_the_menu_and_the_existing_ones_are_as_they_were():
 
 
 def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_phase():
-    for path in re.findall(r"^\| `([a-z_/.0-9A-Za-z]+)` \|", _section("## 6. Files", "## 7."), re.M):
+    for path in re.findall(r"^\| `([a-z_/.0-9A-Za-z]+)` \|", _section("## 7. Files", "## 8."), re.M):
         assert (REPO_ROOT / path).exists(), path
-    for path in re.findall(r"^\| `((?:backend/tests|frontend/src)/[A-Za-z_/.]+)` \|", _doc().split("## 7. Tests", 1)[1], re.M):
+    for path in re.findall(r"^\| `((?:backend/tests|frontend/src)/[A-Za-z_/.]+)` \|", _doc().split("## 8. Tests", 1)[1], re.M):
         assert (REPO_ROOT / path).exists(), path
     changed = re.findall(r"`((?:backend|frontend|mobile)/[A-Za-z_/.]+)`",
                          _doc().split("Existing files changed", 1)[1].split("No existing table is altered", 1)[0])
@@ -359,15 +369,79 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     assert "The table is `daily_briefings` and not `security_briefings`, as the plan had it" in _flat(_doc())
     assert "The new table refers to `sites` and `users`." in _flat(_doc())
     assert set(re.findall(r"REFERENCES (\w+)\(", upgrade)) == {"tenants", "sites", "users"}
-    not_done = _flat(_doc().split("## 8. What this does not do", 1)[1])
-    for said in ("It scores nothing.", "It names nobody.", "It keeps no history of the board.",
-                 "It does not let a line be rewritten.", "It has no reports of its own yet.",
+    not_done = _flat(_doc().split("## 9. What this does not do", 1)[1])
+    for said in ("It scores nothing.", "The board and a briefing name nobody.", "It keeps no history of the board.",
+                 "It does not let a line be rewritten.", "It delivers no report on a schedule.",
                  "The phone is not part of it."):
         assert said in not_done, said
     built = GAPS.read_text(encoding="utf-8").split("## 9. As built", 1)[1]
-    assert "| 10 | Analytics | **Board and briefing built 2026-10-08**" in built and "SECURITY_ANALYTICS_ARCHITECTURE.md" in built
+    assert "| 10 | Analytics | **Built 2026-10-08** — migrations `0152`, `0153`" in built and "SECURITY_ANALYTICS_ARCHITECTURE.md" in built
     phase = built.split("### Phase 10", 1)[1]
     assert re.findall(r"`((?:backend|frontend|mobile)/[A-Za-z_/.]+)`",
                       phase.split("**Existing files changed in phase 10, by additions only:**", 1)[1]
                       .split("The dashboard, the command centre", 1)[0]) == CHANGED
-    assert "are not in this part" in _flat(phase) and "nothing is scored, graded or ranked" in _flat(phase)
+    assert "no report is delivered on a schedule" in _flat(phase) and "nothing is scored, graded or ranked" in _flat(phase)
+    for path in ("backend/alembic/versions/0153_operations_reports.py", "backend/app/services/ops_reports.py",
+                 "backend/app/routers/operations_reports.py", "frontend/src/api/operationsReports.ts",
+                 "backend/tests/test_operations_reports.py", "frontend/src/pages/board/operationsReports.test.tsx"):
+        assert f"`{path}`" in _doc() and (REPO_ROOT / path).exists(), path
+
+
+def test_the_document_gives_each_report_what_it_is_read_under_and_how_a_file_is_written():
+    section = _section("## 4. Reports", "## 5.")
+    rows = re.findall(r"^\| `([a-z-]+)` \| ([^|]*) \| ([^|]*) \|$", section, re.M)
+    assert [key for key, _, _ in rows] == [r.key for r in ops_reports.REPORTS] and len(rows) == 9
+    for key, needs, _ in rows:
+        assert tuple(re.findall(r"`([a-z:]+)`", needs)) == ops_reports.BY_KEY[key].needs, key
+    flat = _flat(section)
+    assert "(`services/ops_reports.py`)" in flat and "Nine of them, each a list and none a judgement" in flat
+    assert "A period** is the last 1, 7, 30 or 90 days." in flat and ops_reports.PERIOD_DAYS == (1, 7, 30, 90)
+    assert [r.key for r in ops_reports.REPORTS if not r.periodic] == ["device-health", "risk"]
+    assert "`device-health` is of how things are now and `risk` is of the last 4 weeks whatever is asked: neither takes a period." in flat
+    assert ops_reports.ADVICE_WEEKS == 4
+    # What a spreadsheet would run is made text; a time says its zone; a cut file says so.
+    assert "begins with `=`, `+`, `-`, `@`, a tab or a return is written with an apostrophe before it" in flat
+    from zoneinfo import ZoneInfo
+    for typed in ("=1+1", "+1", "-1", "@a", "\tx", "\rx"):
+        assert ops_reports.cell(typed, ZoneInfo("UTC")) == "'" + typed
+    assert ops_reports.cell("Mei Lin", ZoneInfo("UTC")) == "Mei Lin"
+    assert "the heading of its column names the time zone" in flat
+    assert ops_reports.headings(ops_reports.BY_KEY["access"], "UTC")[0] == "Happened at (UTC)"
+    router = _code(reports_api.__file__)
+    assert "byte-order mark" in flat and 'content.encode("utf-8-sig")' in router
+    assert "A file holds at most 10,000 records.** Past that its last line says it was cut, in words, and so do the response's headers." in flat
+    assert ops_reports.MAX_ROWS == 10000 and ops_reports.CUT.startswith("Cut at {n} records.") and '"X-Report-Cut"' in router
+    # Two permissions; nothing stored but the audit line; a support session takes none out.
+    assert "`opsreport:export` to take any report out, and the permission the report's own records are read under" in flat
+    assert "opsreport:export" not in reports_api.PERMISSIONS and "ops_reports.may_have(r, held)" in router
+    assert "(`report.export`)" in flat and router.count("intel_audit.record(") == 1 and '"report.export"' in router
+    assert "A support session takes none out.** " in flat and "An API key may." in flat
+    assert "if token.support_session_id:" in router and "via_api_key" not in router
+    service = _code(ops_reports.__file__)
+    assert not re.search(r"\b(INSERT INTO|UPDATE |DELETE FROM)", service + router)
+    doc = _flat(_doc())
+    for said in ("A report is the records as they are.", "Taking records out is its own permission, held on top of the one they are read under.",
+                 "`opsreport:export` alone opens no report, and a support session takes none out.",
+                 "A file is written to be opened safely and read rightly.", "Every report taken out is audited"):
+        assert said in doc, said
+    upgrade = REPORT_MIGRATION.read_text(encoding="utf-8").split("def upgrade", 1)[1].split("def downgrade", 1)[0]
+    assert "CREATE TABLE" not in upgrade and "ALTER TABLE" not in upgrade
+    # What it does not do, and that the existing reports and exports are as they were.
+    not_done = _flat(_doc().split("## 9. What this does not do", 1)[1])
+    for said in ("It delivers no report on a schedule.", "A report is a CSV file.", "It has no report per guard.",
+                 "The existing scheduled reports are unchanged and do not carry these."):
+        assert said in not_done, said
+    routers = REPO_ROOT / "backend" / "app" / "routers"
+    assert 'VALID_REPORT_TYPES = {"site_summary", "dob", "incident_summary"}' in (routers / "scheduled_reports.py").read_text(encoding="utf-8")
+    for name in ("scheduled_reports.py", "exports.py", "reports.py"):
+        assert "ops_reports" not in (routers / name).read_text(encoding="utf-8"), name
+    assert "ops_reports" not in (REPO_ROOT / "backend" / "app" / "scheduler_main.py").read_text(encoding="utf-8")
+    phase = GAPS.read_text(encoding="utf-8").split("### Phase 10", 1)[1]
+    assert "**Found in phase 10 and left alone (for phase 13):** the existing CSV exports" in phase
+    assert "`=`" not in (routers / "exports.py").read_text(encoding="utf-8"), "the existing exports were not changed"
+    # The screen: a report the reader may not have is not offered, and says why; the list is the server's.
+    tab = (WEB / "components" / "board" / "ReportsTab.tsx").read_text(encoding="utf-8")
+    assert "disabled={!r.may || take.isPending}" in tab and "{r.why_not}" in tab and "read under {r.needs.join(' and ')}" in tab
+    assert "{data.note}" in tab and "usePermission" not in tab
+    client = (WEB / "api" / "operationsReports.ts").read_text(encoding="utf-8")
+    assert "responseType: 'blob'" in client and "`${BASE}/${key}`" in client

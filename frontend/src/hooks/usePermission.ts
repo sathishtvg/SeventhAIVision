@@ -149,6 +149,8 @@ const ALL_PERMISSIONS = [
   'advice:read', 'advice:answer',
   // The operations board and the daily briefing (migration 0152). The platform owner, a guard and the client role hold none.
   'board:read', 'briefing:read', 'briefing:manage',
+  // Taking an operations report out as a file (migration 0153). Admin, manager and supervisor only.
+  'opsreport:export',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -269,6 +271,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'asset:read', 'asset:manage', 'maintenance:read', 'maintenance:manage', // Assets and maintenance (0150)
     'advice:read', 'advice:answer', // Risk and advice (0151): reads it, and answers it
     'board:read', 'briefing:read', 'briefing:manage', // Operations board and briefing (0152): reads; drafts and publishes
+    'opsreport:export', // Operations reports (0153): takes a report out as a file
   ],
   4: [ // operator
     'camera:read',

@@ -1,7 +1,7 @@
-# Operations Board and Daily Briefing — Architecture
+# Operations Board, Daily Briefing and Reports — Architecture
 
 **Phase 10 of the enterprise expansion** (`LATEST_ENTERPRISE_FEATURE_GAP_ANALYSIS.md`).
-Built 2026-10-08, migration `0152`. This document says what was built, the
+Built 2026-10-08, migrations `0152` and `0153`. This document says what was built, the
 rules it is built under, and what it deliberately does not do.
 
 Before this phase each part of the operation had its figures on its own
@@ -23,6 +23,10 @@ a person to send round.
                           ▼
                      PUBLISHED ── and from then not changed;
                                   a correction is a new revision
+
+ the records themselves ──► A REPORT: a CSV file, made when it is asked for,
+                            under the records' own permission and the one to
+                            take a report out; audited; stored nowhere
 ```
 
 ---
@@ -41,9 +45,9 @@ a person to send round.
    `board:read` shows the board; it does not show the incidents of somebody
    who may not read incidents. What the caller may not read is left out and
    named, with the permission it wants.
-4. **Nothing is scored and nobody is named.** There is no index, grade or
-   rating of a site, a customer or a person; every figure is a number of
-   records.
+4. **Nothing is scored, and the board and a briefing name nobody.** There is
+   no index, grade or rating of a site, a customer or a person; every figure
+   is a number of records.
 5. **Somebody held to particular sites sees those sites.** What has no site —
    an incident with no camera, a recorder — is counted only for somebody who
    is not.
@@ -70,6 +74,16 @@ a person to send round.
     support session — and is audited.
 13. **Super Admin, a guard and the client role hold none of the new
     permissions.**
+14. **A report is the records as they are.** It is a list, not a judgement,
+    made when it is asked for and stored nowhere.
+15. **Taking records out is its own permission, held on top of the one they
+    are read under.** `opsreport:export` alone opens no report, and a support
+    session takes none out.
+16. **A file is written to be opened safely and read rightly.** Text a
+    spreadsheet would run as a formula is made plain text; a time says its
+    time zone; a file that was cut says so.
+17. **Every report taken out is audited**: who, which, for where, and how many
+    records.
 
 ---
 
@@ -184,7 +198,50 @@ not held to particular sites.
 
 ---
 
-## 4. API
+## 4. Reports
+
+A report is records the platform already keeps, taken out as a CSV file
+(`services/ops_reports.py`). Nine of them, each a list and none a judgement:
+
+| Report | Read under | A row is |
+|---|---|---|
+| `board-sites` | `board:read` | A site, with the board's figures for the period. A figure of a section the reader may not read is blank |
+| `response` | `response:read`, `incident:read` | An incident opened in the period: when somebody first acted on it, when it was resolved, the guards sent, the clocks missed |
+| `device-health` | `asset:read` | A device, as it is read now and why |
+| `maintenance` | `maintenance:read` | A work order raised or completed in the period, or still waiting or in hand |
+| `visitors` | `visitorauth:read` | A visitor's or a contractor's authorisation asked for in the period |
+| `access` | `access:read` | A door event in the period, with the door and the credential used |
+| `risk` | `advice:read` | A piece of advice that stands over the last 4 weeks, with how much history it rests on and the latest answer to it |
+| `evidence` | `evidence:package:read` | An evidence package made or sealed in the period, with its checksum and how many items, custody steps and holds it has |
+| `investigations` | `investigation:read` | An investigation opened or closed in the period, or still open |
+
+- **Two permissions, both needed.** `opsreport:export` to take any report out,
+  and the permission the report's own records are read under. The list of
+  reports says, for each, whether the caller may have it and why not.
+- **A period** is the last 1, 7, 30 or 90 days. `device-health` is of how
+  things are now and `risk` is of the last 4 weeks whatever is asked: neither
+  takes a period.
+- **The sites** are one site, one customer's sites, or every site the caller
+  may see. Somebody held to particular sites is given those sites' records
+  and nothing of what has no site.
+- **What a spreadsheet would run is made text.** A value somebody typed — a
+  visitor's name, a title, a reason — that begins with `=`, `+`, `-`, `@`, a
+  tab or a return is written with an apostrophe before it.
+- **A time is written where the organisation is**, and the heading of its
+  column names the time zone. The file begins with a byte-order mark, so that
+  a name in any script opens as it was written.
+- **A file holds at most 10,000 records.** Past that its last line says it was
+  cut, in words, and so do the response's headers.
+- **Nothing is stored of a report** but the line in the audit log: who took
+  which report, for where, for what period, and how many records
+  (`report.export`).
+- **A support session takes none out.** It reads a customer's account to
+  answer a question; it does not carry the customer's records away. An API
+  key may.
+
+---
+
+## 5. API
 
 Under `/api/v1/operations-board`, all needing `board:read`:
 
@@ -205,24 +262,35 @@ Under `/api/v1/daily-briefings`, all needing `briefing:read`:
 | `POST` | `/{id}/publish` | `briefing:manage` |
 | `POST` | `/{id}/discard` | `briefing:manage` |
 
-There is no `PUT` or `DELETE` under either, and nothing but `GET` under the
-board. Audited: `briefing.draft`, `briefing.review`, `briefing.recount`,
-`briefing.publish`, `briefing.discard`. Reading the board is not audited: it
-reads counts.
+Under `/api/v1/operations-reports`, all needing `opsreport:export`:
 
-**Permissions** (migration `0152`):
+| | | Also needs |
+|---|---|---|
+| `GET` | `/` | |
+| `GET` | `/{key}` | |
+
+`GET /{key}` also needs what that report's records are read under, which is
+not the same for each and is checked when it is asked for.
+
+There is no `PUT` or `DELETE` under any, and nothing but `GET` under the board
+and the reports. Audited: `briefing.draft`, `briefing.review`,
+`briefing.recount`, `briefing.publish`, `briefing.discard`, `report.export`.
+Reading the board is not audited: it reads counts.
+
+**Permissions** (migrations `0152`, `0153`):
 
 | | Admin 2 | Manager 8 | Supervisor 3 | Operator 4 | Guard 5 | Viewer 6 | Client 7 | Super Admin 1 |
 |---|---|---|---|---|---|---|---|---|
 | `board:read` | ✓ | ✓ | ✓ | ✓ | – | ✓ | – | – |
 | `briefing:read` | ✓ | ✓ | ✓ | ✓ | – | ✓ | – | – |
 | `briefing:manage` | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `opsreport:export` | ✓ | ✓ | ✓ | – | – | – | – | – |
 
 ---
 
-## 5. Screens
+## 6. Screens
 
-- **Operations Board** (`/operations-board`), under Monitoring, in three
+- **Operations Board** (`/operations-board`), under Monitoring, in four
   parts — **Board**: for a site, a customer or every site and a period, each
   section the reader may read as counts, with what is as things stand marked
   "now", each time given as a middle time, what is not shown named, and how
@@ -232,7 +300,9 @@ reads counts.
   **Daily briefing**: the briefings, newest day first; drafting one; reading
   it with what each line is true of; leaving sections out, the reviewer's
   note, counting again, publishing after being told it is final, setting a
-  draft aside, and drafting a correction.
+  draft aside, and drafting a correction. **Reports**: each report with what
+  a row of it is, its columns and what it is read under; taking one out for a
+  site and a period; a report the reader may not have, with the reason.
 
 The phone is not changed in this phase. The existing dashboard (`/`), command
 centre (`/command-centre`), analytics (`/analytics`) and reports (`/reports`)
@@ -240,23 +310,27 @@ are unchanged.
 
 ---
 
-## 6. Files
+## 7. Files
 
 | | |
 |---|---|
 | `backend/alembic/versions/0152_daily_briefings.py` | One table, its policy, grants and trigger, three permissions |
+| `backend/alembic/versions/0153_operations_reports.py` | One permission. No table |
 | `backend/app/services/ops_board.py` | The sections, how each is counted, adding. Reads only |
 | `backend/app/services/daily_briefing.py` | The day, the words, the draft. Reads nothing and writes nothing |
 | `backend/app/routers/operations_board.py` | The board, for a scope and site by site |
 | `backend/app/routers/daily_briefings.py` | Drafting, reviewing, publishing, correcting |
-| `frontend/src/api/operationsBoard.ts` | The typed client for both |
+| `backend/app/services/ops_reports.py` | The reports, their rows, a value and a file. Reads only |
+| `backend/app/routers/operations_reports.py` | The list of reports, and one as a file |
+| `frontend/src/api/operationsBoard.ts` | The typed client for the board and the briefing |
+| `frontend/src/api/operationsReports.ts` | The typed client for the reports |
 | `frontend/src/pages/board/` | The screen |
-| `frontend/src/components/board/` | The briefing's dialogs and the shared wording |
+| `frontend/src/components/board/` | The briefing's dialogs, the reports and the shared wording |
 
-Existing files changed, by additions only: `backend/app/main.py` (the two
+Existing files changed, by additions only: `backend/app/main.py` (the three
 routers are registered), `frontend/src/App.tsx` (one route),
 `frontend/src/components/layout/Sidebar.tsx` (one menu entry),
-`frontend/src/hooks/usePermission.ts` (the three permissions).
+`frontend/src/hooks/usePermission.ts` (the four permissions).
 
 No existing table is altered. The new table refers to `sites` and `users`. The
 board reads `incidents`, `cameras`, `incident_status_history`,
@@ -265,30 +339,35 @@ board reads `incidents`, `cameras`, `incident_status_history`,
 `drone_patrol_sessions`, `shifts`, `visitor_logs`, `visitors`,
 `visitor_authorizations` and `maintenance_work_orders`, and writes to none of
 them. Devices come through phase 8's reading and the clocks' switch through
-phase 4's; a site's customer is read from `billing_clients`.
+phase 4's; a site's customer is read from `billing_clients`. The reports read
+their own records and write to none of them either.
 
 The table is `daily_briefings` and not `security_briefings`, as the plan had
 it: tables named `security_…` are the intelligence layer's own.
 
 ---
 
-## 7. Tests
+## 8. Tests
 
 | | |
 |---|---|
 | `backend/tests/test_operations_board.py` | Adding and sharing; every section counted from the database for a day and a week, a site, every site and no site; who is shown what; sites and customers; that the board only reads |
 | `backend/tests/test_daily_briefings.py` | The day and the words; the draft line by line; drafting, reviewing, publishing, correcting, setting aside; who may draft and read which; what the application's role and the database refuse |
+| `backend/tests/test_operations_reports.py` | A value, a heading and a file; the list and who may take one out; each report from the database; whose records a file holds; that taking one out is audited and changes nothing |
 | `backend/tests/test_security_analytics_docs.py` | That this document says what the code does |
 | `frontend/src/pages/board/operationsBoard.test.tsx` | The screen: its words, the board, the table of sites, the briefing and its dialogs |
+| `frontend/src/pages/board/operationsReports.test.tsx` | The reports: the list, taking one out, a report that is not offered, a file that was cut |
 
 ---
 
-## 8. What this does not do
+## 9. What this does not do
 
 - **It scores nothing.** No site, customer or guard is given an index, a
   grade or a rank, and no figure is a judgement.
-- **It names nobody.** Guards are counted as shifts and visitors as arrivals.
-  A reading per guard is phase 11's, and is not this.
+- **The board and a briefing name nobody.** Guards are counted as shifts and
+  visitors as arrivals. A reading per guard is phase 11's, and is not this. A
+  report holds its records as they are, names included — which is why taking
+  one out has a permission of its own and is audited.
 - **It keeps no history of the board.** How things stood yesterday at noon is
   not known: a briefing's "when drafted" lines are exactly that.
 - **It does not allow for what is not recorded.** A site with no patrols
@@ -300,8 +379,12 @@ it: tables named `security_…` are the intelligence layer's own.
   and makes no file. It is read on the screen.
 - **It does not let a line be rewritten.** What a reviewer wants said
   differently goes in the note.
-- **It has no reports of its own yet.** The reports the gap analysis lists as
-  missing — and the scheduled delivery of them — are not in this part.
+- **It delivers no report on a schedule.** A report is asked for by a person
+  and handed to them. The existing scheduled reports are unchanged and do not
+  carry these.
+- **A report is a CSV file.** There is no PDF of one, no workbook and no
+  chart.
+- **It has no report per guard.** That is phase 11's.
 - **The client role's portal is unchanged**, and a customer's own people are
   not given this board.
 - **The phone is not part of it.**
