@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "8 October 2026"
-EDITION = "Edition 4"
-HEAD = "0151"
+EDITION = "Edition 5"
+HEAD = "0155"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -64,6 +64,11 @@ EDITIONS = [
      "Adds phase 9 of the enterprise expansion: risk patterns and advice (module 25) — "
      "where what went wrong gathers, what stands out with how much history it rests on, "
      "and a person's answer. The vendor's console becomes module 26."],
+    ["Edition 5", "8 October 2026", "0155",
+     "Adds phases 10, 11 and 12 of the enterprise expansion: the operations board, the "
+     "daily briefing and nine operations reports (module 26); workforce readings and "
+     "recommendations (module 27); and security cases (module 28). The vendor's console "
+     "becomes module 29."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -248,13 +253,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("274", "DATABASE TABLES"), ("997", "API OPERATIONS"), ("102", "API MODULES"),
-        ("106", "WEB ROUTES"), ("52", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("282", "DATABASE TABLES"), ("1,036", "API OPERATIONS"), ("107", "API MODULES"),
+        ("110", "WEB ROUTES"), ("52", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("197", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("151", "MIGRATIONS"),
-        ("5,920", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("207", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("155", "MIGRATIONS"),
+        ("6,056", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -306,8 +311,9 @@ story += bullets([
     "<b>At a glance</b> — one page for the person who signs.",
     "<b>Part 1, modules 01 to 13</b> — the platform as the first edition described "
     "it, brought up to date.",
-    "<b>Part 2, modules 14 to 26</b> — what has been added since: patrols from a "
-    "screen and from the air, security intelligence, and the enterprise expansion.",
+    "<b>Part 2, modules 14 to 29</b> — what has been added since: patrols from a "
+    "screen and from the air, security intelligence, and the enterprise expansion — "
+    "from investigation to cases.",
     "<b>Where AI is used, and where a person decides</b> — every place a model or a "
     "rule does work, what it is trusted with, and what stays a person's. "
     "<b>AI capabilities added or upgraded later are recorded here.</b>",
@@ -372,10 +378,10 @@ story.append(data_table(
     widths=[46 * mm, 48 * mm, 76 * mm]))
 story += [
     Spacer(1, 8),
-    Paragraph("The platform in twenty-five lines", S["h2"]),
+    Paragraph("The platform in twenty-nine lines", S["h2"]),
 ]
 story += bullets([
-    "<b>Identity and access</b> — 8 roles, 197 permissions, SSO, 2FA, audit log, "
+    "<b>Identity and access</b> — 8 roles, 207 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
     "playback, privacy zones, NVR.",
@@ -413,6 +419,14 @@ story += bullets([
     "for how long, read at the gate.",
     "<b>Assets and maintenance</b> — device health as devices report it, an asset "
     "register, and work orders a person accepts.",
+    "<b>Risk patterns</b> — where what went wrong gathers, by hour, day and place, "
+    "with how much history each statement rests on.",
+    "<b>Operations board and briefing</b> — every part of the operation counted "
+    "together, a daily briefing a person publishes, and nine reports as files.",
+    "<b>Workforce readings</b> — what is recorded of a guard's work, beside how much "
+    "there was to do, and recommendations a manager answers.",
+    "<b>Cases</b> — a matter held together: its people, tasks, linked records and "
+    "names, closed by two.",
     "<b>Platform console</b> — the vendor's own: customers, pricing, invoicing, "
     "errors, support sessions.",
 ])
@@ -448,12 +462,12 @@ story += module(
         "only, and the application's database role cannot empty a table.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 197 permission codes.",
+        "per tenant, across 207 permission codes.",
         "<b>Site scope.</b> A user can be held to particular sites; every list, "
         "search and record honours it.",
         "<b>The platform operator is not a customer's administrator.</b> Super "
         "Admin runs the platform from a tenant of its own and holds none of a "
-        "customer's day-to-day permissions (module 26).",
+        "customer's day-to-day permissions (module 29).",
         "<b>Single sign-on and SCIM</b> for automated user provisioning and "
         "de-provisioning from the customer's own directory.",
         "<b>Two-factor authentication (TOTP)</b> — required, not optional, for "
@@ -526,7 +540,9 @@ story += module(
         "site, so a guarding-only agency with no cameras receives them, and they "
         "reach the people responsible for that site.",
         "<b>Incident management</b> — assignment, notes, severity, status and "
-        "resolution, with bulk actions.",
+        "resolution, with bulk actions. A matter that takes more than one record "
+        "— investigators, tasks, linked evidence, a closing by two — is a case, "
+        "module 28.",
         "<b>Command Centre</b> — the live operational picture across every site.",
         "<b>Action Centre</b> — cross-role duty guidance telling each person "
         "what needs them next.",
@@ -676,9 +692,8 @@ story += module(
         "<b>Full action log</b> naming the operator behind every entry and exit.",
         "<b>Contractors</b> — vetting, accreditation, work permits with approval "
         "and a safety briefing, and deliveries.",
-        "<i>Being built now:</i> host approval of a visit, the places it is "
-        "authorised for, escort, and what the gate is told — see <i>In progress "
-        "and planned</i>.",
+        "Host approval of a visit, the places it is authorised for, escort, and "
+        "what the gate is told are module 23.",
     ])
 
 story += module(
@@ -745,7 +760,7 @@ story += module(
         "<b>Client portal</b> — the customer signs in and sees their own sites, "
         "incidents and invoices, and nothing else.",
         "<b>What the vendor charges the agency</b> — plans, module prices, "
-        "subscriptions and the vendor's own invoices — is module 26.",
+        "subscriptions and the vendor's own invoices — is module 29.",
     ])
 
 story += module(
@@ -765,7 +780,9 @@ story += module(
         "<b>Checksums on what is handed over</b> — patrol snapshots, patrol "
         "reports, recordings and evidence files — so a document can be checked "
         "later against what was written.",
-        "<b>Exports</b> in operational formats, and a full analytics suite.",
+        "<b>Exports</b> in operational formats, and a full analytics suite. The "
+        "operations board, the daily briefing and the operations reports are "
+        "module 26.",
     ])
 
 story.append(PageBreak())
@@ -773,7 +790,7 @@ story.append(PageBreak())
 # ═══ PART 2 ═════════════════════════════════════════════════════════════════
 story += part(
     "Part 2 — Added since the first edition",
-    "Thirteen modules built after the first edition. Each was added beside what "
+    "Sixteen modules built after the first edition. Each was added beside what "
     "already worked: new tables, new API modules and new screens, with the "
     "existing ones left as they were. Every one keeps the same rule — the "
     "platform detects, relates, assesses and recommends, and a person decides.")
@@ -1165,7 +1182,145 @@ story += module(
     tag="ADDED SINCE EDITION 3 · MIGRATION 0151")
 
 story += module(
-    "26", "Platform operations — the vendor's console",
+    "26", "Operations board, daily briefing and reports",
+    "Every part of the operation counted together — for a site, a customer's "
+    "sites or every site — a day put into words for a person to publish, and the "
+    "records taken out as files.",
+    [
+        "<b>Seven sections, counted when somebody asks:</b> incidents; response; "
+        "patrols — a guard's tour, a virtual patrol, a drone patrol; guards on "
+        "shift; devices; visitors; maintenance. For the last 1, 7 or 30 days, "
+        "with what stands at this moment marked \"now\".",
+        "<b>Each section under its own permission.</b> Holding the board does not "
+        "show the incidents of somebody who may not read incidents: what is not "
+        "shown is left out and named. Somebody held to particular sites sees "
+        "those sites.",
+        "<b>A time is the middle one of those measured</b>, with how many it was "
+        "measured from. When there were none it is nothing, not zero; and "
+        "response clocks that are switched off are not called \"none missed\".",
+        "<b>Site by site, and by customer.</b> One row for each site, what is at "
+        "no site, the sites together, and each customer's sites summed — without "
+        "their times, which are counted for a customer only when the board is "
+        "asked for that customer.",
+        "<b>The daily briefing.</b> One calendar day where the site is, for a "
+        "site or for every site, drafted as fixed sentences with a count in "
+        "each, and up to three pieces of the risk advice (module 25) word for "
+        "word. Each line says what it is true of: the day, the moment of "
+        "drafting, or the weeks before.",
+        "<b>A person reviews and publishes.</b> The reviewer leaves whole "
+        "sections out — and the briefing says which — and adds a note shown as "
+        "theirs. No line is rewritten. Once published a briefing is not changed: "
+        "a correction is a new revision, and the earlier one stays, marked as "
+        "replaced.",
+        "<b>Nine reports as CSV files:</b> the board site by site, response, "
+        "device health, maintenance, visitor authorisations, door events, risk "
+        "advice, evidence packages and investigations. Each is a list of records "
+        "as they are, made when it is asked for and stored nowhere.",
+        "<b>Taking records out is a permission of its own</b>, on top of the one "
+        "the records are read under, and every report taken is audited — who, "
+        "which, for where, how many. Text a spreadsheet would run as a formula "
+        "is made plain; each time names its time zone; a file cut at 10,000 "
+        "records says so. A support session takes none.",
+        "<i>By design:</i> nothing is scored — no index, grade or rank of a site, "
+        "a customer or a person — and the board and a briefing name nobody. No "
+        "model writes a briefing, nothing drafts or publishes one by itself, and "
+        "publishing tells nobody. <i>Documented limitations:</i> the board keeps "
+        "no history of itself; a site with nothing scheduled has nothing missed; "
+        "no report is delivered on a schedule or as a PDF; the client portal is "
+        "unchanged; the phone has no part of it.",
+    ],
+    tag="ADDED SINCE EDITION 4 · MIGRATIONS 0152 AND 0153")
+
+story += module(
+    "27", "Workforce readings and recommendations",
+    "What is recorded of a guard's work and of a site's, read together — each "
+    "count beside how much there was to do — and what a manager might consider.",
+    [
+        "<b>Six sections from rows the platform already keeps:</b> shifts; "
+        "patrols; responses; violations; training and certificates; handovers. "
+        "For each guard, each site and the sites together, over 7, 28 or 90 days.",
+        "<b>Not an appraisal.</b> Each count stands beside how much there was to "
+        "do — shifts late beside shifts worked, tours missed beside tours due — "
+        "because a guard given more shifts has more chances to be late.",
+        "<b>Nothing is scored and nobody is ranked.</b> There is no total of a "
+        "person; a list of guards is in order of name, and the table has nothing "
+        "to sort it by.",
+        "<b>What a reviewer set aside is not counted against anybody.</b> A "
+        "violation that was waived is said to be waived, and one that is "
+        "disputed is said to be disputed.",
+        "<b>One's own reading.</b> A guard, an operator and a supervisor read "
+        "their own, whole, with what is recommended for them. Somebody else's "
+        "reading is read by the organisation's own people, and that it was read "
+        "is written in the audit log.",
+        "<b>Training, for a guard:</b> a certificate a rostered shift needs and "
+        "the guard does not hold; a course whose latest pass has lapsed or "
+        "lapses within 30 days; three or more assigned tours missed in four "
+        "weeks, with the courses the library holds — or that it holds none. No "
+        "course is invented.",
+        "<b>Cover, for a site compared with itself:</b> three or more shifts not "
+        "started; its busiest four hours holding half its incidents and rostered "
+        "more thinly than the rest of its day; guards arriving half as slowly "
+        "again at night as in the day.",
+        "<b>A manager's answer.</b> Accepted, or not accepted with a reason, kept "
+        "with the recommendation as it stood, added and never rewritten.",
+        "<i>By design:</i> a recommendation is never an employment decision and "
+        "never a change to a roster — accepting one assigns no course and moves "
+        "no shift. Lateness and violations are counted and not turned into "
+        "recommendations: they have their own review, by a person. Fixed rules; "
+        "no model. <i>Documented limitations:</i> nothing says why a shift was "
+        "not started, and leave is not read; cover is compared from shifts as "
+        "rostered; a reading is not taken out as a file; nothing is sent to a "
+        "guard; the phone has no part of it.",
+    ],
+    tag="ADDED SINCE EDITION 4 · MIGRATION 0154")
+
+story += module(
+    "28", "Security cases",
+    "A matter held together: the records it is about, the people working it, "
+    "what each has to do, who is named in it, and a closing somebody else "
+    "agrees to.",
+    [
+        "<b>A case</b> has a number, a title, a kind — theft or loss, trespass, "
+        "damage, safety, access, other — a priority, a site or no one site, a "
+        "lead and investigators. A person opens it, from an incident, an "
+        "investigation or an evidence package, or from nothing.",
+        "<b>It refers to what it is about; it copies none of it.</b> Incidents, "
+        "investigations (module 17) and evidence packages (module 18) are linked "
+        "by reference and stay where they are. Taking a link off a case removes "
+        "nothing of theirs.",
+        "<b>A linked record is read under its own permission and the reader's "
+        "sites.</b> A link the reader may not read says that it is one, and what "
+        "kind, and nothing else.",
+        "<b>Worked by the people on it</b> — its lead, its investigators and "
+        "whoever manages cases. Tasks are given, and end done, with what was "
+        "done, or dropped, with why. Somebody given a task finishes that task "
+        "and does nothing else to the case.",
+        "<b>People and vehicles named in it</b>, each with how it is connected "
+        "— reported it, saw or heard it, was affected by it, is named in it — "
+        "written in by a person.",
+        "<b>Closing takes two people.</b> Whoever asks for a case to be closed "
+        "says what was found; somebody else approves, or declines with why. The "
+        "screen does not offer approving to whoever asked, the server refuses "
+        "it, and the database refuses it again.",
+        "<b>A closed case is not changed</b> — the database refuses any change "
+        "but reopening it, with why. Nothing is removed: an investigator, a link "
+        "or a name is taken off, and the row stays.",
+        "<b>Its own history</b> of every step, added to and never rewritten; and "
+        "<b>a report</b> of the whole case in order, on screen and as a PDF, "
+        "with a record the reader may not read shown as that.",
+        "<i>By design:</i> being named in a case is not an accusation — there is "
+        "no word for a suspect, and nothing names anybody by itself. No rule "
+        "opens a case. Every step is a signed-in person's and is audited. "
+        "<i>Documented limitations:</i> a name is text, not matched to a "
+        "visitor, a member of staff, a watchlist entry or a face; closing a case "
+        "does not resolve its incident or seal its evidence package; nobody is "
+        "told when they are put on a case or asked to approve; nothing "
+        "escalates a case; the report is not signed; the phone has no part of it.",
+    ],
+    tag="ADDED SINCE EDITION 4 · MIGRATION 0155")
+
+story += module(
+    "29", "Platform operations — the vendor's console",
     "Seventh AI sells this to security companies, so the vendor and the "
     "customer are different businesses and do not share a login, a permission "
     "set or a bill.",
@@ -1268,6 +1423,21 @@ story.append(data_table(
          "a forecast",
          "Reads it; answers it for a site — accepted, or not accepted with a "
          "reason. The answer changes nothing else"],
+        ["The daily briefing (module 26)",
+         "Templates: fixed sentences, each with a count in it, over one day's "
+         "counts. The same figures give the same lines. Not a model",
+         "Leaves sections out, adds a note of their own, and publishes it — or "
+         "does not. No line is rewritten"],
+        ["Workforce recommendations (module 27)",
+         "Fixed rules over four weeks' records: a certificate a rostered shift "
+         "needs, a course lapsed or lapsing, tours missed, shifts not started, "
+         "busy hours rostered thinly, slower arrival at night. Not a model",
+         "A manager answers — accepted, or not accepted with a reason. The "
+         "course is assigned and the roster changed by a person, as before"],
+        ["Cases (module 28)",
+         "Nothing. No rule opens a case, links a record to one or names "
+         "anybody in it",
+         "Opens it, works it, and closes it — which takes two people"],
         ["Daily intelligence and the site security score",
          "Counting over a stated period of history",
          "Reads it as history, not as a forecast"],
@@ -1283,14 +1453,17 @@ story += bullets([
     "parsed, not understood; a summary is a template, not prose.",
     "<b>Nothing decides for a person.</b> No part of the platform dispatches a "
     "guard, opens or closes an incident, flies a drone to an unplanned place, "
-    "operates a door, admits or refuses a visitor, raises maintenance work, or "
-    "changes a roster on a recommendation alone.",
+    "operates a door, admits or refuses a visitor, raises maintenance work, "
+    "publishes a briefing, assigns a course, opens or closes a case, or changes "
+    "a roster on a recommendation alone.",
     "<b>Nothing learns by itself.</b> A person's feedback on a situation is kept "
     "as a dataset; no model or rule is trained on it automatically. A rule or a "
     "weight changes only as a tenant setting or as released code.",
     "<b>Nobody is accused by a rule.</b> A face that matched nobody is "
     "<i>unknown</i>. An unidentified person is not followed across cameras. A "
-    "prediction is a count over history, shown with the count under it.",
+    "prediction is a count over history, shown with the count under it. A "
+    "reading of a guard's work scores and ranks nobody, and being named in a "
+    "case is not an accusation.",
 ])
 story.append(PageBreak())
 
@@ -1304,24 +1477,14 @@ story += [
     Spacer(1, 8),
     Paragraph(
         "The enterprise expansion is fourteen phases, built and merged one at a "
-        "time. Phases 1 to 9 are modules 17 to 25 above. What follows is not yet "
+        "time. Phases 1 to 12 are modules 17 to 28 above. What follows is not yet "
         "released and is <b>not counted</b> in any figure in this document. Each "
         "row moves into the numbered modules when it is merged and tested.", S["body"]),
 ]
 story.append(data_table(
     ["Phase", "Area", "State", "What it adds"],
     [
-        ["10", "Operations analytics and the daily briefing", "In progress",
-         "Boards per role; a dated daily briefing a person reviews and publishes; "
-         "the reports that are missing"],
-        ["11", "Workforce intelligence", "Planned",
-         "One reading per guard and per site; training and coverage "
-         "recommendations for a manager. Never an employment decision, never a "
-         "change to a roster"],
-        ["12", "Case management", "Planned",
-         "Cases from incidents and investigations: investigators, tasks, notes, "
-         "linked evidence, approvals, a report"],
-        ["13", "Compliance and hardening", "Planned",
+        ["13", "Compliance and hardening", "Next",
          "One statement of every retention period in force; a report of what is "
          "held about a subject; a security sweep over everything the expansion added"],
         ["14", "Integration testing", "Planned",
@@ -1340,7 +1503,7 @@ story += bullets([
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
     "<b>A new Windows desktop build.</b> Desktop 1.0.4 carries the screens up "
-    "to AI Security Intelligence; the screens of modules 17 to 25 need a new "
+    "to AI Security Intelligence; the screens of modules 17 to 28 need a new "
     "build. The installer is not yet code-signed.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
     "alarm panels have not been connected.",
@@ -1356,7 +1519,7 @@ story.append(Spacer(1, 8))
 story.append(data_table(
     ["Application", "Platform", "Scale", "Notes"],
     [
-        ["Web console", "Browser (React)", "106 routes",
+        ["Web console", "Browser (React)", "110 routes",
          "The full platform. Every module, every administrative surface."],
         ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "52 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
@@ -1376,7 +1539,7 @@ story.append(Spacer(1, 8))
 story.append(Paragraph(
     "Eight built-in roles ship with the platform; tenants may define their own "
     "in addition. A role cannot grant a permission it does not itself hold. The "
-    "permissions of modules 16 to 24 are held by the roles that work a site — "
+    "permissions of modules 16 to 28 are held by the roles that work a site — "
     "not by Super Admin, and not by the Client role.",
     S["body"]))
 story.append(data_table(
@@ -1450,12 +1613,21 @@ story += bullets([
     "<b>Risk patterns are counts over history</b>, not forecasts. No risk score is "
     "made, nothing allows for how much is watched at a place, and a record made "
     "while testing is counted like any other.",
+    "<b>The operations board is counts of what is recorded</b>, and keeps no "
+    "history of itself: how things stood at an earlier moment is not known. A "
+    "briefing is drafted when a person asks and is sent to nobody; a report is a "
+    "CSV file, on no schedule.",
+    "<b>A workforce reading is not an appraisal.</b> Nothing says why a shift was "
+    "not started, leave is not read, and cover is compared from shifts as rostered.",
+    "<b>A case names nobody by itself</b>, and a name in one is text: it is not "
+    "matched to a visitor, a member of staff, a watchlist entry or a face. Nobody "
+    "is told when they are put on a case, and nothing escalates one.",
     "<b>Payroll:</b> graduated first- and second-year PR CPF rates and the "
     "Additional Wage ceiling are not implemented; PWM rates are not shipped.",
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
     "<b>The phone app</b> needs a new build and a device pass for what was added "
     "after its SDK upgrade; <b>the desktop app</b> needs a new build for modules "
-    "17 to 25 and is not code-signed.",
+    "17 to 28 and is not code-signed.",
     "<b>The Helm chart</b> has not been installed on a cluster.",
 ])
 
@@ -1463,10 +1635,10 @@ story.append(Spacer(1, 14))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 151 "
-    "database migrations, 274 tables, 102 API modules serving 997 operations, 104 backend "
-    "services, 106 web routes and 52 phone screens, covered by 5,920 automated tests "
-    "(backend 3,955, repository inspection 1,276, web 406, phone 283). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 155 "
+    "database migrations, 282 tables, 107 API modules serving 1,036 operations, 110 backend "
+    "services, 110 web routes and 52 phone screens, covered by 6,056 automated tests "
+    "(backend 4,000, repository inspection 1,301, web 472, phone 283). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
