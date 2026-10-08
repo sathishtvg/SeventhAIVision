@@ -367,7 +367,7 @@ written. This section is added to as each phase is finished.
 | 10 | Analytics | **Built 2026-10-08** — migrations `0152`, `0153` | `SECURITY_ANALYTICS_ARCHITECTURE.md` |
 | 11 | Workforce intelligence | **Built 2026-10-08** — migration `0154` | `SECURITY_ANALYTICS_ARCHITECTURE.md`, part two |
 | 12 | Case management | **Built 2026-10-08** — migration `0155` | `SECURITY_CASE_MANAGEMENT.md` |
-| 13 | Compliance and hardening | Not started | |
+| 13 | Compliance and hardening | **Built 2026-10-09** — migration `0156` | `ENTERPRISE_SECURITY_HARDENING.md` |
 | 14 | Integration testing | Not started | |
 
 ### Phase 1 — what was built, against what section 3 found
@@ -732,3 +732,36 @@ is dropped and added again; a situation is not linked, though an investigation
 opened from one can be; the report is not signed and is not put into an
 evidence package; the phone has no part of it; and it has run on test data
 only — the development organisation has no cases.
+
+### Phase 13 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Retention: **PARTIAL** — missing one place that states every retention period in force; a hold that stops a purge | One statement of the six kinds of record a job removes — evidence, recordings, drone footage, drone flight tracks, gateway receipts, the audit log — each with its period as the job reads it, where that is set, what removes it and whether a hold stops it; each site's own period for its recordings; the holds in force; and, for the thirty-six tables the expansion added, that nothing removes them and whether each names a person. The hold that stops a purge was built in phase 2 |
+| Privacy: **PARTIAL** — missing access logging of searches about a person; a report of what is held about a subject across the new records | A subject report: for a member of staff, a visitor, or a name or a plate as typed, where they appear in what the expansion keeps and how often — every one of the 71 columns that refers to a member of staff, told apart as records that concern them and steps they took — and how many investigation searches asked about them. Searches have been in the audit log since phase 1; the report is what reads them for one person. Each report is itself audited |
+| Hardening: **PARTIAL** — missing a sweep, as for the intelligence layer, over every table and operation this expansion adds | A sweep of 36 tables and 176 routes from the database's catalogue and the route table: row level security forced with one policy on every table and the fewest rights for the application's role; another organisation reads and writes none of it; a permission on every route, typed ids, bodies that take only what they declare; every write audited and a person's, each exception named with its reason; nobody without a token and no role without the permission |
+
+**Existing files changed in phase 13, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. No table is created and none is altered;
+no grant, policy, trigger or route that existed is changed. The sweep found
+nothing in what the expansion added that needed changing.
+
+**Found in what existed before, and left for the owner**
+(`ENTERPRISE_SECURITY_HARDENING.md`, section 9): the application's role may
+update and delete occurrence book entries; the existing CSV exports write
+formula-like text as it is; the existing data-subject export returns evidence
+that is not its subject's, can include where files are kept and leaves no audit
+line; the audit log's and the drone tracks' default periods are given to the
+jobs' services and not to the API; privacy masks are read without a token, by
+design; and nothing the expansion added has a retention period.
+
+**Not done in phase 13, and why:** no period is set for the expansion's
+records and no job removes them — a period for a case or a visitor's
+authorisation is a decision with legal weight, and is the owner's; a subject
+report hands no record over, because a record holds other people too; it does
+not read attendance, rosters, leave, pay, training or violations, which have
+their own screens, or the account, which has its own export; a name typed is
+not matched to a person; nothing is erased; the routes and tables that existed
+before the expansion were not swept; the phone has no part of it; and the
+development organisation has not been given migration `0156`.

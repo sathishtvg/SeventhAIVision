@@ -114,6 +114,7 @@ import RiskAdvice from '@/pages/risk/RiskAdvice'
 import OperationsBoard from '@/pages/board/OperationsBoard'
 import WorkforceReadings, { MyReading } from '@/pages/workforce/WorkforceReadings'
 import Cases from '@/pages/cases/Cases'
+import DataRetention from '@/pages/governance/DataRetention'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -292,6 +293,7 @@ export default function App() {
         <Route path="workforce-readings" element={<WorkforceReadings />} />
         <Route path="my-reading" element={<MyReading />} />
         <Route path="cases" element={<Cases />} />
+        <Route path="data-retention" element={<DataRetention />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
