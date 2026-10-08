@@ -79,6 +79,7 @@ import QueryStatsIcon from '@mui/icons-material/QueryStats'
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import FolderSharedIcon from '@mui/icons-material/FolderShared'
+import PolicyIcon from '@mui/icons-material/Policy'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -335,6 +336,7 @@ const NAV_SECTIONS: {
       { label: 'Client Invoicing', path: '/invoicing',         icon: <ReceiptLongIcon fontSize="small" />, permission: 'invoicing:read' },
       { label: 'Client Portal',    path: '/client',            icon: <HomeWorkIcon fontSize="small" />,   permission: 'portal:view' },
       { label: 'Audit Logs',       path: '/audit',             icon: <HistoryIcon fontSize="small" />,    permission: 'audit:read' },
+      { label: 'Data Retention',   path: '/data-retention',    icon: <PolicyIcon fontSize="small" />,     permission: 'retention:read' },
     ],
   },
   {
