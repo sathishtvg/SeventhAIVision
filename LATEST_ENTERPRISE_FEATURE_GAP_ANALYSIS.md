@@ -364,7 +364,7 @@ written. This section is added to as each phase is finished.
 | 7 | Visitors and contractors | **Built 2026-10-07** — migration `0149` | `VISITOR_CONTRACTOR_SECURITY.md` |
 | 8 | Device health, assets, maintenance | **Built 2026-10-08** — migration `0150` | `DEVICE_HEALTH_ARCHITECTURE.md` |
 | 9 | Risk and advisor | **Built 2026-10-08** — migration `0151` | `SECURITY_RISK_ARCHITECTURE.md` |
-| 10 | Analytics | Not started | |
+| 10 | Analytics | **Board and briefing built 2026-10-08** — migration `0152`; the reports follow | `SECURITY_ANALYTICS_ARCHITECTURE.md` |
 | 11 | Workforce intelligence | Not started | |
 | 12 | Case management | Not started | |
 | 13 | Compliance and hardening | Not started | |
@@ -635,3 +635,32 @@ delivery of it; the phone has no part of it; and it has run on the development
 organisation's incidents, missed patrols, camera disconnections and three
 missed clocks — that organisation has no door events, so doors have run on
 test data only.
+
+### Phase 10 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Command centre figures: **PARTIAL** — missing response time, patrol compliance, guard status and device health on one board | One board of seven sections — incidents, response, patrols, guards on shift, devices, visitors, maintenance — for the last 1, 7 or 30 days. Response is the middle time until somebody acted, until resolution and from a guard being sent to arriving, with how many each was measured from, and the response clocks missed. Patrols are what was done of what is over, for a guard's tour, a virtual patrol and a drone patrol. Each section is read under its own existing permission, and what the reader may not read is left out and named |
+| Site manager / tenant / security company views: **PARTIAL** — missing a site view and a cross-site view of incidents, SLA, guards, patrols, visitors, equipment and risk; a per-customer view for a security company | The board for one site, for every site the reader may see, or for one customer's sites; the same figures site by site, with what is at no site apart and the sites together; and each customer's sites summed, without their times. How much of phase 9's advice stands is said for the same sites |
+| AI daily security briefing: **PARTIAL** — missing a dated briefing a person reviews and publishes, with its history | A briefing for a calendar day, for a site or for every site together: the day's counts in fixed sentences, each saying when it is true of, with up to three pieces of advice word for word. The platform drafts it; a person leaves sections out, adds a note of their own and publishes it. A published briefing is not changed; a correction is a new revision and the earlier one stays |
+
+**Existing files changed in phase 10, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. The dashboard, the command centre, the
+analytics screen, the reports and the client's portal are as they were. No
+existing table is altered. The briefings' table is `daily_briefings`, not
+`security_briefings` as section 5 planned, for the reason given under phase 8.
+
+**Not done in phase 10, and why:** the reports section 3 lists as missing, and
+their scheduled delivery, are not in this part — they follow as a part of their
+own; nothing is scored, graded or ranked, because a single number for a site
+would hide the counts it was made of; nobody is named — a reading per guard is
+phase 11's; the board keeps no history, so a briefing says "when drafted" of
+what the platform does not keep for an earlier moment; a briefing is drafted
+when a person asks and no scheduler writes one each morning; publishing one
+tells nobody, emails nothing and makes no file; a line cannot be rewritten —
+what a reviewer wants said differently goes in their note; the client role is
+not given the board; the phone has no part of it; and it has run on the
+development organisation's incidents, response, virtual patrols, shifts,
+cameras and visitors — that organisation has no guard tours, drone patrols or
+work orders in the last month, so those have run on test data only.

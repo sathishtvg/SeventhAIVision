@@ -73,6 +73,8 @@ from app.routers import (
     nvr,
     occurrence_book,
     security_advice,
+    operations_board,
+    daily_briefings,
     security_assets,
     sop,
     patrols,
@@ -396,6 +398,8 @@ app.include_router(visitor_authorizations.router)
 app.include_router(security_assets.router)
 app.include_router(maintenance.router)
 app.include_router(security_advice.router)
+app.include_router(operations_board.router)
+app.include_router(daily_briefings.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)

@@ -76,6 +76,7 @@ import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
 import HowToRegIcon from '@mui/icons-material/HowToReg'
 import HandymanIcon from '@mui/icons-material/Handyman'
 import QueryStatsIcon from '@mui/icons-material/QueryStats'
+import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -214,6 +215,7 @@ const NAV_SECTIONS: {
       // alerts awaiting someone — and none of that is the vendor's work.
       { label: 'Action Center', path: '/action-center', icon: <TaskAltIcon fontSize="small" />,     permission: 'alert:read' },
       { label: 'Command Centre', path: '/command-centre', icon: <MonitorIcon fontSize="small" />,   permission: 'alert:read' },
+      { label: 'Operations Board', path: '/operations-board', icon: <SpaceDashboardIcon fontSize="small" />, permission: 'board:read' },
       // The operational dashboard. The platform owner has one of their own
       // at /platform, which answers a completely different question.
       { label: 'Dashboard',      path: '/',            icon: <DashboardIcon fontSize="small" />,    permission: 'alert:read' },

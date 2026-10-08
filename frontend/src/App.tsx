@@ -111,6 +111,7 @@ import SopLibrary from '@/pages/sop/SopLibrary'
 import VisitorAuthorisations from '@/pages/visitorAuth/VisitorAuthorisations'
 import AssetsMaintenance from '@/pages/assets/AssetsMaintenance'
 import RiskAdvice from '@/pages/risk/RiskAdvice'
+import OperationsBoard from '@/pages/board/OperationsBoard'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -285,6 +286,7 @@ export default function App() {
         <Route path="visitor-authorisations" element={<VisitorAuthorisations />} />
         <Route path="assets-maintenance" element={<AssetsMaintenance />} />
         <Route path="risk-advice" element={<RiskAdvice />} />
+        <Route path="operations-board" element={<OperationsBoard />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
