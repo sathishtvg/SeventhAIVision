@@ -148,4 +148,10 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     # incidents from, so it is switched through /api/v1/incident-responses/settings,
     # which leaves the row alone when nothing changes.
     "response.sla_enabled": _bool_validator,
+    # Work orders put forward from device health (services/maintenance.py). Off
+    # until an organisation asks for them; what is put forward is a suggestion
+    # that a person accepts or dismisses. Set through /api/v1/maintenance/settings.
+    "maintenance.suggest_from_health": _bool_validator,
+    # After how many hours down a device is put forward: an hour to a week.
+    "maintenance.suggest_after_hours": _range_validator(1, 168),
 }

@@ -362,7 +362,7 @@ written. This section is added to as each phase is finished.
 | 5 | Occurrence book and handover | **Built 2026-10-07** — migration `0147` | `DIGITAL_OCCURRENCE_BOOK.md` |
 | 6 | SOP | **Built 2026-10-07** — migration `0148` | `SECURITY_SOP_ARCHITECTURE.md` |
 | 7 | Visitors and contractors | **Built 2026-10-07** — migration `0149` | `VISITOR_CONTRACTOR_SECURITY.md` |
-| 8 | Device health, assets, maintenance | Not started | |
+| 8 | Device health, assets, maintenance | **Built 2026-10-08** — migration `0150` | `DEVICE_HEALTH_ARCHITECTURE.md` |
 | 9 | Risk and advisor | Not started | |
 | 10 | Analytics | Not started | |
 | 11 | Workforce intelligence | Not started | |
@@ -570,3 +570,37 @@ out or was never answered; the visitor's QR pass does not carry the
 authorisation; the development organisation has no door events, so that part
 has run on test data only; and the phone's part has been type-checked and its
 rules tested, not run on a device.
+
+### Phase 8 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Camera health: **PARTIAL** — frame rate, latency, packet loss, recording gaps, repeated-disconnect detection, darkness and glare are not measured | A camera is read from its streams and the disconnections recorded of it: working, degraded (a degraded stream, or five or more disconnections in a day), down, or not known when it has no stream. Repeated disconnection is now read. Frame rate, latency, packet loss, the quality of the picture and gaps in a recording are still not measured, and every answer and screen that shows a reading says so |
+| Other device health: **PARTIAL** — no one reading of every device's health per site | One reading of every camera, recorder, sensor, drone, edge gateway and alarm panel, from what each reports, in five states, with why and since when. The scheduler reads them every five minutes and keeps a device's state when it changes; from that, the states it has been in and how long it was down in the last week and month — counted only from the first reading kept |
+| Security asset register: **MISSING** | A register of security assets — code, kind, make, model, serial number, where, vendor, installed, warranty, status — at a site or at none. An asset may be the device it is, and then has that device's health; one the platform does not know as a device is shown as having no reading. Known devices are put into the register in one step. An asset is retired, never removed |
+| Maintenance: **PARTIAL** — missing work orders, preventive schedules, technicians and vendors, parts, downtime, maintenance SLA; a work order suggested by a health problem and approved by a person | Work orders, raised by hand (on an asset, for a facility defect, or for a site), given to one of the organisation's people or a named vendor, started, completed with what was done, the parts used and the time out of use as stated, or cancelled with a reason. Preventive schedules that put the work forward before each date. A device read as down for long puts an order forward once the organisation has asked for that. What the platform puts forward is a suggestion: a person accepts or dismisses it, and the database refuses a suggested order that is open or done without who accepted it |
+
+**Existing files changed in phase 8, by additions only:** `backend/app/main.py`,
+`backend/app/core/config_keys.py`, `backend/app/scheduler_main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. Cameras, recorders, sensors, drones,
+gateways, alarm panels, guard kit, facility defects and their screens are as
+they were. No existing table is altered. The scheduler gained one pass, every
+five minutes. The register's table is `asset_register`, not `security_assets`
+as section 5 planned: tables named `security_…` are the intelligence layer's
+own, and that layer's existing tests list each of them — so the later phases'
+tables will not take that prefix either unless they are part of the layer.
+
+**Not done in phase 8, and why:** frame rate, latency, packet loss, picture
+quality and recording gaps are still not measured — nothing in the platform
+produces those figures, and inventing them was not an option; nothing probes a
+recorder, so one not probed for a day is "not known"; an outage shorter than
+five minutes can pass unrecorded, and time down is not an availability figure
+for a contract; no cause is inferred for a device that is down, and a camera
+that keeps disconnecting is shown as degraded but not put forward as work;
+nothing is told to anybody — a suggestion sends no notification and whoever is
+given an order finds it in their list; there is no parts store, cost, vendor
+contract or maintenance SLA; completing work does not put an asset back in
+service; a facility defect does not become an order by itself; the phone has
+no part of it; and it has run on the development organisation's cameras and,
+for every other kind of device, on test data only.
