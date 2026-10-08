@@ -69,8 +69,10 @@ from app.routers import (
     mandown,
     lost_found,
     notifications,
+    maintenance,
     nvr,
     occurrence_book,
+    security_assets,
     sop,
     patrols,
     virtual_patrol,
@@ -390,6 +392,8 @@ app.include_router(incident_responses.router)
 app.include_router(occurrence_book.router)
 app.include_router(sop.router)
 app.include_router(visitor_authorizations.router)
+app.include_router(security_assets.router)
+app.include_router(maintenance.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)

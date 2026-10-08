@@ -74,6 +74,7 @@ import AvTimerIcon from '@mui/icons-material/AvTimer'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
 import HowToRegIcon from '@mui/icons-material/HowToReg'
+import HandymanIcon from '@mui/icons-material/Handyman'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -304,6 +305,7 @@ const NAV_SECTIONS: {
       { label: 'Smart Facilities', path: '/iot',      icon: <SensorsIcon fontSize="small" />,     permission: 'iot:read' },
       { label: 'Body Cameras',     path: '/bwc',      icon: <CameraAltIcon fontSize="small" />,   permission: 'bwc:read' },
       { label: 'GPS Fleet',        path: '/gps',      icon: <DirectionsCarIcon fontSize="small" />, permission: 'gps:read' },
+      { label: 'Assets & Maintenance', path: '/assets-maintenance', icon: <HandymanIcon fontSize="small" />, permission: 'asset:read' },
     ],
   },
   {

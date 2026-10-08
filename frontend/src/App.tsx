@@ -109,6 +109,7 @@ import ResponseSettings from '@/pages/response/ResponseSettings'
 import OccurrenceBook from '@/pages/occurrenceBook/OccurrenceBook'
 import SopLibrary from '@/pages/sop/SopLibrary'
 import VisitorAuthorisations from '@/pages/visitorAuth/VisitorAuthorisations'
+import AssetsMaintenance from '@/pages/assets/AssetsMaintenance'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -281,6 +282,7 @@ export default function App() {
         <Route path="occurrence-book" element={<OccurrenceBook />} />
         <Route path="sop-library" element={<SopLibrary />} />
         <Route path="visitor-authorisations" element={<VisitorAuthorisations />} />
+        <Route path="assets-maintenance" element={<AssetsMaintenance />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

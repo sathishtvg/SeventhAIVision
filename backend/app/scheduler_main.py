@@ -959,6 +959,10 @@ INTEGRITY_SWEEP_INTERVAL = int(os.environ.get("INTEGRITY_SWEEP_INTERVAL_SECONDS"
 # whenever the nightly sweep happened to run, and leave its report queued for up
 # to a day. Two minutes sits well inside the smallest sensible grace period.
 VPATROL_INTERVAL = int(os.environ.get("VPATROL_INTERVAL_SECONDS", "120"))  # 2 min
+# How often the state of every device is read and kept when it has changed
+# (services/device_health.py says the same five minutes where it explains what
+# an outage shorter than this can do).
+DEVICE_HEALTH_INTERVAL = int(os.environ.get("DEVICE_HEALTH_INTERVAL_SECONDS", "300"))  # 5 min
 NO_SHOW_CHECK_INTERVAL   = int(os.environ.get("NO_SHOW_CHECK_INTERVAL_SECONDS", "900"))         # 15 min
 
 
@@ -1353,6 +1357,7 @@ async def main() -> None:
     last_overtime = _NOT_YET
     last_integrity = _NOT_YET
     last_vpatrol = _NOT_YET
+    last_device_health = _NOT_YET
 
     try:
         while True:
@@ -1582,6 +1587,21 @@ async def main() -> None:
                 except Exception:
                     logger.exception("check_no_show_shifts failed")
                 last_no_show = now
+
+            # Device health and maintenance (every 5 min): read what every
+            # device reports, keep the state of each when it has changed, and
+            # put forward the work that is due. What is put forward is a
+            # suggestion for a person to accept; nobody is assigned or told.
+            # Each tenant is its own session and its own transaction inside.
+            if now - last_device_health >= DEVICE_HEALTH_INTERVAL:
+                try:
+                    from app.services import maintenance
+                    counts = await maintenance.run(AsyncSessionLocal)
+                    if any(counts.values()):
+                        logger.info("device health and maintenance: %s", counts)
+                except Exception:
+                    logger.exception("device health and maintenance pass failed")
+                last_device_health = now
 
             # Guard response: every iteration. A guard who has just been sent
             # is told, and a clock that has run out is recorded and told to

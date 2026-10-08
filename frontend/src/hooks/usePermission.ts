@@ -142,6 +142,9 @@ const ALL_PERMISSIONS = [
   'sop:read', 'sop:write', 'sop:approve',
   // Visitor and contractor authorisation (migration 0149). The platform owner and the client role hold none.
   'visitorauth:read', 'visitorauth:write', 'visitorauth:manage',
+  // Device health, the asset register and maintenance (migration 0150). The platform owner, a guard and the
+  // client role hold none.
+  'asset:read', 'asset:manage', 'maintenance:read', 'maintenance:manage',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -259,6 +262,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'dob:review', // The occurrence book (0147): reviews entries, issues and closes instructions
     'sop:read', 'sop:write', // The SOP library (0148): writes procedures; does not approve them
     'visitorauth:read', 'visitorauth:write', 'visitorauth:manage', // Visitor authorisation (0149)
+    'asset:read', 'asset:manage', 'maintenance:read', 'maintenance:manage', // Assets and maintenance (0150)
   ],
   4: [ // operator
     'camera:read',
@@ -310,6 +314,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'response:read', 'response:act', // Guard response (0146)
     'sop:read', // The SOP library (0148)
     'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks; answers as a host
+    'asset:read', 'maintenance:read', // Assets and maintenance (0150): reads; works the orders they are given
   ],
   5: [ // security_guard
     'camera:read',
@@ -386,6 +391,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'response:read', // Guard response (0146): reads the desk
     'sop:read', // The SOP library (0148)
     'visitorauth:read', // Visitor authorisation (0149): reads; answers only as a host
+    'asset:read', 'maintenance:read', // Assets and maintenance (0150): reads
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',
