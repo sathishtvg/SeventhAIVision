@@ -366,7 +366,7 @@ written. This section is added to as each phase is finished.
 | 9 | Risk and advisor | **Built 2026-10-08** — migration `0151` | `SECURITY_RISK_ARCHITECTURE.md` |
 | 10 | Analytics | **Built 2026-10-08** — migrations `0152`, `0153` | `SECURITY_ANALYTICS_ARCHITECTURE.md` |
 | 11 | Workforce intelligence | **Built 2026-10-08** — migration `0154` | `SECURITY_ANALYTICS_ARCHITECTURE.md`, part two |
-| 12 | Case management | Not started | |
+| 12 | Case management | **Built 2026-10-08** — migration `0155` | `SECURITY_CASE_MANAGEMENT.md` |
 | 13 | Compliance and hardening | Not started | |
 | 14 | Integration testing | Not started | |
 
@@ -706,3 +706,29 @@ their own reading on the web; and it has run on the development
 organisation's shifts, violations and certification findings — that
 organisation has no assigned tours, handovers or lapsed courses in the last
 four weeks, so those have run on test data only.
+
+### Phase 12 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Cases: **MISSING** — lifecycle, investigators, tasks, notes, linked incidents, evidence, people and vehicles, approvals, a report | A case with a number, a kind, a priority, a site or none, a lead and investigators; tasks given, done or dropped with why; notes; links by reference to incidents, investigations and evidence packages, each read under its own permission and the reader's sites; the people and vehicles named in it, each with how it is connected; a history of every step; closing asked for with what was found and approved by somebody else; reopening with why; and a report of the whole of it, as a reading and as a PDF |
+
+**Existing files changed in phase 12, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. Incidents, investigations, evidence
+packages and their screens are as they were, and none of their tables is
+referred to by a foreign key: a link is a kind and an id. No existing table is
+altered. The tables are `case_files` and five beside it, not `security_cases…`
+as section 5 planned, for the reason given under phase 8.
+
+**Not done in phase 12, and why:** no case is opened by a rule, an incident or
+a situation — a person opens one; nobody is named by the platform, there is no
+word for a suspect, and a name is text that is not matched to a visitor, a
+member of staff, a watchlist entry or a face; closing a case does not resolve
+its incident, close its investigation or seal its evidence package; nobody is
+told when they are put on a case, given a task or asked to approve; nothing
+escalates and no clock runs on a case; a task is not edited or handed on, it
+is dropped and added again; a situation is not linked, though an investigation
+opened from one can be; the report is not signed and is not put into an
+evidence package; the phone has no part of it; and it has run on test data
+only — the development organisation has no cases.

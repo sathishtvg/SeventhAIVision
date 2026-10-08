@@ -77,6 +77,7 @@ from app.routers import (
     daily_briefings,
     operations_reports,
     workforce,
+    cases,
     security_assets,
     sop,
     patrols,
@@ -404,6 +405,7 @@ app.include_router(operations_board.router)
 app.include_router(daily_briefings.router)
 app.include_router(operations_reports.router)
 app.include_router(workforce.router)
+app.include_router(cases.router)
 app.include_router(drone_edge.router)
 app.include_router(platform_drone_licenses.router)
 app.include_router(action_center.router)

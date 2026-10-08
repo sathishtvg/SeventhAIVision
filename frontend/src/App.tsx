@@ -113,6 +113,7 @@ import AssetsMaintenance from '@/pages/assets/AssetsMaintenance'
 import RiskAdvice from '@/pages/risk/RiskAdvice'
 import OperationsBoard from '@/pages/board/OperationsBoard'
 import WorkforceReadings, { MyReading } from '@/pages/workforce/WorkforceReadings'
+import Cases from '@/pages/cases/Cases'
 
 // At module load, before anything renders: from here on a Date formats in the
 // tenant's timezone rather than the machine's. Inert until branding arrives
@@ -290,6 +291,7 @@ export default function App() {
         <Route path="operations-board" element={<OperationsBoard />} />
         <Route path="workforce-readings" element={<WorkforceReadings />} />
         <Route path="my-reading" element={<MyReading />} />
+        <Route path="cases" element={<Cases />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
