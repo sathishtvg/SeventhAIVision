@@ -1,5 +1,6 @@
 /** The words the operations board and the daily briefing use. */
 import type { AsAt, BriefingState, BriefingSummary, DeviceState, Figures, PatrolFigures, PatrolKind } from '@/api/operationsBoard'
+import type { Taken } from '@/api/operationsReports'
 
 export const PERIODS = [1, 7, 30]
 
@@ -101,4 +102,11 @@ export function briefingLine(b: BriefingSummary): string {
     return `Published by ${b.published_by_name ?? 'somebody no longer on the system'}, ${fmt(b.published_at)}`
   }
   return `Drafted by ${b.drafted_by_name ?? 'somebody no longer on the system'}, ${fmt(b.drafted_at)}`
+}
+
+/** A report that was taken out, in a line — and that it was cut, when it was. */
+export function takenLine(t: Taken, maxRows: number): string {
+  const count = t.rows === null ? 'The file was' : `${t.rows.toLocaleString('en')} record${t.rows === 1 ? ' was' : 's were'}`
+  const said = `${count} taken out as ${t.filename}.`
+  return t.cut ? `${said} It was cut at ${maxRows.toLocaleString('en')}: narrow the period or choose one site to have the rest.` : said
 }

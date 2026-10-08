@@ -364,7 +364,7 @@ written. This section is added to as each phase is finished.
 | 7 | Visitors and contractors | **Built 2026-10-07** — migration `0149` | `VISITOR_CONTRACTOR_SECURITY.md` |
 | 8 | Device health, assets, maintenance | **Built 2026-10-08** — migration `0150` | `DEVICE_HEALTH_ARCHITECTURE.md` |
 | 9 | Risk and advisor | **Built 2026-10-08** — migration `0151` | `SECURITY_RISK_ARCHITECTURE.md` |
-| 10 | Analytics | **Board and briefing built 2026-10-08** — migration `0152`; the reports follow | `SECURITY_ANALYTICS_ARCHITECTURE.md` |
+| 10 | Analytics | **Built 2026-10-08** — migrations `0152`, `0153` | `SECURITY_ANALYTICS_ARCHITECTURE.md` |
 | 11 | Workforce intelligence | Not started | |
 | 12 | Case management | Not started | |
 | 13 | Compliance and hardening | Not started | |
@@ -642,6 +642,7 @@ test data only.
 |---|---|
 | Command centre figures: **PARTIAL** — missing response time, patrol compliance, guard status and device health on one board | One board of seven sections — incidents, response, patrols, guards on shift, devices, visitors, maintenance — for the last 1, 7 or 30 days. Response is the middle time until somebody acted, until resolution and from a guard being sent to arriving, with how many each was measured from, and the response clocks missed. Patrols are what was done of what is over, for a guard's tour, a virtual patrol and a drone patrol. Each section is read under its own existing permission, and what the reader may not read is left out and named |
 | Site manager / tenant / security company views: **PARTIAL** — missing a site view and a cross-site view of incidents, SLA, guards, patrols, visitors, equipment and risk; a per-customer view for a security company | The board for one site, for every site the reader may see, or for one customer's sites; the same figures site by site, with what is at no site apart and the sites together; and each customer's sites summed, without their times. How much of phase 9's advice stands is said for the same sites |
+| Reports: **PARTIAL** — missing reports for investigations, evidence, guard performance, device health, maintenance, visitors, access, SLA and risk; scheduled delivery of them | Nine reports as CSV files, made when asked for: the board site by site; the response to each incident with the clocks it missed; device health as it is read now; maintenance work orders; visitor and contractor authorisations; door events; what stands out and what was answered; evidence packages; investigations. Each is read under its own records' permission and a new one to take a report out, for a period and for a site, a customer's sites or every site the reader may see. Text a spreadsheet would run is made plain text, a time says its time zone, a file that was cut says so, and every report taken out is audited. Guard performance is phase 11's; scheduled delivery is not done |
 | AI daily security briefing: **PARTIAL** — missing a dated briefing a person reviews and publishes, with its history | A briefing for a calendar day, for a site or for every site together: the day's counts in fixed sentences, each saying when it is true of, with up to three pieces of advice word for word. The platform drafts it; a person leaves sections out, adds a note of their own and publishes it. A published briefing is not changed; a correction is a new revision and the earlier one stays |
 
 **Existing files changed in phase 10, by additions only:** `backend/app/main.py`,
@@ -651,11 +652,13 @@ analytics screen, the reports and the client's portal are as they were. No
 existing table is altered. The briefings' table is `daily_briefings`, not
 `security_briefings` as section 5 planned, for the reason given under phase 8.
 
-**Not done in phase 10, and why:** the reports section 3 lists as missing, and
-their scheduled delivery, are not in this part — they follow as a part of their
-own; nothing is scored, graded or ranked, because a single number for a site
-would hide the counts it was made of; nobody is named — a reading per guard is
-phase 11's; the board keeps no history, so a briefing says "when drafted" of
+**Not done in phase 10, and why:** no report is delivered on a schedule — the
+existing scheduled reports take three kinds of PDF and adding these to them is
+a change to how that scheduler chooses what to send, left for the owner to ask
+for; a report is a CSV file, with no PDF, workbook or chart; there is no report
+per guard, which is phase 11's; nothing is scored, graded or ranked, because a
+single number for a site would hide the counts it was made of; the board and a
+briefing name nobody; the board keeps no history, so a briefing says "when drafted" of
 what the platform does not keep for an earlier moment; a briefing is drafted
 when a person asks and no scheduler writes one each morning; publishing one
 tells nobody, emails nothing and makes no file; a line cannot be rewritten —
@@ -664,3 +667,10 @@ not given the board; the phone has no part of it; and it has run on the
 development organisation's incidents, response, virtual patrols, shifts,
 cameras and visitors — that organisation has no guard tours, drone patrols or
 work orders in the last month, so those have run on test data only.
+
+**Found in phase 10 and left alone (for phase 13):** the existing CSV exports
+(`/api/v1/export/…`: alerts, incidents, detections, the audit log) write a
+value as it is. One that begins with `=`, `+`, `-` or `@` — an incident's
+title, say — is run as a formula by a spreadsheet that opens the file. The new
+reports make such text plain; changing the existing exports is a change to
+existing behaviour and was not made.
