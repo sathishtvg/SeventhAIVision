@@ -75,6 +75,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook'
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
 import HowToRegIcon from '@mui/icons-material/HowToReg'
 import HandymanIcon from '@mui/icons-material/Handyman'
+import QueryStatsIcon from '@mui/icons-material/QueryStats'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -275,6 +276,7 @@ const NAV_SECTIONS: {
       { label: 'Decisions',          path: '/situation-decisions', icon: <HistoryIcon fontSize="small" />,  permission: 'intel:read' },
       { label: 'Insight',            path: '/security-insight',    icon: <InsightsIcon fontSize="small" />, permission: 'intel:read' },
       { label: 'Feedback',           path: '/security-feedback',   icon: <RateReviewIcon fontSize="small" />, permission: 'intel:read' },
+      { label: 'Risk & Advice',      path: '/risk-advice',         icon: <QueryStatsIcon fontSize="small" />, permission: 'advice:read' },
       { label: 'Intelligence Setup', path: '/intelligence-setup',  icon: <SecurityIcon fontSize="small" />, permission: 'intel:manage' },
     ],
   },

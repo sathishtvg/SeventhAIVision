@@ -363,7 +363,7 @@ written. This section is added to as each phase is finished.
 | 6 | SOP | **Built 2026-10-07** — migration `0148` | `SECURITY_SOP_ARCHITECTURE.md` |
 | 7 | Visitors and contractors | **Built 2026-10-07** — migration `0149` | `VISITOR_CONTRACTOR_SECURITY.md` |
 | 8 | Device health, assets, maintenance | **Built 2026-10-08** — migration `0150` | `DEVICE_HEALTH_ARCHITECTURE.md` |
-| 9 | Risk and advisor | Not started | |
+| 9 | Risk and advisor | **Built 2026-10-08** — migration `0151` | `SECURITY_RISK_ARCHITECTURE.md` |
 | 10 | Analytics | Not started | |
 | 11 | Workforce intelligence | Not started | |
 | 12 | Case management | Not started | |
@@ -604,3 +604,34 @@ contract or maintenance SLA; completing work does not put an asset back in
 service; a facility defect does not become an order by itself; the phone has
 no part of it; and it has run on the development organisation's cameras and,
 for every other kind of device, on test data only.
+
+### Phase 9 — what was built, against what section 3 found
+
+| Section 3 said | Now |
+|---|---|
+| Recurring-pattern analysis: **PARTIAL** — missing the same over incidents, access violations, patrol failures and device failures; time-window statements with the history under them | Five kinds of thing that went wrong — incidents; doors refused, forced or tampered with; patrols missed or failed (virtual, drone and a guard's tour); devices going down; response clocks missed — each counted over 1 to 12 whole weeks by weekday and hour, by week and by place. Fixed rules say what stands out: a band of four hours, a weekday or a place holding most of the records; twice as many in the later half of the period; a device down three times or more. Each statement has its count in it |
+| Risk heatmap: **PARTIAL** — missing risk by zone and by time; incident and event density; response risk; a historical view | A week of hours for each kind, shaded in four steps with a key in counts; the places each kind gathers at; the weeks of the period, oldest first. Missed response clocks are one of the kinds. It is density — what was recorded, where and when — and is called that; no risk score is made |
+| AI security advisor: **PARTIAL** — missing confidence on each; an acknowledgement by a person (accepted / not accepted, with a reason); findings from response times, device health and drone patrols | Every piece of advice says how much history it rests on — much, some or little — with the records, the weeks and the weeks it held in. A person who may answers it for a site: accepted, or not accepted with why. The answer is kept with the advice as it stood, is added and never rewritten, and changes nothing else |
+
+**Existing files changed in phase 9, by additions only:** `backend/app/main.py`,
+`frontend/src/App.tsx`, `frontend/src/components/layout/Sidebar.tsx`,
+`frontend/src/hooks/usePermission.ts`. The intelligence layer's insight, the
+alert heatmap and the drone analytics are as they were, and situations are
+still counted only by the layer. No existing table is altered. The answers'
+table is `risk_advice_answers`, not `security_advice` as section 5 planned,
+for the reason given under phase 8.
+
+**Not done in phase 9, and why:** nothing is forecast — section 7 said
+predictive risk is counting, and it is; there is no model and nothing is
+learned from the answers (E2); no risk score is made, because one number would
+mix kinds that are not alike and hide its counts; nothing allows for how much
+is watched, so more records at a place is not more danger there, and the
+document says so; a record made while testing is counted like any other; the
+places are the cameras, doors, patrols, devices and clocks the records already
+name, not zones, and the optional places model (E4) is not used; an answer
+raises no work and moves nobody, and tells nobody; advice for every site
+together is read and not answered; there is no report, export or scheduled
+delivery of it; the phone has no part of it; and it has run on the development
+organisation's incidents, missed patrols, camera disconnections and three
+missed clocks — that organisation has no door events, so doors have run on
+test data only.
