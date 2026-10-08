@@ -368,7 +368,7 @@ written. This section is added to as each phase is finished.
 | 11 | Workforce intelligence | **Built 2026-10-08** — migration `0154` | `SECURITY_ANALYTICS_ARCHITECTURE.md`, part two |
 | 12 | Case management | **Built 2026-10-08** — migration `0155` | `SECURITY_CASE_MANAGEMENT.md` |
 | 13 | Compliance and hardening | **Built 2026-10-09** — migration `0156` | `ENTERPRISE_SECURITY_HARDENING.md` |
-| 14 | Integration testing | Not started | |
+| 14 | Integration testing | **Built 2026-10-09** — no migration | This document, below |
 
 ### Phase 1 — what was built, against what section 3 found
 
@@ -765,3 +765,43 @@ their own screens, or the account, which has its own export; a name typed is
 not matched to a person; nothing is erased; the routes and tables that existed
 before the expansion were not swept; the phone has no part of it; and the
 development organisation has not been given migration `0156`.
+
+### Phase 14 — the eleven chains, end to end
+
+`backend/tests/test_expansion_chains.py`. Each phase was tested by itself; these
+follow one thing through several of them, by the routes a person would use, in
+one organisation.
+
+| Chain | Followed in | What holds |
+|---|---|---|
+| CCTV → AI → Incident | `test_what_a_camera_saw_is_followed_from_the_alert_to_the_report_of_its_case` | A camera's alert is read, placed, assessed and something is suggested; nothing is opened until an operator decides, and the incident is then a person's, not the platform's |
+| Incident → Guard Dispatch | the same | The guard reads that they were sent, accepts, sets off, arrives and reports; the desk reads every step |
+| Incident → Investigation | the same | Opened from the incident, which is in it from the start; the alert is added |
+| Investigation → Evidence | the same | The clip kept with the incident is what is offered, and nothing else; it is packaged and sealed, and a hold is placed on it |
+| Evidence → Case | the same | Opened from the package, with the incident and the investigation linked beside it; somebody given a task finishes that task and does nothing else |
+| Case → Report | the same | Closed by two; the report holds the outcome, the three links and the history, as a reading and as a PDF. Closing the case settled nothing it refers to |
+| Drone → AI → Incident | `test_a_drone_sighting_and_a_patrol_exception_each_become_an_incident_only_when_a_person_decides` | A verified sighting becomes a situation; an incident only when a person decides — following the suggestion, or saying why not |
+| Virtual Patrol → AI → Incident | the same | An exception an officer recorded on a round becomes a situation at its own site, and an incident only when a person decides |
+| Visitor → Access → CCTV → Alert | `test_a_visitors_badge_is_set_against_their_authorisation_and_a_forced_door_joins_what_the_camera_saw` | A badge used at a door outside what was authorised is listed for a person to look at, and raises nothing. A forced door and what a camera saw there a moment later are placed together as one situation |
+| Device Health → Maintenance | `test_a_device_that_is_down_becomes_work_only_when_a_person_accepts_it` | A camera read as down is put forward as work only once the organisation asks for that; it is work when a person accepts it, and done when a person says what was done. Nothing touched the camera |
+| Risk → AI Recommendation → Human Decision | `test_a_pattern_becomes_advice_a_person_answers_and_a_briefing_carries` | Where incidents gather becomes a statement with what it rests on; a manager answers it; a briefing carries it word for word; accepting it raised no work, sent no guard and touched no roster |
+
+At the end of the first test the readings added later are asked what the chain
+left behind: the board counts the incident, the guard sent and the arrival; the
+retention statement shows the hold; a subject report for the guard says they
+were sent once and took four steps. Every step that mattered is in the audit
+log and was a signed-in person's.
+
+**Where a chain is not joined all the way.** A visitor's door events are set
+against their authorisation, by the visitor module. They are not events of the
+intelligence layer, and nothing of the layer names the visitor: the test holds
+that. Joining them is the decision left open in phase 7.
+
+**Existing files changed in phase 14:** none. One test module was added.
+
+**Not done in phase 14, and why:** nothing ran on hardware — no camera, door
+controller, alarm panel or drone is behind any of it; the phone's part of a
+response was exercised through its routes, not on a device; no chain was timed
+or loaded, so there is no performance figure; the web screens were not driven
+end to end in a browser — each has its own tests; and the chains ran on a test
+database, not on the development organisation, which is at migration `0150`.
