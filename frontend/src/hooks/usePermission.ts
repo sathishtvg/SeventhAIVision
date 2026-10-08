@@ -153,6 +153,8 @@ const ALL_PERMISSIONS = [
   'opsreport:export',
   // Workforce readings and recommendations (migration 0154). The platform owner, a viewer and the client role hold none.
   'workforce:read', 'workforce:answer', 'workforce:own',
+  // Security cases (migration 0155). The platform owner, a guard and the client role hold none.
+  'case:read', 'case:work', 'case:manage',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -275,6 +277,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'board:read', 'briefing:read', 'briefing:manage', // Operations board and briefing (0152): reads; drafts and publishes
     'opsreport:export', // Operations reports (0153): takes a report out as a file
     'workforce:read', 'workforce:answer', 'workforce:own', // Workforce readings (0154): reads, answers; and their own
+    'case:read', 'case:work', 'case:manage', // Cases (0155): reads, works, assigns and approves closing
   ],
   4: [ // operator
     'camera:read',
@@ -330,6 +333,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'advice:read', // Risk and advice (0151): reads
     'board:read', 'briefing:read', // Operations board and briefing (0152): reads
     'workforce:own', // Workforce readings (0154): their own reading, nobody else's
+    'case:read', 'case:work', // Cases (0155): reads; works the cases they are on
   ],
   5: [ // security_guard
     'camera:read',
@@ -410,6 +414,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'asset:read', 'maintenance:read', // Assets and maintenance (0150): reads
     'advice:read', // Risk and advice (0151): reads
     'board:read', 'briefing:read', // Operations board and briefing (0152): reads
+    'case:read', // Cases (0155): reads
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

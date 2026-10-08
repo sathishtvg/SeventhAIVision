@@ -78,6 +78,7 @@ import HandymanIcon from '@mui/icons-material/Handyman'
 import QueryStatsIcon from '@mui/icons-material/QueryStats'
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
+import FolderSharedIcon from '@mui/icons-material/FolderShared'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
@@ -235,6 +236,7 @@ const NAV_SECTIONS: {
       { label: 'Search Records', path: '/investigate',     icon: <ManageSearchIcon fontSize="small" />,  permission: 'investigation:read' },
       { label: 'Investigations', path: '/investigations',  icon: <FolderSpecialIcon fontSize="small" />, permission: 'investigation:read' },
       { label: 'Evidence Packages', path: '/evidence-packages', icon: <Inventory2Icon fontSize="small" />, permission: 'evidence:package:read' },
+      { label: 'Cases',          path: '/cases',           icon: <FolderSharedIcon fontSize="small" />,  permission: 'case:read' },
       { label: 'Detections',  path: '/detections', icon: <SearchIcon fontSize="small" />,        permission: 'detection:read' },
       { label: 'Evidence',    path: '/evidence',   icon: <PhotoLibraryIcon fontSize="small" />,  permission: 'evidence:read' },
       { label: 'Recordings',  path: '/recordings', icon: <VideoFileIcon fontSize="small" />,     permission: 'recording:read' },
