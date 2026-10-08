@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "8 October 2026"
-EDITION = "Edition 3"
-HEAD = "0150"
+EDITION = "Edition 4"
+HEAD = "0151"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -60,6 +60,10 @@ EDITIONS = [
      "Adds phases 7 and 8 of the enterprise expansion: visitor and contractor "
      "authorisation (module 23), and device health, the asset register and "
      "maintenance work orders (module 24). The vendor's console becomes module 25."],
+    ["Edition 4", "8 October 2026", "0151",
+     "Adds phase 9 of the enterprise expansion: risk patterns and advice (module 25) — "
+     "where what went wrong gathers, what stands out with how much history it rests on, "
+     "and a person's answer. The vendor's console becomes module 26."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -244,13 +248,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("273", "DATABASE TABLES"), ("993", "API OPERATIONS"), ("101", "API MODULES"),
-        ("105", "WEB ROUTES"), ("52", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("274", "DATABASE TABLES"), ("997", "API OPERATIONS"), ("102", "API MODULES"),
+        ("106", "WEB ROUTES"), ("52", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("195", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("150", "MIGRATIONS"),
-        ("5,878", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("197", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("151", "MIGRATIONS"),
+        ("5,920", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -302,7 +306,7 @@ story += bullets([
     "<b>At a glance</b> — one page for the person who signs.",
     "<b>Part 1, modules 01 to 13</b> — the platform as the first edition described "
     "it, brought up to date.",
-    "<b>Part 2, modules 14 to 25</b> — what has been added since: patrols from a "
+    "<b>Part 2, modules 14 to 26</b> — what has been added since: patrols from a "
     "screen and from the air, security intelligence, and the enterprise expansion.",
     "<b>Where AI is used, and where a person decides</b> — every place a model or a "
     "rule does work, what it is trusted with, and what stays a person's. "
@@ -371,7 +375,7 @@ story += [
     Paragraph("The platform in twenty-five lines", S["h2"]),
 ]
 story += bullets([
-    "<b>Identity and access</b> — 8 roles, 195 permissions, SSO, 2FA, audit log, "
+    "<b>Identity and access</b> — 8 roles, 197 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
     "playback, privacy zones, NVR.",
@@ -444,12 +448,12 @@ story += module(
         "only, and the application's database role cannot empty a table.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 195 permission codes.",
+        "per tenant, across 197 permission codes.",
         "<b>Site scope.</b> A user can be held to particular sites; every list, "
         "search and record honours it.",
         "<b>The platform operator is not a customer's administrator.</b> Super "
         "Admin runs the platform from a tenant of its own and holds none of a "
-        "customer's day-to-day permissions (module 25).",
+        "customer's day-to-day permissions (module 26).",
         "<b>Single sign-on and SCIM</b> for automated user provisioning and "
         "de-provisioning from the customer's own directory.",
         "<b>Two-factor authentication (TOTP)</b> — required, not optional, for "
@@ -741,7 +745,7 @@ story += module(
         "<b>Client portal</b> — the customer signs in and sees their own sites, "
         "incidents and invoices, and nothing else.",
         "<b>What the vendor charges the agency</b> — plans, module prices, "
-        "subscriptions and the vendor's own invoices — is module 25.",
+        "subscriptions and the vendor's own invoices — is module 26.",
     ])
 
 story += module(
@@ -769,7 +773,7 @@ story.append(PageBreak())
 # ═══ PART 2 ═════════════════════════════════════════════════════════════════
 story += part(
     "Part 2 — Added since the first edition",
-    "Twelve modules built after the first edition. Each was added beside what "
+    "Thirteen modules built after the first edition. Each was added beside what "
     "already worked: new tables, new API modules and new screens, with the "
     "existing ones left as they were. Every one keeps the same rule — the "
     "platform detects, relates, assesses and recommends, and a person decides.")
@@ -1122,7 +1126,46 @@ story += module(
     tag="ADDED SINCE EDITION 2 · MIGRATION 0150")
 
 story += module(
-    "25", "Platform operations — the vendor's console",
+    "25", "Risk patterns and advice",
+    "Where what went wrong gathers — by hour, day, week and place — what stands "
+    "out, how much history that rests on, and what a person made of it.",
+    [
+        "<b>Five kinds of thing that went wrong, counted the same way:</b> "
+        "incidents; doors refused, forced or tampered with; patrols missed or "
+        "failed — a guard's tour, a virtual patrol, a drone patrol; devices going "
+        "down; response clocks missed.",
+        "<b>Counted three ways,</b> over the last one to twelve weeks: by weekday "
+        "and hour where the site is, by week, and by place — a camera, a door, a "
+        "patrol, a device. Nobody is named.",
+        "<b>A week of hours</b> for each kind, shaded in four steps with a key "
+        "that says in counts what each shade stands for; every cell readable "
+        "without its shade, and the numbers themselves on request.",
+        "<b>What stands out, by fixed rules:</b> a band of four hours, a weekday "
+        "or a place holding most of the records; twice as many in the later half "
+        "of the period as in the earlier; a device down three times or more. "
+        "Each statement has its count in it and one thing to consider.",
+        "<b>How much history it rests on.</b> Much, some or little: how many "
+        "records, over how many weeks, and in how many of those weeks the same "
+        "held by itself. One busy afternoon is one week, not four.",
+        "<b>Nothing before is not called a rise.</b> When the earlier half of a "
+        "period has no records, the statement says that the counts cannot tell a "
+        "change from the start of recording.",
+        "<b>A person's answer.</b> For one site: accepted, or not accepted with a "
+        "reason. The platform counts the advice again first and keeps its own "
+        "statement with the answer. An answer is added and never rewritten.",
+        "<i>By design:</i> a pattern that recurred is not a forecast, and every "
+        "reading says so; confidence is how much history a statement rests on, "
+        "not a probability; an answer raises no work, moves no guard and alters "
+        "no roster. <i>Documented limitations:</i> no risk score is made; nothing "
+        "allows for how much is watched at a place, so more records there is not "
+        "more danger there; a record made while testing is counted like any "
+        "other; places are not zones; there is no report or export; the phone "
+        "has no part of it.",
+    ],
+    tag="ADDED SINCE EDITION 3 · MIGRATION 0151")
+
+story += module(
+    "26", "Platform operations — the vendor's console",
     "Seventh AI sells this to security companies, so the vendor and the "
     "customer are different businesses and do not share a login, a permission "
     "set or a bill.",
@@ -1218,6 +1261,13 @@ story.append(data_table(
          "Two rules: a schedule falling due, and — when an organisation has "
          "switched it on — a device read as down for a set number of hours",
          "Accepts the suggestion as work, or dismisses it with a reason"],
+        ["Risk patterns and advice (module 25)",
+         "Fixed rules over counts of what was recorded: a band of hours, a "
+         "weekday or a place holding most of the records; twice as many as "
+         "before. Each says how much history it rests on. Not a model, and not "
+         "a forecast",
+         "Reads it; answers it for a site — accepted, or not accepted with a "
+         "reason. The answer changes nothing else"],
         ["Daily intelligence and the site security score",
          "Counting over a stated period of history",
          "Reads it as history, not as a forecast"],
@@ -1254,17 +1304,14 @@ story += [
     Spacer(1, 8),
     Paragraph(
         "The enterprise expansion is fourteen phases, built and merged one at a "
-        "time. Phases 1 to 8 are modules 17 to 24 above. What follows is not yet "
+        "time. Phases 1 to 9 are modules 17 to 25 above. What follows is not yet "
         "released and is <b>not counted</b> in any figure in this document. Each "
         "row moves into the numbered modules when it is merged and tested.", S["body"]),
 ]
 story.append(data_table(
     ["Phase", "Area", "State", "What it adds"],
     [
-        ["9", "Risk and the security advisor", "Planned",
-         "Recurring patterns over every source; risk by zone and hour; advice "
-         "with its confidence and a person's recorded answer to it"],
-        ["10", "Operations analytics and the daily briefing", "Planned",
+        ["10", "Operations analytics and the daily briefing", "In progress",
          "Boards per role; a dated daily briefing a person reviews and publishes; "
          "the reports that are missing"],
         ["11", "Workforce intelligence", "Planned",
@@ -1293,7 +1340,7 @@ story += bullets([
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
     "<b>A new Windows desktop build.</b> Desktop 1.0.4 carries the screens up "
-    "to AI Security Intelligence; the screens of modules 17 to 24 need a new "
+    "to AI Security Intelligence; the screens of modules 17 to 25 need a new "
     "build. The installer is not yet code-signed.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
     "alarm panels have not been connected.",
@@ -1309,7 +1356,7 @@ story.append(Spacer(1, 8))
 story.append(data_table(
     ["Application", "Platform", "Scale", "Notes"],
     [
-        ["Web console", "Browser (React)", "105 routes",
+        ["Web console", "Browser (React)", "106 routes",
          "The full platform. Every module, every administrative surface."],
         ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "52 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
@@ -1400,13 +1447,15 @@ story += bullets([
     "those door events are not fed to the intelligence layer.",
     "<b>A work order put forward by the platform</b> says what was read, not what "
     "is wrong: no cause is inferred for a device that is down.",
-    "<b>Risk figures are counts over history</b>, not forecasts.",
+    "<b>Risk patterns are counts over history</b>, not forecasts. No risk score is "
+    "made, nothing allows for how much is watched at a place, and a record made "
+    "while testing is counted like any other.",
     "<b>Payroll:</b> graduated first- and second-year PR CPF rates and the "
     "Additional Wage ceiling are not implemented; PWM rates are not shipped.",
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
     "<b>The phone app</b> needs a new build and a device pass for what was added "
     "after its SDK upgrade; <b>the desktop app</b> needs a new build for modules "
-    "17 to 24 and is not code-signed.",
+    "17 to 25 and is not code-signed.",
     "<b>The Helm chart</b> has not been installed on a cluster.",
 ])
 
@@ -1414,10 +1463,10 @@ story.append(Spacer(1, 14))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 150 "
-    "database migrations, 273 tables, 101 API modules serving 993 operations, 103 backend "
-    "services, 105 web routes and 52 phone screens, covered by 5,878 automated tests "
-    "(backend 3,940, repository inspection 1,267, web 388, phone 283). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 151 "
+    "database migrations, 274 tables, 102 API modules serving 997 operations, 104 backend "
+    "services, 106 web routes and 52 phone screens, covered by 5,920 automated tests "
+    "(backend 3,955, repository inspection 1,276, web 406, phone 283). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
