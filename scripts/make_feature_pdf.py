@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "9 October 2026"
-EDITION = "Edition 6"
-HEAD = "0156"
+EDITION = "Edition 7"
+HEAD = "0158"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -74,6 +74,16 @@ EDITIONS = [
      "(module 29), with a security sweep over everything the expansion added. Phase 14 "
      "follows eleven chains end to end as tests. The fourteen phases are built; the "
      "vendor's console becomes module 30."],
+    ["Edition 7", "9 October 2026", "0158",
+     "The seven things left for the owner were decided, and are carried out: the "
+     "occurrence book cannot be rewritten by the application; exports write "
+     "formula-like text as text; the data-subject export gives its subject's own and "
+     "is audited; privacy masks are read with a credential; four kinds of the newer "
+     "records may be given a retention period; and a badge used outside its "
+     "authorisation may be handed to the intelligence layer. The vendor's licence "
+     "catalogue gains the fourteen modules built since it was written, and Manage "
+     "Licenses gains Drone Patrol's own licence. The phone gains four screens; the "
+     "desktop app is 1.0.5."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -258,13 +268,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("282", "DATABASE TABLES"), ("1,041", "API OPERATIONS"), ("108", "API MODULES"),
-        ("111", "WEB ROUTES"), ("52", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("282", "DATABASE TABLES"), ("1,042", "API OPERATIONS"), ("108", "API MODULES"),
+        ("111", "WEB ROUTES"), ("56", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("156", "MIGRATIONS"),
-        ("6,097", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
+        ("6,161", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -308,11 +318,11 @@ story += [
 story.append(data_table(
     ["Edition", "Date", "Platform at", "What it covers"],
     EDITIONS, widths=[22 * mm, 30 * mm, 22 * mm, 96 * mm]))
-story += [
-    Spacer(1, 8),
+# Kept together: the table above gains a row with every edition, and a list
+# split across the page leaves a few of its lines alone on the next.
+story += [Spacer(1, 8), KeepTogether([
     Paragraph("How the document is laid out", S["h2"]),
-]
-story += bullets([
+] + bullets([
     "<b>At a glance</b> — one page for the person who signs.",
     "<b>Part 1, modules 01 to 13</b> — the platform as the first edition described "
     "it, brought up to date.",
@@ -322,10 +332,10 @@ story += bullets([
     "<b>Where AI is used, and where a person decides</b> — every place a model or a "
     "rule does work, what it is trusted with, and what stays a person's. "
     "<b>AI capabilities added or upgraded later are recorded here.</b>",
-    "<b>In progress and planned</b> — what is waiting on a decision, and on something "
-    "outside the code.",
+    "<b>In progress and planned</b> — what the owner decided and how each now "
+    "stands, and what waits on something outside the code.",
     "<b>Client applications, roles, Singapore, and known limits.</b>",
-])
+]))]
 story.append(PageBreak())
 
 # ── At a glance ─────────────────────────────────────────────────────────────
@@ -1042,7 +1052,9 @@ story += module(
         "The guard reads it, corrects it and confirms it; what the platform "
         "drafted is kept beside it, and once confirmed it cannot be changed.",
         "<i>By design:</i> the summary writes no prose of its own and draws no "
-        "conclusion; no language model is involved.",
+        "conclusion; no language model is involved. An entry is added and never "
+        "rewritten: no code edits or removes one, and since edition 7 the "
+        "application's database role is not allowed to either.",
     ],
     tag="ADDED SINCE EDITION 1 · MIGRATION 0147")
 
@@ -1101,14 +1113,23 @@ story += module(
         "visit is authorised for. One outside either is listed for somebody who "
         "manages visits to look at, who records that it was in order or how it "
         "was followed up.",
+        "<b>Handed to the intelligence layer, when the organisation asks.</b> A "
+        "switch, off unless somebody who may change the organisation's settings "
+        "turns it on. With it on, "
+        "a badge used outside its authorisation and not yet looked at becomes an "
+        "event of the layer — low in severity, naming nobody, carrying the "
+        "authorisation so that somebody who may read visits can open it — and the "
+        "layer sets it beside what the cameras and the doors reported there and "
+        "then. <i>Added in edition 7.</i>",
         "<b>On the phone:</b> the visits waiting for your answer, and what stands "
         "for a visit beside its check-in.",
         "<i>By design:</i> an authorisation admits nobody and refuses nobody, and "
         "a door event outside it is not a finding — nothing is raised and nobody "
         "is accused. <i>Documented limitations:</i> a visitor is followed only "
         "through doors their badge number opened; the people working under a "
-        "work permit are not followed; these events are not fed to the "
-        "intelligence layer; nothing opens or locks a door.",
+        "work permit are not followed; with the switch off, which is how it "
+        "starts, the layer is given none of these events; nothing opens or locks "
+        "a door.",
     ],
     tag="ADDED SINCE EDITION 2 · MIGRATION 0149")
 
@@ -1147,7 +1168,8 @@ story += module(
         "latency, packet loss, the quality of the picture and gaps in a "
         "recording are not measured; an outage shorter than five minutes can "
         "pass unrecorded; no cause is inferred; there is no parts store, cost or "
-        "maintenance SLA; the phone has no part of it.",
+        "maintenance SLA; on the phone, whoever an order is given to says it has "
+        "started and what was done, and nothing else of this is there.",
     ],
     tag="ADDED SINCE EDITION 2 · MIGRATION 0150")
 
@@ -1236,7 +1258,8 @@ story += module(
         "publishing tells nobody. <i>Documented limitations:</i> the board keeps "
         "no history of itself; a site with nothing scheduled has nothing missed; "
         "no report is delivered on a schedule or as a PDF; the client portal is "
-        "unchanged; the phone has no part of it.",
+        "unchanged; the phone reads published briefings and has nothing of the "
+        "board or the reports.",
     ],
     tag="ADDED SINCE EDITION 4 · MIGRATIONS 0152 AND 0153")
 
@@ -1279,7 +1302,7 @@ story += module(
         "no model. <i>Documented limitations:</i> nothing says why a shift was "
         "not started, and leave is not read; cover is compared from shifts as "
         "rostered; a reading is not taken out as a file; nothing is sent to a "
-        "guard; the phone has no part of it.",
+        "guard; the phone shows a person their own reading, and nobody else's.",
     ],
     tag="ADDED SINCE EDITION 4 · MIGRATION 0154")
 
@@ -1324,7 +1347,8 @@ story += module(
         "visitor, a member of staff, a watchlist entry or a face; closing a case "
         "does not resolve its incident or seal its evidence package; nobody is "
         "told when they are put on a case or asked to approve; nothing "
-        "escalates a case; the report is not signed; the phone has no part of it.",
+        "escalates a case; the report is not signed; on the phone, somebody given "
+        "a task says it is done or why it is dropped, and the case itself is not there.",
     ],
     tag="ADDED SINCE EDITION 4 · MIGRATION 0155")
 
@@ -1345,8 +1369,18 @@ story += module(
         "recordings, where its recording policy sets one; how many holds are in "
         "force, and how many of each kind of record are held now.",
         "<b>No period is a statement too.</b> Most of what the platform keeps is "
-        "removed by no job. Everything in modules 17 to 28 is of that kind, and "
-        "each of its tables is listed with whether it names a person.",
+        "removed by no job. Everything in modules 17 to 28 is of that kind until "
+        "an organisation sets a period, and each of its tables is listed with "
+        "whether it names a person.",
+        "<b>Four periods an organisation may set.</b> Closed cases, closed "
+        "investigations, visitor authorisations that have run out, and answers to "
+        "recommendations about a guard or a site. Nothing is removed until a "
+        "period is set — of at least thirty days — by somebody who may change the "
+        "organisation's settings. Setting one that would remove records already "
+        "older says how many first, and asks again. A job then removes what is "
+        "over and older, once a day, and writes one line in the audit log for "
+        "what went. A case that is open is never removed, nor an investigation "
+        "an evidence package was made from. <i>Added in edition 7.</i>",
         "<b>A subject report.</b> For a member of staff, a visitor, or a name or "
         "a number plate as it was typed: where they appear in the records of "
         "modules 17 to 28, how often and between which dates — told apart as "
@@ -1368,10 +1402,11 @@ story += module(
         "law requires, and changes no period; a subject report says where and how "
         "often, not what each record says — a record holds other people too; a "
         "name typed is matched as text and identifies nobody. <i>Documented "
-        "limitations:</i> nothing in modules 17 to 28 has a retention period; a "
-        "report does not read attendance, rosters, leave, pay, training or "
-        "violations, or the account, which has its own export; nothing is "
-        "erased; the phone has no part of it.",
+        "limitations:</i> evidence packages and everything else of modules 17 to "
+        "28 have no retention period, and the four that may have one have none "
+        "until it is set; a report does not read attendance, rosters, leave, pay, "
+        "training or violations, or the account, which has its own export; "
+        "nothing is erased on request; the phone has no part of it.",
     ],
     tag="ADDED SINCE EDITION 5 · MIGRATION 0156")
 
@@ -1389,7 +1424,22 @@ story += module(
         "expired, cancelled — rather than on or off, with a grace period after a "
         "subscription ends.",
         "<b>Pricing and licensing.</b> A catalogue of what each module costs and "
-        "how it is charged, tied to the module licences the AI workers enforce.",
+        "how it is charged, tied to the module licences the AI workers enforce. "
+        "Since edition 7 it lists the fourteen modules built after it was written "
+        "— Virtual Patrolling, security intelligence, investigation, evidence "
+        "packages, the security map, guard response, the SOP library, visitor "
+        "authorisation, assets and maintenance, risk advice, the operations "
+        "board, workforce readings, cases and data retention — so the vendor can "
+        "switch each on or off for a customer, as it could the first twelve. A "
+        "module nobody has switched off is on with its product, so no customer "
+        "lost anything by it. The catalogue is the vendor's record of what a "
+        "customer has been sold: it does not by itself stop a screen from "
+        "answering — only the AI modules' licences and Drone Patrol's do that.",
+        "<b>Drone Patrol's own licence.</b> Manage Licenses has a tab for it, one "
+        "organisation at a time: on or off, an expiry, and how many drones, "
+        "missions and sites — a limit left empty is no limit — with a note. The "
+        "screen says whether the organisation may use Drone Patrol now, and why "
+        "not when it may not. <i>Added in edition 7.</i>",
         "<b>The vendor's own invoices</b>, for customers who pay by bank transfer "
         "rather than by card.",
         "<b>Subscription notices</b> — a trial ending, a payment overdue, a "
@@ -1461,9 +1511,12 @@ story.append(data_table(
          "Reads the procedure and acts on it"],
         ["A visitor's badge against what was authorised (module 23)",
          "A comparison: the door events of the badge with the places and the "
-         "period of the authorisation. Not a model",
+         "period of the authorisation. Not a model. <b>Edition 7:</b> when an "
+         "organisation switches it on, one outside its authorisation is given to "
+         "security intelligence as an event that names nobody, and is related "
+         "and assessed like any other",
          "Looks at each one listed; records that it was in order or how it was "
-         "followed up"],
+         "followed up. Decides what follows from a situation it is part of"],
         ["Device health (module 24)",
          "Rules over what each device reports: a stream's state, a probe, a "
          "heartbeat, a late reading. Nothing is inferred about the cause",
@@ -1497,8 +1550,9 @@ story.append(data_table(
         ["The retention statement and a subject report (module 29)",
          "Nothing decides. The statement reads what the jobs read; a report counts "
          "where a person appears. A name typed is matched as text. Not a model",
-         "Changes a period in the settings, as before; reads each record on its "
-         "own screen and judges what of it is that person's"],
+         "Sets a period for the four kinds that may have one, or leaves them "
+         "kept; reads each record on its own screen and judges what of it is "
+         "that person's"],
         ["Daily intelligence and the site security score",
          "Counting over a stated period of history",
          "Reads it as history, not as a forecast"],
@@ -1516,7 +1570,8 @@ story += bullets([
     "guard, opens or closes an incident, flies a drone to an unplanned place, "
     "operates a door, admits or refuses a visitor, raises maintenance work, "
     "publishes a briefing, assigns a course, opens or closes a case, or changes "
-    "a roster on a recommendation alone.",
+    "a roster on a recommendation alone. No record of modules 17 to 28 is "
+    "removed unless a person set the period for it.",
     "<b>Nothing learns by itself.</b> A person's feedback on a situation is kept "
     "as a dataset; no model or rule is trained on it automatically. A rule or a "
     "weight changes only as a tenant setting or as released code.",
@@ -1543,56 +1598,63 @@ story += [
         "tests — from what a camera saw, through the decision, the guard sent, the "
         "investigation, the evidence and the case, to the case's report — and "
         "holds that every step that mattered was a person's. Nothing is in "
-        "progress. What follows waits on a decision.", S["body"]),
-    Paragraph("Waiting on the owner's decision", S["h2"]),
+        "progress, and nothing waits on a decision.", S["body"]),
+    Paragraph("Decided by the owner on 9 October 2026, and carried out", S["h2"]),
     Paragraph(
-        "Each of these was found while building and left as it is, because "
-        "putting it right changes something that works today.", S["body"]),
+        "Each of these was found while building and left as it was, because "
+        "putting it right changes something that worked. They were put to the "
+        "owner, who decided that all seven be done.", S["body"]),
 ]
 story.append(data_table(
-    ["What", "As it is", "What a yes would change"],
+    ["What", "As it was", "As it is now"],
     [
         ["The occurrence book",
-         "No code edits or removes an entry, but the application's database role "
-         "is allowed to",
-         "The right is taken away, so the database refuses it too"],
+         "No code edited or removed an entry, but the application's database "
+         "role was allowed to",
+         "The right is taken away: the database refuses it too"],
         ["The existing CSV exports",
-         "Text that begins with =, +, - or @ is written as it is, and a "
-         "spreadsheet runs it as a formula",
-         "Such text is made plain, as the operations reports already make it"],
+         "Text that begins with =, +, - or @ was written as it is, and a "
+         "spreadsheet ran it as a formula",
+         "Such text is written as text. Numbers are untouched"],
         ["The existing data-subject export",
-         "Its evidence is the organisation's latest, whoever it shows; it can "
-         "include where files are kept; it leaves no audit line",
-         "It gives the subject's own, without file locations, and is audited"],
+         "Its evidence was the organisation's latest, whoever it showed; it "
+         "could include where files are kept; it left no audit line",
+         "It lists what its subject handled, never says where a file is kept, "
+         "and is one line in the audit log"],
         ["Default retention periods",
-         "Two are given to the jobs' services and not to the API, so the "
-         "statement says the job's own is the one in force",
-         "The installation gives the API the same two, and the statement is certain"],
+         "Two were given to the jobs' services and not to the API, so the "
+         "statement said the job's own was the one in force",
+         "The installation gives the API the same two. An installation put "
+         "together by hand can still differ, and the statement says so"],
         ["Privacy masks",
-         "Read without a token by design, for the AI workers, by anybody who "
-         "knows a camera's id",
-         "The workers present a credential"],
+         "Read without a token by anybody who knew a camera's id",
+         "Read with a credential that may read cameras, within the caller's own "
+         "organisation"],
         ["Retention for modules 17 to 28",
-         "Nothing removes a case, a visitor's authorisation or an answer about a guard",
-         "A period for each kind, and a job allowed to apply it"],
+         "Nothing removed a case, a visitor's authorisation or an answer about a guard",
+         "Four kinds may be given a period by the organisation; nothing is "
+         "removed until one is set (module 29)"],
         ["Visitor and door events",
-         "Set against the authorisation; not fed to the intelligence layer",
-         "The layer relates them to what the cameras saw"],
+         "Set against the authorisation; not given to the intelligence layer",
+         "Given to it when an organisation switches that on; off to begin with "
+         "(module 23)"],
     ],
-    widths=[36 * mm, 68 * mm, 66 * mm]))
+    widths=[36 * mm, 66 * mm, 68 * mm]))
 story += [
     Spacer(1, 8),
     Paragraph("Waiting on something outside the code", S["h2"]),
 ]
 story += bullets([
     "<b>A phone build and a device pass.</b> The phone parts of guard response, "
-    "handover notes, procedures and visitor authorisation are type-checked and "
-    "their rules tested, but "
+    "handover notes, procedures and visitor authorisation — and the four screens "
+    "added in edition 7: a person's own reading, published briefings, work "
+    "orders and case tasks given to them — are type-checked, their rules tested "
+    "and each held to the server by a test, but "
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A new Windows desktop build.</b> Desktop 1.0.4 carries the screens up "
-    "to AI Security Intelligence; the screens of modules 17 to 29 need a new "
-    "build. The installer is not yet code-signed.",
+    "<b>A code-signing certificate.</b> Desktop 1.0.5 is built and carries every "
+    "screen of this edition. Its installer is not code-signed, so Windows warns "
+    "before it runs.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
     "alarm panels have not been connected.",
     "<b>A cluster install.</b> The Helm chart lints and renders in CI and has "
@@ -1609,14 +1671,16 @@ story.append(data_table(
     [
         ["Web console", "Browser (React)", "111 routes",
          "The full platform. Every module, every administrative surface."],
-        ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "52 screens",
+        ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "56 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
          "book, handover, post orders, incidents and the response to them, "
-         "situations, drone events, SOS. Offline outbox queues actions taken with "
+         "situations, drone events, SOS — and, for whoever is signed in, their own "
+         "reading, published briefings, and the work orders and case tasks given "
+         "to them. Offline outbox queues actions taken with "
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.4."],
+         "Version 1.0.5, which installs over 1.0.4."],
     ],
     widths=[32 * mm, 38 * mm, 20 * mm, 80 * mm]))
 
@@ -1695,7 +1759,8 @@ story += bullets([
     "loss, the quality of the picture and gaps in a recording are not measured, "
     "and an outage shorter than five minutes can pass unrecorded.",
     "<b>A visitor is followed only through the doors their badge opened</b>, and "
-    "those door events are not fed to the intelligence layer.",
+    "those door events reach the intelligence layer only where an organisation "
+    "has switched that on.",
     "<b>A work order put forward by the platform</b> says what was read, not what "
     "is wrong: no cause is inferred for a device that is down.",
     "<b>Risk patterns are counts over history</b>, not forecasts. No risk score is "
@@ -1710,8 +1775,9 @@ story += bullets([
     "<b>A case names nobody by itself</b>, and a name in one is text: it is not "
     "matched to a visitor, a member of staff, a watchlist entry or a face. Nobody "
     "is told when they are put on a case, and nothing escalates one.",
-    "<b>Nothing in modules 17 to 28 has a retention period.</b> The retention "
-    "statement says so; it sets no period and says nothing of what the law requires.",
+    "<b>Most of modules 17 to 28 has no retention period.</b> Four kinds may be "
+    "given one by the organisation and are kept until then; evidence packages "
+    "have none. The statement says nothing of what the law requires.",
     "<b>A subject report says where a person appears, not what each record "
     "says</b>, and reads modules 17 to 28: attendance, rosters, leave, pay, "
     "training and violations are each on their own screen.",
@@ -1721,8 +1787,7 @@ story += bullets([
     "Additional Wage ceiling are not implemented; PWM rates are not shipped.",
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
     "<b>The phone app</b> needs a new build and a device pass for what was added "
-    "after its SDK upgrade; <b>the desktop app</b> needs a new build for modules "
-    "17 to 29 and is not code-signed.",
+    "after its SDK upgrade; <b>the desktop app</b> is not code-signed.",
     "<b>The Helm chart</b> has not been installed on a cluster.",
 ])
 
@@ -1730,10 +1795,10 @@ story.append(Spacer(1, 14))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 156 "
-    "database migrations, 282 tables, 108 API modules serving 1,041 operations, 112 backend "
-    "services, 111 web routes and 52 phone screens, covered by 6,097 automated tests "
-    "(backend 4,020, repository inspection 1,311, web 483, phone 283). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
+    "database migrations, 282 tables, 108 API modules serving 1,042 operations, 114 backend "
+    "services, 111 web routes and 56 phone screens, covered by 6,161 automated tests "
+    "(backend 4,030, repository inspection 1,325, web 494, phone 312). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
