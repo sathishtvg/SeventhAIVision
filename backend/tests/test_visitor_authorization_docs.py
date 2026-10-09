@@ -66,7 +66,8 @@ def test_an_authorisation_informs_and_the_document_and_the_code_both_say_so():
     doc = _flat(_doc())
     for said in ("An authorisation informs; it admits nobody and refuses nobody.", "Nothing accuses anybody.",
                  "What is not known is said to be not known.", "A visitor's ID number is not taken.",
-                 "It raises no alert and no incident, it is not written into the intelligence layer"):
+                 "It raises no alert and no incident, it is handed to the intelligence layer only when the "
+                 "organisation asks for that"):
         assert said in doc, said
     assert "does not check anybody in" in authorisation.GATE_NOTE and "not a finding" in authorisation.MOVEMENT_NOTE
     for path in (Path(api.__file__), Path(authorisation.__file__)):
@@ -314,14 +315,20 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
                          _doc().split("Existing files changed", 1)[1].split("No existing table is altered", 1)[0])
     assert changed == CHANGED
     not_done = _flat(_doc().split("## 11. What this does not do", 1)[1])
-    for said in ("It does not feed the intelligence layer.", "It does not use `restricted_zones`.",
+    for said in ("It does not feed the intelligence layer unless the organisation asks.", "It does not use `restricted_zones`.",
                  "It does not verify an ID.", "It does not open or lock anything."):
         assert said in not_done, said
     layer = [REPO_ROOT / "backend" / "app" / "intelligence_main.py",
              *sorted((REPO_ROOT / "backend" / "app" / "services").glob("intel_*.py"))]
     assert len(layer) > 3
     for path in layer:
-        assert "visitor_authoriz" not in path.read_text(encoding="utf-8"), f"{path.name}: the layer is as it was"
+        assert "visitor_authoriz" not in path.read_text(encoding="utf-8"), f"{path.name}: the layer reads no authorisation"
+    # What the layer is handed, it is handed by the visitor module's own reader, in one place, when asked.
+    handed = [path.name for path in layer if "visitor_movement_events" in path.read_text(encoding="utf-8")]
+    assert handed == ["intel_runner.py"]
+    reader = (REPO_ROOT / "backend" / "app" / "services" / "visitor_movement_events.py").read_text(encoding="utf-8")
+    assert 'SETTING = "visitor.movements_to_intelligence"' in reader and "if not await enabled(db):" in reader
+    assert 'subject_kind' not in reader.split("def normalise", 1)[1].split("async def enabled", 1)[0], "no subject is named"
     built = GAPS.read_text(encoding="utf-8").split("## 9. As built", 1)[1]
     assert "| 7 | Visitors and contractors | **Built 2026-10-07**" in built and "VISITOR_CONTRACTOR_SECURITY.md" in built
     phase = built.split("### Phase 7", 1)[1]

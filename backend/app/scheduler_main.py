@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.backup import run_database_backup
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal, engine
+from app.services import record_retention
 from app.services.evidence_hold import FRAMES_AND_CLIPS, not_held
 from app.services.violations import VIOLATION_POINTS, create_violation
 
@@ -1287,6 +1288,22 @@ async def run_once(redis: Redis | None = None) -> None:
                                 len(archived))
             except Exception:
                 logger.exception("archive_old_audit_partitions failed")
+
+    # Records an organisation has set a period for (services/record_retention.py):
+    # closed cases, closed investigations, visitors' authorisations and answers
+    # about a guard. Nothing is removed for an organisation that has set none.
+    # On the superuser session because the application's role may not delete
+    # from those tables at all.
+    async with admin_session() as db:
+        if db is None:
+            logger.warning("record retention skipped: no POSTGRES_USER/PGPASSWORD")
+        else:
+            try:
+                kept = await record_retention.run(db)
+                if kept["removed"] or kept["failed"]:
+                    logger.info("record retention: %s", kept)
+            except Exception:
+                logger.exception("record retention failed (non-fatal, maintenance continues)")
 
     try:
         result = await run_database_backup()

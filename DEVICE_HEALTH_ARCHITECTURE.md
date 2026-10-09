@@ -332,7 +332,10 @@ No existing table is altered. The new tables refer to `cameras`,
 - **It does not read drone maintenance logs or guard kit** (`equipment_items`),
   which stay where they were, and it does not turn a facility defect into an
   order by itself.
-- **The phone is not part of it.** A technician works an order on the web.
+- **The phone does two things with an order.** Whoever an order is given to
+  says on the phone that it has started, and what was done (My Work Orders,
+  added on 2026-10-09 with no new route). Raising, accepting, assigning and
+  cancelling work, the schedules and the register are on the web.
 - **It has run on the development organisation's cameras** — whose streams are
   all offline on a development machine — **and on test data for every other
   kind of device**, of which that organisation has none.

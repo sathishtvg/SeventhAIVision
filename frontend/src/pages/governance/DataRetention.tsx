@@ -2,11 +2,15 @@
  * Data retention: how long each kind of record is kept, and where a person
  * appears in the records.
  *
- * The statement is what the jobs read, read the same way. It changes no
- * period: a period is changed in the organisation's settings and in a site's
- * recording policy, as before. Where a period falls back to the installation's
- * default the server says the job's own is the one in force, and that is
- * shown beside it.
+ * The statement is what the jobs read, read the same way. The periods in
+ * force are changed where they have always been changed: in the organisation's
+ * settings and in a site's recording policy. Where a period falls back to the
+ * installation's default the server says the job's own is the one in force,
+ * and that is shown beside it.
+ *
+ * Four kinds of the newer records may be given a period here, by somebody who
+ * may change the organisation's settings, after being told how many are
+ * already older than it (components/governance/OptionalPeriods.tsx).
  *
  * A subject report says where a person appears and how often — not what each
  * record says. A name typed is found as text, and the screen says that what
@@ -17,7 +21,7 @@ import {
   Alert, Box, Button, Chip, MenuItem, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Tabs, TextField, Typography,
 } from '@mui/material'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -26,6 +30,7 @@ import {
   apiError, findSubject, getStaffReport, getStatement, getVisitorReport, getWrittenReport,
 } from '@/api/dataGovernance'
 import type { Found, Statement, SubjectReport } from '@/api/dataGovernance'
+import { OptionalPeriods } from '@/components/governance/OptionalPeriods'
 import {
   day, heldCount, holdLine, lineWords, matchLine, periodLine, searchesLine, siteLine, subjectLine, totalsLine,
 } from '@/components/governance/governanceFormat'
@@ -152,6 +157,7 @@ function Kept({ data }: { data: Statement }) {
 }
 
 function RetentionTab() {
+  const qc = useQueryClient()
   const { data, isLoading, error } = useQuery({ queryKey: ['retention-statement'], queryFn: getStatement })
   if (isLoading) return <Skeleton height={320} />
   if (error) return <Alert severity="error">{apiError(error)}</Alert>
@@ -162,6 +168,7 @@ function RetentionTab() {
       <Alert severity="info" sx={{ mb: 2 }} data-testid="not-law">{data.not_law}</Alert>
       <Periods data={data} />
       <Sites data={data} />
+      <OptionalPeriods data={data} onChanged={() => qc.invalidateQueries({ queryKey: ['retention-statement'] })} />
       <GlassCard sx={{ p: 2, mb: 2 }} data-testid="holds">
         <Heading note={data.holds.words}>Holds in force</Heading>
         <Typography variant="body2">

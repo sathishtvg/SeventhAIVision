@@ -589,7 +589,11 @@ RUNNER_FILES = [APP / "intelligence_main.py", APP / "services" / "intel_runner.p
                 APP / "services" / "intel_context.py", APP / "services" / "intel_recommend.py"]
 MAY_IMPORT = {"app.core.config", "app.db.session", "app.services", "app.services.intel_events",
               "app.services.intel_runner", "app.services.intel_config", "app.services.intel_correlation",
-              "app.services.intel_risk", "app.services.intel_context", "app.services.intel_recommend"}
+              "app.services.intel_risk", "app.services.intel_context", "app.services.intel_recommend",
+              # A reader of the visitor module's, added 2026-10-09: it hands the layer a visitor's door events
+              # when an organisation asks. That it reads, writes only security_events and imports nothing that
+              # acts is held by tests/test_visitor_movement_events.py.
+              "app.services.visitor_movement_events"}
 
 
 def _app_imports(path: Path) -> set[str]:

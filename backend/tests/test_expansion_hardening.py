@@ -68,7 +68,8 @@ CLIENT_READS = {"dob:read": {"/api/v1/occurrence-book/entries", "/api/v1/occurre
 #: The one route that asks for either of two permissions, in its own code.
 EITHER = {("GET", "/api/v1/incident-responses/{incident_id:uuid}"): ("response:read", "response:act")}
 #: Path parameters that are words, each checked against a list by its route.
-WORDS = {"/api/v1/operations-reports/{key}": "key", "/api/v1/security-assets/health/{kind}/{device_id:uuid}": "kind"}
+WORDS = {"/api/v1/operations-reports/{key}": "key", "/api/v1/security-assets/health/{kind}/{device_id:uuid}": "kind",
+         "/api/v1/data-governance/retention/periods/{kind}": "kind"}
 #: Requests that are not a GET and change nothing: a question with its words in the body.
 READS = {
     ("POST", "/api/v1/sop/ask"): "A question put to the library",
@@ -304,7 +305,7 @@ def test_every_route_asks_for_a_permission_and_takes_only_what_it_declares():
     by_method: dict[str, int] = {}
     for r in found:
         by_method[r["method"]] = by_method.get(r["method"], 0) + 1
-    assert by_method == {"GET": 72, "POST": 87, "PATCH": 10, "PUT": 6, "DELETE": 1} and len(found) == 176
+    assert by_method == {"GET": 72, "POST": 87, "PATCH": 10, "PUT": 7, "DELETE": 1} and len(found) == 177
     # A permission on every one; the one that asks for either of two says so in its own code.
     bare = {(r["method"], r["path"]) for r in found if not r["needs"]}
     assert bare == set(EITHER)
@@ -419,16 +420,47 @@ async def test_nobody_without_a_token_and_no_role_without_the_permission_gets_an
         assert (await c.get("/api/v1/cases/1%20OR%201=1", headers=w["h"][ADMIN])).status_code == 404
 
 
-# ─── F. What was found in what existed before, and left ──────────────────────
+# ─── F. What was found in what existed before, and put right ─────────────────
 
-async def test_what_was_found_in_what_existed_before_is_still_as_the_document_says():
-    """ENTERPRISE_SECURITY_HARDENING.md, section 9, item 1. This fails the day it is put right - and the document
-    is then to be brought up to date."""
-    rights = (await _sql("SELECT has_table_privilege('svc_app', 'occurrence_book_entries', 'UPDATE') AS upd, "
-                         "       has_table_privilege('svc_app', 'occurrence_book_entries', 'DELETE') AS del, "
-                         "       has_table_privilege('svc_app', 'occurrence_book_entries', 'TRUNCATE') AS trunc"))[0]
-    assert (rights["upd"], rights["del"], rights["trunc"]) == (True, True, False)
+async def test_what_was_found_in_what_existed_before_is_put_right():
+    """ENTERPRISE_SECURITY_HARDENING.md, section 9: the owner's decisions of 2026-10-09, each as it now is."""
+    # 1. The occurrence book: the application's role reads it and adds to it, and nothing else.
+    rights = (await _sql(
+        "SELECT has_table_privilege('svc_app', 'occurrence_book_entries', 'SELECT') AS sel, "
+        "       has_table_privilege('svc_app', 'occurrence_book_entries', 'INSERT') AS ins, "
+        "       has_table_privilege('svc_app', 'occurrence_book_entries', 'UPDATE') AS upd, "
+        "       has_table_privilege('svc_app', 'occurrence_book_entries', 'DELETE') AS del, "
+        "       has_table_privilege('svc_app', 'occurrence_book_entries', 'TRUNCATE') AS trunc"))[0]
+    assert (rights["sel"], rights["ins"], rights["upd"], rights["del"], rights["trunc"]) == (True, True, False, False, False)
     app_dir = Path(__file__).resolve().parents[1] / "app"
     wrote = [p.name for p in app_dir.rglob("*.py")
              if re.search("UPDATE occurrence_book_entries|DELETE FROM occurrence_book_entries", p.read_text(encoding="utf-8"))]
     assert not wrote, "no code edits or removes an entry"
+    w = await _world()
+    (entry,) = await _sql("INSERT INTO occurrence_book_entries (tenant_id, site_id, author_user_id, body) "
+                          "VALUES (:t, :s, :u, 'Gate checked.') RETURNING id",
+                          {"t": w["tenant"], "s": w["site_a"], "u": w["users"][GUARD]})
+    for statement in ("UPDATE occurrence_book_entries SET body = 'Rewritten' WHERE id = :e",
+                      "DELETE FROM occurrence_book_entries WHERE id = :e"):
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": str(w["tenant"])})
+            with pytest.raises(DBAPIError, match="permission denied"):
+                await db.execute(text(statement), {"e": entry["id"]})
+            await db.rollback()
+    # It is still written through the route that has always written it.
+    async with _client() as c:
+        written = await c.post("/api/v1/dob", headers=w["h"][GUARD], json={"site_id": str(w["site_a"]), "body": "All quiet."})
+        assert written.status_code in (200, 201), written.text
+
+    # 2. The existing exports write text a spreadsheet would run as a formula as text, and a number as a number.
+    from app.routers.exports import _cell, _make_csv
+
+    assert [_cell(v) for v in ("=SUM(A1:A9)", "+44 20", "-cmd", "@import", "Forced gate", None, -5, 2.5, True)] == [
+        "'=SUM(A1:A9)", "'+44 20", "'-cmd", "'@import", "Forced gate", "", "-5", "2.5", "True"]
+    lines = _make_csv([{"title": "=HYPERLINK(\"http://x\")", "count": -3}], ["title", "count"]).strip().splitlines()
+    assert lines[1].startswith("\"'=HYPERLINK(") and lines[1].endswith(",-3")
+
+    # 5. A camera's privacy masks are read with a credential.
+    async with _client() as c:
+        assert (await c.get(f"/api/v1/privacy/zones/camera/{uuid.uuid4()}")).status_code == 401
+        assert (await c.get(f"/api/v1/privacy/zones/camera/{uuid.uuid4()}", headers=w["h"][ADMIN])).json() == []

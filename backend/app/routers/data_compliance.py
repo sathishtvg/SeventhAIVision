@@ -13,14 +13,15 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
-from app.dependencies.tenant import get_db_with_tenant
+from app.dependencies.tenant import _client_ip, get_db_with_tenant
+from app.services.audit import write_audit_log
 
 router = APIRouter(prefix="/api/v1/data-compliance", tags=["data-compliance"])
 
@@ -208,6 +209,8 @@ async def retention_configuration(db: AsyncSession = Depends(get_db_with_tenant)
 
 
 class DsrExportRequest(BaseModel):
+    #: Still accepted, so that a caller that sends it is not refused - and no longer acted on: where a file is
+    #: kept is not personal data and is not handed out.
     include_evidence_urls: bool = False
 
 
@@ -217,6 +220,7 @@ class DsrExportRequest(BaseModel):
 )
 async def dsr_export(
     subject_user_id: UUID,
+    request: Request,
     body: DsrExportRequest = DsrExportRequest(),
     token: TokenPayload = Depends(get_token_payload),
     db: AsyncSession = Depends(get_db_with_tenant),
@@ -278,25 +282,41 @@ async def dsr_export(
         for r in sessions_result
     ]
 
-    # Evidence items linked to this user (admin actions)
+    # The evidence this person handled: what the access log says they opened, downloaded or exported.
+    # It is theirs because they did it. The organisation's other evidence is not about them and is not here.
     evidence_result = await db.execute(text("""
-        SELECT id, media_type, storage_path, checksum_sha256, captured_at
-        FROM evidence
-        WHERE captured_at >= now() - INTERVAL '12 months'
-        ORDER BY captured_at DESC
+        SELECT e.id, e.media_type, e.checksum_sha256, e.captured_at, l.action, l.accessed_at
+        FROM evidence_access_log l
+        JOIN evidence e ON e.id = l.evidence_id
+        WHERE l.user_id = CAST(:uid AS uuid)
+          AND l.accessed_at >= now() - INTERVAL '12 months'
+        ORDER BY l.accessed_at DESC
         LIMIT 100
-    """))
-    evidence_items = []
-    for r in evidence_result:
-        item: dict = {
+    """), {"uid": str(subject_user_id)})
+    evidence_items = [
+        {
             "id": str(r.id),
             "media_type": r.media_type,
             "checksum_sha256": r.checksum_sha256,
             "captured_at": r.captured_at.isoformat(),
+            "action": r.action,
+            "accessed_at": r.accessed_at.isoformat(),
         }
-        if body.include_evidence_urls:
-            item["storage_path"] = r.storage_path
-        evidence_items.append(item)
+        for r in evidence_result
+    ]
+
+    # That somebody's data was exported, and by whom, is itself on the record. What was exported is not copied here.
+    await write_audit_log(
+        db,
+        tenant_id=token.tenant_id,
+        user_id=token.user_id,
+        action="dsr.export",
+        resource_type="user",
+        resource_id=str(subject_user_id),
+        ip_address=_client_ip(request),
+        detail={"audit_entries": len(audit_entries), "sessions": len(sessions), "evidence": len(evidence_items)},
+    )
+    await db.commit()
 
     return {
         "export_generated_at": datetime.now(timezone.utc).isoformat(),
@@ -308,6 +328,8 @@ async def dsr_export(
         "evidence_last_12_months": evidence_items,
         "notes": (
             "This export covers data directly held for this user account. "
+            "The evidence listed is what this person opened, downloaded or exported; "
+            "where a file is kept is not included. "
             "CCTV evidence of this individual as a data subject (not as an account holder) "
             "requires a separate search by camera/date range using the Evidence API."
         ),

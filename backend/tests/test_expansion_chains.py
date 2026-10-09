@@ -20,9 +20,9 @@ was a person's, that nothing along the way was done by the platform alone, and
 that the readings added later - the board, the retention statement, a subject
 report - see what the chain left behind.
 
-Where a chain is not joined all the way, the test says so and holds it there:
-a visitor's door events are set against their authorisation, and are not fed to
-the intelligence layer.
+Where a chain is joined only when an organisation asks, the test holds both:
+a visitor's door events are set against their authorisation, and are handed to
+the intelligence layer only once that is switched on - and then name nobody.
 """
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from sqlalchemy import text
 
 from app.main import app  # noqa: F401 — imported first, so no test absorbs the cost
 from app.db.session import AsyncSessionLocal
+from app.services import intel_runner
 from tests.test_drone_api import ADMIN, GUARD, MANAGER, OPERATOR, SUPERVISOR, _client, _run, _sql
 from tests.test_evidence_packages import roots  # noqa: F401 — a fixture: the test's own directories for files
 from tests.test_intel_decisions import _ago, _decide, _pass, _rows
@@ -45,6 +46,7 @@ from tests.test_maintenance import _ask_for_suggestions, _orders
 from tests.test_security_advice import _pattern
 from tests.test_security_assets import _camera as _device_camera
 from tests.test_security_assets import _hit, _look
+from tests.test_visitor_movement_events import _switch as _hand_over
 from tests.test_visitor_authorizations import _approved, _card, _check_in, _period, _site_with_doors, _swipe, _visit
 
 INTEL = "/api/v1/security-intelligence"
@@ -328,12 +330,25 @@ async def test_a_visitors_badge_is_set_against_their_authorisation_and_a_forced_
     assert [r["action"] for r in await _rows(w, "security_recommendations", "rank")], "and something is suggested"
     assert await _rows(w, "security_decisions", "decided_at") == [] and await _sql(
         "SELECT 1 FROM incidents WHERE tenant_id = :t", {"t": w["tenant"]}) == []
-    # Where the chain is not joined: the visitor's door events were set against the authorisation, and that is all.
-    # They are not events of the intelligence layer, and nothing of the layer names the visitor.
+    # Until the organisation asks, the chain stops there: the visitor's door events were set against the
+    # authorisation, and are not events of the intelligence layer.
     assert all(e["source_table"] == "alerts" for e in events)
     assert "Lim Mei Ling" not in str(events) and "V-17" not in str(events)
     (review,) = await _audit(w, "visitorauth.movement_review")
     assert review["detail"]["outcome"] == "IN_ORDER" and review["user_id"] == w["users"][SUPERVISOR]
+
+    # Asked for, it is joined: the next door event outside the authorisation is handed to the layer as an event
+    # to look at, and still names nobody. The one a person already looked at is not handed over.
+    async with _client() as c:
+        await _hand_over(c, w, True)
+    again = await _swipe(w, doors["d_b"], card, 1)
+    tick = await intel_runner.run_ingest_tick(AsyncSessionLocal)   # the runner's own tick, as it is deployed
+    assert tick["by_source"].get("visitor_movements") == 1
+    await _pass(w)
+    handed = [e for e in await _events(w) if e["source_table"] == "access_events"]
+    assert [e["source_id"] for e in handed] == [again] and handed[0]["severity"] == "low" and handed[0]["subject_kind"] == "NONE"
+    assert "Lim Mei Ling" not in str(handed) and "V-17" not in str(handed)
+    assert await _rows(w, "security_decisions", "decided_at") == [], "handed over, placed, and still nothing decided"
 
 
 # ─── D. A device that is down ────────────────────────────────────────────────

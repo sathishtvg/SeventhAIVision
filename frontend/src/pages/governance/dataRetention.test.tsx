@@ -5,9 +5,10 @@ import { render, screen, fireEvent, waitFor, within } from '@/test/utils'
 import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/dataGovernance'
-import type { PeriodInForce, Statement, SubjectReport } from '@/api/dataGovernance'
+import type { OptionalKind, PeriodInForce, Statement, SubjectReport } from '@/api/dataGovernance'
 import {
-  between, heldCount, holdLine, lineWords, matchLine, periodLine, searchesLine, siteLine, subjectLine, totalsLine,
+  between, heldCount, holdLine, lineWords, matchLine, optionalLine, periodLine, searchesLine, siteLine, subjectLine,
+  totalsLine,
 } from '@/components/governance/governanceFormat'
 import DataRetention from './DataRetention'
 
@@ -17,7 +18,7 @@ vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), u
 vi.mock('@/api/dataGovernance', async (orig) => {
   const real = await orig<typeof import('@/api/dataGovernance')>()
   const fns = Object.fromEntries(Object.entries(real).map(([k, v]) => [k, typeof v === 'function' ? vi.fn() : v]))
-  return { ...fns, apiError: real.apiError }
+  return { ...fns, apiError: real.apiError, alreadyOlder: real.alreadyOlder }
 })
 
 function show() {
@@ -37,8 +38,21 @@ const period = (over: Partial<PeriodInForce> & { key: string; label: string }): 
   period: { amount: 30, unit: 'days', source: 'TENANT_SETTING', source_words: 'The organisation\'s setting', set_at: '2026-09-01T02:00:00Z', note: null },
   setting_key: 'evidence.retention_days', counted_from: 'when it was captured', removed_by: 'The scheduler, once a day',
   how: 'The file is deleted, then its record', hold_stops_it: true, held_now: 2, kept_past: null, per_organisation: true, ...over })
+const kind = (over: Partial<OptionalKind> & { key: string; label: string }): OptionalKind => ({
+  setting_key: 'retention.closed_cases_days', tables: [{ name: 'case_files', names_people: true }], days: null, set_at: null,
+  counted_from: 'when its closing was approved', removes: 'The case with its people, tasks, notes, history, links and the people and vehicles named in it',
+  kept_whatever: 'A case that is open, or waiting for approval to close', removed_by: 'The scheduler, once a day', taken_away: {}, ...over })
 const STATEMENT: Statement = {
   read_at: '2026-10-09T02:00:00Z',
+  optional: [
+    kind({ key: 'CASES', label: 'Closed cases' }),
+    kind({ key: 'VISITOR_AUTHORIZATIONS', label: 'Authorisations of visits and work', days: 365, set_at: '2026-10-01T02:00:00Z',
+           counted_from: 'the end of the period it was for', kept_whatever: null,
+           taken_away: { visitor_authorizations: 'An authorisation goes with its visitor when a data-subject erasure removes the visitor' } }),
+  ],
+  optional_note: 'These are kept until the organisation sets a period for them. Once one is set, what is over and older than it is removed for good, a day at a time.',
+  least_days: 30,
+  may_set: true,
   periods: [
     period({ key: 'EVIDENCE', label: 'Pictures and clips kept as evidence' }),
     period({ key: 'RECORDINGS', label: 'Continuous recordings', setting_key: 'recording.retention_days', held_now: 0,
@@ -222,8 +236,9 @@ describe('the retention statement', () => {
     expect(groups[1]).toHaveTextContent('Names nobody')
     expect(groups[1]).toHaveTextContent('The kinds of incident a procedure is for are replaced when they are set again.')
     expect(screen.getByTestId('erasure')).toHaveTextContent('the authorisations of their visits go with them')
-    // The statement is read; nothing on it changes a period.
-    expect(screen.queryByRole('button', { name: /save|change|edit|set/i })).not.toBeInTheDocument()
+    // The periods in force are read here, and changed where they have always been changed: none has a control.
+    expect(within(screen.getByTestId('periods')).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('sites')).queryByRole('button')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
@@ -244,6 +259,70 @@ describe('the retention statement', () => {
     await screen.findByTestId('periods', {}, PATIENT)
     expect(screen.getByRole('tab', { name: 'Retention' })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'About a person' })).not.toBeInTheDocument()
+  })
+})
+
+describe('a period the organisation may set', () => {
+  it('shows each kind as kept until a period is set, and offers setting one only to whoever may', async () => {
+    expect(optionalLine(STATEMENT.optional[0])).toBe('Kept: no period is set')
+    expect(optionalLine(STATEMENT.optional[1])).toBe('Removed 365 days after the end of the period it was for')
+    const first = show()
+    const card = await screen.findByTestId('optional', {}, PATIENT)
+    expect(card).toHaveTextContent('These are kept until the organisation sets a period for them.')
+    const kinds = within(card).getAllByTestId('optional-kind')
+    expect(kinds[0]).toHaveTextContent('Closed cases')
+    expect(kinds[0]).toHaveTextContent('Kept: no period is set')
+    expect(kinds[0]).toHaveTextContent('Kept whatever its age: A case that is open, or waiting for approval to close.')
+    expect(within(kinds[0]).getByRole('button', { name: 'Set a period' })).toBeInTheDocument()
+    expect(within(kinds[0]).queryByRole('button', { name: 'Take the period away' })).not.toBeInTheDocument()
+    expect(kinds[1]).toHaveTextContent('Removed 365 days after the end of the period it was for')
+    expect(kinds[1]).toHaveTextContent('An authorisation goes with its visitor when a data-subject erasure removes the visitor.')
+    expect(within(kinds[1]).getByRole('button', { name: 'Change the period' })).toBeInTheDocument()
+    expect(within(kinds[1]).getByRole('button', { name: 'Take the period away' })).toBeInTheDocument()
+    first.unmount()
+    vi.mocked(api.getStatement).mockResolvedValue({ ...STATEMENT, may_set: false })
+    show()
+    const read = await screen.findByTestId('optional', {}, PATIENT)
+    expect(within(read).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('says how many are already older before a period is set, and sets it when that is confirmed', async () => {
+    vi.mocked(api.setRetentionPeriod)
+      .mockRejectedValueOnce(refusal({ message: '3 of these are already older than 365 days and will be removed for good when the scheduler next runs. Confirm to set the period.', already_older: 3, days: 365 }, 409))
+      .mockResolvedValueOnce({ kind: 'CASES', label: 'Closed cases', days: 365, set_at: '2026-10-09T02:00:00Z', already_older: 3 })
+    show()
+    const card = await screen.findByTestId('optional', {}, PATIENT)
+    fireEvent.click(within(within(card).getAllByTestId('optional-kind')[0]).getByRole('button', { name: 'Set a period' }))
+    const dialog = await screen.findByRole('dialog', {}, PATIENT)
+    expect(dialog).toHaveTextContent('A period for: closed cases')
+    expect(dialog).toHaveTextContent('What is removed is removed for good.')
+    const set = within(dialog).getByRole('button', { name: 'Set the period' })
+    expect(set).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText('Days'), { target: { value: '7' } })
+    expect(set).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText('Days'), { target: { value: '365' } })
+    await waitFor(() => expect(set).toBeEnabled(), PATIENT)
+    fireEvent.click(set)
+    expect(await within(dialog).findByTestId('already-older', {}, PATIENT)).toHaveTextContent('3 of these are already older than 365 days')
+    expect(api.setRetentionPeriod).toHaveBeenLastCalledWith('CASES', 365, undefined)
+    const confirm = await within(dialog).findByRole('button', { name: 'Set it, and remove them' }, PATIENT)
+    await waitFor(() => expect(confirm).toBeEnabled(), PATIENT)
+    fireEvent.click(confirm)
+    await waitFor(() => expect(api.setRetentionPeriod).toHaveBeenLastCalledWith('CASES', 365, 3), PATIENT)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), PATIENT)
+    await waitFor(() => expect(vi.mocked(api.getStatement).mock.calls.length).toBeGreaterThan(1), PATIENT)
+  })
+
+  it('takes a period away after saying that what was removed does not come back', async () => {
+    vi.mocked(api.setRetentionPeriod).mockResolvedValue({ kind: 'VISITOR_AUTHORIZATIONS', label: 'x', days: null, set_at: null, already_older: 0 })
+    show()
+    const card = await screen.findByTestId('optional', {}, PATIENT)
+    fireEvent.click(within(within(card).getAllByTestId('optional-kind')[1]).getByRole('button', { name: 'Take the period away' }))
+    const dialog = await screen.findByRole('dialog', {}, PATIENT)
+    expect(dialog).toHaveTextContent('What the period has already removed does not come back.')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Take it away' }))
+    await waitFor(() => expect(api.setRetentionPeriod).toHaveBeenCalledWith('VISITOR_AUTHORIZATIONS', null), PATIENT)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), PATIENT)
   })
 })
 

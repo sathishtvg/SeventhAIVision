@@ -6,7 +6,7 @@ Privacy router (/api/v1/privacy):
 - POST /zones: create masking zone tied to a camera
 - GET  /zones: list zones; optional ?camera_id= filter
 - DELETE /zones/{zone_id}: hard delete; 404 on missing
-- GET  /zones/camera/{camera_id}: PUBLIC read (no auth) — called by AI workers
+- GET  /zones/camera/{camera_id}: camera:read; the caller's own organisation only
 
 PDPA router (/api/v1/pdpa):
 - GET  /consents: list with filters (consent_type, consented, site_id)
@@ -21,7 +21,7 @@ PDPA router (/api/v1/pdpa):
 Auth:
 - Privacy endpoints require privacy:manage permission (401 without auth)
 - PDPA endpoints require pdpa:read (GET) / pdpa:admin (POST/PUT) (401 without auth)
-- /zones/camera/{id} is PUBLIC — no auth required
+- /zones/camera/{id} needs camera:read (401 without auth)
 """
 import pytest
 from httpx import AsyncClient
@@ -151,30 +151,35 @@ async def test_list_privacy_zones_requires_auth(client: AsyncClient):
     assert r.status_code == 401
 
 
-# ── Privacy Zones: Public Camera Read (no auth) ───────────────────────────────
+# ── Privacy Zones: one camera's masks, read with a credential ─────────────────
+#
+# Open to anybody who knew a camera's id until 2026-10-09 (decision 5 of
+# ENTERPRISE_SECURITY_HARDENING.md, section 9). Now read by whoever may read
+# the camera, under row level security.
 
 @pytest.mark.asyncio
-async def test_get_camera_privacy_zones_public(auth_client: AsyncClient, client: AsyncClient):
+async def test_get_camera_privacy_zones_needs_a_credential(auth_client: AsyncClient, client: AsyncClient):
     cam = await _make_camera(auth_client, "PublicPrivacyCam")
     await _create_privacy_zone(auth_client, cam, name="Worker Zone")
 
-    # This endpoint has no auth requirement — AI workers call it
-    r = await client.get(f"/api/v1/privacy/zones/camera/{cam}")
+    assert (await client.get(f"/api/v1/privacy/zones/camera/{cam}")).status_code == 401, "nobody without a credential"
+    r = await auth_client.get(f"/api/v1/privacy/zones/camera/{cam}")
     assert r.status_code == 200
     rows = r.json()
     assert isinstance(rows, list)
     assert len(rows) >= 1
     for row in rows:
-        assert "polygon" in row
-        assert "fill_color" in row
+        assert set(row) == {"id", "polygon", "fill_color"}, "the masks, and nothing else of the zone"
 
 
 @pytest.mark.asyncio
-async def test_get_camera_privacy_zones_unknown_camera_empty(client: AsyncClient):
-    # Non-existent camera → empty list (not 404), no auth needed
-    r = await client.get("/api/v1/privacy/zones/camera/00000000-0000-0000-0000-000000000099")
+async def test_get_camera_privacy_zones_unknown_camera_empty(auth_client: AsyncClient, client: AsyncClient):
+    # A camera that does not exist has no masks: an empty list, not a 404.
+    r = await auth_client.get("/api/v1/privacy/zones/camera/00000000-0000-0000-0000-000000000099")
     assert r.status_code == 200
     assert r.json() == []
+    assert (await auth_client.get("/api/v1/privacy/zones/camera/not-an-id")).status_code == 422
+    assert (await client.get("/api/v1/privacy/zones/camera/00000000-0000-0000-0000-000000000099")).status_code == 401
 
 
 # ── Privacy Zones: Delete ─────────────────────────────────────────────────────

@@ -43,7 +43,9 @@ else had to agree to.
 6. **Nothing is removed.** An investigator, a link and a named person or
    vehicle are taken off — a link and a name with why — and the row stays. A
    task that will not be done is dropped, with why. A note is not changed or
-   removed afterwards.
+   removed afterwards. A closed case goes only if the organisation has set a
+   retention period for closed cases, and then whole
+   (`ENTERPRISE_SECURITY_HARDENING.md`, section 2).
 7. **A case has its own history.** Each step — opened, a note, who leads, who
    was put on or taken off, closing asked for, approved or declined, reopened
    — is added to it, and it is never rewritten: the application's role may
@@ -241,5 +243,7 @@ The tables are not named `security_cases…`, as the plan had them: tables named
   with the layer; an investigation opened from one can be linked.
 - **Its report is a PDF and a reading.** It is not signed, and it is not put
   into an evidence package.
-- **The phone is not part of it.**
+- **The phone finishes a task and nothing else.** Somebody given a task says
+  on the phone that it is done, or why it is dropped (My Case Tasks, added
+  on 2026-10-09 with no new route). The case itself is worked on the web.
 - **It has run on test data only.** The development organisation has no cases.

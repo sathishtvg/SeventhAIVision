@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
-from app.dependencies.tenant import get_db_with_tenant, get_raw_db
+from app.dependencies.tenant import get_db_with_tenant
 
 router = APIRouter(prefix="/api/v1/privacy", tags=["privacy"])
 pdpa_router = APIRouter(prefix="/api/v1/pdpa", tags=["pdpa"])
@@ -103,16 +104,24 @@ async def delete_privacy_zone(zone_id: str, db: AsyncSession = Depends(get_db_wi
     return {"deleted": True, "id": str(row.id)}
 
 
-@router.get("/zones/camera/{camera_id}")
-async def get_camera_privacy_zones(camera_id: str, db: AsyncSession = Depends(get_raw_db)):
-    """Public read — called by AI workers to get active masking zones before processing.
+@router.get("/zones/camera/{camera_id}", dependencies=[Depends(require_permission("camera:read"))])
+async def get_camera_privacy_zones(camera_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant)):
+    """The active masking zones of one camera, for whoever may read the camera.
 
-    Uses a SECURITY DEFINER function (migration 0041) that bypasses RLS so that AI
-    workers can retrieve masking zones by camera_id without holding a tenant JWT.
+    Until 2026-10-09 this was open to anybody who knew a camera's id, so that
+    an AI worker could read masks without a credential. Where a camera's masks
+    are drawn says what the organisation chose not to look at, and is the
+    organisation's own. It is now read with a credential like everything else
+    of a camera: a signed-in person who may read cameras, or the organisation's
+    API key - which is what a worker outside the platform presents. It is read
+    under row level security, so another organisation's camera has no masks
+    here: the answer is an empty list, as it is for a camera that does not
+    exist.
     """
     result = await db.execute(
-        text("SELECT id, polygon, fill_color FROM get_camera_privacy_zones_public(CAST(:cid AS uuid))"),
-        {"cid": camera_id},
+        text("SELECT pz.id, pz.polygon, pz.fill_color FROM privacy_zones pz "
+             "WHERE pz.camera_id = CAST(:cid AS uuid) AND pz.is_active = TRUE"),
+        {"cid": str(camera_id)},
     )
     return [dict(row._mapping) for row in result]
 

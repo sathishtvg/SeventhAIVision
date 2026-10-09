@@ -110,20 +110,37 @@ async def _seed_setting(tenant_id: uuid.UUID, user_id: uuid.UUID, key: str, valu
     await engine.dispose()
 
 
-async def _seed_evidence(tenant_id: uuid.UUID) -> None:
-    """Insert a minimal evidence row so DSR include_evidence_urls tests have data."""
+async def _seed_evidence(tenant_id: uuid.UUID, opened_by: uuid.UUID | None = None) -> None:
+    """Two pieces of evidence: one the subject opened, and one nobody did.
+
+    Since 2026-10-09 a data-subject export lists the evidence its subject
+    handled - what the access log says they opened - and not the organisation's
+    latest evidence whoever it shows."""
     engine = _admin_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as s:
-        await s.execute(
+        opened = (await s.execute(
             text(
                 "INSERT INTO evidence (tenant_id, media_type, storage_path, "
                 "checksum_sha256, captured_at) "
                 "VALUES (:tid, 'image', '/data/dco-test-evidence.jpg', "
-                "'dco123abc456def789', now())"
+                "'dco123abc456def789', now()) RETURNING id"
+            ),
+            {"tid": tenant_id},
+        )).scalar()
+        await s.execute(
+            text(
+                "INSERT INTO evidence (tenant_id, media_type, storage_path, checksum_sha256, captured_at) "
+                "VALUES (:tid, 'image', '/data/dco-somebody-elses.jpg', 'nobodyopenedthis', now())"
             ),
             {"tid": tenant_id},
         )
+        if opened_by is not None:
+            await s.execute(
+                text("INSERT INTO evidence_access_log (tenant_id, evidence_id, user_id, action) "
+                     "VALUES (:tid, :e, :u, 'view')"),
+                {"tid": tenant_id, "e": opened, "u": opened_by},
+            )
         await s.commit()
     await engine.dispose()
 
@@ -349,34 +366,50 @@ async def test_dsr_export_audit_log_and_sessions_are_lists():
 # ─── G. DSR include_evidence_urls flag ───────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_dsr_export_default_excludes_storage_path():
-    """POST /dsr-export without include_evidence_urls omits storage_path from evidence items."""
+async def test_dsr_export_lists_the_evidence_its_subject_opened_and_no_other():
+    """POST /dsr-export lists what the subject opened - not the organisation's other evidence - and no file location."""
     tenant_id, user_id, token = await _seed_tenant_and_token()
-    await _seed_evidence(tenant_id)
+    await _seed_evidence(tenant_id, opened_by=user_id)
     async with await _authed(token) as c:
         r = await c.post(f"/api/v1/data-compliance/dsr-export/{user_id}")
     assert r.status_code == 200
     evidence_items = r.json()["evidence_last_12_months"]
-    assert len(evidence_items) >= 1, "Expected at least one evidence item from seeded data"
+    assert [(i["checksum_sha256"], i["action"]) for i in evidence_items] == [("dco123abc456def789", "view")]
     for item in evidence_items:
-        assert "storage_path" not in item, "storage_path must not be exposed by default"
+        assert "storage_path" not in item, "where a file is kept is not handed out"
+        assert item["accessed_at"]
 
 
 @pytest.mark.asyncio
-async def test_dsr_export_with_urls_includes_storage_path():
-    """POST /dsr-export with include_evidence_urls=true adds storage_path to evidence items."""
+async def test_dsr_export_never_includes_where_a_file_is_kept_and_is_on_the_record():
+    """include_evidence_urls is still accepted and no longer acted on; the export leaves a line in the audit log."""
     tenant_id, user_id, token = await _seed_tenant_and_token()
-    await _seed_evidence(tenant_id)
+    await _seed_evidence(tenant_id, opened_by=user_id)
     async with await _authed(token) as c:
         r = await c.post(
             f"/api/v1/data-compliance/dsr-export/{user_id}",
             json={"include_evidence_urls": True},
         )
+        nothing_opened = await c.post(f"/api/v1/data-compliance/dsr-export/{user_id}")
     assert r.status_code == 200
     evidence_items = r.json()["evidence_last_12_months"]
-    assert len(evidence_items) >= 1, "Expected at least one evidence item from seeded data"
-    for item in evidence_items:
-        assert "storage_path" in item, "storage_path must be present when include_evidence_urls=True"
+    assert len(evidence_items) == 1, "what the subject opened"
+    assert "storage_path" not in evidence_items[0] and "/data/" not in r.text
+    assert "where a file is kept is not included" in r.json()["notes"]
+    assert nothing_opened.status_code == 200
+    engine = _admin_engine()
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with factory() as s:
+        rows = (await s.execute(
+            text("SELECT user_id, resource_type, resource_id, detail FROM audit_logs "
+                 "WHERE tenant_id = :tid AND action = 'dsr.export' ORDER BY created_at"),
+            {"tid": tenant_id},
+        )).mappings().all()
+    await engine.dispose()
+    assert len(rows) == 2 and all(str(row["user_id"]) == str(user_id) for row in rows)
+    assert all(row["resource_type"] == "user" and str(row["resource_id"]) == str(user_id) for row in rows)
+    detail = rows[0]["detail"] if isinstance(rows[0]["detail"], dict) else __import__("json").loads(rows[0]["detail"])
+    assert detail["evidence"] == 1 and "email" not in detail, "how much was exported, and nothing of what"
 
 
 # ─── H. Permissions ───────────────────────────────────────────────────────────

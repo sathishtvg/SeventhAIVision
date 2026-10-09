@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.main import app  # noqa: F401 — the routes below are read from it
 from app.routers import data_governance as api
+from app.services import record_retention
 from app.services import retention_statement as statement
 from app.services import subject_records as subjects
 from tests._repo import REPO_ROOT, requires_repo_tree
@@ -29,7 +30,7 @@ MIGRATION = REPO_ROOT / "backend" / "alembic" / "versions" / "0156_data_governan
 CODES = ("retention:read", "subject:report")
 CHANGED = ["backend/app/main.py", "frontend/src/App.tsx", "frontend/src/components/layout/Sidebar.tsx",
            "frontend/src/hooks/usePermission.ts"]
-NUMBERS = {"Six": 6, "eleven": 11, "Twelve": 12, "Four": 4, "thirty-six": 36}
+NUMBERS = {"Six": 6, "eight": 8, "Twelve": 12, "Four": 4, "thirty-six": 36, "twenty-four": 24, "twelve": 12}
 
 
 def _doc() -> str:
@@ -82,15 +83,19 @@ def test_the_document_gives_every_period_with_where_it_comes_from_and_what_remov
                    "evidence_hold.DRONE_MEDIA"):
         assert theirs in service, theirs
     assert not re.search(r"INSERT INTO|UPDATE \w+ SET|DELETE FROM", service + _code(subjects.__file__)), "both read only"
-    # Kept, with no period: every table of the expansion, in the groups the document counts.
+    # Every table of the expansion is kept with no period, or kept until one is set, in the groups the document counts.
     kept = [t for k in statement.KEPT for t in k.tables]
-    assert sorted(kept) == sorted(expansion_tables()) and len(kept) == NUMBERS["thirty-six"]
-    assert "The thirty-six tables the expansion added, in eleven groups" in flat and len(statement.KEPT) == NUMBERS["eleven"]
-    taken = {t for k in statement.KEPT for t in (k.taken_away or {})}
-    assert taken == set(MAY_DELETE) | {"visitor_authorizations"} and "Three lose a row by a person's own step" in flat
+    may = [t for k in record_retention.KINDS for t in (k.table, *k.parts)]
+    assert sorted(kept + may) == sorted(expansion_tables()) and len(kept + may) == NUMBERS["thirty-six"]
+    assert (len(kept), len(may), len(statement.KEPT)) == (NUMBERS["twenty-four"], NUMBERS["twelve"], NUMBERS["eight"])
+    assert "The other twenty-four tables the expansion added, in eight groups" in flat
+    assert "Four kinds of the newer records, twelve tables, may be given a period" in flat
+    taken = {t for k in statement.KEPT for t in (k.taken_away or {})} | {t for n in statement.ALSO_TAKEN.values() for t in n}
+    assert taken == set(MAY_DELETE) | {"visitor_authorizations"}
+    assert "Three tables of the thirty-six lose a row by a person's own step" in flat
     assert "an authorisation goes with its visitor when a data-subject erasure removes the visitor" in flat
     assert "Reading the statement is not audited: it names no person." in flat
-    reading = _code(api.__file__).split("async def read_retention", 1)[1].split("class FindBody", 1)[0]
+    reading = _code(api.__file__).split("async def read_retention", 1)[1].split("class PeriodBody", 1)[0]
     assert "intel_audit" not in reading
     doc = _flat(_doc())
     for said in ("The statement reads; it sets nothing.", "No period is a statement too.",
@@ -98,6 +103,42 @@ def test_the_document_gives_every_period_with_where_it_comes_from_and_what_remov
         assert said in doc, said
     assert "what the law requires" in statement.NOT_LAW and "removed by no job" in statement.EVERYTHING_ELSE
     assert "the job's is the one in force" in statement.INSTALLATION_NOTE
+
+
+def test_the_periods_an_organisation_may_set_are_as_the_document_says():
+    section = _section("### Periods the organisation may set", "## 3.")
+    rows = re.findall(r"^\| `([A-Z_]+)` \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", section, re.M)
+    assert [r[0] for r in rows] == [k.key for k in record_retention.KINDS] and len(rows) == NUMBERS["Four"]
+    for (key, _, counted_from, kept), k in zip(rows, record_retention.KINDS):
+        assert counted_from.strip().lower() == k.counted_from.lower(), key
+        assert (kept.strip() == "—") == (k.kept_whatever is None), key
+    flat = _flat(section)
+    service = _code(record_retention.__file__)
+    assert "Nothing is removed unless a period is set" in flat and "kept as before" in flat
+    assert "**A period is at least thirty days**" in flat and record_retention.LEAST_DAYS == 30
+    # Only what is over has a period; evidence has none.
+    assert all("x.status = 'CLOSED'" in k.old_enough for k in record_retention.KINDS if k.key in ("CASES", "INVESTIGATIONS"))
+    assert "**Evidence packages, their custody and their holds have none.**" in flat
+    assert not [t for k in record_retention.KINDS for t in (k.table, *k.parts) if t.startswith("evidence_")]
+    assert "evidence_packages p WHERE p.investigation_id = x.id" in service, "an investigation a package was made from is kept"
+    # Asked for twice; a person's; and the scheduler removes, not the route.
+    router = _code(api.__file__)
+    put = router.split("async def set_period", 1)[1]
+    assert "raise HTTPException(409, {" in put and '"already_older": older' in put and "body.already_older != older" in put
+    assert '_the_organisations_own(token, allowed, "A retention period", "set", PERIOD_EVERY_SITE)' in put
+    assert '"retention.period.set"' in put and "DELETE FROM case" not in router
+    assert "`PUT /retention/periods/{kind}` answers first with how many are already older than the period (409)" in flat
+    assert "(`settings:write`)" in flat and 'Depends(require_permission("settings:write"))' in router
+    scheduler = (APP / "scheduler_main.py").read_text(encoding="utf-8")
+    assert "await record_retention.run(db)" in scheduler and "once a day, on its superuser session" in flat
+    assert 'action="retention.purge"' in service and "tenant_id = CAST(:t AS uuid)" in service
+    for key in record_retention.SETTING_KEYS:
+        from app.core.config_keys import SETTING_VALIDATORS
+        assert key in SETTING_VALIDATORS, key
+    # The screen offers setting one only when the server says the reader may, and shows the server's count first.
+    panel = (WEB / "components" / "governance" / "OptionalPeriods.tsx").read_text(encoding="utf-8")
+    assert "{data.may_set && (" in panel and "usePermission" not in panel
+    assert "save.mutate(told.already_older)" in panel and "{told.message}" in panel
 
 
 def test_the_document_says_what_a_subject_report_reads_and_who_may_ask():
@@ -140,7 +181,7 @@ def test_the_document_says_what_a_subject_report_reads_and_who_may_ask():
                  "A name typed is sent in the body of a request, never in its address."):
         assert said in doc, said
     assert 'paced("30/minute", "subject-report"' in router and "thirty a minute for one person" in doc
-    assert router.count('"subject.report"') == 1 and "Audited: `subject.report`." in doc
+    assert router.count('"subject.report"') == 1 and "Audited: `subject.report`, `retention.period.set`." in doc
     # The words asked about are kept with the report; a person's name is not.
     reported = router.split("async def _reported", 1)[1].split("@router.get", 1)[0]
     assert '"words": answer["subject"].get("text")' in reported and '"name"' not in reported
@@ -175,10 +216,10 @@ def test_the_sweep_s_tables_are_the_document_s():
 
 
 def test_the_sweep_s_routes_and_every_exception_are_the_document_s():
-    section = _section("### Routes — 176, of 16 routers", "## 5. API")
+    section = _section("### Routes — 177, of 16 routers", "## 5. API")
     found = routes()
     by = {(r["method"], r["path"]): r for r in found}
-    assert len(found) == 176 and len(ROUTERS) == 16 and {r["module"] for r in found} == set(ROUTERS)
+    assert len(found) == 177 and len(ROUTERS) == 16 and {r["module"] for r in found} == set(ROUTERS)
     counts = {m: sum(1 for r in found if r["method"] == m) for m in ("GET", "POST", "PATCH", "PUT", "DELETE")}
     flat = _flat(section)
     assert (f"{counts['GET']} `GET`, {counts['POST']} `POST`, {counts['PATCH']} `PATCH`, {counts['PUT']} `PUT`, "
@@ -190,7 +231,8 @@ def test_the_sweep_s_routes_and_every_exception_are_the_document_s():
     # The one that asks for either of two, the two words, the one that removes a row.
     (either,) = EITHER
     assert f"`{either[0]} {_as_written(either[1])}`" in flat
-    assert "`{key}` of a report and `{kind}` of a device" in flat and sorted(WORDS.values()) == ["key", "kind"]
+    assert "`{key}` of a report, `{kind}` of a device and `{kind}` of a retention period" in flat
+    assert sorted(WORDS.values()) == ["key", "kind", "kind"]
     (delete,) = DELETES
     assert f"**One route removes a row**: `DELETE {_as_written(delete[1])}`." in flat
     # Not audited, and why.
@@ -222,11 +264,11 @@ def test_the_sweep_s_routes_and_every_exception_are_the_document_s():
 def test_the_document_lists_the_routes_and_who_holds_what_and_the_migration_and_the_web_agree():
     section = _section("## 5. API", "**Permissions**")
     table = {(method, path): frozenset(re.findall(r"`([a-z:]+)`", needs))
-             for method, path, needs in re.findall(r"^\| `(GET|POST)` \| `([^`]*)` \|([^|]*)\|$", section, re.M)}
+             for method, path, needs in re.findall(r"^\| `(GET|POST|PUT)` \| `([^`]*)` \|([^|]*)\|$", section, re.M)}
     served = {(r["method"], _as_written(r["path"]).removeprefix("/data-governance")): r["needs"]
               for r in routes() if r["module"] == "data_governance"}
-    assert table == served and len(served) == 5
-    assert not [m for m, _ in served if m not in ("GET", "POST")]
+    assert table == served and len(served) == 6
+    assert not [m for m, _ in served if m not in ("GET", "POST", "PUT")]
     migration = MIGRATION.read_text(encoding="utf-8")
     granted: dict[str, set[int]] = {}
     for role, code in re.findall(r"\((\d), \"([a-z]+:[a-z]+)\"\)", migration):
@@ -259,7 +301,8 @@ def test_the_screen_is_in_the_menu_changes_no_period_and_sends_a_name_in_the_bod
         assert kept in sidebar, f"the existing screen at {kept} keeps its entry"
     assert 'path="data-retention"' in (WEB / "App.tsx").read_text(encoding="utf-8")
     doc = _flat(_doc())
-    assert "**Data Retention** (`/data-retention`), under Reports & Billing" in doc and "Nothing on it changes a period." in doc
+    assert "**Data Retention** (`/data-retention`), under Reports & Billing" in doc
+    assert "The periods in force have no control on it." in doc
     assert "The phone is not changed in this phase." in doc
     page = (WEB / "pages" / "governance" / "DataRetention.tsx").read_text(encoding="utf-8")
     assert "usePermission('subject:report')" in page and "{mayAsk && <Tab value=\"person\"" in page
@@ -278,35 +321,56 @@ def test_the_screen_is_in_the_menu_changes_no_period_and_sends_a_name_in_the_bod
     assert not list(mobile.rglob("*overnance*")) and not list(mobile.rglob("*etention*"))
 
 
-def test_what_was_found_and_left_is_as_the_document_says_and_the_gap_analysis_records_the_phase():
+def test_what_was_found_is_put_right_as_the_document_says_and_the_gap_analysis_records_the_phase():
     for path in re.findall(r"^\| `([a-z_/.0-9A-Za-z]+)` \|", _section("## 7. Files", "## 8."), re.M):
         assert (REPO_ROOT / path).exists(), path
     for path in re.findall(r"^\| `((?:backend/tests|frontend/src)/[A-Za-z_/.]+)` \|", _section("## 8. Tests", "## 9."), re.M):
         assert (REPO_ROOT / path).exists(), path
     changed = re.findall(r"`((?:backend|frontend|mobile)/[A-Za-z_/.]+)`",
-                         _doc().split("Existing files changed", 1)[1].split("No table is created", 1)[0])
+                         _doc().split("Existing files changed", 1)[1].split("Phase 13 itself created no table", 1)[0])
     assert changed == CHANGED
-    left = _section("## 9. Found, and left for the owner", "## 10.")
-    assert len(re.findall(r"^\d+\. \*\*", left, re.M)) == 6
-    # Each is still as it is said to be: this fails, and says so, the day one of them is put right.
+    decided = _section("## 9. Found, and what the owner decided", "## 10.")
+    assert len(re.findall(r"^\d+\. \*\*", decided, re.M)) == 7 and "decided on 2026-10-09 that all seven be done" in _flat(decided)
+    # Every existing file a decision changed is named under it, and is there.
+    named = re.findall(r"`((?:backend|frontend|docker|helm)/[A-Za-z0-9_/.\-]+)`", decided)
+    assert len(named) == len(set(named)) + 1, "config_keys.py is named under two decisions"
+    for path in named:
+        assert (REPO_ROOT / path).exists(), path
+    # 1. The occurrence book.
+    revoke = (REPO_ROOT / "backend" / "alembic" / "versions" / "0157_occurrence_book_append_only.py").read_text(encoding="utf-8")
+    assert 'op.execute("REVOKE UPDATE, DELETE ON occurrence_book_entries FROM svc_app")' in revoke
+    # 2. The existing exports.
     exports = (APP / "routers" / "exports.py").read_text(encoding="utf-8")
-    assert 'str(row[k])' in exports and "/api/v1/export" in exports
+    assert "writer.writerow({k: _cell(row.get(k)) for k in fieldnames})" in exports and 'str(row[k])' not in exports
+    # 3. The existing data-subject export.
     compliance = (APP / "routers" / "data_compliance.py").read_text(encoding="utf-8")
     export = compliance.split("async def dsr_export", 1)[1]
-    assert "write_audit_log" not in compliance and "intel_audit" not in compliance
-    assert "include_evidence_urls" in export and "LIMIT 100" in export and "user_id" not in export.split("FROM evidence", 1)[1].split('"""', 1)[0]
-    privacy = (APP / "routers" / "pdpa.py").read_text(encoding="utf-8")
-    assert '@router.get("/zones/camera/{camera_id}")\n' in privacy and "get_raw_db" in privacy
+    assert 'action="dsr.export"' in export and "FROM evidence_access_log l" in export and "storage_path" not in export
+    assert "l.user_id = CAST(:uid AS uuid)" in export
+    # 4. The two default periods, given to the API as well as to the job.
     compose = (REPO_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8")
-    # Each is given to one service: the scheduler's and the drone runner's, not the API's.
-    assert len(re.findall(r"^\s+AUDIT_RETENTION_YEARS:", compose, re.M)) == 1
-    assert len(re.findall(r"^\s+DRONE_TELEMETRY_RETENTION_DAYS:", compose, re.M)) == 1
-    for said in ("`UPDATE` and `DELETE` on `occurrence_book_entries`", "`/api/v1/export/…`",
-                 "`POST /data-compliance/dsr-export/{user}`", "`AUDIT_RETENTION_YEARS`", "`DRONE_TELEMETRY_RETENTION_DAYS`",
-                 "`GET /api/v1/privacy/zones/camera/{camera_id}`", "Nothing the expansion added has a retention period."):
-        assert said in _flat(left), said
+    assert len(re.findall(r"^\s+AUDIT_RETENTION_YEARS:", compose, re.M)) == 2
+    assert len(re.findall(r"^\s+DRONE_TELEMETRY_RETENTION_DAYS:", compose, re.M)) == 2
+    api_service = compose.split("\n  api:\n", 1)[1].split("\n  ingestion:\n", 1)[0]
+    assert "AUDIT_RETENTION_YEARS:" in api_service and "DRONE_TELEMETRY_RETENTION_DAYS:" in api_service
+    chart = (REPO_ROOT / "helm" / "seventh-ai-vision" / "templates" / "configmap.yaml").read_text(encoding="utf-8")
+    assert "AUDIT_RETENTION_YEARS:" in chart and "DRONE_TELEMETRY_RETENTION_DAYS:" in chart
+    assert "the job's is the one in force" in statement.INSTALLATION_NOTE, "the statement still says whose is in force"
+    # 5. Privacy masks.
+    privacy = (APP / "routers" / "pdpa.py").read_text(encoding="utf-8")
+    assert '@router.get("/zones/camera/{camera_id}", dependencies=[Depends(require_permission("camera:read"))])' in privacy
+    assert "get_raw_db" not in privacy and "get_camera_privacy_zones_public" not in privacy
+    # 7. Visitor door events.
+    runner = (APP / "services" / "intel_runner.py").read_text(encoding="utf-8")
+    assert runner.count("visitor_movement_events.ingest_tenant(") == 1
+    for said in ("Migration `0157` took `UPDATE` and `DELETE` on `occurrence_book_entries` away", "`/api/v1/export/…`",
+                 "`POST /data-compliance/dsr-export/{user}`", "writes `dsr.export` to the audit log", "`AUDIT_RETENTION_YEARS`",
+                 "`DRONE_TELEMETRY_RETENTION_DAYS`", "`GET /api/v1/privacy/zones/camera/{camera_id}` needs `camera:read`",
+                 "Four kinds of the newer records may be given a retention period",
+                 "switches `visitor.movements_to_intelligence` on", "migration `0158`; rows only"):
+        assert said in _flat(decided), said
     not_done = _flat(_doc().split("## 10. What this does not do", 1)[1])
-    for said in ("It sets no period and removes nothing.", "It does not hand a person's records over.",
+    for said in ("It removes nothing unless the organisation sets a period.", "It does not hand a person's records over.",
                  "It identifies nobody.", "It erases nothing.", "The sweep is of what the expansion added.",
                  "The phone is not part of it.", "It has run on test data only."):
         assert said in not_done, said

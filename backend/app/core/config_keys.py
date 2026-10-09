@@ -15,6 +15,17 @@ def _range_validator(lo: float, hi: float) -> Callable[[Any], None]:
     return _validate
 
 
+def _whole_days_validator(lo: int, hi: int) -> Callable[[Any], None]:
+    """A period in whole days. Not a fraction: half a day of a retention period
+    is a mistake, not a setting."""
+
+    def _validate(v: Any) -> None:
+        if not isinstance(v, int) or isinstance(v, bool) or not (lo <= v <= hi):
+            raise ValueError(f"must be a whole number of days from {lo} to {hi}")
+
+    return _validate
+
+
 def _positive_int_validator(v: Any) -> None:
     if not isinstance(v, int) or isinstance(v, bool) or v < 0:
         raise ValueError("must be a non-negative integer")
@@ -154,4 +165,17 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "maintenance.suggest_from_health": _bool_validator,
     # After how many hours down a device is put forward: an hour to a week.
     "maintenance.suggest_after_hours": _range_validator(1, 168),
+    # Periods an organisation may set for four kinds of record
+    # (services/record_retention.py). With no row a kind is kept, as before. At
+    # least thirty days: a guard against a slip, not a recommendation. Set through
+    # /api/v1/data-governance/retention/periods/{kind}, which says first how
+    # much is already older than the period.
+    "retention.closed_cases_days": _whole_days_validator(30, 36_500),
+    "retention.closed_investigations_days": _whole_days_validator(30, 36_500),
+    "retention.visitor_authorisations_days": _whole_days_validator(30, 36_500),
+    "retention.workforce_answers_days": _whole_days_validator(30, 36_500),
+    # A visitor's badge used outside what the visit is authorised for, handed to
+    # the intelligence layer as an event to look at
+    # (services/visitor_movement_events.py). Off until an organisation asks.
+    "visitor.movements_to_intelligence": _bool_validator,
 }

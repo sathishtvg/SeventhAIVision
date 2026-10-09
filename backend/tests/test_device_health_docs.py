@@ -329,7 +329,9 @@ def test_the_screen_is_in_the_menu_and_the_existing_ones_are_as_they_were():
         source = (existing / name).read_text(encoding="utf-8")
         assert "asset_register" not in source and "maintenance_work_orders" not in source, name
     mobile = REPO_ROOT / "mobile" / "src"
-    assert not list(mobile.rglob("*aintenance*")) and not list(mobile.rglob("*ecurityAsset*"))
+    # The phone does two things with an order given to its holder: one client and one screen, added on 2026-10-09.
+    assert [p.name for p in mobile.rglob("*aintenance*")] == ["maintenance.ts"] and not list(mobile.rglob("*ecurityAsset*"))
+    assert [p.name for p in mobile.rglob("*WorkOrder*")] == ["MyWorkOrdersScreen.tsx"]
 
 
 def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_phase():
@@ -343,7 +345,7 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     not_done = _flat(_doc().split("## 10. What this does not do", 1)[1])
     for said in ("It does not probe anything.", "It does not say why a device is down.", "It does not raise, assign or tell.",
                  "It has no parts store, no costs, no vendor contracts and no maintenance SLA.",
-                 "The phone is not part of it."):
+                 "The phone does two things with an order.", "the schedules and the register are on the web."):
         assert said in not_done, said
     built = GAPS.read_text(encoding="utf-8").split("## 9. As built", 1)[1]
     assert "| 8 | Device health, assets, maintenance | **Built 2026-10-08**" in built and "DEVICE_HEALTH_ARCHITECTURE.md" in built
