@@ -6,7 +6,7 @@ Privacy router (/api/v1/privacy):
 - POST /zones: create masking zone tied to a camera
 - GET  /zones: list zones; optional ?camera_id= filter
 - DELETE /zones/{zone_id}: hard delete; 404 on missing
-- GET  /zones/camera/{camera_id}: PUBLIC read (no auth) — called by AI workers
+- GET  /zones/camera/{camera_id}: camera:read; the caller's own organisation only
 
 PDPA router (/api/v1/pdpa):
 - GET  /consents: list with filters (consent_type, consented, site_id)
@@ -21,7 +21,7 @@ PDPA router (/api/v1/pdpa):
 Auth:
 - Privacy endpoints require privacy:manage permission (401 without auth)
 - PDPA endpoints require pdpa:read (GET) / pdpa:admin (POST/PUT) (401 without auth)
-- /zones/camera/{id} is PUBLIC — no auth required
+- /zones/camera/{id} needs camera:read (401 without auth)
 """
 import pytest
 from httpx import AsyncClient

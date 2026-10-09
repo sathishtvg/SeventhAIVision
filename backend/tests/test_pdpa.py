@@ -9,7 +9,7 @@ Endpoints:
   GET    /api/v1/privacy/zones                — privacy:manage; opt camera_id filter; JOIN camera_name
   POST   /api/v1/privacy/zones                — privacy:manage; camera_id FK required
   DELETE /api/v1/privacy/zones/{id}           — privacy:manage; hard delete; 404 if not found
-  GET    /api/v1/privacy/zones/camera/{cam}   — NO auth; SECURITY DEFINER fn (AI workers)
+  GET    /api/v1/privacy/zones/camera/{cam}   — camera:read; the caller's own organisation only
   GET    /api/v1/pdpa/consents                — pdpa:read; filters: site_id, consent_type, consented
   POST   /api/v1/pdpa/consents                — pdpa:admin; returns {id, consent_type, consented,...}
   GET    /api/v1/pdpa/dsar                    — pdpa:read; dsar_status filter; is_overdue computed
@@ -196,18 +196,19 @@ async def test_delete_privacy_zone_unknown_id_returns_404():
 
 
 @pytest.mark.asyncio
-async def test_get_camera_privacy_zones_public_no_auth():
-    """GET /privacy/zones/camera/{id} requires no JWT — returns active zones."""
+async def test_get_camera_privacy_zones_needs_a_credential():
+    """GET /privacy/zones/camera/{id} answers somebody who may read cameras,
+    and nobody without a credential. It was open to anybody who knew a camera
+    id; the owner decided on 2026-10-09 that it should not be."""
     tenant_id, _, token = await _seed_tenant_and_token()
     cam_id = await _seed_camera(tenant_id)
     async with await _authed(token) as c:
-        zone_id = await _create_zone(c, cam_id, name="Public Zone")
-    # Call without any auth header
-    async with AsyncClient(transport=ASGITransport(_app()), base_url="http://test") as c:
+        zone_id = await _create_zone(c, cam_id, name="Loading bay window")
         r = await c.get(f"/api/v1/privacy/zones/camera/{cam_id}")
     assert r.status_code == 200
-    ids = [item["id"] for item in r.json()]
-    assert zone_id in ids
+    assert zone_id in [item["id"] for item in r.json()]
+    async with AsyncClient(transport=ASGITransport(_app()), base_url="http://test") as c:
+        assert (await c.get(f"/api/v1/privacy/zones/camera/{cam_id}")).status_code == 401
 
 
 # ─── B. PDPA Consents ─────────────────────────────────────────────────────────

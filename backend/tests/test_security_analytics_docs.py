@@ -344,13 +344,14 @@ def test_the_screen_is_in_the_menu_and_the_existing_ones_are_as_they_were():
         assert briefing.lasting(seconds) == said
     words = (WEB / "components" / "board" / "boardFormat.ts").read_text(encoding="utf-8")
     assert "return 'under a minute'" in words and "PERIODS = [1, 7, 30]" in words
-    # No existing figure was touched, and the phone has no part of it.
+    # No existing figure was touched; and the phone reads published briefings, and has nothing of the board.
     routers = REPO_ROOT / "backend" / "app" / "routers"
     for name in ("analytics.py", "command_centre.py", "reports.py", "scheduled_reports.py", "exports.py"):
         source = (routers / name).read_text(encoding="utf-8")
         assert "ops_board" not in source and "daily_briefing" not in source, name
     mobile = REPO_ROOT / "mobile" / "src"
-    assert not list(mobile.rglob("*perationsBoard*")) and not list(mobile.rglob("*riefing*"))
+    assert not list(mobile.rglob("*perationsBoard*"))
+    assert sorted(p.name for p in mobile.rglob("*riefing*")) == ["BriefingsScreen.tsx", "briefings.ts"]
 
 
 def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_phase():
@@ -372,7 +373,7 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     not_done = _flat(_doc().split("## 9. What this does not do", 1)[1])
     for said in ("It scores nothing.", "The board and a briefing name nobody.", "It keeps no history of the board.",
                  "It does not let a line be rewritten.", "It delivers no report on a schedule.",
-                 "The phone is not part of it."):
+                 "The phone reads published briefings and nothing else of this."):
         assert said in not_done, said
     built = GAPS.read_text(encoding="utf-8").split("## 9. As built", 1)[1]
     assert "| 10 | Analytics | **Built 2026-10-08** — migrations `0152`, `0153`" in built and "SECURITY_ANALYTICS_ARCHITECTURE.md" in built

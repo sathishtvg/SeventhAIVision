@@ -59,6 +59,10 @@ import { DroneEventsScreen }           from '@/screens/DroneEventsScreen'
 import { DroneEventDetailScreen }      from '@/screens/DroneEventDetailScreen'
 import { SituationsScreen }            from '@/screens/SituationsScreen'
 import { SituationDetailScreen }       from '@/screens/SituationDetailScreen'
+import { MyReadingScreen }             from '@/screens/MyReadingScreen'
+import { BriefingsScreen }             from '@/screens/BriefingsScreen'
+import { MyWorkOrdersScreen }          from '@/screens/MyWorkOrdersScreen'
+import { MyCaseTasksScreen }           from '@/screens/MyCaseTasksScreen'
 import { useAuthStore }                from '@/store/auth'
 import { colors }                      from '@/theme'
 
@@ -132,6 +136,10 @@ export type MoreStackParamList = {
   /** AI security situations: what is in front of this person, and one of them. */
   Situations:          undefined
   SituationDetail:     { situationId: string }
+  MyReading:           undefined
+  Briefings:           undefined
+  MyWorkOrders:        undefined
+  MyCaseTasks:         undefined
   SituationCameraLive: { cameraId: string; streamId: string; cameraName: string }
 }
 
@@ -254,6 +262,10 @@ function MoreNavigator() {
           full history stay on the web. */}
       <MoreStack.Screen name="Situations"          component={SituationsScreen}      options={{ title: 'Security Situations' }} />
       <MoreStack.Screen name="SituationDetail"     component={SituationDetailScreen} options={{ title: 'Situation', headerBackTitle: 'Back' }} />
+      <MoreStack.Screen name="MyReading"           component={MyReadingScreen}       options={{ title: 'My Reading' }} />
+      <MoreStack.Screen name="Briefings"           component={BriefingsScreen}       options={{ title: 'Daily Briefings' }} />
+      <MoreStack.Screen name="MyWorkOrders"        component={MyWorkOrdersScreen}    options={{ title: 'My Work Orders' }} />
+      <MoreStack.Screen name="MyCaseTasks"         component={MyCaseTasksScreen}     options={{ title: 'My Case Tasks' }} />
       <MoreStack.Screen name="SituationCameraLive" component={CameraLiveScreen}      options={{ title: 'Live View', headerBackTitle: 'Back' }} />
     </MoreStack.Navigator>
   )

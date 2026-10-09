@@ -243,5 +243,7 @@ The tables are not named `security_cases…`, as the plan had them: tables named
   with the layer; an investigation opened from one can be linked.
 - **Its report is a PDF and a reading.** It is not signed, and it is not put
   into an evidence package.
-- **The phone is not part of it.**
+- **The phone finishes a task and nothing else.** Somebody given a task says
+  on the phone that it is done, or why it is dropped (My Case Tasks, added
+  on 2026-10-09 with no new route). The case itself is worked on the web.
 - **It has run on test data only.** The development organisation has no cases.

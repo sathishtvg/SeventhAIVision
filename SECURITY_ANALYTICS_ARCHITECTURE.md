@@ -387,7 +387,10 @@ it: tables named `security_…` are the intelligence layer's own.
 - **It has no report per guard.** That is phase 11's.
 - **The client role's portal is unchanged**, and a customer's own people are
   not given this board.
-- **The phone is not part of it.**
+- **The phone reads published briefings and nothing else of this.** A
+  briefing is read there as it was published (Daily Briefings, added on
+  2026-10-09 with no new route). The board, drafting and publishing a
+  briefing, and the reports are on the web.
 - **It has run on the development organisation's records** for incidents,
   response, virtual patrols, shifts, cameras and visitors. That organisation
   has no guard tours, drone patrols or work orders in the last month, so those
@@ -640,7 +643,10 @@ written to.
 - **It relies on the existing certification sweep** for what a rostered shift
   needs. A shift the sweep has not looked at is not in it.
 - **It is not taken out as a file.** There is no report of readings.
-- **The phone is not part of it.** A guard reads their own reading on the web.
+- **The phone shows a person their own reading and nobody else's.** It is
+  the same reading, with the same note that it is not an appraisal (My
+  Reading, added on 2026-10-09 with no new route). A site's or another
+  person's reading, and answering what is recommended, are on the web.
 - **It has run on the development organisation's shifts, violations and
   certification findings.** That organisation has no assigned tours,
   handovers or lapsed courses in the last four weeks, so those have run on

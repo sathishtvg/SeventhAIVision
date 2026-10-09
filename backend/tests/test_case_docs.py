@@ -287,7 +287,9 @@ def test_the_screen_is_in_the_menu_and_the_existing_ones_are_as_they_were():
         source = (routers / name).read_text(encoding="utf-8")
         assert "case_files" not in source and "case_links" not in source, name
     mobile = REPO_ROOT / "mobile" / "src"
-    assert not list(mobile.rglob("*ases.ts*")) and not list(mobile.rglob("*aseFile*"))
+    # The phone finishes a task and nothing else: one client and one screen, added on 2026-10-09.
+    assert [p.name for p in mobile.rglob("*ases.ts*")] == ["cases.ts"] and not list(mobile.rglob("*aseFile*"))
+    assert [p.name for p in mobile.rglob("*CaseTask*")] == ["MyCaseTasksScreen.tsx"]
 
 
 def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_phase():
@@ -308,7 +310,8 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     assert "The tables are not named `security_cases…`, as the plan had them" in _flat(_doc())
     not_done = _flat(_doc().split("## 7. What this does not do", 1)[1])
     for said in ("It has no deadlines of its own.", "A task cannot be edited or given to somebody else.",
-                 "Its report is a PDF and a reading.", "The phone is not part of it.", "It has run on test data only."):
+                 "Its report is a PDF and a reading.", "The phone finishes a task and nothing else.",
+                 "The case itself is worked on the web.", "It has run on test data only."):
         assert said in not_done, said
     built = GAPS.read_text(encoding="utf-8").split("## 9. As built", 1)[1]
     assert "| 12 | Case management | **Built 2026-10-08** — migration `0155`" in built and "SECURITY_CASE_MANAGEMENT.md" in built

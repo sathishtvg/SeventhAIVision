@@ -33,6 +33,7 @@ interface MenuItem extends Gated {
 
 const MENU_ITEMS: MenuItem[] = [
   { screen: 'MyRecord',      label: 'My Record',          description: 'Your violations and leave requests', icon: 'document-text-outline',    color: colors.warning, permission: 'violation:read' },
+  { screen: 'MyReading',     label: 'My Reading',         description: 'What is recorded of your own work. Counts, not an appraisal', icon: 'reader-outline', color: colors.info, permission: 'workforce:own' },
   { screen: 'Leave',         label: 'Leave',              description: 'Apply for leave and see where your application got to', icon: 'calendar-outline', color: colors.info, permission: 'leave:read' },
   { screen: 'ActionCenter',  label: 'Action Center',      description: 'What needs your attention now',      icon: 'checkmark-done-outline',   color: colors.error },
   { screen: 'Attendance',    label: 'Live Attendance',    description: 'Who is on duty and who is missing',  icon: 'people-circle-outline',    color: colors.success, permission: 'attendance:read', audience: 'ops' },
@@ -48,6 +49,9 @@ const MENU_ITEMS: MenuItem[] = [
   { screen: 'Detections',    label: 'AI Detections',      description: 'LPR, face, and intrusion events',    icon: 'scan-outline',             color: colors.primary, permission: 'detection:read' },
   { screen: 'DroneEvents',   label: 'Drone Events',       description: 'What the drones found, and the response', icon: 'airplane-outline',     color: colors.info, permission: 'drone:event:read' },
   { screen: 'Situations',    label: 'Security Situations', description: 'What you were sent to, and what is open at your site', icon: 'shield-half-outline', color: colors.primary, permission: 'intel:read' },
+  { screen: 'Briefings',     label: 'Daily Briefings',    description: 'The days somebody has reviewed and published', icon: 'newspaper-outline', color: colors.secondary, permission: 'briefing:read' },
+  { screen: 'MyWorkOrders',  label: 'My Work Orders',     description: 'Maintenance work given to you: start it, and say what was done', icon: 'build-outline', color: colors.warning, permission: 'maintenance:read' },
+  { screen: 'MyCaseTasks',   label: 'My Case Tasks',      description: 'Tasks given to you on a case: done, or dropped with why', icon: 'checkmark-done-outline', color: colors.primary, permission: 'case:read' },
   { screen: 'Analytics',     label: 'Analytics',          description: 'Metrics, trends, and top cameras',   icon: 'bar-chart-outline',        color: colors.secondary, audience: 'ops' },
   { screen: 'Reports',       label: 'Reports',            description: 'Generate and download PDF reports',  icon: 'document-text-outline',    color: colors.warning, audience: 'ops' },
   { screen: 'Notifications', label: 'Notification Logs',  description: 'Email, SMS, and webhook history',    icon: 'notifications-outline',    color: colors.success, permission: 'notification:manage', audience: 'ops' },

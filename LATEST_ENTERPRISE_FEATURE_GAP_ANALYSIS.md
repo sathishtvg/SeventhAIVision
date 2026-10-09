@@ -841,6 +841,22 @@ modules built since it was written (migration `0158`, rows only), and Manage
 Licenses gained Drone Patrol's own licence — `frontend/src/pages/Tenants.tsx`,
 `frontend/src/api/platform_licenses.ts`.
 
+For the phone, the same day: four screens bring the newer work to whoever it
+is given to — My Reading (a person's own reading, phase 11), Daily Briefings
+(the published ones, read only, phase 10), My Work Orders (say it has started,
+and what was done, phase 8) and My Case Tasks (done, or dropped with why,
+phase 12). Each calls routes that were there already; none was added for it,
+and `backend/tests/test_phone_desk_work_clients.py` holds the phone to them.
+Existing phone files changed: `mobile/src/navigation/index.tsx`,
+`mobile/src/screens/MoreMenuScreen.tsx`. The phone has 56 screens. It needs a
+new build and a pass on a device before guards are given it.
+
+For Windows: desktop 1.0.5 is the web build of this point in the shell that was
+there — `desktop/package.json`, `desktop/package-lock.json`. It is unsigned,
+with the same app id and MSI upgrade code, so it installs over 1.0.4. It is
+built from a clean copy of the commit, not from the working directory.
+
 Tests that held the old behaviour changed with it:
-`backend/tests/test_data_compliance.py`, `backend/tests/test_p5_pdpa.py`. The
-documents of phases 5, 7, 12 and 13 say how each now stands.
+`backend/tests/test_data_compliance.py`, `backend/tests/test_p5_pdpa.py`,
+`backend/tests/test_pdpa.py`. The documents of phases 5, 7, 12 and 13 say how
+each now stands, and those of phases 8, 10, 11 and 12 what the phone now does.

@@ -138,7 +138,8 @@ def test_nothing_is_scored_nobody_is_ranked_and_the_document_says_so():
     for said in ("It appraises nobody.", "It decides nothing about anybody's employment",
                  "It assigns no course and changes no roster.", "It does not say why.", "leave is not read",
                  "It makes no recommendation out of lateness or violations.", "It is not taken out as a file.",
-                 "The phone is not part of it."):
+                 "The phone shows a person their own reading and nobody else's.",
+                 "answering what is recommended, are on the web."):
         assert said in not_done, said
 
 
@@ -292,7 +293,9 @@ def test_the_screens_are_in_the_menu_and_the_existing_ones_are_as_they_were():
     words = (WEB / "components" / "workforce" / "workforceFormat.ts").read_text(encoding="utf-8")
     assert "PERIODS = [7, 28, 90]" in words
     mobile = REPO_ROOT / "mobile" / "src"
-    assert not list(mobile.rglob("*orkforce*")) and not list(mobile.rglob("*yReading*"))
+    # The phone shows a person their own reading: one client, its words and one screen, added on 2026-10-09.
+    assert [p.name for p in mobile.rglob("*orkforce*")] == ["workforce.ts"]
+    assert sorted(p.name for p in mobile.rglob("*yReading*")) == ["MyReadingScreen.tsx", "myReading.ts"]
 
 
 def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_phase():
