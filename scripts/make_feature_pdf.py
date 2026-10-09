@@ -83,7 +83,9 @@ EDITIONS = [
      "authorisation may be handed to the intelligence layer. The vendor's licence "
      "catalogue gains the fourteen modules built since it was written, and Manage "
      "Licenses gains Drone Patrol's own licence. The phone gains four screens; the "
-     "desktop app is 1.0.5."],
+     "desktop app is 1.0.5. <b>Corrects module 02:</b> earlier editions said privacy "
+     "zones are masked out of live view and recordings. They are recorded for a "
+     "camera, and nothing applies them yet."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -400,7 +402,7 @@ story += bullets([
     "<b>Identity and access</b> — 8 roles, 209 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
-    "playback, privacy zones, NVR.",
+    "playback, NVR.",
     "<b>AI analytics</b> — eleven detection modules, licensed individually.",
     "<b>Alerts and incidents</b> — triage, dispatch, escalation, emergency broadcast.",
     "<b>Roster</b> — a whole month auto-scheduled against nine rules, reviewed "
@@ -516,7 +518,11 @@ story += module(
         "verified, and the platform's health check reports how many streams should "
         "be recording against how many are.",
         "<b>Playback and a recordings library</b>, with export.",
-        "<b>Privacy zones</b> masked out of both live view and recordings.",
+        "<b>Privacy zones, recorded.</b> A zone can be stored for a camera through "
+        "the API, and is read with a credential. <i>Documented limitation:</i> "
+        "nothing applies one yet — live view, recordings and the AI workers do not "
+        "mask it out, and no screen draws one. Earlier editions of this document "
+        "said zones were masked out; they are not.",
         "<b>NVR integration</b> and HLS streaming for browser playback.",
         "<b>Site map view</b> plotting sites with live camera health and manning "
         "(the full security map is module 19).",
@@ -1598,7 +1604,8 @@ story += [
         "tests — from what a camera saw, through the decision, the guard sent, the "
         "investigation, the evidence and the case, to the case's report — and "
         "holds that every step that mattered was a person's. Nothing is in "
-        "progress, and nothing waits on a decision.", S["body"]),
+        "progress. One thing found since waits on a decision: privacy zones are "
+        "recorded and not applied to video (known limits).", S["body"]),
     Paragraph("Decided by the owner on 9 October 2026, and carried out", S["h2"]),
     Paragraph(
         "Each of these was found while building and left as it was, because "
@@ -1629,7 +1636,7 @@ story.append(data_table(
         ["Privacy masks",
          "Read without a token by anybody who knew a camera's id",
          "Read with a credential that may read cameras, within the caller's own "
-         "organisation"],
+         "organisation. Nothing applies a mask to video yet (known limits)"],
         ["Retention for modules 17 to 28",
          "Nothing removed a case, a visitor's authorisation or an answer about a guard",
          "Four kinds may be given a period by the organisation; nothing is "
@@ -1758,6 +1765,10 @@ story += bullets([
     "probes, heartbeats and late readings are read; frame rate, latency, packet "
     "loss, the quality of the picture and gaps in a recording are not measured, "
     "and an outage shorter than five minutes can pass unrecorded.",
+    "<b>Privacy zones are recorded and not applied.</b> A zone can be stored for "
+    "a camera; nothing masks it out of live view, of a recording or of what the "
+    "AI workers see, and no screen draws one. Applying them changes what every "
+    "camera shows and records, and waits on the owner's decision.",
     "<b>A visitor is followed only through the doors their badge opened</b>, and "
     "those door events reach the intelligence layer only where an organisation "
     "has switched that on.",

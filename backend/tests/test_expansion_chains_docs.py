@@ -105,6 +105,13 @@ def test_what_is_left_for_the_owner_is_in_one_place_and_nothing_existing_was_cha
             "desktop/package.json"} <= changed
     # The phone was brought up to the newer work the same day, with no route added for it.
     assert "none was added for it" in _flat(after) and "It needs a new build and a pass on a device" in _flat(after)
+    # What was found on the way and not changed is said, and is true of the code: nothing but the router reads a zone.
+    assert "a camera's privacy zones are stored and listed" in _flat(after) and "nothing applies them" in _flat(after)
+    readers = [p for root in ("backend/app", "ai-worker", "frontend/src", "mobile/src")
+               for p in (REPO_ROOT / root).rglob("*") if p.suffix in (".py", ".ts", ".tsx")
+               and not {"node_modules", ".venv", "site-packages"} & set(p.parts)
+               and "privacy_zones" in p.read_text(encoding="utf-8", errors="ignore")]
+    assert [p.name for p in readers] == ["pdpa.py"], "something applies privacy zones now: bring the record up to date"
     # The Windows app is the web build in a shell: its version is the one the record names, and its identity is unchanged.
     desktop = (REPO_ROOT / "desktop" / "package.json").read_text(encoding="utf-8")
     builder = (REPO_ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")

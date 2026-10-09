@@ -856,6 +856,13 @@ there — `desktop/package.json`, `desktop/package-lock.json`. It is unsigned,
 with the same app id and MSI upgrade code, so it installs over 1.0.4. It is
 built from a clean copy of the commit, not from the working directory.
 
+Found while doing it, and not changed: a camera's privacy zones are stored and
+listed (`backend/app/routers/pdpa.py`), and nothing applies them. No web or
+phone screen draws one, and neither the AI worker, the live view nor a
+recording masks one out. Applying them changes what every camera shows and
+records, so it is the owner's to decide. The feature reference had said since
+its first edition that zones were masked out; edition 7 says how it is.
+
 Tests that held the old behaviour changed with it:
 `backend/tests/test_data_compliance.py`, `backend/tests/test_p5_pdpa.py`,
 `backend/tests/test_pdpa.py`. The documents of phases 5, 7, 12 and 13 say how
