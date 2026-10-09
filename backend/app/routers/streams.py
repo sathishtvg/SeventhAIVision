@@ -32,6 +32,7 @@ from app.db.session import AsyncSessionLocal
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
+from app.services import privacy_mask
 from app.services.video_compat import H264Writer, ensure_browser_playable
 
 router = APIRouter(prefix="/api/v1/cameras", tags=["streams"])
@@ -229,7 +230,14 @@ def _encode_jpeg(frame) -> bytes | None:
     return buf.tobytes() if ok else None
 
 
-async def _mjpeg_frames(rtsp_url: str):
+def _masked_jpeg(frame, zones) -> bytes | None:
+    return _encode_jpeg(privacy_mask.paint(frame, zones))
+
+
+async def _mjpeg_frames(rtsp_url: str, mask: privacy_mask.Keeper):
+    """The camera's picture, frame by frame, with its privacy zones painted in.
+    `mask` has read the zones once before this is called (live_stream sees to
+    it) and reads them again every few seconds while somebody is watching."""
     cap: cv2.VideoCapture = await asyncio.to_thread(cv2.VideoCapture, rtsp_url)
     try:
         if not cap.isOpened():
@@ -239,7 +247,8 @@ async def _mjpeg_frames(rtsp_url: str):
             ret, frame = await asyncio.to_thread(_read_frame, cap)
             if not ret:
                 break
-            jpeg = await asyncio.to_thread(_encode_jpeg, frame)
+            await mask.keep_up()
+            jpeg = await asyncio.to_thread(_masked_jpeg, frame, mask.zones)
             if jpeg is None:
                 continue
             yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n'
@@ -305,8 +314,14 @@ async def live_stream(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stream not found")
 
     rtsp_url = _build_auth_url(row[0], row[1] or {})
+    # The zones are read before the first frame is sent. If they cannot be,
+    # the picture is not shown: an unmasked frame is never the fallback.
+    mask = privacy_mask.Keeper(tenant_id, camera_id)
+    if not await mask.refresh():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "This camera's privacy zones could not be read, so its picture is not shown. Try again shortly.")
     return StreamingResponse(
-        _mjpeg_frames(rtsp_url),
+        _mjpeg_frames(rtsp_url, mask),
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -358,6 +373,28 @@ async def _authorize_stream_access(token: str, camera_id: str, stream_id: str) -
     return row[0], row[1] or {}
 
 
+async def _no_hls_for_a_masked_camera(token: str, camera_id: str, stream_id: str) -> None:
+    """HLS copies the camera's stream without decoding it, so a privacy zone
+    cannot be painted into it. A camera with a zone has no HLS view: its live
+    view is the MJPEG one, which is masked. A session already running for it is
+    stopped here, so its segments stop being made as well as being refused.
+
+    Called after `_authorize_stream_access`, which has checked the token."""
+    from app.services.hls_stream import stop_stream
+
+    tenant_id = decode_access_token(token)["tenant_id"]
+    try:
+        masked = await privacy_mask.is_masked(tenant_id, camera_id)
+    except Exception:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "This camera's privacy zones could not be read, so its picture is not shown. Try again shortly.")
+    if masked:
+        await stop_stream(stream_id)
+        raise HTTPException(status.HTTP_409_CONFLICT, {
+            "message": "This camera has a privacy zone, so it has no HLS view. Its live view is the masked one.",
+            "masked": True})
+
+
 @router.get("/{camera_id}/streams/{stream_id}/hls/index.m3u8")
 async def hls_playlist(
     camera_id: str,
@@ -369,6 +406,7 @@ async def hls_playlist(
     from app.services.hls_stream import ensure_session
 
     url, auth = await _authorize_stream_access(token, camera_id, stream_id)
+    await _no_hls_for_a_masked_camera(token, camera_id, stream_id)
     rtsp_url = _build_auth_url(url, auth)
     playlist = await ensure_session(stream_id, rtsp_url)
     if playlist is None:
@@ -390,6 +428,7 @@ async def hls_segment(
     from app.services.hls_stream import segment_file_path
 
     await _authorize_stream_access(token, camera_id, stream_id)
+    await _no_hls_for_a_masked_camera(token, camera_id, stream_id)
     path = segment_file_path(stream_id, segment)
     if path is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid segment name")
@@ -431,8 +470,13 @@ async def get_camera_health(
 # Recordings — start / stop / list / download
 # ──────────────────────────────────────────────────────────
 
-def _record_to_file(file_path: str, rtsp_url: str, stop_event: asyncio.Event) -> tuple[int, int]:
+def _record_to_file(file_path: str, rtsp_url: str, stop_event: asyncio.Event,
+                    mask: privacy_mask.Keeper) -> tuple[int, int]:
     """Write RTSP stream frames to MP4. Returns (frame_count, file_size_bytes).
+
+    The camera's privacy zones are painted into each frame before it is
+    encoded: what is under a zone is not in the file. `mask` has read the zones
+    before this is called and is kept up while it runs (_recording_task).
 
     Encodes H.264 via `H264Writer`, not `cv2.VideoWriter`. This used to write
     the `mp4v` fourcc, which produces MPEG-4 Part 2 — a format no browser can
@@ -452,7 +496,7 @@ def _record_to_file(file_path: str, rtsp_url: str, stop_event: asyncio.Event) ->
             ret, frame = cap.read()
             if not ret:
                 break
-            writer.write(frame)
+            writer.write(mask.paint(frame))
             frame_count += 1
     finally:
         # release() is what finalises the container (and runs the faststart
@@ -472,9 +516,21 @@ async def _recording_task(
     stop_event: asyncio.Event,
 ):
     started = time.monotonic()
-    frame_count, file_size = await asyncio.to_thread(
-        _record_to_file, file_path, rtsp_url, stop_event
-    )
+    # Nothing is recorded until the camera's privacy zones have been read: a
+    # recording cannot be masked afterwards. While it runs the zones are read
+    # again every few seconds, so one drawn mid-segment is in the frames after it.
+    mask = privacy_mask.Keeper(tenant_id, camera_id)
+    while not await mask.refresh() and not stop_event.is_set():
+        await asyncio.sleep(privacy_mask.RETRY_SECONDS)
+    frame_count, file_size = 0, 0
+    if mask.loaded:
+        keeping = asyncio.create_task(mask.keep(stop_event))
+        try:
+            frame_count, file_size = await asyncio.to_thread(
+                _record_to_file, file_path, rtsp_url, stop_event, mask
+            )
+        finally:
+            keeping.cancel()
     duration = int(time.monotonic() - started)
 
     async with AsyncSessionLocal() as session:

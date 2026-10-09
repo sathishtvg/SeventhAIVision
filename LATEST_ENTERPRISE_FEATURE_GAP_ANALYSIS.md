@@ -861,9 +861,53 @@ listed (`backend/app/routers/pdpa.py`), and nothing applies them. No web or
 phone screen draws one, and neither the AI worker, the live view nor a
 recording masks one out. Applying them changes what every camera shows and
 records, so it is the owner's to decide. The feature reference had said since
-its first edition that zones were masked out; edition 7 says how it is.
+its first edition that zones were masked out; edition 7 says how it is. It was
+decided and built the same day: see *Privacy zones, applied*, below.
 
 Tests that held the old behaviour changed with it:
 `backend/tests/test_data_compliance.py`, `backend/tests/test_p5_pdpa.py`,
 `backend/tests/test_pdpa.py`. The documents of phases 5, 7, 12 and 13 say how
 each now stands, and those of phases 8, 10, 11 and 12 what the phone now does.
+
+### Privacy zones, applied
+
+What was found on the way and not changed - a camera's privacy zones stored,
+and applied by nothing - was put to the owner, who decided the same day that it
+be built, and made the two choices it turns on: everything is masked,
+recordings included, and nothing unmasked is kept; and a camera with a zone is
+shown through the masked MJPEG view and has no HLS one, because HLS copies the
+camera's stream without decoding it. `PRIVACY_MASKING.md` says how it is built
+and what it does not do. The design is
+`docs/plans/2026-10-09-privacy-zone-masking-design.md`.
+
+A zone is painted into the frame at the four places a camera's picture leaves
+the camera through the platform - what the AI workers are given, the live view,
+the recorder, and the image a virtual patrol keeps - by one service,
+`backend/app/services/privacy_mask.py`. A loop reads its camera's zones again
+every ten seconds, and sends, publishes and records nothing until it has read
+them once.
+
+No migration: `privacy_zones` had what was needed. No permission was added.
+
+**Existing files changed (8):** `backend/app/ingestion_main.py`,
+`backend/app/routers/streams.py`, `backend/app/routers/pdpa.py`,
+`backend/app/services/vpatrol_snapshot.py`,
+`backend/app/services/hls_stream.py`, `frontend/src/pages/Zones.tsx`,
+`frontend/src/pages/LiveWall.tsx`, `frontend/src/pages/intel/Situation.tsx`.
+
+What changed for what was there:
+
+- The zone routes refuse what they took before: a polygon that is not one, a
+  twenty-first zone on a camera, a camera the caller may not see, a drone's
+  camera, an API key and a support session. Drawing and deleting each write an
+  audit line they did not write.
+- HLS is refused for a camera with a zone.
+- The live view answers 503 when a camera's zones cannot be read, and a
+  recording and the AI wait for them.
+
+A test that held the old behaviour changed with it:
+`frontend/src/pages/intel/intel.test.tsx` - a camera opened live is played
+through HLS only once it is known to have no zone.
+
+It has run on test streams. No camera at a customer's site has been masked by
+it, and the phone has not been run on a device since.

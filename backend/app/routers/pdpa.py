@@ -6,15 +6,17 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
+from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
+from app.services import intel_audit, privacy_mask
 
 router = APIRouter(prefix="/api/v1/privacy", tags=["privacy"])
 pdpa_router = APIRouter(prefix="/api/v1/pdpa", tags=["pdpa"])
@@ -24,31 +26,72 @@ logger = logging.getLogger(__name__)
 
 # ── Privacy Masking Zones ─────────────────────────────────────────────────────
 
+# A zone is applied (services/privacy_mask.py): what is under it is painted out
+# of the camera's live view, of what the AI is given, of recordings and of the
+# images a patrol keeps, within about ten seconds of its being drawn. So drawing
+# one and deleting one are each a person's act, on a camera they may see, and
+# each is one line in the audit log.
+
 class PrivacyZoneCreate(BaseModel):
-    camera_id: str
+    camera_id: uuid.UUID
     name: str = "Privacy Zone"
-    polygon: list[dict]  # [{"x": 0.1, "y": 0.2}, ...]
+    polygon: list[dict]  # [{"x": 0.1, "y": 0.2}, ...], each a share of the picture
     fill_color: str = "#000000"
     is_active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _a_name(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= 100:
+            raise ValueError("A zone's name is 1 to 100 characters.")
+        return value
+
+    @field_validator("polygon")
+    @classmethod
+    def _a_polygon(cls, value: list[dict]) -> list[dict]:
+        privacy_mask.points_of(value)
+        return value
+
+    @field_validator("fill_color")
+    @classmethod
+    def _a_colour(cls, value: str) -> str:
+        if not privacy_mask.is_colour(value):
+            raise ValueError("A zone's colour is written #RRGGBB.")
+        return value
+
+
+def _a_person(token: TokenPayload) -> None:
+    """What a camera shows and records is changed by somebody, by name."""
+    if token.via_api_key:
+        raise HTTPException(403, "This is done by a person who is signed in, not by an API key.")
+    if token.support_session_id:
+        raise HTTPException(403, "This is done by the organisation's own staff, not from a support session.")
 
 
 @router.get("/zones", dependencies=[Depends(require_permission("privacy:manage"))])
 async def list_privacy_zones(
     db: AsyncSession = Depends(get_db_with_tenant),
-    camera_id: str | None = None,
+    camera_id: uuid.UUID | None = None,
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
+    """The zones of the cameras the caller may see, the newest first."""
     params: dict = {}
-    where = ""
+    where = []
     if camera_id:
-        where = "WHERE pz.camera_id = CAST(:camera_id AS uuid)"
-        params["camera_id"] = camera_id
+        where.append("pz.camera_id = CAST(:camera_id AS uuid)")
+        params["camera_id"] = str(camera_id)
+    scope = site_scope_clause(allowed, "c.site_id", params)
+    if scope:
+        where.append(scope)
     result = await db.execute(
         text(
             f"""
-            SELECT pz.*, c.name AS camera_name
+            SELECT pz.*, c.name AS camera_name, u.full_name AS created_by_name
             FROM privacy_zones pz
-            LEFT JOIN cameras c ON c.id = pz.camera_id
-            {where}
+            JOIN cameras c ON c.id = pz.camera_id
+            LEFT JOIN users u ON u.id = pz.created_by_user_id
+            {('WHERE ' + ' AND '.join(where)) if where else ''}
             ORDER BY pz.created_at DESC
             """
         ),
@@ -57,14 +100,55 @@ async def list_privacy_zones(
     return [dict(row._mapping) for row in result]
 
 
+@router.get("/masked-cameras", dependencies=[Depends(require_permission("camera:read"))])
+async def masked_cameras(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Which of the cameras the caller may see have a privacy zone now. A live
+    wall asks once, and shows those through the masked view: they have no HLS
+    one (routers/streams.py). It says that a camera is masked, not where."""
+    params: dict = {}
+    scope = site_scope_clause(allowed, "c.site_id", params)
+    rows = (await db.execute(text(f"""
+        SELECT DISTINCT pz.camera_id FROM privacy_zones pz JOIN cameras c ON c.id = pz.camera_id
+         WHERE pz.is_active = TRUE {('AND ' + scope) if scope else ''}
+    """), params)).all()
+    return {"camera_ids": sorted(str(r[0]) for r in rows), "refresh_seconds": privacy_mask.REFRESH_SECONDS}
+
+
 @router.post("/zones", dependencies=[Depends(require_permission("privacy:manage"))])
 async def create_privacy_zone(
     body: PrivacyZoneCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
-    import json
-    result = await db.execute(
+    """Draw a zone on a camera. From about ten seconds later what is under it
+    is painted out of everything the platform shows, analyses and records of
+    that camera. What was recorded before is not changed."""
+    _a_person(token)
+    camera_id = str(body.camera_id)
+    params: dict = {"c": camera_id}
+    scope = site_scope_clause(allowed, "c.site_id", params)
+    camera = (await db.execute(text(f"""
+        SELECT c.id, c.name, c.site_id, EXISTS (SELECT 1 FROM drones d WHERE d.camera_id = c.id) AS on_a_drone
+          FROM cameras c WHERE c.id = CAST(:c AS uuid) {('AND ' + scope) if scope else ''}
+    """), params)).mappings().first()
+    if camera is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Camera not found")
+    if camera["on_a_drone"]:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "A drone's camera cannot have a privacy zone: a zone is fixed to the picture, and a drone's moves.")
+    # One at a time for a camera, so that two people drawing at once cannot pass the limit together.
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:c))"), {"c": "privacy_zones:" + camera_id})
+    drawn = (await db.execute(text("SELECT count(*) FROM privacy_zones WHERE camera_id = CAST(:c AS uuid)"),
+                              {"c": camera_id})).scalar()
+    if drawn >= privacy_mask.MOST_ZONES:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"A camera has at most {privacy_mask.MOST_ZONES} privacy zones. Delete one first.")
+    row = (await db.execute(
         text(
             """
             INSERT INTO privacy_zones
@@ -74,34 +158,64 @@ async def create_privacy_zone(
                 CAST(:camera_id AS uuid), :name, CAST(:polygon AS jsonb), :fill_color, :is_active,
                 CAST(:created_by AS uuid)
             )
-            RETURNING id, camera_id, name, polygon, fill_color, is_active
+            RETURNING id, camera_id, name, polygon, fill_color, is_active, created_at
             """
         ),
         {
-            "camera_id": body.camera_id,
+            "camera_id": camera_id,
             "name": body.name,
             "polygon": json.dumps(body.polygon),
             "fill_color": body.fill_color,
             "is_active": body.is_active,
             "created_by": token.user_id,
         },
-    )
-    row = result.first()
+    )).first()
+    await intel_audit.record(db, request, token, "privacy.zone.create", "privacy_zone", row.id, site_id=camera["site_id"],
+                             detail={"camera_id": camera_id, "camera_name": camera["name"], "name": body.name,
+                                     "points": len(body.polygon), "is_active": body.is_active})
+    # Its HLS sessions are stopped at once in this process; another process
+    # refuses within ten seconds (routers/streams.py). Read before the commit:
+    # the tenant is the transaction's, and nothing is read after it.
+    streams = [str(r[0]) for r in (await db.execute(
+        text("SELECT id FROM streams WHERE camera_id = CAST(:c AS uuid)"), {"c": camera_id})).all()]
+    out = {**dict(row._mapping), "camera_name": camera["name"], "applies_within_seconds": privacy_mask.REFRESH_SECONDS}
     await db.commit()
-    return dict(row._mapping)
+    privacy_mask.forget(camera_id)
+    if body.is_active:
+        from app.services.hls_stream import stop_stream
+        for stream_id in streams:
+            await stop_stream(stream_id)
+    return out
 
 
 @router.delete("/zones/{zone_id}", dependencies=[Depends(require_permission("privacy:manage"))])
-async def delete_privacy_zone(zone_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
-    result = await db.execute(
-        text("DELETE FROM privacy_zones WHERE id = :id RETURNING id"),
-        {"id": zone_id},
-    )
-    row = result.first()
-    await db.commit()
-    if row is None:
+async def delete_privacy_zone(
+    zone_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Delete a zone. From about ten seconds later the camera is shown,
+    analysed and recorded without it. What was recorded with it stays masked."""
+    _a_person(token)
+    params: dict = {"id": str(zone_id)}
+    scope = site_scope_clause(allowed, "c.site_id", params)
+    zone = (await db.execute(text(f"""
+        SELECT pz.id, pz.camera_id, pz.name, c.name AS camera_name, c.site_id
+          FROM privacy_zones pz JOIN cameras c ON c.id = pz.camera_id
+         WHERE pz.id = CAST(:id AS uuid) {('AND ' + scope) if scope else ''}
+    """), params)).mappings().first()
+    if zone is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Privacy zone not found")
-    return {"deleted": True, "id": str(row.id)}
+    await db.execute(text("DELETE FROM privacy_zones WHERE id = CAST(:id AS uuid)"), {"id": str(zone_id)})
+    await intel_audit.record(db, request, token, "privacy.zone.delete", "privacy_zone", zone_id, site_id=zone["site_id"],
+                             detail={"camera_id": str(zone["camera_id"]), "camera_name": zone["camera_name"],
+                                     "name": zone["name"]})
+    camera_id = str(zone["camera_id"])
+    await db.commit()
+    privacy_mask.forget(camera_id)
+    return {"deleted": True, "id": str(zone_id)}
 
 
 @router.get("/zones/camera/{camera_id}", dependencies=[Depends(require_permission("camera:read"))])

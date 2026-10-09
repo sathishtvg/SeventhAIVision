@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.crypto import decrypt_secret
 from app.db.session import AsyncSessionLocal
+from app.services import privacy_mask
 from app.services.camera_service import StreamHealthTracker
 from app.services.video_compat import H264Writer
 from shared.constants import FRAME_JOBS_STREAM
@@ -214,6 +215,8 @@ async def run_camera_loop(redis_client: redis.Redis, tenant_id: UUID, camera_id:
     cap: cv2.VideoCapture | None = None
     full_url = _build_auth_url(url, auth_config)
     cam_key = str(camera_id)
+    # The camera's privacy zones, read again every few seconds (services/privacy_mask.py).
+    mask = privacy_mask.Keeper(tenant_id, camera_id)
 
     # Initialise ring buffer for this camera
     if cam_key not in _frame_buffers:
@@ -230,6 +233,16 @@ async def run_camera_loop(redis_client: redis.Redis, tenant_id: UUID, camera_id:
             if transition is not None:
                 async with AsyncSessionLocal() as db:
                     await record_health_transition(db, tenant_id, camera_id, stream_id, transition.new_status, transition.event_type)
+
+            # Privacy zones are painted into the frame before anything else is
+            # done with it, so what the AI workers are given, the snapshots they
+            # save and the clips cut from the buffer below are all of the masked
+            # picture. Until the zones have been read once nothing of this
+            # camera is published or kept: an unmasked frame is never the fallback.
+            if not await mask.keep_up():
+                await asyncio.sleep(SNAPSHOT_INTERVAL_SECONDS)
+                continue
+            frame = mask.paint(frame)
 
             frame_b64, width, height = await asyncio.to_thread(_encode_jpeg_b64, frame)
             jpeg_bytes = base64.b64decode(frame_b64)

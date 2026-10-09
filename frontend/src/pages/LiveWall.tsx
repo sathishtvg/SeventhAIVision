@@ -30,6 +30,8 @@ import {
   type WallLayout,
 } from '@/api/wallLayouts'
 import { HlsPlayer } from '@/components/common/HlsPlayer'
+import { MASKED_LABEL } from '@/components/privacy/privacyZoneWords'
+import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { DetectionOverlay } from '@/components/common/DetectionOverlay'
 import { RestrictedZoneDialog } from '@/components/common/RestrictedZoneDialog'
 import { AlertResponseDialog, type AlertSummary } from '@/components/common/AlertResponseDialog'
@@ -138,6 +140,12 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
   const hlsUrl = token
     ? `${apiClient.defaults.baseURL}/api/v1/cameras/${cell.camera_id}/streams/${cell.stream_id}/hls/index.m3u8?token=${token}`
     : null
+  // HLS copies the camera's stream without decoding it, so a privacy zone
+  // cannot be painted into it and the server refuses it for a camera that has
+  // one. Such a camera is shown through the MJPEG view, which is masked - and
+  // so is every camera until it is known which have a zone.
+  const maskedCameras = useMaskedCameras()
+  const playHls = mode === 'hls' && !!hlsUrl && maskedCameras.mayPlayHls(cell.camera_id)
 
   const formatElapsed = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
@@ -163,7 +171,7 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
           }),
         }}
       >
-        {mode === 'hls' && hlsUrl ? (
+        {playHls && hlsUrl ? (
           <HlsPlayer src={hlsUrl} sx={fill ? { height: '100%', width: '100%' } : { aspectRatio: '16/9' }} />
         ) : liveUrl ? (
           <Box
@@ -210,6 +218,11 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
               onClick={onOpenAlert}
               sx={{ height: 16, fontSize: '0.6rem', maxWidth: 160, cursor: 'pointer' }}
             />
+          )}
+          {maskedCameras.has(cell.camera_id) && (
+            // So that a black block in the picture is read as meant, not as a fault.
+            <Chip label={MASKED_LABEL} size="small" variant="outlined"
+                  sx={{ height: 16, fontSize: '0.6rem', color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} />
           )}
           {cell.site_name && (
             <Chip label={cell.site_name} size="small" sx={{ height: 16, fontSize: '0.6rem' }} />
@@ -285,7 +298,7 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ p: 0 }}>
-          {mode === 'hls' && hlsUrl ? (
+          {playHls && hlsUrl ? (
             <HlsPlayer src={hlsUrl} sx={{ maxHeight: '80vh' }} />
           ) : liveUrl ? (
             <Box component="img" src={liveUrl} alt={cell.camera_name} sx={{ width: '100%', display: 'block' }} />
