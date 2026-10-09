@@ -35,6 +35,8 @@ import ScheduleIcon from '@mui/icons-material/Schedule'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { PrivacyZonesPanel } from '@/components/privacy/PrivacyZonesPanel'
+import { usePermission } from '@/hooks/usePermission'
 import { RestrictedZoneDialog } from '@/components/common/RestrictedZoneDialog'
 import { ZonePolygonEditor } from '@/components/common/ZonePolygonEditor'
 import type { ZonePoint } from '@/components/common/ZoneDrawOverlay'
@@ -479,6 +481,8 @@ function CrowdZonesTable() {
 
 export default function Zones() {
   const [tab, setTab] = useState(0)
+  // Privacy zones are drawn and deleted by whoever manages privacy; nobody else is given the tab.
+  const managesPrivacy = usePermission('privacy:manage')
   return (
     <Box>
       <PageHeader pageKey="zones" />
@@ -487,10 +491,12 @@ export default function Zones() {
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Restricted Zones" />
             <Tab label="Crowd Zones" />
+            {managesPrivacy && <Tab label="Privacy Zones" />}
           </Tabs>
         </Box>
         <TabPanel value={tab} index={0}><RestrictedZonesTable /></TabPanel>
         <TabPanel value={tab} index={1}><CrowdZonesTable /></TabPanel>
+        {managesPrivacy && <TabPanel value={tab} index={2}><PrivacyZonesPanel /></TabPanel>}
       </GlassCard>
     </Box>
   )

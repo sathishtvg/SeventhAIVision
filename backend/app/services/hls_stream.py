@@ -149,6 +149,18 @@ async def _stop_session(session: _Session) -> None:
     logger.info("hls: stopped ffmpeg stream=%s", session.stream_id)
 
 
+async def stop_stream(stream_id: str) -> bool:
+    """Stop one stream's session now and remove its segments. Used when its
+    camera is given a privacy zone: HLS copies the camera's stream without
+    decoding it, so a masked camera has no HLS view (routers/streams.py).
+    Returns whether there was a session."""
+    session = _sessions.pop(str(stream_id), None)
+    if session is None:
+        return False
+    await _stop_session(session)
+    return True
+
+
 async def _reaper_loop() -> None:
     while True:
         try:

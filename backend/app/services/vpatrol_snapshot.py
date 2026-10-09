@@ -38,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services import privacy_mask
 from app.core.crypto import decrypt_secret
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,22 @@ async def _resolve_source(db: AsyncSession, camera_id: str) -> tuple[str | None,
     return build_source_url(row["url"], row["auth_config"]), None
 
 
+async def _mask(db: AsyncSession, camera_id: str, path: Path) -> str | None:
+    """Paint the camera's privacy zones into the captured image, where it lies.
+    Returns why the image is not to be kept, or None when it is.
+
+    The zones are read inside a savepoint: a read that fails must leave the
+    caller's transaction able to record the failure."""
+    try:
+        async with db.begin_nested():
+            zones = await privacy_mask.read(db, camera_id)
+    except Exception:
+        return "The camera's privacy zones could not be read, so no image was kept."
+    if not await asyncio.to_thread(privacy_mask.paint_file, str(path), zones):
+        return "The image could not be masked, so it was not kept."
+    return None
+
+
 def _ffmpeg_cmd(source_url: str, out_path: str) -> list[str]:
     return [
         "ffmpeg", "-nostdin", "-loglevel", "error",
@@ -194,6 +211,16 @@ async def capture(
         reason = detail or "The camera did not return an image."
         await _record_failure(db, session_camera_id, "SNAPSHOT_FAILED", reason)
         return {"ok": False, "status": "SNAPSHOT_FAILED", "error": reason}
+
+    # Privacy zones are painted in before the image is hashed, so the checksum
+    # is of the masked image, and the image as it came is overwritten where it
+    # lies: no record ever points to an unmasked one. An image that cannot be
+    # masked is a failed capture, not one stored as it came.
+    unmasked = await _mask(db, str(row["camera_id"]), abs_path)
+    if unmasked:
+        abs_path.unlink(missing_ok=True)
+        await _record_failure(db, session_camera_id, "SNAPSHOT_FAILED", unmasked)
+        return {"ok": False, "status": "SNAPSHOT_FAILED", "error": unmasked}
 
     data = abs_path.read_bytes()
     checksum = hashlib.sha256(data).hexdigest()

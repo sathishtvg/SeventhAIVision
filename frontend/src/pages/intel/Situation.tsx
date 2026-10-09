@@ -29,6 +29,7 @@ import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { HlsPlayer } from '@/components/common/HlsPlayer'
+import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { usePermission } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/api/client'
@@ -324,6 +325,8 @@ const CAMERA_RELATION: Record<string, string> = {
 
 function LiveDialog({ camera, onClose }: { camera: RecommendedCamera; onClose: () => void }) {
   const token = useAuthStore((s) => s.accessToken)
+  // A camera with a privacy zone has no HLS view: it is shown through the MJPEG one, which is masked.
+  const maskedCameras = useMaskedCameras()
   const { data: streams, isLoading, error } = useQuery({
     queryKey: ['camera-streams', camera.id], queryFn: () => getStreams(camera.id) })
   const stream = streams?.[0]
@@ -334,8 +337,14 @@ function LiveDialog({ camera, onClose }: { camera: RecommendedCamera; onClose: (
         {isLoading ? <Skeleton height={320} />
           : error ? <Alert severity="error">{apiError(error)}</Alert>
             : stream && token ? (
-              <HlsPlayer src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}`
-                + `/hls/index.m3u8?token=${token}`} sx={{ width: '100%', aspectRatio: '16/9' }} />
+              maskedCameras.mayPlayHls(camera.id) ? (
+                <HlsPlayer src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}`
+                  + `/hls/index.m3u8?token=${token}`} sx={{ width: '100%', aspectRatio: '16/9' }} />
+              ) : (
+                <Box component="img" alt={`${camera.name}, live`}
+                     src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}/live?token=${token}`}
+                     sx={{ width: '100%', aspectRatio: '16/9', objectFit: 'contain', display: 'block', bgcolor: '#000' }} />
+              )
             ) : <Typography variant="body2" color="text.secondary">This camera has no stream to open.</Typography>}
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>

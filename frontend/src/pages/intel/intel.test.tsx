@@ -12,6 +12,7 @@ import type {
   SituationSummary, Timeline, TimelineEntry, Trail,
 } from '@/api/securityIntelligence'
 import { upsertSetting } from '@/api/settings'
+import { getMaskedCameras } from '@/api/privacyZones'
 import { SituationsPanel } from '@/components/intel/SituationsPanel'
 import { duration, lag, rate } from '@/components/intel/intelFormat'
 import Situations from './Situations'
@@ -25,6 +26,8 @@ vi.mock('@/components/common/HlsPlayer', () => ({ HlsPlayer: () => <div data-tes
 vi.mock('@/store/auth', () => ({ useAuthStore: vi.fn() }))
 vi.mock('@/api/sites', () => ({ getSites: vi.fn().mockResolvedValue([{ id: 's1', name: 'Factory A' }, { id: 's2', name: 'Factory B' }]) }))
 vi.mock('@/api/cameras', () => ({ getStreams: vi.fn().mockResolvedValue([{ id: 'st1' }]) }))
+// Which cameras have a privacy zone: a live player asks before it chooses HLS. None here, unless a test says.
+vi.mock('@/api/privacyZones', () => ({ getMaskedCameras: vi.fn() }))
 // PageHeader reads the tenant's page names from the settings.
 vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), upsertSetting: vi.fn().mockResolvedValue({}) }))
 // The situation screen also shows the approved procedure, when there is one (phase 6). None here.
@@ -263,7 +266,10 @@ function open(role: number, a: Authority = authority(), trail: Trail = EMPTY_TRA
   return renderAt('/situations/sit1', '/situations/:id', <Situation />)
 }
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(getMaskedCameras).mockResolvedValue({ camera_ids: [], refresh_seconds: 10 })
+})
 
 describe('the situation view', () => {
   it('never draws what the layer suggests as what a person decided', async () => {
@@ -755,6 +761,17 @@ describe('the situation view', () => {
     fireEvent.click(await screen.findByText('Gate 1', { selector: '.MuiListItemText-primary' }))
     expect(await screen.findByTestId('hls')).toBeInTheDocument()
     expect(screen.getByText(/The layer moves no camera and changes no view\./)).toBeInTheDocument()
+  })
+
+  it('opens a camera that has a privacy zone through the masked view, and not through HLS', async () => {
+    // HLS copies the camera's stream untouched, so the server refuses it for a camera with a zone.
+    vi.mocked(getMaskedCameras).mockResolvedValue({ camera_ids: ['c1'], refresh_seconds: 10 })
+    open(OPERATOR)
+    fireEvent.click(await screen.findByText('Gate 1', { selector: '.MuiListItemText-primary' }))
+    const live = await screen.findByRole('img', { name: 'Gate 1, live' })
+    expect(live.getAttribute('src')).toMatch(/\/api\/v1\/cameras\/c1\/streams\/st1\/live\?token=tok$/)
+    await waitFor(() => expect(getMaskedCameras).toHaveBeenCalled())
+    expect(screen.queryByTestId('hls')).toBeNull()
   })
 })
 
