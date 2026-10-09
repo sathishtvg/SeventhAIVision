@@ -38,8 +38,9 @@ never set against the doors it opened.
    audited.
 3. **Nothing accuses anybody.** A door event outside the places or the period a
    visit is authorised for is listed for a person to look at. It raises no
-   alert and no incident, it is not written into the intelligence layer, and
-   the platform uses no word for the visitor that a person has not used first.
+   alert and no incident, it is handed to the intelligence layer only when the
+   organisation asks for that — as an event that names nobody — and the
+   platform uses no word for the visitor that a person has not used first.
 4. **What is not known is said to be not known.** A door that is not on the
    site's map, a visit that names no places, a visit that was never approved, a
    visitor who was given no badge, and a work permit each give "cannot be said"
@@ -277,11 +278,14 @@ No existing table is altered. The new tables refer to `visitors`,
 
 - **It does not open or lock anything.** No door, barrier or pass is switched
   by an authorisation, and check-in does not look at it.
-- **It does not feed the intelligence layer.** Visitor door events are not
-  written to `security_events` and the runner is unchanged. The gap analysis
-  planned that for this phase; it was left out because it would change what
-  the existing layer scores and could put a visitor into a situation without a
-  person having looked. It needs its own decision.
+- **It does not feed the intelligence layer unless the organisation asks.**
+  With `visitor.movements_to_intelligence` off — as it is until an
+  administrator switches it on — no visitor door event is written to
+  `security_events`. Switched on, each door event still to be looked at is
+  handed over once, as a low-severity event that names nobody: no name, no
+  badge number, no subject (`services/visitor_movement_events.py`; decided
+  2026-10-09). One a person has already reviewed is not handed over, and the
+  list of door events to look at is the same either way.
 - **It does not follow a visitor by camera, face or position.** It reads door
   events of a badge number somebody typed at check-in. A visitor given no
   badge, a badge number mistyped, and a door with no reader leave nothing.

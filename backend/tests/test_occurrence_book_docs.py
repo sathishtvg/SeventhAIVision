@@ -74,8 +74,11 @@ def test_an_entry_is_never_edited_or_removed_and_the_document_says_so():
                  "The new router writes an entry only as a correction.",
                  "The existing `GET /api/v1/dob` is unchanged and still lists every entry."):
         assert said in doc, said
-    # What it does not do is said too, and is still so.
-    assert "still *permitted* to update and delete rows of `occurrence_book_entries`" in doc
+    # What it did not do is said too, with what was done about it since.
+    assert "was still permitted to update and delete rows of `occurrence_book_entries`" in doc
+    assert "migration `0157` took the two rights away" in doc
+    later = (REPO_ROOT / "backend" / "alembic" / "versions" / "0157_occurrence_book_append_only.py").read_text(encoding="utf-8")
+    assert 'op.execute("REVOKE UPDATE, DELETE ON occurrence_book_entries FROM svc_app")' in later
     migration = MIGRATION.read_text(encoding="utf-8")
     assert "occurrence_book_entries TO" not in migration and "ALTER TABLE occurrence_book_entries" not in migration, \
         "this phase changes nothing of the existing table"

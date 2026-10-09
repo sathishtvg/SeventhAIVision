@@ -7,6 +7,7 @@ caps output at MAX_ROWS to prevent accidental multi-GB exports."""
 import csv
 import io
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +20,21 @@ from app.dependencies.tenant import get_db_with_tenant
 
 router = APIRouter(prefix="/api/v1/export", tags=["export"])
 MAX_ROWS = 10_000
+#: What a spreadsheet would run as a formula (the same list the operations reports use).
+_RUNS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _cell(value) -> str:
+    """One value as it is written into the file. Text somebody typed that a
+    spreadsheet would run as a formula - an incident's title beginning with
+    "=", say - is written with an apostrophe before it, so that it is read as
+    text. A number is a number, and is written as it is."""
+    if value is None:
+        return ""
+    said = str(value)
+    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+        return said
+    return "'" + said if said.startswith(_RUNS) else said
 
 
 def _make_csv(rows: list[dict], fieldnames: list[str]) -> str:
@@ -26,7 +42,7 @@ def _make_csv(rows: list[dict], fieldnames: list[str]) -> str:
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
-        writer.writerow({k: ("" if row.get(k) is None else str(row[k])) for k in fieldnames})
+        writer.writerow({k: _cell(row.get(k)) for k in fieldnames})
     return output.getvalue()
 
 

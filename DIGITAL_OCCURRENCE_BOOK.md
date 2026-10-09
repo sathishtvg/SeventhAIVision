@@ -251,12 +251,13 @@ is registered), `backend/app/routers/dob.py` (two more kinds of entry),
 
 ## 11. What this does not do
 
-- **It does not make the book tamper-proof in the database.** The application
-  never edits or removes an entry, and nothing added here does. But the
-  application's database role is still *permitted* to update and delete rows of
-  `occurrence_book_entries`, as it has been since the table was made. Taking
-  that permission away is a change to an existing table and is left for the
-  owner to decide (phase 13).
+- **It did not, by itself, make the book tamper-proof in the database.** The
+  application never edits or removes an entry, and nothing added here does —
+  but when this phase was built the application's database role was still
+  permitted to update and delete rows of `occurrence_book_entries`. That was
+  left for the owner, who decided it on 2026-10-09: migration `0157` took the
+  two rights away. The role now reads the book and adds to it, and nothing
+  else.
 - **It does not write prose.** The summary counts and quotes. It does not say
   what mattered, why something happened or what should be done; a person adds
   that.

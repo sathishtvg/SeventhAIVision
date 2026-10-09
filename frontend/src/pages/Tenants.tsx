@@ -22,6 +22,7 @@ import {
   PRODUCT_LABELS, PLATFORM_MODULE_LABELS,
 } from '@/api/platform_licenses'
 import type { TenantProduct } from '@/api/platform_licenses'
+import { DroneLicensePanel } from '@/components/platform/DroneLicensePanel'
 import type { Tenant } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
 
@@ -327,6 +328,7 @@ function ManageLicensesDrawer({ tenant, initialTab = 0, onClose }: ManageLicense
             >
               <Tab label="AI Modules" />
               <Tab label="Platform Products" />
+              <Tab label="Drone Patrol" />
             </Tabs>
           </Box>
 
@@ -334,6 +336,7 @@ function ManageLicensesDrawer({ tenant, initialTab = 0, onClose }: ManageLicense
           <Box sx={{ flex: 1, overflowY: 'auto', px: 3, pt: 2, pb: 3 }}>
             {tab === 0 && <AiModulesPanel tenant={tenant} />}
             {tab === 1 && <PlatformProductsPanel tenant={tenant} />}
+            {tab === 2 && <DroneLicensePanel tenantId={tenant.id} />}
           </Box>
         </>
       )}

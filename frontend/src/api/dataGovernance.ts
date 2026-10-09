@@ -52,10 +52,31 @@ export interface Kept {
   taken_away: Record<string, string>
 }
 
+/** A kind of record the organisation may give a period. Kept until one is set. */
+export interface OptionalKind {
+  key: string
+  label: string
+  setting_key: string
+  tables: { name: string; names_people: boolean }[]
+  /** The period in days, or null when none is set and the kind is kept. */
+  days: number | null
+  set_at: string | null
+  counted_from: string
+  removes: string
+  kept_whatever: string | null
+  removed_by: string
+  taken_away: Record<string, string>
+}
+
 export interface Statement {
   read_at: string
   periods: PeriodInForce[]
   sites: SitePeriod[]
+  optional: OptionalKind[]
+  optional_note: string
+  least_days: number
+  /** Whether the reader may set a period: somebody who may change the organisation's settings. */
+  may_set: boolean
   holds: { in_force: number; by_kind: Record<string, number>; words: string }
   kept: Kept[]
   everything_else: string
@@ -101,6 +122,23 @@ export interface Found { id: string; name: string | null; detail: string | null;
 
 export const getStatement = () => apiClient.get<Statement>(`${BASE}/retention`).then((r) => r.data)
 
+/**
+ * Set, change or take away (days: null) the period of one kind. A period that already has records older than
+ * it is refused the first time with how many (409, `alreadyOlder`), and set when that number is said back.
+ */
+export const setRetentionPeriod = (kind: string, days: number | null, alreadyOlder?: number) =>
+  apiClient.put<{ kind: string; label: string; days: number | null; set_at: string | null; already_older: number }>(
+    `${BASE}/retention/periods/${kind}`, { days, ...(alreadyOlder == null ? {} : { already_older: alreadyOlder }) },
+  ).then((r) => r.data)
+
+/** What a refusal to set a period says is already older than it, when that is why it was refused. */
+export function alreadyOlder(err: unknown): { message: string; already_older: number; days: number } | null {
+  const d = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response
+  const detail = d?.data?.detail as { message?: string; already_older?: number; days?: number } | undefined
+  return d?.status === 409 && detail && typeof detail.already_older === 'number' && typeof detail.message === 'string'
+    ? { message: detail.message, already_older: detail.already_older, days: detail.days ?? 0 } : null
+}
+
 export const findSubject = (kind: 'STAFF' | 'VISITOR', words: string) =>
   apiClient.post<{ kind: string; found: Found[]; more: boolean }>(`${BASE}/subjects/find`, { kind, words }).then((r) => r.data)
 
@@ -117,6 +155,7 @@ export function apiError(err: unknown): string {
   if (e?.response?.status === 429) return 'Too many requests in a short time. Wait a minute and try again.'
   const d = e?.response?.data?.detail
   if (typeof d === 'string') return d
+  if (d && typeof d === 'object' && typeof (d as { message?: unknown }).message === 'string') return (d as { message: string }).message
   if (Array.isArray(d)) return d.map((x: { msg?: string }) => x.msg ?? String(x)).join('; ')
   return e?.message ?? 'Something went wrong.'
 }

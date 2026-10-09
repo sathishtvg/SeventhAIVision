@@ -43,7 +43,9 @@ else had to agree to.
 6. **Nothing is removed.** An investigator, a link and a named person or
    vehicle are taken off — a link and a name with why — and the row stays. A
    task that will not be done is dropped, with why. A note is not changed or
-   removed afterwards.
+   removed afterwards. A closed case goes only if the organisation has set a
+   retention period for closed cases, and then whole
+   (`ENTERPRISE_SECURITY_HARDENING.md`, section 2).
 7. **A case has its own history.** Each step — opened, a note, who leads, who
    was put on or taken off, closing asked for, approved or declined, reopened
    — is added to it, and it is never rewritten: the application's role may

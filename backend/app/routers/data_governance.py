@@ -4,6 +4,7 @@ Phase 13 of LATEST_ENTERPRISE_FEATURE_GAP_ANALYSIS.md; the design is in
 ENTERPRISE_SECURITY_HARDENING.md.
 
   GET  /retention                  every retention period in force, the holds, and what nothing removes
+  PUT  /retention/periods/{kind}   set, change or take away the period of one of the four kinds that may have one
   POST /subjects/find              the members of staff or the visitors a name matches, to choose one
   GET  /subjects/staff/{id}        where one member of staff appears in the expansion's records
   GET  /subjects/visitor/{id}      where one visitor appears
@@ -30,7 +31,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,33 +40,38 @@ from app.dependencies.pace import paced
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import intel_audit, retention_statement, subject_records
+from app.routers.operations_board import held_by
+from app.services import intel_audit, record_retention, retention_statement, subject_records
 
 #: The most people a name is matched to, to choose from.
 FOUND_SHOWN = 20
 EVERY_SITE = ("A subject report covers every site, so it is read by somebody who is not held to particular sites.")
+PERIOD_EVERY_SITE = ("A retention period is for every site's records, so it is set by somebody who is not held to "
+                     "particular sites.")
 
 router = APIRouter(prefix="/api/v1/data-governance", tags=["data-governance"])
 _RETENTION = [Depends(require_permission("retention:read"))]
+_SET = [Depends(require_permission("retention:read")), Depends(require_permission("settings:write"))]
 _PACED = Depends(paced("30/minute", "subject-report", "Too many subject reports in a minute. Wait a moment and try "
                                                        "again."))
 _SUBJECT = [Depends(require_permission("subject:report")), _PACED]
 
 
-def _the_organisations_own(token: TokenPayload, allowed: list[str] | None) -> None:
-    """Who may look across the records for one person."""
+def _the_organisations_own(token: TokenPayload, allowed: list[str] | None, what: str = "A subject report",
+                           done: str = "asked for", every_site: str = EVERY_SITE) -> None:
+    """Who may look across the records for one person, or set a period for every site's."""
     if token.via_api_key:
-        raise HTTPException(403, "A subject report is asked for by a person who is signed in, not by an API key.")
+        raise HTTPException(403, f"{what} is {done} by a person who is signed in, not by an API key.")
     if token.support_session_id:
-        raise HTTPException(403, "A subject report is asked for by the organisation's own staff, not from a "
-                                 "support session.")
+        raise HTTPException(403, f"{what} is {done} by the organisation's own staff, not from a support session.")
     if allowed is not None:
-        raise HTTPException(403, EVERY_SITE)
+        raise HTTPException(403, every_site)
 
 
 @router.get("/retention", dependencies=_RETENTION)
 async def read_retention(
     db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
     allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
     """Every retention period in force for the organisation, where each is set
@@ -73,6 +79,67 @@ async def read_retention(
     in force; and the records nothing removes. Somebody held to particular
     sites is given those sites and their holds."""
     answer = await retention_statement.read(db, allowed)
+    # A period is set by somebody who may change the organisation's settings, and who sees every site.
+    held = await held_by(db, token.role_id, ("settings:write",))
+    answer["may_set"] = ("settings:write" in held and allowed is None
+                         and not token.via_api_key and not token.support_session_id)
+    await db.commit()
+    return answer
+
+
+class PeriodBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: The period in whole days, or nothing to take the period away and keep the kind as before.
+    days: StrictInt | None = Field(..., ge=record_retention.LEAST_DAYS, le=record_retention.MOST_DAYS)
+    #: Said back by whoever sets it: how many are already older than the period, as the server last told them.
+    #: A period that would remove more than they were told is not set.
+    already_older: int | None = Field(None, ge=0)
+
+
+@router.put("/retention/periods/{kind}", dependencies=_SET)
+async def set_period(
+    kind: str,
+    body: PeriodBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Set, change or take away the period of one kind of record that may
+    have one. Nothing is removed by this: the scheduler removes what is over
+    and older than the period, once a day.
+
+    Setting a period that already has records older than it is asked for
+    twice. The first answer says how many (409); the second says that number
+    back. So nobody sets a period without having been told what it will
+    remove."""
+    _the_organisations_own(token, allowed, "A retention period", "set", PERIOD_EVERY_SITE)
+    chosen = record_retention.BY_KEY.get(kind)
+    if chosen is None:
+        raise HTTPException(404, "No such kind of record. One of: " + ", ".join(record_retention.BY_KEY) + ".")
+    before = (await record_retention.periods(db))[chosen.key]["days"]
+    older = await record_retention.waiting(db, chosen, body.days) if body.days is not None else 0
+    if body.days is not None and older and body.already_older != older:
+        raise HTTPException(409, {
+            "message": (f"{older} of these {'is' if older == 1 else 'are'} already older than {body.days} days and "
+                        "will be removed for good when the scheduler next runs. Confirm to set the period."),
+            "already_older": older, "days": body.days})
+    if body.days is None:
+        await db.execute(text("DELETE FROM tenant_settings WHERE setting_key = :k"), {"k": chosen.setting_key})
+    else:
+        await db.execute(text("""
+            INSERT INTO tenant_settings (tenant_id, setting_key, setting_value, updated_by_user_id)
+            VALUES (current_setting('app.current_tenant')::uuid, :k, CAST(:v AS jsonb), CAST(:u AS uuid))
+            ON CONFLICT (tenant_id, setting_key)
+            DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_by_user_id = EXCLUDED.updated_by_user_id,
+                          updated_at = now()
+        """), {"k": chosen.setting_key, "v": str(body.days), "u": token.user_id})
+    await intel_audit.record(db, request, token, "retention.period.set", "record_retention", None, detail={
+        "kind": chosen.key, "from_days": before, "to_days": body.days, "already_older": older})
+    after = (await record_retention.periods(db))[chosen.key]
+    answer = {"kind": chosen.key, "label": chosen.label, "days": after["days"], "set_at": after["set_at"],
+              "already_older": older, "removed_by": record_retention.REMOVED_BY}
     await db.commit()
     return answer
 

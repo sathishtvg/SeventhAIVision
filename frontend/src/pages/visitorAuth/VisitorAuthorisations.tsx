@@ -21,6 +21,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { getSites } from '@/api/sites'
 import { apiError, approveAuthorisation, listAuthorisations, movementsToReview, waitingForMe } from '@/api/visitorAuth'
+import { MovementsToIntelligence } from '@/components/visitorAuth/MovementsToIntelligence'
 import type { Standing, SubjectKind } from '@/api/visitorAuth'
 import { AskDialog, AuthorisationDialog } from '@/components/visitorAuth/AuthDialogs'
 import {
@@ -98,6 +99,7 @@ export default function VisitorAuthorisations() {
               <Button size="small" onClick={() => setOpenId(m.authorization_id)}>Open the authorisation</Button>
             </Stack>))}
         </GlassCard>)}
+      {data?.can_manage && <MovementsToIntelligence />}
 
       <GlassCard sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }} component="form"

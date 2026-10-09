@@ -1,8 +1,9 @@
 # Enterprise Security Hardening — Retention, Subject Reports and the Sweep
 
 **Phase 13 of the enterprise expansion** (`LATEST_ENTERPRISE_FEATURE_GAP_ANALYSIS.md`).
-Built 2026-10-09, migration `0156`. This document says what was built, the
-rules it is built under, what the sweep found, and what is left for the owner.
+Built 2026-10-09, migration `0156`; the owner's decisions of the same day are
+migrations `0157` and `0158`. This document says what was built, the rules it
+is built under, what the sweep found, and what the owner decided.
 
 Before this phase each retention period was where the job that applies it reads
 it — the organisation's settings, a site's recording policy, the installation's
@@ -22,7 +23,7 @@ and routes; nothing asked the same questions of all of them at once.
                                       asked by a person, and written down
 
  the database's catalogue ─┐
- the route table ──────────┴──► THE SWEEP: 36 tables and 176 routes asked the same
+ the route table ──────────┴──► THE SWEEP: 36 tables and 177 routes asked the same
                                  questions, each exception named with its reason
 ```
 
@@ -32,7 +33,8 @@ and routes; nothing asked the same questions of all of them at once.
 
 1. **The statement reads; it sets nothing.** A period is changed where it has
    always been changed: in the organisation's settings and in a site's
-   recording policy.
+   recording policy. Four kinds of the newer records may be given a period,
+   through a route of their own that says first what the period would remove.
 2. **It says what the jobs read, read the same way.** Each value comes from the
    job's own function or its own constant, so the statement cannot say one
    number while a job applies another.
@@ -41,7 +43,8 @@ and routes; nothing asked the same questions of all of them at once.
    API from its own configuration, while the job that applies it runs in a
    service of its own: the statement says so beside every such period.
 4. **No period is a statement too.** Most of what the platform keeps is removed
-   by no job. Everything the expansion added is of that kind, and each of its
+   by no job. Of what the expansion added, four kinds are kept until the
+   organisation sets a period for them and the rest has none; each of its
    tables is listed with whether it names a person.
 5. **It says what is configured, not what the law requires.** How long a
    record ought to be kept is the organisation's to decide and is written
@@ -69,8 +72,8 @@ and routes; nothing asked the same questions of all of them at once.
 13. **An exception is named, with its reason.** Nothing passes the sweep by
     being left out of it.
 14. **Nothing that already worked was changed to pass it.** What the sweep and
-    the work around it found in what existed before the expansion is listed for
-    the owner (section 9) and left as it is.
+    the work around it found in what existed before the expansion was put to
+    the owner, who decided each on 2026-10-09 (section 9).
 15. **Super Admin, an operator, a guard and the client role hold neither of the
     new permissions.**
 
@@ -104,16 +107,51 @@ Six kinds of record have a period, because a job removes them:
 - **Holds.** How many are in force, by kind, and beside each kind of record
   that a hold stops, how many of it are held now. Somebody held to particular
   sites is given those sites and their holds.
-- **Kept, with no period.** The thirty-six tables the expansion added, in
-  eleven groups, each table with whether it names a person. Three lose a row
-  by a person's own step — an item taken out of a package that has not been
-  sealed, and two lists that are replaced when they are set again — and an
-  authorisation goes with its visitor when a data-subject erasure removes the
-  visitor.
+- **Kept until a period is set.** Four kinds of the newer records, twelve
+  tables, may be given a period by the organisation (below).
+- **Kept, with no period.** The other twenty-four tables the expansion added,
+  in eight groups, each table with whether it names a person. Three tables of
+  the thirty-six lose a row by a person's own step — an item taken out of a
+  package that has not been sealed, and two lists that are replaced when they
+  are set again — and an authorisation goes with its visitor when a
+  data-subject erasure removes the visitor.
 - **A data-subject erasure** is the existing step, unchanged, and the
   statement says what it removes or blanks.
 
 Reading the statement is not audited: it names no person.
+
+### Periods the organisation may set
+
+`services/record_retention.py`. Nothing is removed unless a period is set: with
+none, each kind is kept as before.
+
+| Kind | What is removed, whole | Counted from | Kept whatever its age |
+|---|---|---|---|
+| `CASES` | A closed case with everything on it | When its closing was approved | A case that is open, or waiting for approval to close |
+| `INVESTIGATIONS` | A closed investigation with what was put into it | When it was closed | One that is open; one an evidence package was made from; one linked to a case that is not closed |
+| `VISITOR_AUTHORIZATIONS` | An authorisation with its places and its reviews | The end of the period it was for | — |
+| `WORKFORCE_ANSWERS` | An answer to a recommendation | When the answer was given | — |
+
+- **Only what is over has a period.** An open case is never removed, however
+  old.
+- **Evidence packages, their custody and their holds have none.** A chain of
+  custody that expires is not one.
+- **A period is at least thirty days**, in whole days. That is a guard against
+  a slip of the hand, not a recommendation.
+- **Setting one is asked for twice when it would remove something.**
+  `PUT /retention/periods/{kind}` answers first with how many are already
+  older than the period (409), and sets it when that number is said back. So
+  nobody sets a period without having been told what it will remove.
+- **It is set by a person who may change the organisation's settings**
+  (`settings:write`) and who is not held to particular sites — not an API key,
+  not a support session — and each change is audited with what it was and what
+  it became.
+- **Setting a period removes nothing by itself.** The scheduler removes what is
+  over and older, once a day, on its superuser session: the application's own
+  role may not delete from these tables at all. One organisation's removal is
+  one line in its audit log — how many of each kind, under what period.
+- **A parent is removed and its parts go with it**, by the database's own
+  rule. The records a case or an investigation referred to are not touched.
 
 ---
 
@@ -179,16 +217,16 @@ order that is over, a confirmed shift summary, a decided version of a procedure.
 organisation put in from another's scope is refused by the policy before
 anything else is looked at. With no organisation in scope, nothing is read.
 
-### Routes — 176, of 16 routers
+### Routes — 177, of 16 routers
 
-72 `GET`, 87 `POST`, 10 `PATCH`, 6 `PUT`, 1 `DELETE`.
+72 `GET`, 87 `POST`, 10 `PATCH`, 7 `PUT`, 1 `DELETE`.
 
 - **A permission on every one.** One asks for either of two in its own code:
   `GET /incident-responses/{incident}`, read by whoever reads responses or by
   the guard who was sent.
-- **An id in an address is an id**; anything else is no route at all. Two
-  addresses hold a word, each checked against a list: `{key}` of a report and
-  `{kind}` of a device.
+- **An id in an address is an id**; anything else is no route at all. Three
+  addresses hold a word, each checked against a list: `{key}` of a report,
+  `{kind}` of a device and `{kind}` of a retention period.
 - **A body takes the fields it declares and no other.**
 - **One route removes a row**: `DELETE /evidence-packages/{package}/items/{item}`.
 - **Nobody without a token gets anything, and no role without the permission
@@ -240,14 +278,15 @@ Under `/api/v1/data-governance`:
 | | | Needs |
 |---|---|---|
 | `GET` | `/retention` | `retention:read` |
+| `PUT` | `/retention/periods/{kind}` | `retention:read`, `settings:write` |
 | `POST` | `/subjects/find` | `subject:report` |
 | `GET` | `/subjects/staff/{user}` | `subject:report` |
 | `GET` | `/subjects/visitor/{visitor}` | `subject:report` |
 | `POST` | `/subjects/written` | `subject:report` |
 
-Nothing is changed or removed by any of them. Audited: `subject.report`. A
-subject report is counted against a limit of its own, thirty a minute for one
-person.
+Nothing is changed or removed by any of them but a period being set or taken
+away. Audited: `subject.report`, `retention.period.set`. A subject report is
+counted against a limit of its own, thirty a minute for one person.
 
 **Permissions** (migration `0156`):
 
@@ -264,8 +303,11 @@ person.
   parts — **Retention**: every period in force with where it is set, what
   removes it and what a hold does, and beside a period that falls back, that
   the job's own is the one in force; the sites' own periods; the holds; what
-  has no period; and what a data-subject erasure removes. Nothing on it changes
-  a period. **About a person**, for whoever may ask: a member of staff or a
+  has no period; and what a data-subject erasure removes. The periods in force
+  have no control on it. The four kinds that may be given a period are shown
+  with how each stands, and — for somebody who may change the organisation's
+  settings — with setting, changing and taking away, each after being told
+  what it will remove. **About a person**, for whoever may ask: a member of staff or a
   visitor chosen by name, or a name or a plate as it was typed; where they
   appear and how often, each line saying whether it concerns them or is a step
   they took; who searched for them; what is not read here; and, for words
@@ -282,6 +324,10 @@ audit log (`/audit`) and recording policy screens are unchanged.
 |---|---|
 | `backend/alembic/versions/0156_data_governance.py` | Two permissions. No table |
 | `backend/app/services/retention_statement.py` | The periods, where each is read from, what is kept. Reads only |
+| `backend/app/services/record_retention.py` | The four kinds that may be given a period, and the job that removes what is over and older |
+| `backend/app/services/visitor_movement_events.py` | A visitor's door events handed to the intelligence layer, when asked |
+| `backend/alembic/versions/0157_occurrence_book_append_only.py` | Two rights taken from the application's role |
+| `backend/alembic/versions/0158_license_catalogue.py` | Fourteen modules added to the licence catalogue. Rows only |
 | `backend/app/services/subject_records.py` | Every column that names a person, and the three reports. Reads only |
 | `backend/app/routers/data_governance.py` | The statement, finding somebody, and the reports |
 | `frontend/src/api/dataGovernance.ts` | The typed client |
@@ -293,8 +339,10 @@ registered), `frontend/src/App.tsx` (one route),
 `frontend/src/components/layout/Sidebar.tsx` (one menu entry),
 `frontend/src/hooks/usePermission.ts` (the two permissions).
 
-No table is created and none is altered. No grant, policy or trigger of any
-existing table is changed, and no route that existed is changed.
+Phase 13 itself created no table and altered none, and changed no grant,
+policy, trigger or route that existed. The owner's decisions of section 9
+then changed one grant and three routes that existed, and each names the
+files it changed.
 
 ---
 
@@ -303,51 +351,78 @@ existing table is changed, and no route that existed is changed.
 | | |
 |---|---|
 | `backend/tests/test_data_governance.py` | Every period as the job reads it, with the jobs' own functions beside it; what a job deletes and what the expansion added; who may read the statement and who may ask about a person; a member of staff, a visitor, and a name or a plate as typed; that each report is on the record |
+| `backend/tests/test_record_retention.py` | A period is whole days, thirty or more; nothing is removed until one is set, then only what is over and older, of that organisation's; setting one is a person's and is asked for twice; who removes |
+| `backend/tests/test_visitor_movement_events.py` | Off until asked; each event once, naming nobody; placed by the layer, which decides nothing |
 | `backend/tests/test_expansion_hardening.py` | The sweep: every table's row level security, policy and rights; another organisation; every route's permission, parameters and body; every write audited and a person's; nobody without a token and no role without the permission |
 | `backend/tests/test_hardening_docs.py` | That this document says what the code does |
 | `frontend/src/pages/governance/dataRetention.test.tsx` | The screen: its words, the statement, asking about a person |
 
 ---
 
-## 9. Found, and left for the owner
+## 9. Found, and what the owner decided
 
-Each of these is in what existed before the expansion. Putting any of them
-right changes how something that works today behaves, so none was changed.
+Each of these was in what existed before the expansion, or was left open by
+it. Putting any of them right changes how something that worked behaved, so
+each was put to the owner, who decided on 2026-10-09 that all seven be done.
+What was changed, and where:
 
-1. **The occurrence book can be rewritten by the application's role.** The
-   book is described as append-only and no code edits or removes an entry, but
-   the role holds `UPDATE` and `DELETE` on `occurrence_book_entries`. Taking
-   them away is one migration; it changes an existing table's grants.
-2. **The existing CSV exports write a value as it is** (`/api/v1/export/…`:
-   alerts, incidents, detections, the audit log). Text that begins with `=`,
-   `+`, `-` or `@` — an incident's title, say — is run as a formula by a
-   spreadsheet that opens the file. The operations reports make such text
-   plain; the existing exports do not.
-3. **The existing data-subject export is not about its subject in one part,
-   and leaves no line of its own.** `POST /data-compliance/dsr-export/{user}`
-   returns the organisation's latest hundred pieces of evidence whoever they
-   show, can be asked to include where each file is kept, and writes nothing
-   to the audit log.
-4. **The audit log's period is the scheduler's own.** The installation gives
-   `AUDIT_RETENTION_YEARS` to the scheduler and `DRONE_TELEMETRY_RETENTION_DAYS`
-   to the drone runner, and not to the API. Changed for one service only, the
-   statement would show the built-in default — which is why it says, beside
-   each, that the job's own is the one in force. Giving the API the same two
-   variables makes the statement certain; it is a change to the installation's
-   files.
-5. **Privacy masks are read without a token.** `GET /api/v1/privacy/zones/camera/{camera_id}`
-   is open by design, for the AI workers: anybody who knows a camera's id can
-   read where its masks are drawn.
-6. **Nothing the expansion added has a retention period.** A period for a
-   case, a visitor's authorisation or an answer about a guard is a decision
-   with legal weight, and removing rows from tables that are added to and
-   never rewritten needs a job that is allowed to. It was not decided here.
+1. **The occurrence book can no longer be rewritten by the application's
+   role.** Migration `0157` took `UPDATE` and `DELETE` on
+   `occurrence_book_entries` away from it. No code used either: the role reads
+   the book and adds to it.
+2. **The existing CSV exports write text as text** (`/api/v1/export/…`: alerts,
+   incidents, detections, the audit log). A value that begins with `=`, `+`,
+   `-` or `@` is written with an apostrophe before it, as the operations
+   reports write it. A number is still a number. Changed:
+   `backend/app/routers/exports.py`.
+3. **The existing data-subject export is about its subject, and leaves a
+   line.** `POST /data-compliance/dsr-export/{user}` lists the evidence that
+   person opened, downloaded or exported — not the organisation's latest —
+   never says where a file is kept, and writes `dsr.export` to the audit log.
+   `include_evidence_urls` is still accepted, and no longer acted on. Changed:
+   `backend/app/routers/data_compliance.py`.
+4. **The API is given the two default periods the jobs use.**
+   `AUDIT_RETENTION_YEARS` and `DRONE_TELEMETRY_RETENTION_DAYS` are given to
+   the API as well as to the scheduler and the drone runner, in the compose
+   files and the chart. The statement still says, beside a period that falls
+   back, that the job's own is the one in force: an installation put together
+   by hand can still differ. Changed: `docker/docker-compose.yml`,
+   `docker/docker-compose.core.yml`,
+   `helm/seventh-ai-vision/templates/configmap.yaml`,
+   `helm/seventh-ai-vision/values.yaml`.
+5. **Privacy masks are read with a credential.**
+   `GET /api/v1/privacy/zones/camera/{camera_id}` needs `camera:read` — a
+   signed-in person, or the organisation's API key — and is read under row
+   level security. Nothing in the repository called it without one. Changed:
+   `backend/app/routers/pdpa.py`.
+6. **Four kinds of the newer records may be given a retention period**
+   (section 2). Nothing is removed until an organisation sets one. Changed:
+   `backend/app/core/config_keys.py` (four settings),
+   `backend/app/scheduler_main.py` (one step of the daily cycle).
+7. **Visitor door events may be handed to the intelligence layer.** Off until
+   an organisation switches `visitor.movements_to_intelligence` on; then each
+   door event still to be looked at is handed over once, as a low-severity
+   event that names nobody. The layer places it and decides nothing. Changed:
+   `backend/app/core/config_keys.py` (one setting),
+   `backend/app/services/intel_runner.py` (one call in the ingest tick),
+   `frontend/src/pages/visitorAuth/VisitorAuthorisations.tsx` (one switch).
+
+Done the same day, for the platform owner: the licence catalogue gained the
+fourteen modules built since it was written (migration `0158`; rows only, and
+every customer has each as before), and Manage Licenses gained Drone Patrol's
+own licence — on or off, an expiry, and how many drones, missions and sites.
+Changed: `frontend/src/pages/Tenants.tsx`, `frontend/src/api/platform_licenses.ts`.
+
+Tests that held the old behaviour were changed with it:
+`backend/tests/test_data_compliance.py`, `backend/tests/test_p5_pdpa.py`.
 
 ---
 
 ## 10. What this does not do
 
-- **It sets no period and removes nothing.** The statement reads.
+- **It removes nothing unless the organisation sets a period.** The statement
+  reads. Four kinds may be given a period; with none set they are kept, as
+  before.
 - **It does not say what the law requires**, and does not judge a period as
   long or short.
 - **It does not hand a person's records over.** A subject report says where
@@ -359,12 +434,13 @@ right changes how something that works today behaves, so none was changed.
   wrote. It is not matched to a visitor, a member of staff, a watchlist entry
   or a face.
 - **It erases nothing.** The existing data-subject erasure is unchanged. A name
-  written into a case is not erased by it: a case's rows are never removed.
+  written into a case is not erased by it: a case goes only whole, under a
+  period the organisation has set.
 - **The sweep is of what the expansion added.** The routes and tables that
   existed before it were not swept; what was noticed in passing is in
   section 9.
-- **It changes no grant, policy or route to make anything stricter.** The
-  sweep found none of the expansion's that needed it.
+- **The sweep changed nothing of the expansion's.** It found none that needed
+  it. What was changed afterwards is what the owner decided (section 9).
 - **The phone is not part of it.**
 - **It has run on test data only.** The development organisation has not been
-  given migration `0156`.
+  given migrations `0156` to `0158`.

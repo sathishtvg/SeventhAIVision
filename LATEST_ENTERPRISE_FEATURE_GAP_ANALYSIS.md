@@ -792,10 +792,11 @@ retention statement shows the hold; a subject report for the guard says they
 were sent once and took four steps. Every step that mattered is in the audit
 log and was a signed-in person's.
 
-**Where a chain is not joined all the way.** A visitor's door events are set
-against their authorisation, by the visitor module. They are not events of the
-intelligence layer, and nothing of the layer names the visitor: the test holds
-that. Joining them is the decision left open in phase 7.
+**Where a chain is joined only when asked.** A visitor's door events are set
+against their authorisation, by the visitor module. Until an organisation asks
+for it they are not handed to the intelligence layer; once it does, each one
+still to be looked at is handed over as an event, and the layer still names
+nobody. The test holds both. (Left open in phase 7; decided on 2026-10-09.)
 
 **Existing files changed in phase 14:** none. One test module was added.
 
@@ -805,3 +806,41 @@ response was exercised through its routes, not on a device; no chain was timed
 or loaded, so there is no performance figure; the web screens were not driven
 end to end in a browser — each has its own tests; and the chains ran on a test
 database, not on the development organisation, which is at migration `0150`.
+
+### After phase 14 — the owner's decisions, carried out
+
+Seven things had been found on the way and left as they were, because putting
+any of them right changes how something that worked behaved. They were put to
+the owner, who decided on 2026-10-09 that all be done. The whole of it is in
+`ENTERPRISE_SECURITY_HARDENING.md`, section 9; what follows is the record of
+which existing files each changed.
+
+1. The occurrence book cannot be rewritten by the application's role
+   (migration `0157`). No existing file changed.
+2. The existing CSV exports write formula-like text as text —
+   `backend/app/routers/exports.py`.
+3. The existing data-subject export lists what its subject handled, never says
+   where a file is kept, and is audited —
+   `backend/app/routers/data_compliance.py`.
+4. The API is given the two default retention periods the jobs use —
+   `docker/docker-compose.yml`, `docker/docker-compose.core.yml`,
+   `helm/seventh-ai-vision/templates/configmap.yaml`,
+   `helm/seventh-ai-vision/values.yaml`.
+5. A camera's privacy masks are read with a credential —
+   `backend/app/routers/pdpa.py`.
+6. Four kinds of the newer records may be given a retention period, and are
+   kept until one is set — `backend/app/core/config_keys.py`,
+   `backend/app/scheduler_main.py`.
+7. Visitor and access events of a badge used outside its authorisation may be
+   handed to the intelligence layer, when an organisation asks —
+   `backend/app/core/config_keys.py`, `backend/app/services/intel_runner.py`,
+   `frontend/src/pages/visitorAuth/VisitorAuthorisations.tsx`.
+
+For the platform owner, the same day: the licence catalogue gained the fourteen
+modules built since it was written (migration `0158`, rows only), and Manage
+Licenses gained Drone Patrol's own licence — `frontend/src/pages/Tenants.tsx`,
+`frontend/src/api/platform_licenses.ts`.
+
+Tests that held the old behaviour changed with it:
+`backend/tests/test_data_compliance.py`, `backend/tests/test_p5_pdpa.py`. The
+documents of phases 5, 7, 12 and 13 say how each now stands.

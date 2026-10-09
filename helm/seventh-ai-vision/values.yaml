@@ -490,6 +490,8 @@ config:
   faceMatchThreshold: "0.6"
   intrusionBreachCooldownSeconds: "60"
   evidenceRetentionDays: "90"
+  # Audit log months older than this are moved out of the log into a file (never deleted).
+  auditRetentionYears: "7"
   wsMaxConnectionsPerIp: "10"
   s3PresignTtlSeconds: "3600"
   s3EndpointUrl: ""

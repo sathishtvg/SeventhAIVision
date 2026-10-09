@@ -96,6 +96,12 @@ services:
       # it gates uvicorn in this service's command, stop the API from starting.
       ALEMBIC_DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
       POSTGRES_HOST: postgres
+      # The two default retention periods the scheduler and the drone runner
+      # apply. The API applies neither: it reads them so that the retention
+      # statement (/api/v1/data-governance/retention) says the same number the
+      # job uses. Same variable, same fallback, as on those two services.
+      AUDIT_RETENTION_YEARS: "${AUDIT_RETENTION_YEARS:-7}"
+      DRONE_TELEMETRY_RETENTION_DAYS: "${DRONE_TELEMETRY_RETENTION_DAYS:-365}"
       APP_VERSION: "${APP_VERSION:-0.1.0}"
       GIT_SHA: "${GIT_SHA:-dev}"
       BUILD_DATE: "${BUILD_DATE:-dev}"

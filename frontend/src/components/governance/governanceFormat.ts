@@ -4,7 +4,9 @@
  * Nothing here adds to what the server says: a period is written as it was
  * read, a count beside what it is a count of.
  */
-import type { Held, Line, Match, PeriodInForce, Searches, SitePeriod, SubjectReport } from '@/api/dataGovernance'
+import type {
+  Held, Line, Match, OptionalKind, PeriodInForce, Searches, SitePeriod, SubjectReport,
+} from '@/api/dataGovernance'
 
 /** A day, without the hour: a report says between which dates, not at what minute. */
 export function day(iso: string | null | undefined): string {
@@ -17,6 +19,10 @@ const many = (n: number, one: string, more: string) => `${n} ${n === 1 ? one : m
 /** "30 days", "7 years", "1 day". */
 export const periodLine = (p: PeriodInForce['period']) =>
   `${p.amount} ${p.amount === 1 ? p.unit.slice(0, -1) : p.unit}`
+
+/** A kind that may be given a period: how it stands. Kept, until a period is set. */
+export const optionalLine = (k: OptionalKind) =>
+  k.days == null ? 'Kept: no period is set' : `Removed ${many(k.days, 'day', 'days')} after ${k.counted_from}`
 
 /** A site's recordings: its days, or that none is kept centrally. */
 export const siteLine = (s: SitePeriod) =>

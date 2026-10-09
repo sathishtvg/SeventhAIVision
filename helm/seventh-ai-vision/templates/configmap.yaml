@@ -13,6 +13,10 @@ data:
   FACE_MATCH_THRESHOLD: {{ .Values.config.faceMatchThreshold | quote }}
   INTRUSION_BREACH_COOLDOWN_SECONDS: {{ .Values.config.intrusionBreachCooldownSeconds | quote }}
   EVIDENCE_RETENTION_DAYS: {{ .Values.config.evidenceRetentionDays | quote }}
+  # The scheduler's and the drone runner's default retention periods, given to every pod:
+  # the API reads them so that the retention statement says the number the job applies.
+  AUDIT_RETENTION_YEARS: {{ .Values.config.auditRetentionYears | quote }}
+  DRONE_TELEMETRY_RETENTION_DAYS: {{ .Values.droneRunner.telemetryRetentionDays | quote }}
   WS_MAX_CONNECTIONS_PER_IP: {{ .Values.config.wsMaxConnectionsPerIp | quote }}
   S3_ENDPOINT_URL: {{ include "seventh-ai-vision.s3EndpointUrl" . | quote }}
   S3_BUCKET: {{ .Values.config.s3Bucket | quote }}

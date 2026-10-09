@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.routers import data_governance as api
-from app.services import continuous_recording, drone_retention, drone_runner, evidence_hold, recording_policy
+from app.services import continuous_recording, drone_retention, drone_runner, evidence_hold, record_retention, recording_policy
 from app.services import retention_statement as statement
 from app.services import subject_records as subjects
 from tests.test_drone_api import ADMIN, GUARD, MANAGER, OPERATOR, SUPERVISOR, VIEWER, _client, _run, _sql, _world
@@ -192,8 +192,14 @@ def test_everything_a_job_deletes_is_in_the_statement():
     assert deleted["drone_event_media"] == deleted["drone_telemetry"] == {"drone_retention.py"}
     assert "drone runner" in by["DRONE_FOOTAGE"].removed_by and "drone runner" in by["DRONE_TRACKS"].removed_by
     assert deleted["drone_sync_receipts"] == {"drone_runner.py"}
-    # No job of the platform deletes from anything the expansion added.
+    # Of what the expansion added, one job removes anything: the one that applies a period the organisation set,
+    # to the four kinds that may have one. It names the table it removes from, and nothing else of the expansion's.
     assert not set(deleted) & set(_expansion_tables())
+    remover = (APP / "services" / "record_retention.py").read_text(encoding="utf-8")
+    assert remover.count("DELETE FROM {kind.table}") == 1 and "DELETE FROM" not in remover.replace("DELETE FROM {kind.table}", "")
+    assert {k.table for k in record_retention.KINDS} == {"case_files", "investigations", "visitor_authorizations",
+                                                         "workforce_advice_answers"}
+    assert {k.table for k in record_retention.KINDS} <= set(_expansion_tables())
     scheduler = (APP / "scheduler_main.py").read_text(encoding="utf-8")
     assert "not_held(FRAMES_AND_CLIPS" in scheduler and "not_held(RECORDINGS" in (APP / "services" / "continuous_recording.py").read_text(encoding="utf-8")
     assert "not_held(DRONE_MEDIA" in (APP / "services" / "drone_retention.py").read_text(encoding="utf-8")
@@ -203,7 +209,9 @@ async def test_every_table_the_expansion_added_is_stated_as_kept_with_whether_it
     tables = _expansion_tables()
     assert len(tables) == len(set(tables)) == 36
     kept = [t for k in statement.KEPT for t in k.tables]
-    assert sorted(kept) == sorted(tables) and len(kept) == len(set(kept)), "each is stated once"
+    may_have_a_period = [t for k in record_retention.KINDS for t in (k.table, *k.parts)]
+    assert sorted(kept + may_have_a_period) == sorted(tables), "each is stated once: kept, or kept until a period is set"
+    assert (len(kept), len(may_have_a_period), len(statement.KEPT)) == (24, 12, 8)
     # Whether a table names a person is what the database's own catalogue says of its columns.
     refers = await _sql("""
         SELECT c.conrelid::regclass::text AS tbl, a.attname AS col, c.confrelid::regclass::text AS refs
@@ -229,12 +237,16 @@ async def test_every_table_the_expansion_added_is_stated_as_kept_with_whether_it
     w = await _world()
     async with _client() as c:
         answer = (await c.get(f"{BASE}/retention", headers=w["h"][ADMIN])).json()
-    assert {t["name"]: t["names_people"] for k in answer["kept"] for t in k["tables"]} == {t: t in naming for t in tables}
+    said = {t["name"]: t["names_people"] for group in (answer["kept"], answer["optional"]) for k in group for t in k["tables"]}
+    assert said == {t: t in naming for t in tables}
+    assert [o["key"] for o in answer["optional"]] == [k.key for k in record_retention.KINDS]
+    assert all(o["days"] is None and o["set_at"] is None for o in answer["optional"]), "kept until a period is set"
+    assert answer["optional_note"] == statement.MAY_BE_SET and answer["least_days"] == record_retention.LEAST_DAYS
     # A row leaves three of them by a person's own step, and the application's role may delete from no other.
     may_delete = {r["t"] for r in await _sql(
         "SELECT c.relname AS t FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY(:t) "
         "AND has_table_privilege('svc_app', c.oid, 'DELETE')", {"t": tables})}
-    taken = {t for k in statement.KEPT for t in (k.taken_away or {})}
+    taken = {t for k in statement.KEPT for t in (k.taken_away or {})} | {t for notes in statement.ALSO_TAKEN.values() for t in notes}
     assert may_delete == {"evidence_package_items", "sop_incident_types", "visitor_authorization_places"}
     assert taken == may_delete | {"visitor_authorizations"}, "an authorisation goes with its visitor, by the database's own rule"
     rule = await _sql("SELECT confdeltype FROM pg_constraint WHERE conname = 'visitor_authorizations_visitor_id_fkey'")

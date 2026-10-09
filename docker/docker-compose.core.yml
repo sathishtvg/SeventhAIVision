@@ -61,6 +61,9 @@ services:
       <<: *app-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
       POSTGRES_HOST: postgres
+      # Read by the retention statement, so that it says the number the
+      # scheduler applies. Same variable and fallback as on the scheduler.
+      AUDIT_RETENTION_YEARS: "${AUDIT_RETENTION_YEARS:-7}"
       APP_VERSION: "${APP_VERSION:-0.1.0}"
       GIT_SHA: "${GIT_SHA:-dev}"
       BUILD_DATE: "${BUILD_DATE:-dev}"

@@ -28,6 +28,7 @@ from app.services import intel_correlation as correlation
 from app.services import intel_events as events
 from app.services import intel_recommend as recommend
 from app.services import intel_risk as risk
+from app.services import visitor_movement_events
 
 logger = logging.getLogger("intelligence_runner")
 
@@ -88,6 +89,18 @@ async def run_ingest_tick(factory, now: datetime | None = None, batch: int = eve
             elif n:
                 out["events"] += n
                 out["by_source"][source] = out["by_source"].get(source, 0) + n
+        # A visitor's badge used outside its authorisation: read only for an organisation that has asked
+        # for it (services/visitor_movement_events.py). Its trouble is its own, like any other source's.
+        try:
+            n = await visitor_movement_events.ingest_tenant(factory, tenant_id, now=now)
+        except Exception:  # noqa: BLE001
+            logger.exception("tenant %s: visitor movements could not be read", tenant_id)
+            out["failed"] += 1
+        else:
+            if n:
+                out["events"] += n
+                out["by_source"][visitor_movement_events.SOURCE] = (
+                    out["by_source"].get(visitor_movement_events.SOURCE, 0) + n)
     return out
 
 
