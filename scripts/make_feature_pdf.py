@@ -44,7 +44,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "9 October 2026"
-EDITION = "Edition 7"
+EDITION = "Edition 8"
 HEAD = "0158"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -86,6 +86,12 @@ EDITIONS = [
      "desktop app is 1.0.5. <b>Corrects module 02:</b> earlier editions said privacy "
      "zones are masked out of live view and recordings. They are recorded for a "
      "camera, and nothing applies them yet."],
+    ["Edition 8", "9 October 2026", "0158",
+     "Privacy zones are applied. The owner decided it the day edition 7 said they were "
+     "not: what is under a zone is painted out of the live view, of what the AI is "
+     "given, of recordings and of the images a patrol keeps, and a third tab on the "
+     "Zones page draws them. Module 02 says what is now true, with its limits. The "
+     "desktop app is 1.0.6."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -270,13 +276,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("282", "DATABASE TABLES"), ("1,042", "API OPERATIONS"), ("108", "API MODULES"),
+        ("282", "DATABASE TABLES"), ("1,043", "API OPERATIONS"), ("108", "API MODULES"),
         ("111", "WEB ROUTES"), ("56", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
         ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
-        ("6,161", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,197", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -402,7 +408,7 @@ story += bullets([
     "<b>Identity and access</b> — 8 roles, 209 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
-    "playback, NVR.",
+    "playback, privacy zones painted out of the picture, NVR.",
     "<b>AI analytics</b> — eleven detection modules, licensed individually.",
     "<b>Alerts and incidents</b> — triage, dispatch, escalation, emergency broadcast.",
     "<b>Roster</b> — a whole month auto-scheduled against nine rules, reviewed "
@@ -518,11 +524,20 @@ story += module(
         "verified, and the platform's health check reports how many streams should "
         "be recording against how many are.",
         "<b>Playback and a recordings library</b>, with export.",
-        "<b>Privacy zones, recorded.</b> A zone can be stored for a camera through "
-        "the API, and is read with a credential. <i>Documented limitation:</i> "
-        "nothing applies one yet — live view, recordings and the AI workers do not "
-        "mask it out, and no screen draws one. Earlier editions of this document "
-        "said zones were masked out; they are not.",
+        "<b>Privacy zones, applied.</b> A zone drawn on a camera's picture is "
+        "painted out of the live view, of what the AI is given, of recordings and "
+        "of the images a patrol keeps, within about ten seconds. It is painted "
+        "into the frame, not drawn over the video, so there is no unmasked copy "
+        "to be sent or kept — and what is recorded after it cannot be unmasked. "
+        "If a camera's zones cannot be read, its picture is not shown. A zone is "
+        "drawn and deleted by a signed-in person who manages privacy, on the "
+        "Zones page, and each is one line in the audit log. <i>Added in edition "
+        "8.</i> <i>Documented limitations:</i> a zone is fixed to the picture, "
+        "not to the scene, so a camera that is turned moves out from under it; "
+        "footage recorded before a zone was drawn is unchanged; a camera with a "
+        "zone has no HLS view and is shown through the masked one; a recorder at "
+        "the site that records the camera itself is outside it; drone feeds are "
+        "not masked.",
         "<b>NVR integration</b> and HLS streaming for browser playback.",
         "<b>Site map view</b> plotting sites with live camera health and manning "
         "(the full security map is module 19).",
@@ -1486,7 +1501,9 @@ story.append(data_table(
     [
         ["Detection on camera and drone video (11 modules)",
          "Computer-vision models on frames: object detectors, a face embedding "
-         "model, plate reading",
+         "model, plate reading. <b>Edition 8:</b> a fixed camera's frames reach "
+         "the models with its privacy zones painted out, so nothing under one "
+         "is detected, matched or kept",
          "Reads the alert; acknowledges, escalates or dismisses it"],
         ["Face and plate watchlists",
          "Embedding similarity in the database (pgvector); plate text matching",
@@ -1604,8 +1621,9 @@ story += [
         "tests — from what a camera saw, through the decision, the guard sent, the "
         "investigation, the evidence and the case, to the case's report — and "
         "holds that every step that mattered was a person's. Nothing is in "
-        "progress. One thing found since waits on a decision: privacy zones are "
-        "recorded and not applied to video (known limits).", S["body"]),
+        "progress, and nothing waits on a decision. Privacy zones, found to be "
+        "recorded and not applied, were decided and built the same day "
+        "(module 02).", S["body"]),
     Paragraph("Decided by the owner on 9 October 2026, and carried out", S["h2"]),
     Paragraph(
         "Each of these was found while building and left as it was, because "
@@ -1636,7 +1654,7 @@ story.append(data_table(
         ["Privacy masks",
          "Read without a token by anybody who knew a camera's id",
          "Read with a credential that may read cameras, within the caller's own "
-         "organisation. Nothing applies a mask to video yet (known limits)"],
+         "organisation — and, since edition 8, applied (module 02)"],
         ["Retention for modules 17 to 28",
          "Nothing removed a case, a visitor's authorisation or an answer about a guard",
          "Four kinds may be given a period by the organisation; nothing is "
@@ -1659,7 +1677,7 @@ story += bullets([
     "and each held to the server by a test, but "
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.5 is built and carries every "
+    "<b>A code-signing certificate.</b> Desktop 1.0.6 is built and carries every "
     "screen of this edition. Its installer is not code-signed, so Windows warns "
     "before it runs.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
@@ -1687,7 +1705,7 @@ story.append(data_table(
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.5, which installs over 1.0.4."],
+         "Version 1.0.6, which installs over 1.0.5."],
     ],
     widths=[32 * mm, 38 * mm, 20 * mm, 80 * mm]))
 
@@ -1765,10 +1783,12 @@ story += bullets([
     "probes, heartbeats and late readings are read; frame rate, latency, packet "
     "loss, the quality of the picture and gaps in a recording are not measured, "
     "and an outage shorter than five minutes can pass unrecorded.",
-    "<b>Privacy zones are recorded and not applied.</b> A zone can be stored for "
-    "a camera; nothing masks it out of live view, of a recording or of what the "
-    "AI workers see, and no screen draws one. Applying them changes what every "
-    "camera shows and records, and waits on the owner's decision.",
+    "<b>A privacy zone is fixed to the picture, not to the scene</b>, and takes "
+    "effect within about ten seconds: what was captured before it is unchanged. "
+    "A camera with one has no HLS view; the AI is blind inside it, so a "
+    "restricted zone that overlaps it is too; drone feeds are not masked; and a "
+    "recorder at the site that records the camera itself is outside it. It has "
+    "run on test streams, not on a customer's camera.",
     "<b>A visitor is followed only through the doors their badge opened</b>, and "
     "those door events reach the intelligence layer only where an organisation "
     "has switched that on.",
@@ -1807,9 +1827,9 @@ story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
-    "database migrations, 282 tables, 108 API modules serving 1,042 operations, 114 backend "
-    "services, 111 web routes and 56 phone screens, covered by 6,161 automated tests "
-    "(backend 4,030, repository inspection 1,325, web 494, phone 312). Capability counts "
+    "database migrations, 282 tables, 108 API modules serving 1,043 operations, 115 backend "
+    "services, 111 web routes and 56 phone screens, covered by 6,197 automated tests "
+    "(backend 4,047, repository inspection 1,334, web 504, phone 312). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)

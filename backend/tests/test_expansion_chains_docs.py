@@ -117,5 +117,5 @@ def test_what_is_left_for_the_owner_is_in_one_place_and_nothing_existing_was_cha
     # The Windows app is the web build in a shell: its version is the one the record names, and its identity is unchanged.
     desktop = (REPO_ROOT / "desktop" / "package.json").read_text(encoding="utf-8")
     builder = (REPO_ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
-    assert '"version": "1.0.5"' in desktop and "desktop 1.0.5" in _flat(after)
+    assert '"version": "1.0.6"' in desktop and "desktop 1.0.5" in _flat(after) and "desktop 1.0.6" in _flat(after)
     assert "appId: ai.seventh.vision.desktop" in builder and 'upgradeCode: "5F3A9C21-8B47-4E2D-9A16-7C0E1F2B3D4A"' in builder

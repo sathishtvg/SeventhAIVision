@@ -911,3 +911,8 @@ through HLS only once it is known to have no zone.
 
 It has run on test streams. No camera at a customer's site has been masked by
 it, and the phone has not been run on a device since.
+
+For Windows: desktop 1.0.6 is the web build of this point, with the Privacy
+Zones tab and a live wall that shows a masked camera through the masked view -
+`desktop/package.json`, `desktop/package-lock.json`. Unsigned, with the same
+app id and MSI upgrade code, so it installs over 1.0.5.
