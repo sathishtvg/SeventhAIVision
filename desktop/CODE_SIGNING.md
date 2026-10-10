@@ -79,6 +79,40 @@ the service's own page. Which route fits is decided by where the business is
 registered: Azure Artifact Signing where it is offered - it is the cheapest and
 there is no token to lose - and a certificate authority everywhere else.
 
+### While there is no registered business
+
+That was the position on 10 October 2026. The routes above that check a
+company are closed until there is one, and Azure Artifact Signing takes an
+individual only in the USA or Canada. What is open to a person:
+
+- **A certificate in the person's own name.** Some authorities issue a
+  code-signing certificate to an individual ("individual validation") against
+  a government identity document. SSL.com and Certum were both offering one
+  with the key kept in their cloud, so nothing has to arrive by post; Sectigo's
+  was sold on a USB token. Sellers' listings that day put it at roughly US$190-250 a year -
+  ask the authority, these were not its own price pages. Windows then shows
+  **the person's legal name** as the publisher, on every installer, to every
+  customer. The build uses it as "a certificate in the Windows certificate
+  store", below.
+- **The Microsoft Store, which is free.** Since September 2025 an individual
+  registers without a fee in nearly 200 markets, with a personal Microsoft
+  account, an identity document and a photograph of themselves, and Microsoft
+  signs and hosts the app. It takes the app as an MSIX package, not as the
+  installers built here, and it has to pass the Store's review; the listing can
+  be kept out of search and reached by its link. The MSIX package is not built
+  yet.
+- **Registering the business first**, and then taking a route above in its
+  name.
+
+Which to choose turns on one thing: the name customers are to see. A publisher
+earns Windows' trust release by release and loses it when the name changes. If
+the product is to go out under a company's name, a certificate bought in a
+person's name now is trust that will be thrown away - register first. Nothing
+has to be bought to go on developing: an unsigned installer has installed on
+the build PC each time, once Windows had finished looking at it.
+
+- [Free developer registration for individual developers on Microsoft Store](https://blogs.windows.com/windowsdeveloper/2025/09/10/free-developer-registration-for-individual-developers-on-microsoft-store/)
+
 ## Building signed
 
 Whether the build signs, and with what, is read from the environment by

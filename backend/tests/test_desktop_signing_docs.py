@@ -136,7 +136,19 @@ def test_the_document_says_how_things_are_and_names_every_variable_the_build_rea
     for route in ("**Azure Artifact Signing**", "**A certificate from a certificate authority**", "**Microsoft Store**"):
         assert route in doc, route
     assert "**Singapore**" in doc and "**Not India.**" in doc and "There is no `.pfx` file any more" in flat
-    for source in ("learn.microsoft.com/windows/apps/package-and-deploy/code-signing-options",
+    # While there is no registered business: what is open to a person, and whose name customers would then see.
+    assert "### While there is no registered business" in doc
+    for open_to_a_person in ("**A certificate in the person's own name.**", "**The Microsoft Store, which is free.**",
+                             "**Registering the business first**"):
+        assert open_to_a_person in doc, open_to_a_person
+    assert "takes an individual only in the USA or Canada" in flat
+    assert "**the person's legal name** as the publisher" in flat and "register first" in flat
+    assert "these were not its own price pages" in flat, "a price that was not checked at its source is said to be so"
+    # The Store takes a package this build does not make, and the document does not say otherwise.
+    assert "The MSIX package is not built yet." in flat
+    assert re.findall(r"- target: (\w+)", _read(DESKTOP / "electron-builder.yml")) == ["nsis", "portable", "msi"]
+    for source in ("blogs.windows.com/windowsdeveloper/2025/09/10/free-developer-registration-for-individual-developers",
+                   "learn.microsoft.com/windows/apps/package-and-deploy/code-signing-options",
                    "learn.microsoft.com/azure/artifact-signing/quickstart",
                    "learn.microsoft.com/windows/apps/develop/smart-app-control/code-signing-for-smart-app-control"):
         assert source in doc, source
