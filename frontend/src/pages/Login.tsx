@@ -16,6 +16,7 @@ import DomainIcon from '@mui/icons-material/Domain'
 import { useAuthStore } from '@/store/auth'
 import { resolveSubdomain, type TenantInfo } from '@/api/auth'
 import { getSubdomain } from '@/hooks/useSubdomain'
+import { useFreshBuild } from '@/hooks/useFreshBuild'
 
 type ResolveState = 'idle' | 'loading' | 'done' | 'error'
 
@@ -83,6 +84,11 @@ export default function Login() {
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // A tab left on this page goes on being the build it loaded. It asks the
+  // server whether there is a newer one and reloads itself if so - but not
+  // under a sign-in that is on its way, nor a code that is being typed.
+  useFreshBuild(!challenge && !loading)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
