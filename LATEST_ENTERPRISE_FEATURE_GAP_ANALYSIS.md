@@ -999,3 +999,9 @@ signing configuration.
 
 With no signing variable set the build is what it was: unsigned, same app id,
 same MSI upgrade code. The desktop app was not rebuilt for this.
+
+Asked the same day which certificate the business could have, the owner
+answered that there is no registered business yet. `desktop/CODE_SIGNING.md`
+says what is open to a person - a certificate in their own name, the Microsoft
+Store, or registering the business first - and that the choice turns on the
+name customers are to see on the installer. Nothing was bought.
