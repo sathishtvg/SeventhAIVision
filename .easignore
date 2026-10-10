@@ -5,16 +5,37 @@
 #
 # Only the phone app is needed to build the phone app. Nothing else of the
 # repository is uploaded: not the server, not the web app, not a document.
+#
+# NO RULE HERE ENDS IN A SLASH, and that is not a matter of taste. The build
+# tool walks the folders and asks about each by its name alone - "mobile", never
+# "mobile/" - and a rule that ends in a slash only answers for a name that does.
+# Written as `!/mobile/`, the line below never matched, the phone app's folder
+# stayed ruled out with everything else, and what would have been sent was
+# nothing at all (found on 10 October 2026, before the first upload, by looking:
+# `npx eas-cli build:inspect -p android -e lan-test -s archive -o <folder>`).
+# mobile/__tests__/buildConfig.test.ts asks the same questions the tool does.
 /*
-!/mobile/
+!/mobile
 
 # Of the phone app: what is installed, generated or local to this machine.
-/mobile/node_modules/
-/mobile/.expo/
-/mobile/dist/
-/mobile/android/
-/mobile/ios/
-/mobile/coverage/
+/mobile/node_modules
+/mobile/.expo
+/mobile/dist
+/mobile/android
+/mobile/ios
+/mobile/coverage
+
+# An old copy of a git history that was once inside the phone app's folder.
+# It is not the app, it is 106 MB, and what a history holds is not for sending.
+/mobile/.git.bak-nested-repo
+
+# Anything local and private that might one day sit beside the app.
+/mobile/.env
+/mobile/.env.*
+/mobile/*.jks
+/mobile/*.keystore
+/mobile/*.pem
+/mobile/*.p12
 
 # mobile/google-services.json is NOT listed: a build needs it, and it is kept
 # out of git by not being committed, not by a rule here.
