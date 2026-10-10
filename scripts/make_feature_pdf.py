@@ -43,8 +43,8 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "9 October 2026"
-EDITION = "Edition 8"
+GENERATED = "10 October 2026"
+EDITION = "Edition 9"
 HEAD = "0158"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -92,6 +92,11 @@ EDITIONS = [
      "given, of recordings and of the images a patrol keeps, and a third tab on the "
      "Zones page draws them. Module 02 says what is now true, with its limits. The "
      "desktop app is 1.0.6."],
+    ["Edition 9", "10 October 2026", "0158",
+     "Privacy zones on the phone: whoever manages privacy draws one from a camera's "
+     "live view, sees that camera's zones and deletes one, each after the phone has "
+     "asked; a masked camera is labelled on the phone's live view and live wall. No "
+     "route is added. The phone has 57 screens."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -277,12 +282,12 @@ story += [
     Spacer(1, 10 * mm),
     stat_strip([
         ("282", "DATABASE TABLES"), ("1,043", "API OPERATIONS"), ("108", "API MODULES"),
-        ("111", "WEB ROUTES"), ("56", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("111", "WEB ROUTES"), ("57", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
         ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
-        ("6,197", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,216", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -532,7 +537,11 @@ story += module(
         "If a camera's zones cannot be read, its picture is not shown. A zone is "
         "drawn and deleted by a signed-in person who manages privacy, on the "
         "Zones page, and each is one line in the audit log. <i>Added in edition "
-        "8.</i> <i>Documented limitations:</i> a zone is fixed to the picture, "
+        "8.</i> <b>On the phone</b> (edition 9) the same person draws a zone from "
+        "a camera's live view, sees that camera's zones and deletes one; the "
+        "phone says what a zone does and asks once more before it masks, and "
+        "asks before it deletes. A masked camera is labelled on the phone's live "
+        "view and live wall. <i>Documented limitations:</i> a zone is fixed to the picture, "
         "not to the scene, so a camera that is turned moves out from under it; "
         "footage recorded before a zone was drawn is unchanged; a camera with a "
         "zone has no HLS view and is shown through the masked one; a recorder at "
@@ -1671,9 +1680,10 @@ story += [
 ]
 story += bullets([
     "<b>A phone build and a device pass.</b> The phone parts of guard response, "
-    "handover notes, procedures and visitor authorisation — and the four screens "
+    "handover notes, procedures and visitor authorisation — the four screens "
     "added in edition 7: a person's own reading, published briefings, work "
-    "orders and case tasks given to them — are type-checked, their rules tested "
+    "orders and case tasks given to them — and privacy zones drawn and deleted "
+    "on the phone (edition 9) are type-checked, their rules tested "
     "and each held to the server by a test, but "
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
@@ -1696,12 +1706,13 @@ story.append(data_table(
     [
         ["Web console", "Browser (React)", "111 routes",
          "The full platform. Every module, every administrative surface."],
-        ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "56 screens",
+        ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "57 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
          "book, handover, post orders, incidents and the response to them, "
          "situations, drone events, SOS — and, for whoever is signed in, their own "
          "reading, published briefings, and the work orders and case tasks given "
-         "to them. Offline outbox queues actions taken with "
+         "to them. Whoever manages privacy draws and deletes a camera's privacy "
+         "zones. Offline outbox queues actions taken with "
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
@@ -1828,8 +1839,8 @@ story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
     "database migrations, 282 tables, 108 API modules serving 1,043 operations, 115 backend "
-    "services, 111 web routes and 56 phone screens, covered by 6,197 automated tests "
-    "(backend 4,047, repository inspection 1,334, web 504, phone 312). Capability counts "
+    "services, 111 web routes and 57 phone screens, covered by 6,216 automated tests "
+    "(backend 4,047, repository inspection 1,335, web 504, phone 330). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
