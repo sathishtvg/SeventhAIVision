@@ -235,10 +235,12 @@ jobs:
         run: docker compose -f docker/docker-compose.yml up -d mediamtx
 
       # The end-to-end run reads cam1, cam2 and cam3, and it opens cam3 first.
-      # cam3 is not an encoder of its own: it is read from cam2 inside the
-      # source, so it is the last of the three to be there. Waiting for cam1
-      # alone let the run begin before cam3 was, and its first snapshot then
-      # failed three times over (10 October 2026).
+      # Each is waited for by name: cam1 being there says nothing of the other
+      # two, which are published by a different encoder. (Waiting was not what
+      # failed the run on 10 October 2026 - cam3 was then read back from cam2
+      # inside the source and lost its packets; docker/mediamtx/mediamtx.yml
+      # says what replaced that - but a run that begins before its cameras are
+      # there fails the same way.)
       - name: Wait for the live RTSP streams
         run: |
           for cam in cam1 cam2 cam3; do

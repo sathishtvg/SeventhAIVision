@@ -14,8 +14,10 @@ The first is held here: the page is asked for every time, and the scripts,
 whose names change with their contents, are kept for a year. The second cannot
 be held by a test; the running record says it.
 
-Also held: CI waits for every sample camera its end-to-end run reads. It waited
-for one of three, and the run's first snapshot is of the last to appear.
+Also held: CI waits for every sample camera its end-to-end run reads - it
+waited for one of three - and no sample camera is read back from another inside
+the source. That arrangement lost most of its packets on a busy machine, and
+the run's first snapshot is of exactly such a camera.
 
 Read from the working tree, so it runs with the repository-inspection suites.
 """
@@ -81,11 +83,21 @@ def test_ci_waits_for_every_sample_camera_the_end_to_end_run_reads():
     waited = re.search(r"for cam in ((?:cam\d+ ?)+); do", ci).group(1).split()
     assert waited == [f"cam{n}" for n in range(1, seeded + 1)], (waited, seeded)
     assert "-i rtsp://mediamtx:8554/$cam " in ci
-    # One of them is not an encoder of its own, which is why waiting for the first was not enough.
+    # No sample camera is read back from another inside the source: that reader could not keep up on a busy
+    # machine, and the camera it fed lost most of its packets. One encoder publishes the photograph to each path.
     sources = MEDIAMTX.read_text(encoding="utf-8")
-    read_from_another = re.findall(r"^  (cam\d+):\n    source: rtsp://127\.0\.0\.1:8554/(cam\d+)", sources, re.M)
-    assert [cam for cam, _ in read_from_another if cam in waited], "if none is, this wait can be one camera again"
-    assert all(source in waited for cam, source in read_from_another if cam in waited)
+    paths = sources.split("\npaths:\n", 1)[1]
+    assert not re.search(r"^    source:", paths, re.M), "a path read from another path"
+    encoders = dict(re.findall(r"^  (cam\d+):\n    runOnInit: (ffmpeg .*)$", paths, re.M))
+    published = {cam: sorted(set(re.findall(r"rtsp://127\.0\.0\.1:8554/(cam\d+)", command)), key=lambda c: int(c[3:]))
+                 for cam, command in encoders.items()}
+    assert published == {"cam1": ["cam1"], "cam2": [f"cam{n}" for n in range(2, 9)], "cam9": ["cam9"]}
+    assert "-f tee " in encoders["cam2"] and "-map 0:v" in encoders["cam2"] and "-f tee" not in encoders["cam1"]
+    # Every path a camera's URL can name is there, each once, and each is fed by an encoder.
+    declared = re.findall(r"^  (cam\d+):", paths, re.M)
+    assert declared == [f"cam{n}" for n in range(1, 10)]
+    assert sorted(cam for cams in published.values() for cam in cams) == sorted(declared)
+    assert set(waited) <= set(declared)
     # And when the run fails, what the source said is in the log.
     after = ci.split("python /tmp/vpatrol_e2e.py", 1)[1].split("- name: Tear down", 1)[0]
     assert "if: failure()" in after and "logs mediamtx" in after
