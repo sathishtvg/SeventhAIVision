@@ -9,6 +9,7 @@ import { TopBar } from './TopBar'
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents'
 import { useNativePickerOnClick } from '@/hooks/useNativePickerOnClick'
 import { ToastContainer } from './ToastContainer'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { useFocusModeStore } from '@/store/focusMode'
 
 const PAGE_TITLES: Record<string, string> = {
@@ -190,7 +191,11 @@ export function AppShell() {
             scrollbarColor: 'rgba(108,99,255,0.45) rgba(255,255,255,0.02)',
           }}
         >
-          <Outlet />
+          {/* A page that cannot be drawn is replaced by a message, and the menu stays:
+              without this one unexpected row blanked the whole window. */}
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </Box>
       </Box>
       <ToastContainer />
