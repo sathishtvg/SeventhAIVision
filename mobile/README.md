@@ -33,6 +33,11 @@ what was and was not verified, is in `DRONE_PATROL_GAP_ANALYSIS.md` §28.
   https. `__tests__/buildConfig.test.ts` holds that no other profile allows http.
 - **What is uploaded.** Expo's build service is sent the repository, not only
   this folder. `.easignore` at the repository's root limits that to `mobile/`.
+  Look before a build, whenever that file or this folder's contents have
+  changed: `npx eas-cli build:inspect -p android -e <profile> -s archive -o
+  <an empty folder outside the repository>` writes what would be sent and sends
+  nothing. As first written the file sent nothing at all - a rule in it ended
+  in a slash - and only looking showed it.
 - Do not run `npm audit fix` here. It installs a second React Native inside the
   first (gap analysis §27.5). Update a package by name and check the lockfile
   gained no entries.

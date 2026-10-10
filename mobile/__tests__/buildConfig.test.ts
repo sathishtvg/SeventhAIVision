@@ -10,7 +10,10 @@
  */
 // The app is not typed for Node, and this is the one test that reads a file: Node's reader, by what it is used for.
 // The tests are run from mobile/, so the repository's root is one folder up.
-const fs = require('fs') as { readFileSync: (file: string, encoding: 'utf8') => string }
+const fs = require('fs') as { readFileSync: (file: string, encoding: 'utf8') => string; existsSync: (file: string) => boolean }
+const bytesOf = require('fs').readFileSync as (file: string) => { readUInt32BE: (at: number) => number; [at: number]: number }
+// The package Expo's build tool reads .easignore with. It is here because Expo's own tools bring it.
+const makeIgnore = require('ignore') as () => { add: (rules: string) => { ignores: (path: string) => boolean } }
 const dynamic = require('../app.config.js') as (ctx: { config: Record<string, unknown> }) => { plugins: unknown[] }
 const app = require('../app.json') as { expo: { plugins: unknown[]; android: { package: string; googleServicesFile: string } } }
 const eas = require('../eas.json') as { build: Record<string, { extends?: string; distribution?: string; env?: Record<string, string>
@@ -59,13 +62,77 @@ describe('a build of the phone app', () => {
     expect(eas.build.production).toEqual({ distribution: 'store', android: { buildType: 'app-bundle' } })
   })
 
+  it('names no file that is not there, but the one that is deliberately kept out of the repository', () => {
+    // app.json named ./assets/notification-icon.png from the start, and there was no such file. A build stops on
+    // that (10 October 2026: "ENOENT ... notification-icon.png", thirty seconds into the first cloud build).
+    const named: string[] = []
+    const walk = (value: unknown) => {
+      if (typeof value === 'string') { if (value.startsWith('./')) named.push(value) }
+      else if (Array.isArray(value)) value.forEach(walk)
+      else if (value && typeof value === 'object') Object.values(value).forEach(walk)
+    }
+    walk(app.expo)
+    expect(Array.from(new Set(named)).sort()).toEqual(['./assets/adaptive-icon.png', './assets/icon.png',
+      './assets/notification-icon.png', './google-services.json'])
+    for (const file of named.filter((name) => name !== './google-services.json')) {
+      expect([file, fs.existsSync(file)]).toEqual([file, true])
+    }
+    // Android draws the small icon as a silhouette and tints it: white on nothing, 96 pixels square.
+    const icon = bytesOf('./assets/notification-icon.png')
+    expect([icon[1], icon[2], icon[3]].map((code) => String.fromCharCode(code)).join('')).toBe('PNG')
+    expect({ width: icon.readUInt32BE(16), height: icon.readUInt32BE(20), depth: icon[24], colourAndAlpha: icon[25] === 6 })
+      .toEqual({ width: 96, height: 96, depth: 8, colourAndAlpha: true })
+    const notifications = app.expo.plugins.find((p) => nameOf(p) === 'expo-notifications') as [string, { icon: string; color: string }]
+    expect(notifications[1]).toMatchObject({ icon: './assets/notification-icon.png', color: '#6C63FF' })
+  })
+
+  it('gives the launch screen a picture, without which Android will not compile the app', () => {
+    // The launch screen was given a colour and no picture. Android's launch theme refers to the picture by name
+    // whether one was given or not, so the second cloud build failed fourteen minutes in: "resource
+    // drawable/splashscreen_logo not found" (10 October 2026). The picture is the app's own icon, whose
+    // background is the launch screen's colour, so what shows is the disc and the 7 on the dark screen.
+    const launch = app.expo.plugins.find((p) => nameOf(p) === 'expo-splash-screen') as [string, Record<string, string>]
+    expect(launch[1]).toEqual({ backgroundColor: '#080818', image: './assets/icon.png' })
+    expect((app.expo as unknown as { icon: string }).icon).toBe(launch[1].image)
+    expect(app.expo.android).toMatchObject({ adaptiveIcon: { backgroundColor: launch[1].backgroundColor } })
+  })
+
   it('sends Expo\'s build service the phone app and nothing else of the repository', () => {
-    const ignore = fs.readFileSync('../.easignore', 'utf8').split(/\r?\n/)
-      .filter((line: string) => line.trim() && !line.startsWith('#'))
-    expect(ignore.slice(0, 2)).toEqual(['/*', '!/mobile/'])
-    expect(ignore).toEqual(expect.arrayContaining(['/mobile/node_modules/', '/mobile/.expo/', '/mobile/android/', '/mobile/ios/']))
+    const text = fs.readFileSync('../.easignore', 'utf8')
+    const rules = text.split(/\r?\n/).filter((line: string) => line.trim() && !line.startsWith('#'))
+    expect(rules.slice(0, 2)).toEqual(['/*', '!/mobile'])
     // The Firebase file a build needs is not ruled out here: it is kept out of git by not being committed.
-    expect(ignore.join('\n')).not.toMatch(/google-services/)
+    expect(rules.join('\n')).not.toMatch(/google-services/)
     expect(app.expo.android).toMatchObject({ package: 'ai.seventh.vision', googleServicesFile: './google-services.json' })
+
+    // What matters is what the build tool makes of the rules, so it is asked the way the tool asks: with the
+    // package the tool uses, its two rules of its own first, and each folder by its name alone - never with a
+    // slash after it. Written with one (`!/mobile/`), the rule that keeps the phone app never matched, and
+    // what would have been uploaded was nothing (10 October 2026).
+    expect(rules.filter((rule: string) => rule.endsWith('/'))).toEqual([])
+    const own = makeIgnore().add('\n.git\nnode_modules\n')
+    const ours = makeIgnore().add(text)
+    const sent = (path: string) => {
+      // The tool walks down from the top: a file is reached only if every folder above it was let through.
+      const parts = path.split('/')
+      return parts.every((_, n) => {
+        const upTo = parts.slice(0, n + 1).join('/')
+        return !own.ignores(upTo) && !ours.ignores(upTo)
+      })
+    }
+    for (const needed of ['mobile', 'mobile/package.json', 'mobile/package-lock.json', 'mobile/app.json', 'mobile/app.config.js',
+      'mobile/eas.json', 'mobile/App.tsx', 'mobile/google-services.json', 'mobile/assets/icon.png',
+      'mobile/src/screens/LoginScreen.tsx', 'mobile/src/api/client.ts', 'mobile/babel.config.js', 'mobile/tsconfig.json']) {
+      expect([needed, sent(needed)]).toEqual([needed, true])
+    }
+    for (const kept of ['backend', 'backend/app/main.py', 'frontend/src/App.tsx', 'desktop/package.json', 'docker/docker-compose.yml',
+      'docs/DEMO-SCRIPT.md', 'backups/dev.dump', 'mobile-screenshots/one.png', '.git', '.github/workflows/ci.yml', '.claude',
+      '.env', 'README.md', '.easignore',
+      'mobile/node_modules', 'mobile/node_modules/expo/package.json', 'mobile/.expo', 'mobile/.expo/devices.json',
+      'mobile/android', 'mobile/android/build.gradle', 'mobile/ios', 'mobile/dist', 'mobile/coverage',
+      'mobile/.git.bak-nested-repo', 'mobile/.git.bak-nested-repo/config', 'mobile/.env', 'mobile/.env.local',
+      'mobile/release.keystore', 'mobile/upload.jks']) {
+      expect([kept, sent(kept)]).toEqual([kept, false])
+    }
   })
 })
