@@ -1,0 +1,20 @@
+# What Expo's build service is sent when the phone app is built (`eas build`,
+# run from mobile/). The service is sent the repository, not only the folder the
+# command is run in - and when this file is present it is read instead of
+# .gitignore, so it has to say everything.
+#
+# Only the phone app is needed to build the phone app. Nothing else of the
+# repository is uploaded: not the server, not the web app, not a document.
+/*
+!/mobile/
+
+# Of the phone app: what is installed, generated or local to this machine.
+/mobile/node_modules/
+/mobile/.expo/
+/mobile/dist/
+/mobile/android/
+/mobile/ios/
+/mobile/coverage/
+
+# mobile/google-services.json is NOT listed: a build needs it, and it is kept
+# out of git by not being committed, not by a rule here.

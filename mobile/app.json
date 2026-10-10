@@ -58,7 +58,8 @@
         {
           "backgroundColor": "#080818"
         }
-      ]
+      ],
+      "expo-build-properties"
     ],
     "extra": {
       "eas": {
