@@ -10,7 +10,8 @@
  */
 // The app is not typed for Node, and this is the one test that reads a file: Node's reader, by what it is used for.
 // The tests are run from mobile/, so the repository's root is one folder up.
-const fs = require('fs') as { readFileSync: (file: string, encoding: 'utf8') => string }
+const fs = require('fs') as { readFileSync: (file: string, encoding: 'utf8') => string; existsSync: (file: string) => boolean }
+const bytesOf = require('fs').readFileSync as (file: string) => { readUInt32BE: (at: number) => number; [at: number]: number }
 // The package Expo's build tool reads .easignore with. It is here because Expo's own tools bring it.
 const makeIgnore = require('ignore') as () => { add: (rules: string) => { ignores: (path: string) => boolean } }
 const dynamic = require('../app.config.js') as (ctx: { config: Record<string, unknown> }) => { plugins: unknown[] }
@@ -59,6 +60,30 @@ describe('a build of the phone app', () => {
     expect(lan.env).toEqual({ APP_ALLOW_HTTP: '1', EXPO_PUBLIC_API_URL: expect.stringMatching(/^http:\/\/(192\.168|10)\.\d+\.\d+(\.\d+)?:8000$/) })
     // The store's build is an app bundle with no address built in and no http.
     expect(eas.build.production).toEqual({ distribution: 'store', android: { buildType: 'app-bundle' } })
+  })
+
+  it('names no file that is not there, but the one that is deliberately kept out of the repository', () => {
+    // app.json named ./assets/notification-icon.png from the start, and there was no such file. A build stops on
+    // that (10 October 2026: "ENOENT ... notification-icon.png", thirty seconds into the first cloud build).
+    const named: string[] = []
+    const walk = (value: unknown) => {
+      if (typeof value === 'string') { if (value.startsWith('./')) named.push(value) }
+      else if (Array.isArray(value)) value.forEach(walk)
+      else if (value && typeof value === 'object') Object.values(value).forEach(walk)
+    }
+    walk(app.expo)
+    expect(named.sort()).toEqual(['./assets/adaptive-icon.png', './assets/icon.png', './assets/notification-icon.png',
+      './google-services.json'])
+    for (const file of named.filter((name) => name !== './google-services.json')) {
+      expect([file, fs.existsSync(file)]).toEqual([file, true])
+    }
+    // Android draws the small icon as a silhouette and tints it: white on nothing, 96 pixels square.
+    const icon = bytesOf('./assets/notification-icon.png')
+    expect([icon[1], icon[2], icon[3]].map((code) => String.fromCharCode(code)).join('')).toBe('PNG')
+    expect({ width: icon.readUInt32BE(16), height: icon.readUInt32BE(20), depth: icon[24], colourAndAlpha: icon[25] === 6 })
+      .toEqual({ width: 96, height: 96, depth: 8, colourAndAlpha: true })
+    const notifications = app.expo.plugins.find((p) => nameOf(p) === 'expo-notifications') as [string, { icon: string; color: string }]
+    expect(notifications[1]).toMatchObject({ icon: './assets/notification-icon.png', color: '#6C63FF' })
   })
 
   it('sends Expo\'s build service the phone app and nothing else of the repository', () => {
