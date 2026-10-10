@@ -103,3 +103,26 @@ No migration: the table has what is needed.
 `backend/app/ingestion_main.py`, `backend/app/routers/streams.py`,
 `backend/app/routers/pdpa.py`, `backend/app/services/vpatrol_snapshot.py`,
 `frontend/src/pages/Zones.tsx`, `frontend/src/pages/LiveWall.tsx`.
+
+## Addendum, 10 October 2026: the phone
+
+The design above says the phone draws nothing. The owner asked the next day for
+the phone to be brought into it, and chose that it draw, list and delete.
+
+- **Drawing.** The phone's Draw Zone screen, reached from a camera's live view,
+  gains a third type, Privacy, offered to whoever holds `privacy:manage`. It
+  shows what the web shows before a zone is drawn, and asks once more before it
+  masks anything.
+- **Listing and deleting.** A camera's live view gains a second button, for the
+  same people, that opens the privacy zones of that camera: what each covers,
+  who drew it and when. Deleting asks first and says what it changes. A zone
+  drawn on a phone by mistake can be deleted on the phone.
+- **Labels.** A camera with a zone is labelled "Privacy zone" on its live view
+  and on its tile of the phone's live wall.
+
+No route is added: the phone uses the ones the web uses. Masking stays on the
+server; the phone's live view was the masked one already.
+
+Existing phone files changed: `mobile/src/screens/ZoneDrawScreen.tsx`,
+`mobile/src/screens/CameraLiveScreen.tsx`,
+`mobile/src/screens/LiveWallScreen.tsx`, `mobile/src/navigation/index.tsx`.
