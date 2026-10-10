@@ -25,7 +25,7 @@ import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { usePermission } from '@/hooks/usePermission'
-import { apiError, getBoard, getBoardSites, listBriefings } from '@/api/operationsBoard'
+import { getBoard, getBoardSites, listBriefings } from '@/api/operationsBoard'
 import type { Board, Briefing, Figures, NotRead, SectionKey } from '@/api/operationsBoard'
 import { BriefingDialog, DraftDialog } from '@/components/board/BriefingDialogs'
 import { ReportsTab } from '@/components/board/ReportsTab'
@@ -33,6 +33,7 @@ import {
   COLUMNS, DEVICE_COLOUR, DEVICE_LABEL, DEVICE_ORDER, PATROL_KINDS, PATROL_LABEL, PERIODS, STATE_COLOUR, STATE_LABEL,
   briefingFor, briefingLine, cell, fmt, fmtDay, lasting, patrolLine, periodLabel,
 } from '@/components/board/boardFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 type Part = 'board' | 'sites' | 'briefings' | 'reports'
@@ -169,7 +170,7 @@ function BoardTab({ siteId, setSiteId, clientId, setClientId, days, setDays }: {
 }) {
   // The sites and customers the reader may choose from are the ones the table of sites gives them.
   const choice = useQuery({ queryKey: ['board-sites', '', days], queryFn: () => getBoardSites({ days }), placeholderData: keepPreviousData })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['board', siteId, clientId, days],
     queryFn: () => getBoard({ site_id: siteId || undefined, client_id: clientId || undefined, days }),
     placeholderData: keepPreviousData, refetchInterval: 60_000,
@@ -201,7 +202,7 @@ function BoardTab({ siteId, setSiteId, clientId, setClientId, days, setDays }: {
             </Typography>)}
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={320} />}
       {data && (
         <>
@@ -246,7 +247,7 @@ function Row({ name, sub, figures, onOpen, strong }: {
 function SitesTab({ days, setDays, onOpen }: { days: number; setDays: (v: number) => void; onOpen: (siteId: string) => void }) {
   const [clientId, setClientId] = useState('')
   const all = useQuery({ queryKey: ['board-sites', '', days], queryFn: () => getBoardSites({ days }), placeholderData: keepPreviousData })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData2 } = useQuery({
     queryKey: ['board-sites', clientId, days], queryFn: () => getBoardSites({ client_id: clientId || undefined, days }),
     placeholderData: keepPreviousData,
   })
@@ -276,7 +277,7 @@ function SitesTab({ days, setDays, onOpen }: { days: number; setDays: (v: number
           </Typography>
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData2} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={260} />}
       {data && (
         <>
@@ -323,7 +324,7 @@ function BriefingsTab() {
   const [open, setOpen] = useState<string | null>(null)
   const [drafting, setDrafting] = useState<{ siteId: string; day: string } | true | null>(null)
   const [aside, setAside] = useState(false)
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData3 } = useQuery({
     queryKey: ['briefings', aside], queryFn: () => listBriefings(aside ? { state: 'DISCARDED' } : {}),
   })
   const sites = useQuery({ queryKey: ['board-sites', '', 1], queryFn: () => getBoardSites({ days: 1 }) })
@@ -343,7 +344,7 @@ function BriefingsTab() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDrafting(true)}>Draft a briefing</Button>)}
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData3} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={200} />}
       {data && !data.items.length && (
         <Alert severity="info">{aside ? 'No draft has been set aside.' : 'No briefing has been published yet.'}</Alert>)}

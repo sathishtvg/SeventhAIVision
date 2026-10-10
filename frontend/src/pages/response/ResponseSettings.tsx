@@ -28,6 +28,7 @@ import {
 } from '@/api/incidentResponses'
 import type { Policy, ResponseSettings as Settings, Severity, SeverityTimes, Trigger } from '@/api/incidentResponses'
 import { TRIGGER_LABEL, addressedTo, fmt, policySentence, reached, toldSentence } from '@/components/response/responseFormat'
+import { ErrorState } from '@/components/states'
 
 interface Person { id: string; name: string }
 
@@ -173,7 +174,7 @@ export default function ResponseSettings() {
   const qc = useQueryClient()
   const [retired, setRetired] = useState(false)
   const [asking, setAsking] = useState<{ editing: Policy | null } | null>(null)
-  const { data: settings, isLoading, error } = useQuery({ queryKey: ['response-settings'], queryFn: getResponseSettings })
+  const { data: settings, isLoading, error, refetch: refetchSettings } = useQuery({ queryKey: ['response-settings'], queryFn: getResponseSettings })
   const canManage = !!settings?.can_manage
   const { data: policies } = useQuery({
     queryKey: ['response-policies', retired], queryFn: () => listPolicies(retired) })
@@ -192,7 +193,7 @@ export default function ResponseSettings() {
     <Box sx={{ p: 3 }}>
       <PageHeader title="Response Settings"
                   subtitle="Whether the response clocks run, the times they run to, and who else is told when something has still not happened" />
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchSettings} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={240} />}
       {settings && (
         <Stack sx={{ gap: 2 }}>

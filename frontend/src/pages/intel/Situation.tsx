@@ -55,6 +55,7 @@ import { SituationSummary } from '@/components/intel/SituationSummary'
 import { SituationTimeline } from '@/components/intel/SituationTimeline'
 import { ProcedureForSituation } from '@/components/sop/SopDialogs'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
+import { ErrorState } from '@/components/states'
 
 export default function Situation() {
   const { id } = useParams()
@@ -327,7 +328,7 @@ function LiveDialog({ camera, onClose }: { camera: RecommendedCamera; onClose: (
   const token = useAuthStore((s) => s.accessToken)
   // A camera with a privacy zone has no HLS view: it is shown through the MJPEG one, which is masked.
   const maskedCameras = useMaskedCameras()
-  const { data: streams, isLoading, error } = useQuery({
+  const { data: streams, isLoading, error, refetch: refetchStreams } = useQuery({
     queryKey: ['camera-streams', camera.id], queryFn: () => getStreams(camera.id) })
   const stream = streams?.[0]
   return (
@@ -335,7 +336,7 @@ function LiveDialog({ camera, onClose }: { camera: RecommendedCamera; onClose: (
       <DialogTitle>{camera.name} · live</DialogTitle>
       <DialogContent>
         {isLoading ? <Skeleton height={320} />
-          : error ? <Alert severity="error">{apiError(error)}</Alert>
+          : error ? <ErrorState compact error={error} onRetry={refetchStreams} />
             : stream && token ? (
               maskedCameras.mayPlayHls(camera.id) ? (
                 <HlsPlayer src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}`
@@ -637,7 +638,7 @@ function DecideDialog({ situationId, choice, authority, seenAssessmentId, drone,
     || (Number.isInteger(hold) && hold >= (drone?.hold_seconds.min ?? 5) && hold <= (drone?.hold_seconds.max ?? 120))
   const needsGuard = choice.needs.includes('guard_user_id')
   const needsSenior = choice.needs.includes('escalate_to_user_id')
-  const { data: responders, error: respondersError } = useQuery({
+  const { data: responders, error: respondersError, refetch: refetchResponders } = useQuery({
     queryKey: ['intel-responders', situationId], queryFn: () => getResponders(situationId),
     enabled: needsGuard || needsSenior })
   const save = useMutation({
@@ -702,7 +703,7 @@ function DecideDialog({ situationId, choice, authority, seenAssessmentId, drone,
             {(responders?.escalation ?? []).map((u) => (
               <MenuItem key={u.user_id} value={u.user_id}>{u.name} — {ROLE_LABEL[u.role_id] ?? `Role ${u.role_id}`}</MenuItem>))}
           </TextField>)}
-        {respondersError && <Alert severity="error" sx={{ mb: 2 }}>{apiError(respondersError)}</Alert>}
+        {respondersError && <ErrorState compact error={respondersError} onRetry={refetchResponders} sx={{ mb: 2 }} />}
         {choice.needs_reason && (
           <TextField select fullWidth size="small" label="Reason" value={reason} sx={{ mb: 2 }}
                      onChange={(e) => setReason(e.target.value as ReasonCode)}>

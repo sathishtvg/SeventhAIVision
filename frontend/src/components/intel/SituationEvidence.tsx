@@ -21,6 +21,7 @@ import { useAuthStore } from '@/store/auth'
 import { apiError, getSituationEvidence, openSituationEvidence } from '@/api/securityIntelligence'
 import type { EvidenceItem, EvidenceOpened } from '@/api/securityIntelligence'
 import { fmtTime } from './intelFormat'
+import { ErrorState } from '@/components/states'
 
 const KEPT: Record<string, string> = { central: 'held centrally', local: 'held at the site', both: 'held at the site and centrally' }
 const LOGGED: Record<string, string> = {
@@ -55,7 +56,7 @@ function Viewer({ shown, onClose }: { shown: Opened; onClose: () => void }) {
 
 export function SituationEvidence({ situationId }: { situationId: string }) {
   const token = useAuthStore((s) => s.accessToken)
-  const { data, error } = useQuery({
+  const { data, error, refetch: refetchData } = useQuery({
     queryKey: ['intel-evidence', situationId], queryFn: () => getSituationEvidence(situationId), refetchInterval: 60_000 })
   const [shown, setShown] = useState<Opened | null>(null)
   // An object URL made for a file fetched with a header is released when it is no longer shown.
@@ -82,7 +83,7 @@ export function SituationEvidence({ situationId }: { situationId: string }) {
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
         What the platform kept. Nothing is loaded until you open it; opening is recorded as yours.
       </Typography>
-      {error ? <Alert severity="error">{apiError(error)}</Alert> : items.map((i) => {
+      {error ? <ErrorState compact error={error} onRetry={refetchData} /> : items.map((i) => {
         const button = (
           <Button size="small" variant="outlined" disabled={!i.may_open || open.isPending}
                   onClick={() => open.mutate(i)}>Open</Button>

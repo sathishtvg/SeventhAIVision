@@ -48,6 +48,7 @@ import { getUsers } from '@/api/users'
 import { getSites } from '@/api/sites'
 import type { AlertSeverity } from '@/types/api'
 import { MODULE_LABELS } from '@/api/licenses'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const STATUS_FILTERS = ['all', 'open', 'acknowledged', 'resolved', 'dismissed'] as const
 type StatusFilter = (typeof STATUS_FILTERS)[number]
@@ -60,7 +61,7 @@ function AlertDetailDrawer({ alertId, alert, onClose }: { alertId: string; alert
   const [assignDialog, setAssignDialog] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState('')
 
-  const { data: notes, isLoading: notesLoading } = useQuery({
+  const { data: notes, isLoading: notesLoading, isLoadingError: notesFailed, error: notesError, refetch: refetchNotes } = useQuery({
     queryKey: ['alert-notes', alertId],
     queryFn: () => getAlertNotes(alertId),
     enabled: !!alertId,
@@ -148,7 +149,7 @@ function AlertDetailDrawer({ alertId, alert, onClose }: { alertId: string; alert
       <Typography variant="subtitle2" sx={{ mb: 1 }}>Notes</Typography>
       {notesLoading ? (
         <CircularProgress size={20} />
-      ) : (
+      ) : notesFailed ? <ErrorState compact error={notesError} onRetry={refetchNotes} /> : (
         <List dense disablePadding sx={{ mb: 2, maxHeight: 300, overflowY: 'auto' }}>
           {notes?.length === 0 && (
             <Typography variant="caption" color="text.secondary">No notes yet</Typography>
@@ -216,7 +217,7 @@ export default function Alerts() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: alerts, isLoading } = useQuery({
+  const { data: alerts, isLoading, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts } = useQuery({
     queryKey: ['alerts', statusFilter, siteFilter, moduleFilter],
     queryFn: () =>
       getAlerts(
@@ -344,7 +345,7 @@ export default function Alerts() {
                       ))}
                     </TableRow>
                   ))
-                : !alerts?.items?.length
+                : alertsFailed ? <TableErrorRow error={alertsError} onRetry={refetchAlerts} /> : !alerts?.items?.length
                 ? (
                     <TableRow>
                       <TableCell colSpan={9} align="center" sx={{ py: 4 }}>

@@ -25,6 +25,7 @@ import GlassCard from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const EVENT_COLOR: Record<string, string> = {
   granted:     '#00E396',
@@ -49,7 +50,7 @@ const EVENT_ICON: Record<string, React.ReactNode> = {
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
 function DashboardTab() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['access-dashboard'],
     queryFn: getAccessDashboard,
     refetchInterval: 30_000,
@@ -72,7 +73,7 @@ function DashboardTab() {
         {kpis.map(kpi => (
           <Grid size={{ xs: 6, sm: 3 }} key={kpi.label}>
             <GlassCard sx={{ p: 2, borderTop: `3px solid ${kpi.color}` }}>
-              {isLoading ? <Skeleton height={40} /> : (
+              {isLoading ? <Skeleton height={40} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : (
                 <>
                   <Typography variant="h4" sx={{ color: kpi.value > 0 ? kpi.color : 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
                     {kpi.value}
@@ -149,7 +150,7 @@ function DoorsTab() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ name: '', location: '', door_type: 'card_reader' })
 
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({
     queryKey: ['access-doors'],
     queryFn: () => listDoors(),
   })
@@ -188,6 +189,7 @@ function DoorsTab() {
             {isLoading && [...Array(4)].map((_, i) => (
               <TableRow key={i}>{[...Array(5)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {dataFailed2 && <TableErrorRow error={dataError2} onRetry={refetchData2} />}
             {data.map(d => (
               <TableRow key={d.id} hover>
                 <TableCell sx={{ fontWeight: 600 }}>{d.name}</TableCell>
@@ -219,7 +221,7 @@ function DoorsTab() {
                 )}
               </TableRow>
             ))}
-            {!isLoading && !data.length && (
+            {!isLoading && !dataFailed2 && !data.length && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No doors configured
@@ -264,7 +266,7 @@ function CredentialsTab() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ holder_name: '', credential_type: 'card', credential_ref: '' })
 
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed3, error: dataError3, refetch: refetchData3 } = useQuery({
     queryKey: ['access-credentials'],
     queryFn: () => listCredentials(),
   })
@@ -303,6 +305,7 @@ function CredentialsTab() {
             {isLoading && [...Array(4)].map((_, i) => (
               <TableRow key={i}>{[...Array(5)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {dataFailed3 && <TableErrorRow error={dataError3} onRetry={refetchData3} />}
             {data.map(c => (
               <TableRow key={c.id} hover>
                 <TableCell sx={{ fontWeight: 600 }}>
@@ -340,7 +343,7 @@ function CredentialsTab() {
                 )}
               </TableRow>
             ))}
-            {!isLoading && !data.length && (
+            {!isLoading && !dataFailed3 && !data.length && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No credentials registered
@@ -385,7 +388,7 @@ function RulesTab() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ credential_id: '', door_id: '', schedule_days: '1234567', time_from: '', time_to: '' })
 
-  const { data = [], isLoading } = useQuery({ queryKey: ['access-rules'], queryFn: () => listRules() })
+  const { data = [], isLoading, isLoadingError: dataFailed4, error: dataError4, refetch: refetchData4 } = useQuery({ queryKey: ['access-rules'], queryFn: () => listRules() })
   const { data: doors = [] } = useQuery({ queryKey: ['access-doors'], queryFn: () => listDoors({ is_active: true }) })
   const { data: creds = [] } = useQuery({ queryKey: ['access-credentials'], queryFn: () => listCredentials({ is_active: true }) })
 
@@ -425,6 +428,7 @@ function RulesTab() {
             {isLoading && [...Array(3)].map((_, i) => (
               <TableRow key={i}>{[...Array(5)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {dataFailed4 && <TableErrorRow error={dataError4} onRetry={refetchData4} />}
             {data.map(r => (
               <TableRow key={r.id} hover>
                 <TableCell>{r.credential_holder ?? '—'}</TableCell>
@@ -467,7 +471,7 @@ function RulesTab() {
                 )}
               </TableRow>
             ))}
-            {!isLoading && !data.length && (
+            {!isLoading && !dataFailed4 && !data.length && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No access rules configured
@@ -527,7 +531,7 @@ function RulesTab() {
 function EventsTab() {
   const [eventType, setEventType] = useState<string>('')
 
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed5, error: dataError5, refetch: refetchData5 } = useQuery({
     queryKey: ['access-events', eventType],
     queryFn: () => listAccessEvents({ hours: 48, limit: 200, event_type: eventType || undefined }),
     refetchInterval: 30_000,
@@ -565,6 +569,7 @@ function EventsTab() {
             {isLoading && [...Array(6)].map((_, i) => (
               <TableRow key={i}>{[...Array(6)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {dataFailed5 && <TableErrorRow error={dataError5} onRetry={refetchData5} />}
             {data.map(ev => (
               <TableRow key={ev.id} hover>
                 <TableCell sx={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
@@ -588,7 +593,7 @@ function EventsTab() {
                 </TableCell>
               </TableRow>
             ))}
-            {!isLoading && !data.length && (
+            {!isLoading && !dataFailed5 && !data.length && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No events in the last 48 hours

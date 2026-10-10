@@ -21,6 +21,7 @@ import { getEvidence, evidenceImageUrl } from '@/api/evidence'
 import { useAuthStore } from '@/store/auth'
 import type { Evidence as EvidenceItem } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 /** Analytic labels — same wording the rest of the app uses for module_type. */
 const MODULE_LABEL: Record<string, string> = {
@@ -177,7 +178,7 @@ export default function Evidence() {
   const [viewerOpen, setViewerOpen] = useState(false)
   const [custodyOpen, setCustodyOpen] = useState(false)
   const token = useAuthStore((s) => s.accessToken)
-  const { data: items, isLoading } = useQuery({
+  const { data: items, isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems } = useQuery({
     queryKey: ['evidence'],
     queryFn: () => getEvidence(100),
   })
@@ -197,7 +198,7 @@ export default function Evidence() {
                 </GlassCard>
               </Grid>
             ))
-          : items?.length === 0
+          : itemsFailed ? <ErrorState compact error={itemsError} onRetry={refetchItems} /> : items?.length === 0
           ? (
               <Grid size={{ xs: 12 }}>
                 <Typography color="text.secondary" align="center" sx={{ mt: 8 }}>

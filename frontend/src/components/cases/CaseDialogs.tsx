@@ -20,6 +20,7 @@ import {
 } from '@/api/cases'
 import type { CaseFile, CaseOptions, Category, Connection, LinkKind, PartyKind, Priority } from '@/api/cases'
 import { PRIORITY_LABEL, STATUS_COLOUR, TASK_LABEL, entryLine, linkLine, named, standing, taskLine } from './caseFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -119,7 +120,7 @@ function Part({ title, testId, children }: { title: string; testId: string; chil
 
 function CaseView({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const qc = useQueryClient()
-  const { data: c, isLoading, error } = useQuery({ queryKey: ['case', id], queryFn: () => getCase(id) })
+  const { data: c, isLoading, error, refetch: refetchC } = useQuery({ queryKey: ['case', id], queryFn: () => getCase(id) })
   const { data: options } = useQuery({ queryKey: ['case-options'], queryFn: getCaseOptions })
   const [person, setPerson] = useState('')
   const [taskFor, setTaskFor] = useState('')
@@ -142,7 +143,7 @@ function CaseView({ id, onClose, onChanged }: { id: string; onClose: () => void;
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{c ? `${c.case_number} — ${c.title}` : 'Case'}</DialogTitle>
       <DialogContent data-testid="case">
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchC} />}
         {isLoading && <Skeleton height={260} />}
         {c && (
           <>

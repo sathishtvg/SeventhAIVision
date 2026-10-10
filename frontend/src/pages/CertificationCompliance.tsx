@@ -34,6 +34,7 @@ import {
 } from '@/api/certificationCompliance'
 import { getSites } from '@/api/sites'
 import { usePermission } from '@/hooks/usePermission'
+import { ErrorState } from '@/components/states'
 
 /** Severity order, matching the service. Worst first. */
 const STATUS_STYLE: Record<FindingStatus, { color: 'error' | 'warning'; label: string; help: string }> = {
@@ -80,12 +81,13 @@ function AtRisk() {
     queryKey: ['cert-summary', days],
     queryFn: () => getSummary({ days }),
   })
-  const { data: findings = [], isLoading } = useQuery({
+  const { data: findings = [], isLoading, isLoadingError: findingsFailed, error: findingsError, refetch: refetchFindings } = useQuery({
     queryKey: ['cert-findings', days],
     queryFn: () => listFindings({ days }),
   })
 
   if (isLoading) return <Skeleton variant="rounded" height={280} />
+  if (findingsFailed) return <ErrorState error={findingsError} onRetry={refetchFindings} />
 
   // The distinction the whole feature rests on. A tenant that has configured
   // nothing must not be shown the same green page as one that is genuinely
@@ -175,7 +177,7 @@ function Requirements({ canEnforce }: { canEnforce: boolean }) {
   const [form, setForm] = useState({ certification_type: '', site_id: '', warn_days_before: 30 })
   const [error, setError] = useState<string | null>(null)
 
-  const { data: requirements = [], isLoading } = useQuery({
+  const { data: requirements = [], isLoading, isLoadingError: requirementsFailed, error: requirementsError, refetch: refetchRequirements } = useQuery({
     queryKey: ['cert-requirements'],
     queryFn: () => listRequirements(),
   })
@@ -210,6 +212,7 @@ function Requirements({ canEnforce }: { canEnforce: boolean }) {
   })
 
   if (isLoading) return <Skeleton variant="rounded" height={240} />
+  if (requirementsFailed) return <ErrorState error={requirementsError} onRetry={refetchRequirements} />
 
   return (
     <Stack spacing={2}>

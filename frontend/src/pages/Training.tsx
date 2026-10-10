@@ -60,6 +60,7 @@ import GlassCard from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const CATEGORY_COLOR: Record<string, string> = {
   general:            '#6C63FF',
@@ -82,7 +83,7 @@ const EXPIRY_STATUS_CONFIG = {
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
 function DashboardTab() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['training-dashboard'],
     queryFn: getTrainingDashboard,
     refetchInterval: 60_000,
@@ -111,7 +112,7 @@ function DashboardTab() {
         {kpis.map(kpi => (
           <Grid size={{ xs: 6, sm: 3 }} key={kpi.label}>
             <GlassCard sx={{ p: 2, borderTop: `3px solid ${kpi.color}` }}>
-              {isLoading ? <Skeleton height={40} /> : (
+              {isLoading ? <Skeleton height={40} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : (
                 <>
                   <Typography variant="h4"
                     sx={{ color: typeof kpi.value === 'string' || (kpi.value as number) > 0 ? kpi.color : 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
@@ -241,7 +242,7 @@ function CoursesTab() {
     passing_score: '70', validity_months: '',
   })
 
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({
     queryKey: ['training-courses'],
     queryFn: () => listCourses(),
   })
@@ -278,6 +279,7 @@ function CoursesTab() {
             {isLoading && [...Array(4)].map((_, i) => (
               <TableRow key={i}>{[...Array(7)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {dataFailed2 && <TableErrorRow error={dataError2} onRetry={refetchData2} />}
             {data.map(c => (
               <TableRow key={c.id} hover>
                 <TableCell>
@@ -326,7 +328,7 @@ function CoursesTab() {
                 </TableCell>
               </TableRow>
             ))}
-            {!isLoading && !data.length && (
+            {!isLoading && !dataFailed2 && !data.length && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No training courses configured
@@ -391,7 +393,7 @@ function QuestionsDialog({ courseId, courseName, onClose }: {
   const [adding, setAdding] = useState(false)
   const [qForm, setQForm] = useState({ question_text: '', options: ['', ''], correct_index: 0, points: '1' })
 
-  const { data: questions = [], isLoading } = useQuery({
+  const { data: questions = [], isLoading, isLoadingError: questionsFailed, error: questionsError, refetch: refetchQuestions } = useQuery({
     queryKey: ['training-questions', courseId],
     queryFn: () => getQuestions(courseId),
   })
@@ -439,7 +441,7 @@ function QuestionsDialog({ courseId, courseName, onClose }: {
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Questions — {courseName}</DialogTitle>
       <DialogContent>
-        {isLoading ? <Skeleton height={80} /> : (
+        {isLoading ? <Skeleton height={80} /> : questionsFailed ? <ErrorState compact error={questionsError} onRetry={refetchQuestions} /> : (
           <Stack divider={<Divider />} spacing={1.5} sx={{ mb: 2 }}>
             {questions.map((q, i) => (
               <Box key={q.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.5 }}>
@@ -537,7 +539,7 @@ function RecordsTab() {
     user_id: '', course_id: '', completed_at: '', score: '', passed: 'true', notes: '',
   })
 
-  const { data: records = [], isLoading } = useQuery({
+  const { data: records = [], isLoading, isLoadingError: recordsFailed, error: recordsError, refetch: refetchRecords } = useQuery({
     queryKey: ['training-records', filterPassed],
     queryFn: () => listRecords(filterPassed !== 'all' ? { passed: filterPassed === 'true' } : undefined),
   })
@@ -594,6 +596,7 @@ function RecordsTab() {
             {isLoading && [...Array(5)].map((_, i) => (
               <TableRow key={i}>{[...Array(6)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {recordsFailed && <TableErrorRow error={recordsError} onRetry={refetchRecords} />}
             {records.map(r => {
               const isExpired = r.expires_at && new Date(r.expires_at) < new Date()
               return (
@@ -645,7 +648,7 @@ function RecordsTab() {
                 </TableRow>
               )
             })}
-            {!isLoading && !records.length && (
+            {!isLoading && !recordsFailed && !records.length && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No training records found
@@ -732,7 +735,7 @@ function CertificationsTab() {
     certificate_number: '', issued_at: '', expires_at: '',
   })
 
-  const { data: certs = [], isLoading } = useQuery({
+  const { data: certs = [], isLoading, isLoadingError: certsFailed, error: certsError, refetch: refetchCerts } = useQuery({
     queryKey: ['guard-certifications', filter],
     queryFn: () => listCertifications(filter === 'expiring' ? { expiring_days: 30 } : undefined),
     refetchInterval: 60_000,
@@ -783,6 +786,7 @@ function CertificationsTab() {
             {isLoading && [...Array(4)].map((_, i) => (
               <TableRow key={i}>{[...Array(7)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {certsFailed && <TableErrorRow error={certsError} onRetry={refetchCerts} />}
             {displayed.map(c => {
               const cfg = EXPIRY_STATUS_CONFIG[c.expiry_status] ?? EXPIRY_STATUS_CONFIG.valid
               return (
@@ -824,7 +828,7 @@ function CertificationsTab() {
                 </TableRow>
               )
             })}
-            {!isLoading && !displayed.length && (
+            {!isLoading && !certsFailed && !displayed.length && (
               <TableRow>
                 <TableCell colSpan={8} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 3 }}>
                   No certifications found
@@ -895,7 +899,7 @@ function QuizDialog({ courseId, courseName, onClose }: {
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [result, setResult] = useState<{ score: number; passed: boolean; correct_count: number; total_count: number } | null>(null)
 
-  const { isLoading } = useQuery({
+  const { isLoading, isLoadingError: trainingStartAttemptFailed, error: trainingStartAttemptError, refetch: refetchTrainingStartAttempt } = useQuery({
     queryKey: ['training-start-attempt', courseId],
     queryFn: async () => {
       const data = await startAttempt(courseId)
@@ -935,7 +939,7 @@ function QuizDialog({ courseId, courseName, onClose }: {
       <DialogContent>
         {isLoading ? (
           <Skeleton height={200} />
-        ) : result ? (
+        ) : trainingStartAttemptFailed ? <ErrorState compact error={trainingStartAttemptError} onRetry={refetchTrainingStartAttempt} /> : result ? (
           <Alert severity={result.passed ? 'success' : 'warning'} sx={{ mb: 1 }}>
             <Typography sx={{ fontWeight: 700 }}>
               {result.passed ? 'Passed!' : 'Not Passed'} — {result.score}% ({result.correct_count}/{result.total_count} correct)
@@ -983,7 +987,7 @@ function MyTrainingTab() {
   const user = useAuthStore(s => s.user)
   const [quizCourse, setQuizCourse] = useState<{ id: string; name: string } | null>(null)
 
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [], isLoading: coursesLoading, isLoadingError: coursesFailed, error: coursesError, refetch: refetchCourses } = useQuery({
     queryKey: ['training-courses'],
     queryFn: () => listCourses({ is_active: true }),
   })
@@ -994,7 +998,7 @@ function MyTrainingTab() {
     queryFn: () => listAttempts({ guard_user_id: user?.id, attempt_status: 'in_progress' }),
     enabled: !!user?.id,
   })
-  const { data: myResults = [], isLoading: resultsLoading } = useQuery({
+  const { data: myResults = [], isLoading: resultsLoading, isLoadingError: myResultsFailed, error: myResultsError, refetch: refetchMyResults } = useQuery({
     queryKey: ['training-attempts', 'submitted', user?.id],
     queryFn: () => listAttempts({ guard_user_id: user?.id, attempt_status: 'submitted' }),
     enabled: !!user?.id,
@@ -1009,6 +1013,7 @@ function MyTrainingTab() {
         {coursesLoading && [...Array(3)].map((_, i) => (
           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}><Skeleton height={140} /></Grid>
         ))}
+        {coursesFailed && <ErrorState compact error={coursesError} onRetry={refetchCourses} />}
         {quizCourses.map(c => (
           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={c.id}>
             <Card sx={{ height: '100%', bgcolor: 'rgba(255,255,255,0.03)' }}>
@@ -1030,7 +1035,7 @@ function MyTrainingTab() {
             </Card>
           </Grid>
         ))}
-        {!coursesLoading && quizCourses.length === 0 && (
+        {!coursesLoading && !coursesFailed && quizCourses.length === 0 && (
           <Grid size={{ xs: 12 }}>
             <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
               No quizzes available yet.
@@ -1041,7 +1046,7 @@ function MyTrainingTab() {
 
       <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 700 }}>My Results</Typography>
       <GlassCard sx={{ p: 2 }}>
-        {resultsLoading ? <Skeleton height={60} /> : myResults.length === 0 ? (
+        {resultsLoading ? <Skeleton height={60} /> : myResultsFailed ? <ErrorState compact error={myResultsError} onRetry={refetchMyResults} /> : myResults.length === 0 ? (
           <Typography color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>No quiz attempts yet.</Typography>
         ) : (
           <Stack divider={<Divider />} spacing={1}>

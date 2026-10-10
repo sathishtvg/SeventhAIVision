@@ -35,6 +35,7 @@ import {
   getPlatformDashboard, getPlatformHealth, getPlatformRevenue, getTenantUsage,
 } from '@/api/platform'
 import { acknowledgeNotification, getNotifications } from '@/api/platformBilling'
+import { ErrorState } from '@/components/states'
 
 /** Four states, not two. `unknown` is amber rather than green because a check
  *  that could not run tells you nothing, and showing nothing as healthy is how
@@ -95,7 +96,7 @@ export default function PlatformDashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { data: kpi, isLoading } = useQuery({
+  const { data: kpi, isLoading, isLoadingError: kpiFailed, error: kpiError, refetch: refetchKpi } = useQuery({
     queryKey: ['platform-dashboard'],
     queryFn: getPlatformDashboard,
   })
@@ -143,7 +144,7 @@ export default function PlatformDashboard() {
 
       {isLoading ? (
         <Skeleton variant="rectangular" height={140} sx={{ mb: 2 }} />
-      ) : !kpi ? (
+      ) : kpiFailed ? <ErrorState compact error={kpiError} onRetry={refetchKpi} /> : !kpi ? (
         <Alert severity="warning">Could not load the platform figures.</Alert>
       ) : (
         <>

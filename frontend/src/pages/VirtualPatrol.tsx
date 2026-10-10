@@ -44,6 +44,7 @@ import {
 import type {
   ScheduleCamera, QuestionType, FailureAction, SessionStatus,
 } from '@/api/virtualPatrol'
+import { ErrorState } from '@/components/states'
 
 const WEEKDAYS = [
   { v: 1, label: 'Mon' }, { v: 2, label: 'Tue' }, { v: 3, label: 'Wed' },
@@ -88,7 +89,7 @@ function ScheduleList({ onOpen }: { onOpen: (id: string) => void }) {
   const canManage = usePermission('vpatrol:manage')
   const [creating, setCreating] = useState(false)
 
-  const { data: schedules, isLoading } = useQuery({
+  const { data: schedules, isLoading, isLoadingError: schedulesFailed, error: schedulesError, refetch: refetchSchedules } = useQuery({
     queryKey: ['vp-schedules'], queryFn: () => listSchedules(),
   })
   const toggle = useMutation({
@@ -102,6 +103,7 @@ function ScheduleList({ onOpen }: { onOpen: (id: string) => void }) {
   })
 
   if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={220} /></Box>
+  if (schedulesFailed) return <ErrorState error={schedulesError} onRetry={refetchSchedules} />
 
   return (
     <Box sx={{ p: 3 }}>
@@ -595,10 +597,11 @@ function EmailRecipients({ scheduleId }: { scheduleId: string }) {
 
 function PatrolHistory() {
   const token = useAuthStore((s) => s.accessToken)
-  const { data: sessions, isLoading } = useQuery({
+  const { data: sessions, isLoading, isLoadingError: sessionsFailed, error: sessionsError, refetch: refetchSessions } = useQuery({
     queryKey: ['vp-sessions'], queryFn: () => listSessions(),
   })
   if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={200} /></Box>
+  if (sessionsFailed) return <ErrorState error={sessionsError} onRetry={refetchSessions} />
 
   return (
     <Box sx={{ p: 3 }}>

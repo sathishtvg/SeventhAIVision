@@ -54,6 +54,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx } from '@/lib/motion'
+import { ErrorState } from '@/components/states'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 // Manual-assignment guard pickers include Manager(8) — an admin can put a
@@ -159,7 +160,7 @@ function PatternDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
 function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved: () => void }) {
   const qc = useQueryClient()
-  const { data: batch, isLoading } = useQuery({ queryKey: ['roster-batch', batchId], queryFn: () => getBatch(batchId) })
+  const { data: batch, isLoading, isLoadingError: batchFailed, error: batchError, refetch: refetchBatch } = useQuery({ queryKey: ['roster-batch', batchId], queryFn: () => getBatch(batchId) })
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
   const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
 
@@ -189,6 +190,7 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
     return map
   }, [batch])
 
+  if (batchFailed) return <ErrorState error={batchError} onRetry={refetchBatch} />
   if (isLoading || !batch) {
     return (
       <GlassCard sx={{ p: 2, mb: 2 }}>

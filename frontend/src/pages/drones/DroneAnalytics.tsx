@@ -29,6 +29,7 @@ import { formatDistance } from '@/components/drones/geo'
 import { BarList, ColumnChart, StatTile } from '@/components/drones/charts'
 import type { Datum } from '@/components/drones/charts'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 const PERIODS = [7, 30, 90]
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -81,7 +82,7 @@ export default function DroneAnalytics() {
         </Stack>
       </GlassCard>
 
-      {overview.error ? <Alert severity="error" sx={{ mb: 2 }}>{apiError(overview.error)}</Alert>
+      {overview.error ? <ErrorState compact error={overview.error} onRetry={overview.refetch} sx={{ mb: 2 }} />
         : !o ? <Skeleton height={320} sx={{ mb: 2 }} /> : (
           <>
             <GlassCard sx={{ p: 2, mb: 2 }}>
@@ -179,7 +180,7 @@ export default function DroneAnalytics() {
           <AutoAwesomeIcon fontSize="small" color="primary" />
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Recommendations</Typography>
         </Stack>
-        {recs.error ? <Alert severity="error">{apiError(recs.error)}</Alert> : !recs.data ? <Skeleton height={80} /> : (
+        {recs.error ? <ErrorState compact error={recs.error} onRetry={recs.refetch} /> : !recs.data ? <Skeleton height={80} /> : (
           <>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
               {recs.data.disclaimer}</Typography>

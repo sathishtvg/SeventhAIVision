@@ -28,6 +28,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import { getSites } from '@/api/sites'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { useTenantTimeZone, formatDateTimeIn, formatTimeIn, timeZoneLabel } from '@/lib/tenantTime'
+import { TableErrorRow } from '@/components/states'
 
 /** Human-readable time on site. Minutes alone stop being readable somewhere
  * around the two-hour mark, which is exactly the range an overstaying vehicle
@@ -88,7 +89,7 @@ export default function VmsOnsite() {
     [sites],
   )
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch, isLoadingError: dataFailed, error: dataError } = useQuery({
     queryKey: ['vms-onsite', siteId, overstayedOnly, visitType],
     queryFn: () => listOnsiteVehicles(siteId || undefined, overstayedOnly, visitType || undefined),
     refetchInterval: 30_000,
@@ -247,7 +248,8 @@ export default function VmsOnsite() {
                   ))}
                 </TableRow>
               ))}
-            {!isLoading && rows.length === 0 && (
+            {dataFailed && <TableErrorRow error={dataError} onRetry={refetch} />}
+            {!isLoading && !dataFailed && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={11}>
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>

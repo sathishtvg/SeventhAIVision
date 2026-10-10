@@ -21,6 +21,7 @@ import type { IoTSensor, IoTAlert } from '@/api/iot'
 import { getSites } from '@/api/sites'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── constants / helpers ───────────────────────────────────────────────────────
 
@@ -209,7 +210,7 @@ function AddSensorDialog({ open, onClose }: { open: boolean; onClose: () => void
 // ── Alerts Table ──────────────────────────────────────────────────────────────
 function AlertsTab() {
   const qc = useQueryClient()
-  const { data: alerts = [], isLoading } = useQuery({
+  const { data: alerts = [], isLoading, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts } = useQuery({
     queryKey: ['iot-alerts'],
     queryFn: () => listIoTAlerts({ status_filter: 'open' }),
   })
@@ -219,6 +220,7 @@ function AlertsTab() {
   })
 
   if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+  if (alertsFailed) return <ErrorState error={alertsError} onRetry={refetchAlerts} />
   if (!alerts.length) return <Alert severity="success" sx={{ mt: 2 }}>No open IoT alerts.</Alert>
 
   return (
@@ -279,7 +281,7 @@ export default function IoTPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [chartSensor, setChartSensor] = useState<IoTSensor | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['iot-dashboard'],
     queryFn:  () => getIoTDashboard(),
     refetchInterval: 30_000,
@@ -313,7 +315,7 @@ export default function IoTPage() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : (
         <>
           {/* KPI Summary */}
           {summary && (

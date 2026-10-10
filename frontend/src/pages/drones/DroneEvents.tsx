@@ -18,6 +18,7 @@ import type { EventStatus } from '@/api/drones'
 import { ConfidenceText, EventStatusChip, LicenceBanner, RiskChip } from '@/components/drones/droneUi'
 import { fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 const STATUSES: EventStatus[] = ['NEW', 'ACKNOWLEDGED', 'INVESTIGATING', 'ESCALATED', 'RESOLVED', 'FALSE_POSITIVE']
 
@@ -33,7 +34,7 @@ export default function DroneEvents() {
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const params = { site_id: siteId || undefined, risk_level: risk || undefined, status: status || undefined,
                    open_only: openOnly && !status }
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['drone-events', params, page, rows],
     queryFn: () => listEvents({ ...params, limit: rows, offset: page * rows }),
     refetchInterval: 15_000,
@@ -66,7 +67,7 @@ export default function DroneEvents() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {isLoading ? <Skeleton height={240} /> : !events.length ? (
+        {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !events.length ? (
           <Alert severity="info">{openOnly && !status ? 'No open drone events.' : 'No events match.'}</Alert>
         ) : (
           <TableContainer>

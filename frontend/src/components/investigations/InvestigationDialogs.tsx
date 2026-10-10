@@ -24,6 +24,7 @@ import {
 } from '@/api/investigations'
 import type { Found } from '@/api/investigations'
 import { distance, fmt, gap, refOf } from './investigationFormat'
+import { ErrorState } from '@/components/states'
 
 // ── One reason ───────────────────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ function FileForm({ records, onClose, onFiled }: FileProps) {
   const [fileId, setFileId] = useState('')
   const [note, setNote] = useState('')
   const [opening, setOpening] = useState(false)
-  const { data: files, isLoading } = useQuery({
+  const { data: files, isLoading, isLoadingError: filesFailed, error: filesError, refetch: refetchFiles } = useQuery({
     queryKey: ['investigations', 'open-ones'], queryFn: () => listInvestigations({ status: 'OPEN', limit: 100 }),
   })
   const qc = useQueryClient()
@@ -145,7 +146,7 @@ function FileForm({ records, onClose, onFiled }: FileProps) {
       onFiled(r.id, r.added.length, r.already_filed.length)
     },
   })
-  const none = !isLoading && !(files?.items.length)
+  const none = !isLoading && !filesFailed && !(files?.items.length)
   return (
     <>
       <Dialog open={!opening} onClose={onClose} fullWidth maxWidth="sm">
@@ -155,6 +156,9 @@ function FileForm({ records, onClose, onFiled }: FileProps) {
             The investigation keeps a reference to each record, not a copy. Each one stays where it is and is read
             there every time the investigation is opened.</Typography>
           <Stack sx={{ gap: 2 }}>
+            {filesFailed && (
+              <ErrorState compact error={filesError} onRetry={refetchFiles} title="Could not load the open investigations" />
+            )}
             {none ? <Alert severity="info">There is no open investigation. Open one for these records.</Alert> : (
               <TextField select label="Investigation" value={fileId} onChange={(e) => setFileId(e.target.value)}>
                 {(files?.items ?? []).map((f) => (
@@ -185,7 +189,7 @@ function FileForm({ records, onClose, onFiled }: FileProps) {
 export function TrailDialog({ subject, onClose }: {
   subject: { plate?: string; watchlist_entry_id?: string } | null; onClose: () => void
 }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['investigation-trail', subject], queryFn: () => getTrail(subject ?? {}), enabled: !!subject,
   })
   const who = !data ? '' : data.subject.kind === 'VEHICLE' ? data.subject.plate
@@ -195,7 +199,7 @@ export function TrailDialog({ subject, onClose }: {
       <DialogTitle>Where {who || 'this'} was seen</DialogTitle>
       <DialogContent>
         {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>}
-        {error && <Alert severity="error">{apiError(error)}</Alert>}
+        {error && <ErrorState compact error={error} onRetry={refetchData} />}
         {data && (
           <>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>

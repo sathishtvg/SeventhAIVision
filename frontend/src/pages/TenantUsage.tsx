@@ -22,6 +22,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { getTenantDetail, getTenantUsage, getTenantUserStats } from '@/api/platform'
+import { ErrorState } from '@/components/states'
 
 const STATUS_COLOUR: Record<string, string> = {
   active: '#00D9C0', trial: '#6C63FF', pending: '#8B85FF',
@@ -46,7 +47,7 @@ function when(iso: string | null) {
 /** One customer in full — company, usage, modules and subscription. (§8, §9) */
 function TenantDetail({ tenantId }: { tenantId: string }) {
   const navigate = useNavigate()
-  const { data: detail, isLoading } = useQuery({
+  const { data: detail, isLoading, isLoadingError: detailFailed, error: detailError, refetch: refetchDetail } = useQuery({
     queryKey: ['platform-tenant', tenantId],
     queryFn: () => getTenantDetail(tenantId),
   })
@@ -56,6 +57,7 @@ function TenantDetail({ tenantId }: { tenantId: string }) {
   })
 
   if (isLoading) return <Skeleton variant="rectangular" height={320} />
+  if (detailFailed) return <ErrorState error={detailError} onRetry={refetchDetail} />
   if (!detail) return <Alert severity="warning">Tenant not found.</Alert>
 
   const t = detail.tenant as Record<string, string | null>
@@ -212,7 +214,7 @@ export default function TenantUsage() {
   const { tenantId } = useParams()
   const [search, setSearch] = useState('')
 
-  const { data: rows, isLoading } = useQuery({
+  const { data: rows, isLoading, isLoadingError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['platform-tenants'],
     queryFn: getTenantUsage,
     enabled: !tenantId,
@@ -246,7 +248,7 @@ export default function TenantUsage() {
       <GlassCard sx={{ p: 0 }}>
         {isLoading ? (
           <Skeleton variant="rectangular" height={220} />
-        ) : filtered.length === 0 ? (
+        ) : rowsFailed ? <ErrorState compact error={rowsError} onRetry={refetchRows} /> : filtered.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
             No customer tenants match.
           </Typography>

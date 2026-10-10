@@ -52,6 +52,7 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 function hexToRgb(hex: string) {
   const m = hex.replace('#', '').match(/.{2}/g)
@@ -164,7 +165,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
   const qc = useQueryClient()
   const canManage = usePermission('payroll:manage')
   const accessToken = useAuthStore((s) => s.accessToken)
-  const { data: run, isLoading } = useQuery({
+  const { data: run, isLoading, isLoadingError: runFailed, error: runError, refetch: refetchRun } = useQuery({
     queryKey: ['payroll-run', runId],
     queryFn: () => getPayrollRun(runId),
   })
@@ -187,6 +188,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
     }
   }, [run])
 
+  if (runFailed) return <ErrorState error={runError} onRetry={refetchRun} />
   if (isLoading || !run) return <Box sx={{ p: 2 }}><Skeleton height={200} /></Box>
 
   return (
@@ -277,7 +279,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
 function RunsTab() {
   const [runOpen, setRunOpen] = useState(false)
   const [selectedRun, setSelectedRun] = useState<string | null>(null)
-  const { data: runs = [], isLoading } = useQuery({ queryKey: ['payroll-runs'], queryFn: () => listPayrollRuns() })
+  const { data: runs = [], isLoading, isLoadingError: runsFailed, error: runsError, refetch: refetchRuns } = useQuery({ queryKey: ['payroll-runs'], queryFn: () => listPayrollRuns() })
 
   if (selectedRun) {
     return <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
@@ -294,7 +296,7 @@ function RunsTab() {
       </Stack>
       {isLoading ? (
         <Skeleton height={80} />
-      ) : runs.length === 0 ? (
+      ) : runsFailed ? <ErrorState compact error={runsError} onRetry={refetchRuns} /> : runs.length === 0 ? (
         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>No payroll runs yet.</Typography>
       ) : (
         <Stack divider={<Divider />} spacing={1.5}>
@@ -321,7 +323,7 @@ function RunsTab() {
 function Ir8aTab() {
   const accessToken = useAuthStore((s) => s.accessToken)
   const [year, setYear] = useState(new Date().getFullYear())
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isLoadingError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['ir8a', year],
     queryFn: () => getIr8aSummary(year),
   })
@@ -345,7 +347,7 @@ function Ir8aTab() {
       </Stack>
       {isLoading ? (
         <Skeleton height={80} />
-      ) : rows.length === 0 ? (
+      ) : rowsFailed ? <ErrorState compact error={rowsError} onRetry={refetchRows} /> : rows.length === 0 ? (
         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
           No finalized payroll runs found for {year}.
         </Typography>
@@ -390,12 +392,13 @@ const GRADE_LABEL = (g: string | null) =>
   g ? g.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—'
 
 function OvertimeTab() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['overtime-projection'],
     queryFn: () => getOvertimeProjection(),
   })
 
   if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={260} /></Box>
+  if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   if (!data) return null
 
   return (
@@ -466,12 +469,13 @@ function OvertimeTab() {
 
 
 function PwmComplianceTab() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({
     queryKey: ['pwm-compliance'],
     queryFn: () => getPwmCompliance(),
   })
 
   if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={260} /></Box>
+  if (dataFailed2) return <ErrorState error={dataError2} onRetry={refetchData2} />
   if (!data) return null
 
   const { summary } = data

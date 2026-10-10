@@ -23,6 +23,7 @@ import {
 } from '@/api/sop'
 import type { ProcedureDetail, RelevantProcedure, Version } from '@/api/sop'
 import { STATE_COLOUR, STATE_LABEL, VERSION_LABEL, label, standing, typedKinds, versionLine } from './sopFormat'
+import { ErrorState } from '@/components/states'
 
 const mono = { fontFamily: 'monospace', fontSize: 13 }
 const HEADINGS = 'A line that starts with #, or is written in capitals, is a heading. Each paragraph under it is a passage the library can find.'
@@ -216,7 +217,7 @@ function ProcedureView({ id, onClose, onChanged }: ProcedureProps & { id: string
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={240} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetch} />}
         {data && (
           <Stack sx={{ gap: 2 }}>
             <Typography variant="body2" color="text.secondary">

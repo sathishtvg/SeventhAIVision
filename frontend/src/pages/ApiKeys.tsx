@@ -32,6 +32,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { listApiKeys, createApiKey, revokeApiKey, type ApiKeyCreated } from '@/api/apikeys'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 function fmtDate(d: string | null) {
   if (!d) return '—'
@@ -160,7 +161,7 @@ export default function ApiKeys() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
 
-  const { data: keys = [], isLoading } = useQuery({
+  const { data: keys = [], isLoading, isLoadingError: keysFailed, error: keysError, refetch: refetchKeys } = useQuery({
     queryKey: ['api-keys'],
     queryFn: listApiKeys,
   })
@@ -218,7 +219,7 @@ export default function ApiKeys() {
                         ))}
                       </TableRow>
                     ))
-                  : keys.length === 0
+                  : keysFailed ? <TableErrorRow error={keysError} onRetry={refetchKeys} /> : keys.length === 0
                     ? (
                       <TableRow>
                         <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>

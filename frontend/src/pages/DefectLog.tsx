@@ -35,6 +35,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 const CLIENT_ROLE = 7
@@ -492,7 +493,7 @@ export function DefectLogPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: defects = [], isLoading } = useQuery({
+  const { data: defects = [], isLoading, isLoadingError: defectsFailed, error: defectsError, refetch: refetchDefects } = useQuery({
     queryKey: ['defects', siteFilter, statusFilter, categoryFilter, severityFilter, activeOnly],
     queryFn: () => listDefects({
       site_id: siteFilter || undefined,
@@ -565,7 +566,7 @@ export function DefectLogPage() {
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))' }}>
             {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}
           </Box>
-        ) : defects.length === 0 ? (
+        ) : defectsFailed ? <ErrorState compact error={defectsError} onRetry={refetchDefects} /> : defects.length === 0 ? (
           <GlassCard sx={{ p: 4, textAlign: 'center' }}>
             <BuildIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
             <Typography color="text.secondary">

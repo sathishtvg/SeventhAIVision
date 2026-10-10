@@ -25,6 +25,7 @@ import type { TenantProduct } from '@/api/platform_licenses'
 import { DroneLicensePanel } from '@/components/platform/DroneLicensePanel'
 import type { Tenant } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const TIMEZONES = [
   'Asia/Singapore',
@@ -56,7 +57,7 @@ const ROLES = [
 function AiModulesPanel({ tenant }: { tenant: Tenant }) {
   const qc = useQueryClient()
 
-  const { data: licenses = [], isLoading } = useQuery({
+  const { data: licenses = [], isLoading, isLoadingError: licensesFailed, error: licensesError, refetch: refetchLicenses } = useQuery({
     queryKey: ['licenses', tenant.id],
     queryFn: () => getTenantLicenses(tenant.id),
   })
@@ -88,7 +89,7 @@ function AiModulesPanel({ tenant }: { tenant: Tenant }) {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress size={32} />
         </Box>
-      ) : (
+      ) : licensesFailed ? <ErrorState compact error={licensesError} onRetry={refetchLicenses} /> : (
         <Stack spacing={1.5}>
           {ALL_AI_MODULES.map((moduleType) => {
             const lic = licenseMap[moduleType]
@@ -148,7 +149,7 @@ function AiModulesPanel({ tenant }: { tenant: Tenant }) {
 function PlatformProductsPanel({ tenant }: { tenant: Tenant }) {
   const qc = useQueryClient()
 
-  const { data: products = [], isLoading } = useQuery({
+  const { data: products = [], isLoading, isLoadingError: productsFailed, error: productsError, refetch: refetchProducts } = useQuery({
     queryKey: ['tenant-products', tenant.id],
     queryFn: () => getTenantProducts(tenant.id),
   })
@@ -200,7 +201,7 @@ function PlatformProductsPanel({ tenant }: { tenant: Tenant }) {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress size={32} />
         </Box>
-      ) : (
+      ) : productsFailed ? <ErrorState compact error={productsError} onRetry={refetchProducts} /> : (
         <Stack spacing={2}>
           {(products as TenantProduct[]).map((product) => {
             const isPending = assignMutation.isPending || revokeMutation.isPending
@@ -633,7 +634,7 @@ export default function Tenants() {
   const [licenseTenant, setLicenseTenant] = useState<Tenant | null>(null)
   const [licenseInitialTab, setLicenseInitialTab] = useState(0)
 
-  const { data: tenants = [], isLoading } = useQuery({
+  const { data: tenants = [], isLoading, isLoadingError: tenantsFailed, error: tenantsError, refetch: refetchTenants } = useQuery({
     queryKey: ['tenants'],
     queryFn: getTenants,
   })
@@ -713,7 +714,7 @@ export default function Tenants() {
                   </Typography>
                 </TableCell>
               </TableRow>
-            ) : (tenants as Tenant[]).length === 0 ? (
+            ) : tenantsFailed ? <TableErrorRow error={tenantsError} onRetry={refetchTenants} /> : (tenants as Tenant[]).length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7}>
                   <Typography variant="caption" color="text.secondary">

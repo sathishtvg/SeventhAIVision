@@ -7,24 +7,25 @@
  * putting an entry right by a further entry, and the summary of a shift.
  */
 import { useState } from 'react'
-import { Alert, Box, Skeleton, Tab, Tabs } from '@mui/material'
+import { Box, Skeleton, Tab, Tabs } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/common/PageHeader'
-import { apiError, getKinds } from '@/api/occurrenceBook'
+import { getKinds } from '@/api/occurrenceBook'
 import BookEntries from './BookEntries'
 import BookInstructions from './BookInstructions'
 import BookSummaries from './BookSummaries'
+import { ErrorState } from '@/components/states'
 
 type Part = 'book' | 'instructions' | 'summaries'
 
 export default function OccurrenceBook() {
   const [part, setPart] = useState<Part>('book')
-  const { data: kinds, isLoading, error } = useQuery({ queryKey: ['dob-kinds'], queryFn: getKinds })
+  const { data: kinds, isLoading, error, refetch: refetchKinds } = useQuery({ queryKey: ['dob-kinds'], queryFn: getKinds })
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader title="Occurrence Book"
                   subtitle="The book searched, reviewed and corrected; the instructions in force; and what each shift hands the next" />
-      {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchKinds} />}
       {isLoading && <Skeleton height={200} />}
       {kinds && (
         <>

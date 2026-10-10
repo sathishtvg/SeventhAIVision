@@ -37,6 +37,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 const CAN_ISSUE = new Set([1, 2, 3, 4, 8])
@@ -531,7 +532,7 @@ function UniformReturnDialog({ row, onClose }: { row: UniformIssue; onClose: () 
 }
 
 function HeldByDialog({ person, onClose }: { person: Person; onClose: () => void }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['held-by', person.id],
     queryFn: () => getHeldByUser(person.id),
   })
@@ -549,7 +550,7 @@ function HeldByDialog({ person, onClose }: { person: Person; onClose: () => void
           <Stack spacing={1}>
             {[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={46} />)}
           </Stack>
-        ) : !data ? null : (
+        ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !data ? null : (
           <Stack spacing={1.5}>
             <Stack direction="row" spacing={0.75}>
               <Chip size="small" label={`${data.summary.equipment_out} items`}
@@ -651,7 +652,7 @@ export function EquipmentRegisterPage() {
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
-  const { data: items = [], isLoading } = useQuery({
+  const { data: items = [], isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems } = useQuery({
     queryKey: ['equipment', siteFilter, categoryFilter],
     queryFn: () => listEquipment({
       site_id: siteFilter || undefined,
@@ -666,7 +667,7 @@ export function EquipmentRegisterPage() {
     refetchInterval: 120_000,
   })
 
-  const { data: uniforms = [], isLoading: uniformsLoading } = useQuery({
+  const { data: uniforms = [], isLoading: uniformsLoading, isLoadingError: uniformsFailed, error: uniformsError, refetch: refetchUniforms } = useQuery({
     queryKey: ['uniforms'],
     queryFn: () => listUniformIssues({ outstanding_only: true }),
     enabled: tab === 1,
@@ -748,7 +749,7 @@ export function EquipmentRegisterPage() {
               <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
                 {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}
               </Box>
-            ) : items.length === 0 ? (
+            ) : itemsFailed ? <ErrorState compact error={itemsError} onRetry={refetchItems} /> : items.length === 0 ? (
               <GlassCard sx={{ p: 4, textAlign: 'center' }}>
                 <InventoryIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
                 <Typography color="text.secondary">
@@ -791,7 +792,7 @@ export function EquipmentRegisterPage() {
               <Stack spacing={0.75}>
                 {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={48} />)}
               </Stack>
-            ) : uniforms.length === 0 ? (
+            ) : uniformsFailed ? <ErrorState compact error={uniformsError} onRetry={refetchUniforms} /> : uniforms.length === 0 ? (
               <GlassCard sx={{ p: 4, textAlign: 'center' }}>
                 <CheckroomIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
                 <Typography color="text.secondary">

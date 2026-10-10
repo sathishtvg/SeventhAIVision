@@ -21,6 +21,7 @@ import type { Asset, AssetKind, AssetStatus, DeviceKind, Register, Unregistered 
 import {
   HEALTH_COLOUR, HEALTH_LABEL, ORDER_LABEL, STATUS_LABEL, downLine, factLines, fmt, madeBy, sinceLine, warrantyLine,
 } from './assetFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const boxed = { gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5 }
@@ -42,7 +43,7 @@ export function DeviceDialog(props: DeviceProps) {
 }
 
 function DeviceView({ device, onClose }: DeviceProps & { device: { kind: DeviceKind; device_id: string } }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['device-health', device.kind, device.device_id], queryFn: () => getDevice(device.kind, device.device_id) })
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
@@ -55,7 +56,7 @@ function DeviceView({ device, onClose }: DeviceProps & { device: { kind: DeviceK
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={160} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {data && (
           <Stack sx={{ gap: 1.5, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
@@ -214,7 +215,7 @@ function AssetView({ id, kinds, onClose, onChanged }: AssetProps & { id: string 
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={200} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetch} />}
         {a && (
           <Stack sx={{ gap: 1.5, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
@@ -293,7 +294,7 @@ const key = (d: Pick<Unregistered, 'kind' | 'device_id'>) => `${d.kind}:${d.devi
 
 function KnownDevices({ onClose, onDone }: KnownProps) {
   const [chosen, setChosen] = useState<string[] | null>(null)
-  const { data, isLoading, error } = useQuery({ queryKey: ['assets-unregistered'], queryFn: getUnregistered })
+  const { data, isLoading, error, refetch: refetchData2 } = useQuery({ queryKey: ['assets-unregistered'], queryFn: getUnregistered })
   const items = data ?? []
   // Everything is ticked to begin with: the common case is "all of them".
   const ticked = chosen ?? items.map(key)
@@ -313,7 +314,7 @@ function KnownDevices({ onClose, onDone }: KnownProps) {
             the device has them. The vendor, the warranty and the rest are for you to fill in afterwards.
           </Alert>
           {isLoading && <Skeleton height={120} />}
-          {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+          {!!error && <ErrorState compact error={error} onRetry={refetchData2} />}
           {data && !items.length && <Alert severity="success">Every device the platform knows is in the register.</Alert>}
           {items.map((d) => (
             <FormControlLabel key={key(d)} data-testid="known-device"

@@ -28,6 +28,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import {
   getPlatformError, getPlatformErrors, updatePlatformError,
 } from '@/api/platform'
+import { ErrorState } from '@/components/states'
 
 const SEVERITY_COLOUR: Record<string, string> = {
   critical: '#FF4560',
@@ -45,7 +46,7 @@ export default function ErrorCentre() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [resolution, setResolution] = useState('')
 
-  const { data: errors, isLoading } = useQuery({
+  const { data: errors, isLoading, isLoadingError: errorsFailed, error: errorsError, refetch: refetchErrors } = useQuery({
     queryKey: ['platform-errors', statusFilter],
     queryFn: () => getPlatformErrors(
       statusFilter === 'all' ? {} : { status: statusFilter },
@@ -89,7 +90,7 @@ export default function ErrorCentre() {
       <GlassCard sx={{ p: 0 }}>
         {isLoading ? (
           <Skeleton variant="rectangular" height={200} />
-        ) : !errors?.length ? (
+        ) : errorsFailed ? <ErrorState compact error={errorsError} onRetry={refetchErrors} /> : !errors?.length ? (
           <Alert severity="success" sx={{ m: 2 }}>
             Nothing {statusFilter === 'all' ? 'recorded' : statusFilter}. The platform is quiet.
           </Alert>

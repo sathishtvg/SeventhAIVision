@@ -37,6 +37,7 @@ import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 const SEVERITY_COLOR: Record<string, 'error' | 'warning' | 'success' | 'default'> = {
   critical: 'error', high: 'error', medium: 'warning', low: 'success', info: 'default',
@@ -94,7 +95,7 @@ function ShiftsTab() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ guard_user_id: '', site_id: '', scheduled_start: '', scheduled_end: '', notes: '' })
 
-  const { data: shifts = [], isLoading } = useQuery({ queryKey: ['shifts'], queryFn: () => getShifts() })
+  const { data: shifts = [], isLoading, isLoadingError: shiftsFailed, error: shiftsError, refetch: refetchShifts } = useQuery({ queryKey: ['shifts'], queryFn: () => getShifts() })
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => getUsers() })
 
@@ -124,6 +125,7 @@ function ShiftsTab() {
   })
 
   if (isLoading) return <BrandLoader variant="full" />
+  if (shiftsFailed) return <ErrorState error={shiftsError} onRetry={refetchShifts} />
 
   return (
     <Box>
@@ -287,9 +289,10 @@ function ShiftsTab() {
 // ── Patrol Routes ──────────────────────────────────────────────────────────
 
 function PatrolRoutesTab() {
-  const { data: routes = [], isLoading } = useQuery({ queryKey: ['patrol_routes'], queryFn: () => getRoutes() })
+  const { data: routes = [], isLoading, isLoadingError: routesFailed, error: routesError, refetch: refetchRoutes } = useQuery({ queryKey: ['patrol_routes'], queryFn: () => getRoutes() })
 
   if (isLoading) return <BrandLoader variant="full" />
+  if (routesFailed) return <ErrorState error={routesError} onRetry={refetchRoutes} />
 
   return (
     <Box>
@@ -333,7 +336,7 @@ function DOBTab() {
   const [form, setForm] = useState({ entry_type: 'general', body: '', severity: '' })
 
   const today = new Date().toISOString().split('T')[0]
-  const { data: entries = [], isLoading } = useQuery({
+  const { data: entries = [], isLoading, isLoadingError: entriesFailed, error: entriesError, refetch: refetchEntries } = useQuery({
     queryKey: ['dob', today],
     queryFn: () => getDobEntries({ date_from: `${today}T00:00:00Z`, date_until: `${today}T23:59:59Z` }),
   })
@@ -344,6 +347,7 @@ function DOBTab() {
   })
 
   if (isLoading) return <BrandLoader variant="full" />
+  if (entriesFailed) return <ErrorState error={entriesError} onRetry={refetchEntries} />
 
   return (
     <Box>
@@ -444,7 +448,7 @@ function VisitorsTab() {
   const [createForm, setCreateForm] = useState({ full_name: '', company: '', host_name: '', purpose: '', vehicle_plate: '' })
   const [checkinForm, setCheckinForm] = useState({ full_name: '', event_type: 'arrival', badge_number: '' })
 
-  const { data: visitors = [], isLoading } = useQuery({ queryKey: ['visitors'], queryFn: () => getVisitors() })
+  const { data: visitors = [], isLoading, isLoadingError: visitorsFailed, error: visitorsError, refetch: refetchVisitors } = useQuery({ queryKey: ['visitors'], queryFn: () => getVisitors() })
   const { data: logs = [] } = useQuery({ queryKey: ['visitor_logs'], queryFn: () => getVisitorLogs(), enabled: viewLogs })
 
   const createMut = useMutation({
@@ -457,6 +461,7 @@ function VisitorsTab() {
   })
 
   if (isLoading) return <BrandLoader variant="full" />
+  if (visitorsFailed) return <ErrorState error={visitorsError} onRetry={refetchVisitors} />
 
   return (
     <Box>

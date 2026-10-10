@@ -44,6 +44,7 @@ import { getCameras } from '@/api/cameras'
 import { getZones, deleteZone, bulkBypassZones, bulkRestoreZones, setZoneSchedule, getCrowdZones, createCrowdZone, deleteCrowdZone } from '@/api/zones'
 import type { RestrictedZone } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 const SEVERITY_COLORS: Record<string, 'success' | 'warning' | 'error' | 'info'> = {
   low: 'info', medium: 'warning', high: 'error', critical: 'error',
@@ -177,7 +178,7 @@ function formatBypassUntil(bypassUntil: string | null): string | null {
 
 function RestrictedZonesTable() {
   const queryClient = useQueryClient()
-  const { data: zones, isLoading } = useQuery({ queryKey: ['zones'], queryFn: getZones })
+  const { data: zones, isLoading, isLoadingError: zonesFailed, error: zonesError, refetch: refetchZones } = useQuery({ queryKey: ['zones'], queryFn: getZones })
   const [scheduleZone, setScheduleZone] = useState<RestrictedZone | null>(null)
   const [addOpen, setAddOpen] = useState(false)
 
@@ -225,7 +226,7 @@ function RestrictedZonesTable() {
           <TableBody>
             {isLoading
               ? <SkeletonRows cols={9} />
-              : zones?.length === 0
+              : zonesFailed ? <TableErrorRow error={zonesError} onRetry={refetchZones} /> : zones?.length === 0
               ? (
                   <TableRow>
                     <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
@@ -406,7 +407,7 @@ function CrowdZoneDialog({ open, onClose }: { open: boolean; onClose: () => void
 
 function CrowdZonesTable() {
   const qc = useQueryClient()
-  const { data: zones, isLoading } = useQuery({ queryKey: ['crowd-zones'], queryFn: getCrowdZones })
+  const { data: zones, isLoading, isLoadingError: zonesFailed2, error: zonesError2, refetch: refetchZones2 } = useQuery({ queryKey: ['crowd-zones'], queryFn: getCrowdZones })
   const [dialogOpen, setDialogOpen] = useState(false)
   const { mutate: remove } = useMutation({
     mutationFn: deleteCrowdZone,
@@ -439,7 +440,7 @@ function CrowdZonesTable() {
           <TableBody>
             {isLoading
               ? <SkeletonRows cols={8} />
-              : zones?.length === 0
+              : zonesFailed2 ? <TableErrorRow error={zonesError2} onRetry={refetchZones2} /> : zones?.length === 0
               ? (
                   <TableRow>
                     <TableCell colSpan={8} align="center" sx={{ py: 4 }}>

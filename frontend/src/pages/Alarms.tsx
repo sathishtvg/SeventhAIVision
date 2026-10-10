@@ -54,6 +54,7 @@ import {
   type AlarmZone,
 } from '@/api/alarms'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -298,7 +299,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
   const [zoneForm, setZoneForm] = useState({ zone_number: 1, name: '', zone_type: 'motion' })
   const [rotatedKey, setRotatedKey] = useState<string | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['alarm-panel-detail', panelId],
     queryFn: () => getPanel(panelId),
     refetchInterval: 15_000,
@@ -323,6 +324,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
   })
 
   if (isLoading) return <BrandLoader variant="full" />
+  if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   if (!data) return <Alert severity="error">Failed to load panel.</Alert>
 
   return (
@@ -584,7 +586,7 @@ function EventsTab() {
   const [severityFilter, setSeverityFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
 
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
     queryKey: ['alarm-events', severityFilter, typeFilter],
     queryFn: () => listEvents({
       severity: severityFilter || undefined,
@@ -621,7 +623,7 @@ function EventsTab() {
 
       {isLoading
         ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>
-        : (
+        : eventsFailed ? <ErrorState compact error={eventsError} onRetry={refetchEvents} /> : (
           <Paper sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
             <Table size="small">
               <TableHead>

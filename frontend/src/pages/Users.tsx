@@ -67,6 +67,7 @@ import { getUserSessions, revokeAllUserSessions, unlockUserAccount } from '@/api
 import { getSites } from '@/api/sites'
 import type { User } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const ROLE_LABELS: Record<number, string> = {
   1: 'Super Admin',
@@ -135,7 +136,7 @@ function EmployeeDocumentsPanel({ userId }: { userId: string }) {
   const [expiryDate, setExpiryDate] = useState('')
   const [file, setFile] = useState<File | undefined>(undefined)
 
-  const { data: documents = [], isLoading } = useQuery({
+  const { data: documents = [], isLoading, isLoadingError: documentsFailed, error: documentsError, refetch: refetchDocuments } = useQuery({
     queryKey: ['employee-documents', userId],
     queryFn: () => getEmployeeDocuments(userId),
   })
@@ -171,7 +172,7 @@ function EmployeeDocumentsPanel({ userId }: { userId: string }) {
       </Stack>
       {isLoading ? (
         <Skeleton />
-      ) : documents.length === 0 ? (
+      ) : documentsFailed ? <ErrorState compact error={documentsError} onRetry={refetchDocuments} /> : documents.length === 0 ? (
         <Typography color="text.secondary" variant="body2">No documents uploaded yet.</Typography>
       ) : (
         <List dense sx={{ maxHeight: 220, overflow: 'auto' }}>
@@ -606,7 +607,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
 
 function SessionsDialog({ open, onClose, userId }: { open: boolean; onClose: () => void; userId: string }) {
   const queryClient = useQueryClient()
-  const { data: sessions, isLoading } = useQuery({
+  const { data: sessions, isLoading, isLoadingError: sessionsFailed, error: sessionsError, refetch: refetchSessions } = useQuery({
     queryKey: ['user-sessions', userId],
     queryFn: () => getUserSessions(userId),
     enabled: open,
@@ -621,7 +622,7 @@ function SessionsDialog({ open, onClose, userId }: { open: boolean; onClose: () 
       <DialogContent sx={{ p: 0 }}>
         {isLoading ? (
           <Box sx={{ p: 2 }}><Skeleton /><Skeleton /><Skeleton /></Box>
-        ) : !sessions?.length ? (
+        ) : sessionsFailed ? <ErrorState compact error={sessionsError} onRetry={refetchSessions} /> : !sessions?.length ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography color="text.secondary">No active sessions</Typography>
           </Box>
@@ -661,7 +662,7 @@ function SiteAccessDialog({ open, onClose, user }: { open: boolean; onClose: () 
   const [selected, setSelected] = useState<string[] | null>(null)
 
   const { data: allSites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(), enabled: open })
-  const { data: assigned, isLoading } = useQuery({
+  const { data: assigned, isLoading, isLoadingError: assignedFailed, error: assignedError, refetch: refetchAssigned } = useQuery({
     queryKey: ['user-sites', user.id],
     queryFn: () => getUserSites(user.id),
     enabled: open,
@@ -694,7 +695,7 @@ function SiteAccessDialog({ open, onClose, user }: { open: boolean; onClose: () 
         </Typography>
         {isLoading ? (
           <Box><Skeleton /><Skeleton /><Skeleton /></Box>
-        ) : allSites.length === 0 ? (
+        ) : assignedFailed ? <ErrorState compact error={assignedError} onRetry={refetchAssigned} /> : allSites.length === 0 ? (
           <Typography color="text.secondary" variant="body2">No sites created yet.</Typography>
         ) : (
           <List dense sx={{ maxHeight: 320, overflow: 'auto' }}>
@@ -791,7 +792,7 @@ export default function Users() {
   const [siteAccessUser, setSiteAccessUser] = useState<User | null>(null)
   const queryClient = useQueryClient()
 
-  const { data: users, isLoading } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+  const { data: users, isLoading, isLoadingError: usersFailed, error: usersError, refetch: refetchUsers } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
   // The site list comes from the sites API rather than from whichever sites
   // happen to appear on a user row: an admin looking for "who covers Jurong"
@@ -1026,7 +1027,7 @@ export default function Users() {
                       ))}
                     </TableRow>
                   ))
-                : filteredUsers.length === 0
+                : usersFailed ? <TableErrorRow error={usersError} onRetry={refetchUsers} /> : filteredUsers.length === 0
                 ? (
                     <TableRow>
                       <TableCell colSpan={GRID_COLUMN_COUNT} align="center" sx={{ py: 4 }}>

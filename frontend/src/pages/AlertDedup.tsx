@@ -44,6 +44,7 @@ import {
 import { getCameras } from '@/api/cameras'
 import type { Camera } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 const MODULE_TYPES = [
   'lpr', 'face', 'intrusion', 'ppe', 'crowd', 'fire_smoke',
@@ -234,7 +235,7 @@ export default function AlertDedup() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<DedupRule | null>(null)
 
-  const { data: rules = [], isLoading } = useQuery({
+  const { data: rules = [], isLoading, isLoadingError: rulesFailed, error: rulesError, refetch: refetchRules } = useQuery({
     queryKey: ['dedup-rules'],
     queryFn: listDedupRules,
   })
@@ -329,7 +330,7 @@ export default function AlertDedup() {
                         ))}
                       </TableRow>
                     ))
-                  : rules.length === 0
+                  : rulesFailed ? <TableErrorRow error={rulesError} onRetry={refetchRules} /> : rules.length === 0
                     ? (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>

@@ -25,6 +25,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/api/client'
 import { GlassCard } from '@/components/common/GlassCard'
+import { ErrorState } from '@/components/states'
 
 const BASE = '/api/v1'
 
@@ -95,7 +96,7 @@ ws.onmessage = (e) => {
 
 function BackupsPanel() {
   const qc = useQueryClient()
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, isLoadingError: dataFailed, refetch: refetchData } = useQuery({
     queryKey: ['system-backups'],
     queryFn: () => apiClient.get<{ backups: { filename: string; size_bytes: number; created_at: string }[] }>(
       '/api/v1/system/backups'
@@ -147,7 +148,7 @@ function BackupsPanel() {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
           <CircularProgress size={24} />
         </Box>
-      ) : (data?.backups?.length ?? 0) === 0 ? (
+      ) : dataFailed ? <ErrorState compact error={error} onRetry={refetchData} /> : (data?.backups?.length ?? 0) === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
           No backups yet — the scheduler runs daily, or click Run Now.
         </Typography>

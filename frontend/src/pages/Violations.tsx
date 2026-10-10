@@ -41,6 +41,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
+import { ErrorState } from '@/components/states'
 
 const GUARD_ROLES = new Set([3, 4, 5, 8])
 
@@ -293,7 +294,7 @@ export function ViolationsPage() {
     violation_type: type || undefined,
     violation_status: status || undefined,
   }
-  const { data: violations = [], isLoading } = useQuery({
+  const { data: violations = [], isLoading, isLoadingError: violationsFailed, error: violationsError, refetch: refetchViolations } = useQuery({
     queryKey: ['violations', filters],
     queryFn: () => listViolations(filters),
   })
@@ -394,7 +395,7 @@ export function ViolationsPage() {
       <GlassCard sx={{ p: 2 }}>
         {isLoading ? (
           <Skeleton height={80} />
-        ) : violations.length === 0 ? (
+        ) : violationsFailed ? <ErrorState compact error={violationsError} onRetry={refetchViolations} /> : violations.length === 0 ? (
           <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>No violations found.</Typography>
         ) : (
           <Stack divider={<Divider />} spacing={1.5}>

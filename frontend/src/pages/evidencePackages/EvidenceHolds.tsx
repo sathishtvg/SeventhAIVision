@@ -22,6 +22,7 @@ import type { Hold } from '@/api/evidencePackages'
 import { WhyDialog } from '@/components/investigations/InvestigationDialogs'
 import { KIND_LABEL, fmt } from '@/components/evidence/evidenceFormat'
 import { InvestigationNav } from '@/pages/investigations/InvestigationNav'
+import { ErrorState } from '@/components/states'
 
 export default function EvidenceHolds() {
   const navigate = useNavigate()
@@ -31,7 +32,7 @@ export default function EvidenceHolds() {
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState(25)
   const [lifting, setLifting] = useState<Hold | null>(null)
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['evidence-holds', inForce, page, rows],
     queryFn: () => listHolds({ in_force: inForce, limit: rows, offset: page * rows }),
   })
@@ -53,7 +54,7 @@ export default function EvidenceHolds() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {isLoading ? <Skeleton height={240} /> : !holds.length ? (
+        {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !holds.length ? (
           <Alert severity="info">{inForce ? 'Nothing is under a hold.' : 'No hold has been lifted.'}</Alert>
         ) : (
           <TableContainer>

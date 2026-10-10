@@ -47,6 +47,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { useFocusModeStore } from '@/store/focusMode'
+import { ErrorState } from '@/components/states'
 
 const TILE_URL =
   import.meta.env.VITE_MAP_TILE_URL ?? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
@@ -230,7 +231,7 @@ export function MapViewPage() {
   const { kiosk, toggleKiosk } = useKioskToggle()
   const isFocus = useFocusModeStore((s) => s.isFocusMode)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['cc-overview'],
     queryFn: () => apiClient.get('/api/v1/command-centre/overview').then((r) => r.data),
     refetchInterval: 30_000,
@@ -322,7 +323,7 @@ export function MapViewPage() {
 
       {isLoading ? (
         <Skeleton variant="rounded" height={560} />
-      ) : (
+      ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : (
         <GlassCard sx={{ p: 0, overflow: 'hidden' }}>
           <Box sx={{
             // In focus mode the map is the whole point of the screen, so it

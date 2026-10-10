@@ -34,6 +34,7 @@ import { OptionalPeriods } from '@/components/governance/OptionalPeriods'
 import {
   day, heldCount, holdLine, lineWords, matchLine, periodLine, searchesLine, siteLine, subjectLine, totalsLine,
 } from '@/components/governance/governanceFormat'
+import { ErrorState } from '@/components/states'
 
 type Part = 'retention' | 'person'
 type Looking = 'STAFF' | 'VISITOR' | 'TEXT'
@@ -158,9 +159,9 @@ function Kept({ data }: { data: Statement }) {
 
 function RetentionTab() {
   const qc = useQueryClient()
-  const { data, isLoading, error } = useQuery({ queryKey: ['retention-statement'], queryFn: getStatement })
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['retention-statement'], queryFn: getStatement })
   if (isLoading) return <Skeleton height={320} />
-  if (error) return <Alert severity="error">{apiError(error)}</Alert>
+  if (error) return <ErrorState error={error} onRetry={refetch} />
   if (!data) return null
   const kinds = Object.entries(data.holds.by_kind)
   return (

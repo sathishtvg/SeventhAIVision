@@ -48,6 +48,7 @@ import {
 import type { CarPark, ParkingBay, ParkingSession, LprCameraConfig } from '@/api/parking'
 import { getCameras } from '@/api/cameras'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -98,13 +99,14 @@ function PaymentChip({ status }: { status: string }) {
 // ── Occupancy visual grid ─────────────────────────────────────────────────────
 
 function OccupancyGrid({ carparkId }: { carparkId: string }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['parking-occupancy', carparkId],
     queryFn: () => getCarParkOccupancy(carparkId),
     refetchInterval: 10000,
   })
 
   if (isLoading) return <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>
+  if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   if (!data) return null
 
   const totalBays = data.bays.length
@@ -414,7 +416,7 @@ function OverviewTab() {
   const [addRateFor, setAddRateFor] = useState<CarPark | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const { data: carparks = [], isLoading } = useQuery({
+  const { data: carparks = [], isLoading, isLoadingError: carparksFailed, error: carparksError, refetch: refetchCarparks } = useQuery({
     queryKey: ['carparks'],
     queryFn: listCarParks,
     refetchInterval: 15000,
@@ -436,7 +438,7 @@ function OverviewTab() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : carparksFailed ? <ErrorState compact error={carparksError} onRetry={refetchCarparks} /> : (
         <Grid container spacing={2}>
           {carparks.map(cp => {
             const total = cp.bay_count ?? 0
@@ -533,7 +535,7 @@ function SessionsTab() {
   const [plateSearch, setPlateSearch] = useState('')
   const qc = useQueryClient()
 
-  const { data: _sessData, isLoading } = useQuery({
+  const { data: _sessData, isLoading, isLoadingError: _sessDataFailed, error: _sessDataError, refetch: refetch_sessData } = useQuery({
     queryKey: ['parking-sessions', statusFilter, plateSearch],
     queryFn: () => listSessions({
       status: statusFilter || undefined,
@@ -585,7 +587,7 @@ function SessionsTab() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : _sessDataFailed ? <ErrorState compact error={_sessDataError} onRetry={refetch_sessData} /> : (
         <Paper>
           <Table size="small">
             <TableHead>
@@ -756,7 +758,7 @@ function LprCamerasTab() {
   const qc = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
 
-  const { data: configs = [], isLoading } = useQuery({
+  const { data: configs = [], isLoading, isLoadingError: configsFailed, error: configsError, refetch: refetchConfigs } = useQuery({
     queryKey: ['lpr-cameras'],
     queryFn: listLprCameras,
   })
@@ -788,7 +790,7 @@ function LprCamerasTab() {
 
       {isLoading ? (
         <CircularProgress size={24} />
-      ) : configs.length === 0 ? (
+      ) : configsFailed ? <ErrorState compact error={configsError} onRetry={refetchConfigs} /> : configs.length === 0 ? (
         <Typography color="text.secondary" variant="body2" sx={{ mb: 4 }}>
           No LPR cameras configured. Add a camera to automatically create parking sessions on plate detection.
         </Typography>

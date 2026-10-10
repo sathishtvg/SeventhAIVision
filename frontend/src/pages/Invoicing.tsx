@@ -50,6 +50,7 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 function hexToRgb(hex: string) {
   const m = hex.replace('#', '').match(/.{2}/g)
@@ -172,7 +173,7 @@ function ClientDialog({ open, client, onClose }: { open: boolean; client?: Billi
 }
 
 function ClientsTab() {
-  const { data: clients = [], isLoading } = useQuery({ queryKey: ['billing-clients'], queryFn: () => listClients() })
+  const { data: clients = [], isLoading, isLoadingError: clientsFailed, error: clientsError, refetch: refetchClients } = useQuery({ queryKey: ['billing-clients'], queryFn: () => listClients() })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editClient, setEditClient] = useState<BillingClient | undefined>()
 
@@ -190,7 +191,7 @@ function ClientsTab() {
       </Stack>
       {isLoading ? (
         <Skeleton height={80} />
-      ) : clients.length === 0 ? (
+      ) : clientsFailed ? <ErrorState compact error={clientsError} onRetry={refetchClients} /> : clients.length === 0 ? (
         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>No billing clients yet.</Typography>
       ) : (
         <TableContainer>
@@ -296,7 +297,7 @@ function InvoiceDetail({ invoiceId, onBack }: { invoiceId: string; onBack: () =>
   const qc = useQueryClient()
   const canManage = usePermission('invoicing:manage')
   const accessToken = useAuthStore((s) => s.accessToken)
-  const { data: invoice, isLoading } = useQuery({
+  const { data: invoice, isLoading, isLoadingError: invoiceFailed, error: invoiceError, refetch: refetchInvoice } = useQuery({
     queryKey: ['invoice', invoiceId],
     queryFn: () => getInvoice(invoiceId),
   })
@@ -320,6 +321,7 @@ function InvoiceDetail({ invoiceId, onBack }: { invoiceId: string; onBack: () =>
     sitesSkipped: invoice?.warnings?.length ?? 0,
   }), [invoice])
 
+  if (invoiceFailed) return <ErrorState error={invoiceError} onRetry={refetchInvoice} />
   if (isLoading || !invoice) return <Box sx={{ p: 2 }}><Skeleton height={200} /></Box>
 
   return (
@@ -416,7 +418,7 @@ function InvoiceDetail({ invoiceId, onBack }: { invoiceId: string; onBack: () =>
 function InvoicesTab() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
-  const { data: invoices = [], isLoading } = useQuery({ queryKey: ['invoices'], queryFn: () => listInvoices() })
+  const { data: invoices = [], isLoading, isLoadingError: invoicesFailed, error: invoicesError, refetch: refetchInvoices } = useQuery({ queryKey: ['invoices'], queryFn: () => listInvoices() })
 
   if (selected) {
     return <InvoiceDetail invoiceId={selected} onBack={() => setSelected(null)} />
@@ -433,7 +435,7 @@ function InvoicesTab() {
       </Stack>
       {isLoading ? (
         <Skeleton height={80} />
-      ) : invoices.length === 0 ? (
+      ) : invoicesFailed ? <ErrorState compact error={invoicesError} onRetry={refetchInvoices} /> : invoices.length === 0 ? (
         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>No invoices yet.</Typography>
       ) : (
         <Stack divider={<Divider />} spacing={1.5}>

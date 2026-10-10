@@ -21,6 +21,7 @@ import type { ScheduleCreate } from '@/api/scheduled_reports'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   success: 'success',
@@ -35,7 +36,7 @@ export default function ScheduledReports() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const { data: schedules = [], isLoading } = useQuery({
+  const { data: schedules = [], isLoading, isLoadingError: schedulesFailed, error: schedulesError, refetch: refetchSchedules } = useQuery({
     queryKey: ['scheduled-reports'],
     queryFn: listSchedules,
   })
@@ -90,7 +91,7 @@ export default function ScheduledReports() {
       <GlassCard>
         {isLoading ? (
           <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>
-        ) : (
+        ) : schedulesFailed ? <ErrorState compact error={schedulesError} onRetry={refetchSchedules} /> : (
           <Table>
             <TableHead>
               <TableRow>
@@ -190,13 +191,14 @@ export default function ScheduledReports() {
 }
 
 function DeliveryHistory({ scheduleId }: { scheduleId: string }) {
-  const { data: deliveries = [], isLoading } = useQuery({
+  const { data: deliveries = [], isLoading, isLoadingError: deliveriesFailed, error: deliveriesError, refetch: refetchDeliveries } = useQuery({
     queryKey: ['schedule-deliveries', scheduleId],
     queryFn: () => listDeliveries(scheduleId),
     enabled: true,
   })
 
   if (isLoading) return <Box sx={{ p: 1 }}><CircularProgress size={20} /></Box>
+  if (deliveriesFailed) return <ErrorState error={deliveriesError} onRetry={refetchDeliveries} />
   if (deliveries.length === 0) return (
     <Box sx={{ p: 2, color: 'text.secondary', fontSize: '0.85rem' }}>No delivery history yet.</Box>
   )

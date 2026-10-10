@@ -29,6 +29,7 @@ import { useColorMode } from '@/context/ColorMode'
 import { DRAWER_WIDTH } from './Sidebar'
 import { useTranslation } from 'react-i18next'
 import i18n, { LOCALE_LABELS, SUPPORTED_LOCALES, type SupportedLocale } from '@/i18n'
+import { ErrorState } from '@/components/states'
 
 const ROLE_LABELS: Record<number, string> = {
   1: 'Super Admin', 2: 'Admin', 3: 'Supervisor',
@@ -40,7 +41,7 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const logout = useAuthStore((s) => s.logout)
   const user   = useAuthStore((s) => s.user)
 
-  const { data: sessions, isLoading } = useQuery({
+  const { data: sessions, isLoading, isLoadingError: sessionsFailed, error: sessionsError, refetch: refetchSessions } = useQuery({
     queryKey: ['my-sessions'],
     queryFn: getMySessions,
     enabled: open,
@@ -267,7 +268,7 @@ function ProfileDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
             <CircularProgress size={24} sx={{ color: '#6C63FF' }} />
           </Box>
-        ) : !sessions?.length ? (
+        ) : sessionsFailed ? <ErrorState compact error={sessionsError} onRetry={refetchSessions} /> : !sessions?.length ? (
           <Typography color="text.secondary" variant="body2" sx={{ py: 2, textAlign: 'center' }}>
             No active sessions found.
           </Typography>

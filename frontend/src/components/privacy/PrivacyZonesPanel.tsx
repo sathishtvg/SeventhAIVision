@@ -24,6 +24,7 @@ import { SkeletonRows } from '@/components/common/SkeletonRows'
 import { ZonePolygonEditor } from '@/components/common/ZonePolygonEditor'
 import { MASKED_CAMERAS_KEY } from '@/hooks/useMaskedCameras'
 import { WHAT_A_ZONE_DOES, WHAT_DELETING_DOES, ZONE_LIMITS } from './privacyZoneWords'
+import { TableErrorRow, ErrorState } from '@/components/states'
 
 /** The colour a zone is drawn in while it is being placed. It is applied in black. */
 const DRAWING_COLOUR = '#B0BEC5'
@@ -115,7 +116,7 @@ function DeleteDialog({ zone, onClose }: { zone: PrivacyZone; onClose: () => voi
 export function PrivacyZonesPanel() {
   const [drawing, setDrawing] = useState(false)
   const [deleting, setDeleting] = useState<PrivacyZone | null>(null)
-  const { data: zones = [], isLoading, error } = useQuery({ queryKey: ['privacy-zones'], queryFn: listPrivacyZones })
+  const { data: zones = [], isLoading, error, isLoadingError: zonesFailed, refetch: refetchZones } = useQuery({ queryKey: ['privacy-zones'], queryFn: listPrivacyZones })
 
   return (
     <>
@@ -131,7 +132,7 @@ export function PrivacyZonesPanel() {
             Draw a privacy zone
           </Button>
         </Box>
-        {error && <Alert severity="error">{apiError(error)}</Alert>}
+        {error && <ErrorState compact error={error} onRetry={refetchZones} />}
       </Box>
       <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
         <Table size="small">
@@ -145,7 +146,7 @@ export function PrivacyZonesPanel() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {isLoading ? <SkeletonRows cols={5} /> : zones.length === 0 ? (
+            {isLoading ? <SkeletonRows cols={5} /> : zonesFailed ? <TableErrorRow error={error} onRetry={refetchZones} /> : zones.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5}>
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>

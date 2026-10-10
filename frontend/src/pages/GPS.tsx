@@ -37,6 +37,7 @@ import {
 } from '@/api/gps'
 import type { Vehicle } from '@/api/gps'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── status helpers ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
@@ -207,7 +208,7 @@ function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle; onClick: () => vo
 
 // ── journey log dialog ────────────────────────────────────────────────────────
 function JourneyDialog({ vehicle, onClose }: { vehicle: Vehicle; onClose: () => void }) {
-  const { data: journeys = [], isLoading } = useQuery({
+  const { data: journeys = [], isLoading, isLoadingError: journeysFailed, error: journeysError, refetch: refetchJourneys } = useQuery({
     queryKey: ['journeys', vehicle.id],
     queryFn: () => getVehicleJourneys(vehicle.id),
   })
@@ -222,7 +223,7 @@ function JourneyDialog({ vehicle, onClose }: { vehicle: Vehicle; onClose: () => 
         </Stack>
       </DialogTitle>
       <DialogContent>
-        {isLoading ? <CircularProgress size={24} /> : (
+        {isLoading ? <CircularProgress size={24} /> : journeysFailed ? <ErrorState compact error={journeysError} onRetry={refetchJourneys} /> : (
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -323,7 +324,7 @@ export default function GPSPage() {
 
   const qc = useQueryClient()
 
-  const { data: dashboard, isLoading } = useQuery({
+  const { data: dashboard, isLoading, isLoadingError: dashboardFailed, error: dashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ['gps-dashboard'],
     queryFn: () => getGPSDashboard(),
     refetchInterval: 15_000,
@@ -381,7 +382,7 @@ export default function GPSPage() {
 
       {isLoading ? (
         <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress /></Box>
-      ) : (
+      ) : dashboardFailed ? <ErrorState compact error={dashboardError} onRetry={refetchDashboard} /> : (
         <>
           {/* Map + event feed */}
           <Grid container spacing={2} sx={{ mb: 3 }}>

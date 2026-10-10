@@ -22,6 +22,7 @@ import {
 } from '@/api/watchlist'
 import type { WatchlistEntry, VehicleCategory } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 function BulkImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
@@ -132,7 +133,7 @@ function PlateTable() {
   const [search, setSearch] = useState('')
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['plate-watchlist', categoryFilter, search],
     queryFn: () => getPlateWatchlist({
       category: categoryFilter || undefined,
@@ -227,7 +228,7 @@ function PlateTable() {
               ? Array.from({ length: 4 }).map((_, i) => (
                   <TableRow key={i}>{Array.from({ length: 7 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
-              : data?.length === 0
+              : dataFailed ? <TableErrorRow error={dataError} onRetry={refetchData} /> : data?.length === 0
               ? (
                 <TableRow>
                   <TableCell colSpan={7}>
@@ -491,7 +492,7 @@ function EnrollFaceDialog({ open, onClose }: { open: boolean; onClose: () => voi
 function FaceTable() {
   const queryClient = useQueryClient()
   const [enrollOpen, setEnrollOpen] = useState(false)
-  const { data, isLoading } = useQuery({ queryKey: ['face-watchlist'], queryFn: getFaceWatchlist })
+  const { data, isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({ queryKey: ['face-watchlist'], queryFn: getFaceWatchlist })
   const { mutate: remove } = useMutation({
     mutationFn: deleteFaceEntry,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['face-watchlist'] }),
@@ -522,7 +523,7 @@ function FaceTable() {
               ? Array.from({ length: 4 }).map((_, i) => (
                   <TableRow key={i}>{Array.from({ length: 5 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
-              : data?.map((e) => (
+              : dataFailed2 ? <TableErrorRow error={dataError2} onRetry={refetchData2} /> : data?.map((e) => (
                   <TableRow key={e.id} hover>
                     <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{e.person_name}</Typography></TableCell>
                     <TableCell><Chip label={e.list_type} size="small" color={e.list_type === 'block' ? 'error' : 'success'} /></TableCell>

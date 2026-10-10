@@ -19,6 +19,7 @@ import { apiError, listMissions, runMission, setMissionEnabled } from '@/api/dro
 import { LicenceBanner, SessionStatusChip } from '@/components/drones/droneUi'
 import { fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 export default function DroneMissions() {
   const navigate = useNavigate()
@@ -28,7 +29,7 @@ export default function DroneMissions() {
   const canRun = usePermission('drone:mission:execute')
   const [notice, setNotice] = useState<{ ok: boolean; text: string; session?: string } | null>(null)
   useDroneRealtime([['drone-missions']])
-  const { data, isLoading } = useQuery({ queryKey: ['drone-missions'], queryFn: () => listMissions(),
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['drone-missions'], queryFn: () => listMissions(),
                                           refetchInterval: 20_000 })
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setMissionEnabled(id, enabled),
@@ -63,7 +64,7 @@ export default function DroneMissions() {
           {canCreate && <Button startIcon={<AddIcon />} variant="contained" onClick={() => navigate('/drone-missions/new')}>
             New mission</Button>}
         </Stack>
-        {isLoading ? <Skeleton height={200} /> : !missions.length ? (
+        {isLoading ? <Skeleton height={200} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !missions.length ? (
           <Alert severity="info">No missions yet. A mission needs a drone, a route and, ideally, a security profile.</Alert>
         ) : (
           <TableContainer>

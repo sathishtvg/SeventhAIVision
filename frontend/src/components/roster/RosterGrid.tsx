@@ -21,6 +21,7 @@ import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { usePermission } from '@/hooks/usePermission'
 import { PreferencesDialog } from '@/components/roster/PreferencesDialog'
+import { ErrorState } from '@/components/states'
 
 /** Colours for the grid and its legend, matching the Shifts page. */
 const TYPE_COLOUR: Record<string, string> = {
@@ -414,7 +415,7 @@ export function RosterGrid() {
 
   const { start, end } = useMemo(() => monthBounds(anchor), [anchor])
 
-  const { data: grid, isLoading } = useQuery({
+  const { data: grid, isLoading, isLoadingError: gridFailed, error: gridError, refetch: refetchGrid } = useQuery({
     queryKey: ['roster-grid', start, end, siteFilter],
     queryFn: () => getRosterGrid(start, end, siteFilter || undefined),
   })
@@ -500,7 +501,7 @@ export function RosterGrid() {
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={38} />)}
           </Stack>
         </GlassCard>
-      ) : !grid || grid.employees.length === 0 ? (
+      ) : gridFailed ? <ErrorState compact error={gridError} onRetry={refetchGrid} /> : !grid || grid.employees.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">No schedulable staff yet.</Typography>
         </GlassCard>

@@ -62,6 +62,7 @@ import {
 } from '@/api/vms'
 import { getSites } from '@/api/sites'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -220,7 +221,7 @@ function UpcomingTab() {
   const canManage = usePermission('visitor:manage')
   const qryClient = useQueryClient()
 
-  const { data: visitors = [], isLoading, refetch } = useQuery({
+  const { data: visitors = [], isLoading, refetch, isLoadingError: visitorsFailed, error: visitorsError } = useQuery({
     queryKey: ['upcoming-visitors'],
     queryFn: () => getUpcomingVisitors(24),
     refetchInterval: 30000,
@@ -263,7 +264,7 @@ function UpcomingTab() {
 
       {isLoading ? (
         <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
-      ) : filtered.length === 0 ? (
+      ) : visitorsFailed ? <ErrorState compact error={visitorsError} onRetry={refetch} /> : filtered.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6, opacity: 0.5 }}>
           <ScheduleIcon sx={{ fontSize: 48, mb: 1 }} />
           <Typography>No upcoming visitors in the next 24 hours</Typography>
@@ -337,7 +338,7 @@ function UpcomingTab() {
 // ── Today's Log tab ───────────────────────────────────────────────────────────
 
 function TodayLogTab() {
-  const { data: logs = [], isLoading, refetch } = useQuery({
+  const { data: logs = [], isLoading, refetch, isLoadingError: logsFailed, error: logsError } = useQuery({
     queryKey: ['visitor-logs'],
     queryFn: () => listVisitorLogs(),
     refetchInterval: 15000,
@@ -354,7 +355,7 @@ function TodayLogTab() {
       </Stack>
       {isLoading ? (
         <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
-      ) : todayLogs.length === 0 ? (
+      ) : logsFailed ? <ErrorState compact error={logsError} onRetry={refetch} /> : todayLogs.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6, opacity: 0.5 }}>
           <PersonOffIcon sx={{ fontSize: 48, mb: 1 }} />
           <Typography>No visitor activity today</Typography>
@@ -417,7 +418,7 @@ function AllVisitorsTab() {
   const canManage = usePermission('visitor:manage')
   const qryClient = useQueryClient()
 
-  const { data: visitors = [], isLoading, refetch } = useQuery({
+  const { data: visitors = [], isLoading, refetch, isLoadingError: visitorsFailed2, error: visitorsError2 } = useQuery({
     queryKey: ['visitors'],
     queryFn: listVisitors,
   })
@@ -454,7 +455,7 @@ function AllVisitorsTab() {
 
       {isLoading ? (
         <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
-      ) : (
+      ) : visitorsFailed2 ? <ErrorState compact error={visitorsError2} onRetry={refetch} /> : (
         <TableContainer component={Paper} sx={{ background: 'transparent' }}>
           <Table size="small">
             <TableHead>

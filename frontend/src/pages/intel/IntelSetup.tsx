@@ -24,6 +24,7 @@ import {
 import type { BusinessHours, DecisionPolicy, PolicyRoles, RiskLevel, SiteProfile } from '@/api/securityIntelligence'
 import { SOURCE_LABEL, fmt, lag, pretty } from '@/components/intel/intelFormat'
 import { IntelNav } from './IntelNav'
+import { ErrorState } from '@/components/states'
 
 export default function IntelSetup() {
   const canManage = usePermission('intel:manage')
@@ -53,11 +54,12 @@ const RUNNER_WORDS = {
 function Running() {
   const qc = useQueryClient()
   const canSwitch = usePermission('settings:write')
-  const { data, isLoading } = useQuery({ queryKey: ['intel-status'], queryFn: getIntelStatus, refetchInterval: 30_000 })
+  const { data, isLoading, isLoadingError: dataFailed2, error: dataError, refetch: refetchData2 } = useQuery({ queryKey: ['intel-status'], queryFn: getIntelStatus, refetchInterval: 30_000 })
   const flip = useMutation({
     mutationFn: (on: boolean) => upsertSetting('intel.enabled', on),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['intel-status'] }),
   })
+  if (dataFailed2) return <ErrorState error={dataError} onRetry={refetchData2} />
   if (isLoading || !data) return <GlassCard sx={{ p: 2 }}><Skeleton height={200} /></GlassCard>
   const total = Object.values(data.last_24_hours).reduce((n, v) => n + v, 0)
   return (
@@ -93,14 +95,14 @@ function Running() {
 /** Each stage of the layer, timed from what its own records carry. A stage
  *  with too few to say gives how many there were and no figure. */
 function Pace() {
-  const { data, error } = useQuery({ queryKey: ['intel-pipeline'], queryFn: () => getPipeline(24), refetchInterval: 60_000 })
+  const { data, error, refetch: refetchData3 } = useQuery({ queryKey: ['intel-pipeline'], queryFn: () => getPipeline(24), refetchInterval: 60_000 })
   return (
     <GlassCard sx={{ p: 2 }} data-testid="pace-card">
       <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>How long it takes</Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
         Over the last 24 hours, measured from the times the layer's own records carry.
       </Typography>
-      {error ? <Alert severity="error">{apiError(error)}</Alert> : !data ? <Skeleton height={160} /> : (
+      {error ? <ErrorState compact error={error} onRetry={refetchData3} /> : !data ? <Skeleton height={160} /> : (
         <>
           <Table size="small">
             <TableHead><TableRow><TableCell>Stage</TableCell><TableCell align="right">Measured</TableCell>
@@ -184,7 +186,7 @@ function RolesEditor({ policy, roles, onChange, disabled }: {
 
 function Policy({ canManage }: { canManage: boolean }) {
   const qc = useQueryClient()
-  const { data: policy, isLoading } = useQuery({ queryKey: ['intel-policy'], queryFn: getDecisionPolicy })
+  const { data: policy, isLoading, isLoadingError: policyFailed, error: policyError, refetch: refetchPolicy } = useQuery({ queryKey: ['intel-policy'], queryFn: getDecisionPolicy })
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const [draft, setDraft] = useState<PolicyRoles | null>(null)
   const [siteEdit, setSiteEdit] = useState<{ siteId: string; roles: PolicyRoles } | null>(null)
@@ -193,6 +195,7 @@ function Policy({ canManage }: { canManage: boolean }) {
   const saveSite = useMutation({
     mutationFn: (v: { siteId: string; roles: PolicyRoles }) => putSiteDecisionPolicy(v.siteId, v.roles), onSuccess: done })
   const removeSite = useMutation({ mutationFn: (siteId: string) => deleteSiteDecisionPolicy(siteId), onSuccess: done })
+  if (policyFailed) return <ErrorState error={policyError} onRetry={refetchPolicy} />
   if (isLoading || !policy) return <GlassCard sx={{ p: 2 }}><Skeleton height={300} /></GlassCard>
   const roles = draft ?? policy.tenant?.roles ?? {}
   const withoutOwn = (sites ?? []).filter((s) => !policy.sites.some((p) => p.site_id === s.id))
@@ -268,7 +271,7 @@ function hoursText(hours: BusinessHours | null): string {
 }
 
 function Sites({ canManage }: { canManage: boolean }) {
-  const { data, isLoading, error } = useQuery({ queryKey: ['intel-site-profiles'], queryFn: listSiteProfiles })
+  const { data, isLoading, error, isLoadingError: dataFailed, refetch: refetchData } = useQuery({ queryKey: ['intel-site-profiles'], queryFn: listSiteProfiles })
   const [editing, setEditing] = useState<SiteProfile | null>(null)
   return (
     <GlassCard sx={{ p: 2 }}>
@@ -277,7 +280,7 @@ function Sites({ canManage }: { canManage: boolean }) {
         Until a site's hours are defined, the layer never says "after hours" there; until its criticality is set, it
         adds nothing for it. What is not known lowers the risk confidence instead of being guessed.
       </Typography>
-      {error ? <Alert severity="error">{apiError(error)}</Alert> : isLoading ? <Skeleton height={160} /> : (
+      {error ? <ErrorState compact error={error} onRetry={refetchData} /> : isLoading ? <Skeleton height={160} /> : dataFailed ? <ErrorState compact error={error} onRetry={refetchData} /> : (
         <Table size="small">
           <TableHead><TableRow><TableCell>Site</TableCell><TableCell>Criticality</TableCell><TableCell>Business hours</TableCell>
             <TableCell>Public holidays</TableCell><TableCell /></TableRow></TableHead>

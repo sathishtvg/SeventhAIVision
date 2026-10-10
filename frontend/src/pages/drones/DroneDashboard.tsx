@@ -30,6 +30,7 @@ import type { Drone, Gateway } from '@/api/drones'
 import { BatteryBar, ComponentDot, DroneStatusChip, LicenceBanner } from '@/components/drones/droneUi'
 import { RISK_COLOR, ago, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 function Kpi({ label, value, tone, hint }: { label: string; value: number | string; tone?: string; hint?: string }) {
   return (
@@ -91,13 +92,14 @@ function Fleet() {
   const canCreate = usePermission('drone:create')
   const canUpdate = usePermission('drone:update')
   const [editing, setEditing] = useState<Drone | 'new' | null>(null)
-  const { data, isLoading } = useQuery({ queryKey: ['drones'], queryFn: () => listDrones(), refetchInterval: 15_000 })
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['drones'], queryFn: () => listDrones(), refetchInterval: 15_000 })
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setDroneEnabled(id, enabled),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['drones'] }),
   })
 
   if (isLoading) return <Box sx={{ p: 2 }}><Skeleton height={200} /></Box>
+  if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   const drones = data?.items ?? []
   return (
     <Box sx={{ p: 2 }}>

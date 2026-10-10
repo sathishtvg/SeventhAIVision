@@ -21,6 +21,7 @@ import type { MaintenanceOptions, OrderKind, Priority, Schedule, WorkOrder } fro
 import {
   KIND_LABEL, ORDER_COLOUR, ORDER_LABEL, ORIGIN_LABEL, PRIORITY_LABEL, fmt, heldBy, iso,
 } from './assetFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const boxed = { gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5 }
@@ -57,7 +58,7 @@ function RaiseForm({ assetId, onClose, onDone }: RaiseProps) {
   const [due, setDue] = useState('')
   const [user, setUser] = useState('')
   const [name, setName] = useState('')
-  const { data: options, isLoading, error } = useQuery({
+  const { data: options, isLoading, error, refetch: refetchOptions } = useQuery({
     queryKey: ['maintenance-options'], queryFn: () => getMaintenanceOptions() })
   const act = useMutation({
     mutationFn: () => {
@@ -75,7 +76,7 @@ function RaiseForm({ assetId, onClose, onDone }: RaiseProps) {
       <DialogContent>
         <Stack sx={{ gap: 2, mt: 0.5 }}>
           {isLoading && <Skeleton height={60} />}
-          {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+          {!!error && <ErrorState compact error={error} onRetry={refetchOptions} />}
           <TextField label="What is to be done" value={title} autoFocus onChange={(e) => setTitle(e.target.value)}
                      slotProps={{ htmlInput: { maxLength: 200 } }} />
           <TextField select label="On" value={about} slotProps={shrunk} onChange={(e) => setAbout(e.target.value)}
@@ -159,7 +160,7 @@ function OrderView({ id, onClose, onChanged }: OrderProps & { id: string }) {
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={200} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetch} />}
         {o && (
           <Stack sx={{ gap: 1.5, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">

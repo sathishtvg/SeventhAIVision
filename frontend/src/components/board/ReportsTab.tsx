@@ -17,6 +17,7 @@ import { getBoardSites } from '@/api/operationsBoard'
 import { apiError, listReports, takeReport } from '@/api/operationsReports'
 import type { ReportKind } from '@/api/operationsReports'
 import { periodLabel, takenLine } from './boardFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -53,7 +54,7 @@ function ReportRow({ r, siteId, days, maxRows }: { r: ReportKind; siteId: string
 export function ReportsTab() {
   const [siteId, setSiteId] = useState('')
   const [days, setDays] = useState(7)
-  const { data, isLoading, error } = useQuery({ queryKey: ['operations-reports'], queryFn: listReports })
+  const { data, isLoading, error, refetch: refetchData } = useQuery({ queryKey: ['operations-reports'], queryFn: listReports })
   const sites = useQuery({ queryKey: ['board-sites', '', 1], queryFn: () => getBoardSites({ days: 1 }) })
   return (
     <>
@@ -75,7 +76,7 @@ export function ReportsTab() {
             </Typography>)}
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={240} />}
       {(data?.reports ?? []).map((r) => <ReportRow key={r.key} r={r} siteId={siteId} days={days} maxRows={data!.max_rows} />)}
     </>

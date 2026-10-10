@@ -24,6 +24,7 @@ import type { Authorisation, AuthorisationDetail, Movement, Options, SubjectKind
 import {
   REVIEW_LABEL, STANDING_COLOUR, STANDING_LABEL, about, against, door, fmt, iso, local, period, who,
 } from './authFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const boxed = { gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5 }
@@ -71,7 +72,7 @@ function AskForm({ onClose, onDone }: AskProps) {
   const [escortNote, setEscortNote] = useState('')
   const [places, setChosenPlaces] = useState<string[]>([])
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data: options, isLoading, error } = useQuery({
+  const { data: options, isLoading, error, refetch: refetchOptions } = useQuery({
     queryKey: ['visitor-auth-options', siteId], queryFn: () => getOptions(siteId), enabled: !!siteId })
   const visit = options?.visits.find((v) => v.id === subjectId)
   const permit = options?.permits.find((p) => p.id === subjectId)
@@ -118,7 +119,7 @@ function AskForm({ onClose, onDone }: AskProps) {
             </TextField>
           </Stack>
           {isLoading && <Skeleton height={80} />}
-          {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+          {!!error && <ErrorState compact error={error} onRetry={refetchOptions} />}
           {options && (
             <>
               {!subjects.length ? (
@@ -275,7 +276,7 @@ function AuthorisationView({ id, onClose, onChanged }: OpenProps & { id: string 
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={200} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetch} />}
         {a && (
           <Stack sx={{ gap: 1.5, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">

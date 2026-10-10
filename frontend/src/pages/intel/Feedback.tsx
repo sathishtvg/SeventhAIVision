@@ -20,6 +20,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { apiError, exportFeedbackCsv, getFeedbackAnalytics } from '@/api/securityIntelligence'
 import { DECISION_LABEL, pretty, rate } from '@/components/intel/intelFormat'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
+import { ErrorState } from '@/components/states'
 
 const PERIODS = [30, 90, 180, 365]
 const BAR = '#7f93b0'
@@ -56,7 +57,7 @@ function Tally({ title, rows, empty }: { title: string; rows: Record<string, num
 export default function Feedback() {
   const [days, setDays] = useState(30)
   const canExport = usePermission('intel:feedback:export')
-  const { data, error } = useQuery({ queryKey: ['intel-feedback-analytics', days], queryFn: () => getFeedbackAnalytics(days) })
+  const { data, error, refetch: refetchData } = useQuery({ queryKey: ['intel-feedback-analytics', days], queryFn: () => getFeedbackAnalytics(days) })
   const download = useMutation({
     mutationFn: () => exportFeedbackCsv(days),
     onSuccess: (blob) => {
@@ -91,7 +92,7 @@ export default function Feedback() {
         </Stack>
         {download.error && <Alert severity="error" sx={{ mt: 1 }}>{apiError(download.error)}</Alert>}
       </GlassCard>
-      {error ? <Alert severity="error">{apiError(error)}</Alert> : !data ? <Skeleton height={300} /> : (
+      {error ? <ErrorState compact error={error} onRetry={refetchData} /> : !data ? <Skeleton height={300} /> : (
         <>
           <Alert severity="info" sx={{ mb: 2 }} data-testid="feedback-use">{data.use}</Alert>
           <Grid container spacing={1.5} sx={{ mb: 2 }}>

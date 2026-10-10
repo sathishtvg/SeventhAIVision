@@ -19,6 +19,7 @@ import { useAuthStore } from '@/store/auth'
 import { apiError, confirmSummary, discardSummary, draftSummary, editSummary, listSummaries } from '@/api/occurrenceBook'
 import type { ShiftSummary } from '@/api/occurrenceBook'
 import { fmt, summaryState } from '@/components/occurrenceBook/bookFormat'
+import { ErrorState } from '@/components/states'
 
 interface ShiftRow {
   id: string; guard_user_id: string | null; guard_name: string | null; site_name: string | null; scheduled_start: string
@@ -34,7 +35,7 @@ function DraftDialog(props: DraftProps) {
 function DraftForm({ canManage, onClose, onDrafted }: DraftProps) {
   const [shiftId, setShiftId] = useState('')
   const me = useAuthStore((s) => s.user?.id)
-  const { data: shifts, isLoading } = useQuery<ShiftRow[]>({ queryKey: ['shifts', 'for-summary'], queryFn: () => getShifts() })
+  const { data: shifts, isLoading, isLoadingError: shiftsFailed, error: shiftsError, refetch: refetchShifts } = useQuery<ShiftRow[]>({ queryKey: ['shifts', 'for-summary'], queryFn: () => getShifts() })
   // A shift that has not started has nothing to summarise. Somebody who does not
   // manage handovers drafts the summary of their own shift and nobody else's. Newest first.
   const started = (shifts ?? []).filter((s) => s.actual_start && (canManage || s.guard_user_id === me))
@@ -49,7 +50,7 @@ function DraftForm({ canManage, onClose, onDrafted }: DraftProps) {
             The platform writes a draft from what was recorded during the shift. It counts and quotes; it does not
             interpret. You read it, correct it, and confirm it.
           </Alert>
-          {isLoading ? <Skeleton height={56} /> : (
+          {isLoading ? <Skeleton height={56} /> : shiftsFailed ? <ErrorState compact error={shiftsError} onRetry={refetchShifts} /> : (
             <TextField select label="Shift" value={shiftId} onChange={(e) => setShiftId(e.target.value)}
                        helperText={started.length ? undefined
                          : canManage ? 'No shift has started.' : 'You have no shift that has started.'}>
@@ -140,7 +141,7 @@ export default function BookSummaries({ canManage }: { canManage: boolean }) {
   const qc = useQueryClient()
   const [drafting, setDrafting] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
-  const { data, isLoading, error } = useQuery({ queryKey: ['dob-summaries'], queryFn: () => listSummaries() })
+  const { data, isLoading, error, refetch: refetchData } = useQuery({ queryKey: ['dob-summaries'], queryFn: () => listSummaries() })
   const again = () => qc.invalidateQueries({ queryKey: ['dob-summaries'] })
   const items = data?.items ?? []
   const reading = items.find((s) => s.id === openId) ?? null
@@ -155,7 +156,7 @@ export default function BookSummaries({ canManage }: { canManage: boolean }) {
           <Button variant="contained" onClick={() => setDrafting(true)}>Draft a summary</Button>
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading ? <Skeleton height={160} /> : !items.length && !error ? (
         <Alert severity="info">No shift has a summary yet.</Alert>
       ) : (

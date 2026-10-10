@@ -35,6 +35,7 @@ import {
   completeCamera, completePatrol, getSession, snapshotImageUrl,
 } from '@/api/virtualPatrol'
 import type { SessionQuestion } from '@/api/virtualPatrol'
+import { ErrorState } from '@/components/states'
 
 type AnswerMap = Record<string, unknown>
 
@@ -120,7 +121,7 @@ function CameraStep({ sessionId, onAdvance }: { sessionId: string; onAdvance: ()
   const [error, setError] = useState<string | null>(null)
   const [snapError, setSnapError] = useState<string | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['vp-current-camera', sessionId],
     queryFn: () => currentCamera(sessionId),
   })
@@ -168,6 +169,7 @@ function CameraStep({ sessionId, onAdvance }: { sessionId: string; onAdvance: ()
   })
 
   if (isLoading) return <Skeleton height={320} />
+  if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   if (!camera) {
     return (
       <Alert severity="success" icon={<CheckCircleIcon />}>
@@ -331,7 +333,7 @@ function ActivePatrol({ sessionId, onExit }: { sessionId: string; onExit: () => 
 export function PatrolExecutionPage() {
   const qc = useQueryClient()
   const [active, setActive] = useState<string | null>(null)
-  const { data: patrols, isLoading } = useQuery({
+  const { data: patrols, isLoading, isLoadingError: patrolsFailed, error: patrolsError, refetch: refetchPatrols } = useQuery({
     queryKey: ['vp-my-patrols'], queryFn: () => myPatrols(),
   })
   const start = useMutation({
@@ -350,7 +352,7 @@ export function PatrolExecutionPage() {
           <ActivePatrol sessionId={active} onExit={() => setActive(null)} />
         ) : (
           <Box sx={{ p: 3 }}>
-            {isLoading ? <Skeleton height={160} /> : !patrols?.length ? (
+            {isLoading ? <Skeleton height={160} /> : patrolsFailed ? <ErrorState compact error={patrolsError} onRetry={refetchPatrols} /> : !patrols?.length ? (
               <Alert severity="info">
                 You have no patrols waiting. One will appear here when it is due.
               </Alert>

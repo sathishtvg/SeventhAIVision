@@ -29,6 +29,7 @@ import { openLiveWallWindow } from '@/lib/liveWallWindow'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import type { SiteStatus, RecentAlert, GuardStatus } from '@/api/commandCentre'
+import { ErrorState } from '@/components/states'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -356,7 +357,7 @@ export default function CommandCentre() {
   const [now, setNow] = useState(new Date())
   const [selectedAlert, setSelectedAlert] = useState<RecentAlert | null>(null)
   const { kiosk, toggleKiosk } = useKioskToggle()
-  const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useQuery({
+  const { data, isLoading, isFetching, refetch, dataUpdatedAt, isLoadingError: dataFailed, error: dataError } = useQuery({
     queryKey: ['cc-overview'],
     queryFn: getCCOverview,
     refetchInterval: 30_000,
@@ -474,7 +475,7 @@ export default function CommandCentre() {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
           <CircularProgress size={40} />
         </Box>
-      ) : (
+      ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetch} /> : (
         <>
           {/* ── KPI row ── */}
           <Box sx={{

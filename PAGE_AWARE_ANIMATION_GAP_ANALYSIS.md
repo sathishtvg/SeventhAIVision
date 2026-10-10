@@ -265,3 +265,32 @@ How the brief's groups map onto the pages that exist.
 
 The page-by-page matrix of what was done is written in phase 7, from the code
 as it then is.
+
+## 9. Where the conversion stands
+
+Kept up to date as the phases land. The exact list of pages not yet done is
+`frontend/src/motion/conversion.ts`, which a test holds to the pages
+themselves, so it cannot say more than is true.
+
+| Rule | Done | How |
+|---|---|---|
+| Every page arrives in the way its kind of page should; placeholders wait before they show; less motion for whoever asks; no request fails without a word | All pages | Phases 1-2, in the shell and the style sheet - no page was edited for it |
+| 2. A failed request says it failed | 102 of the 110 pages that fetch (226 places in 116 files, pages and the components they use) | A script over each page's syntax tree, then by hand where it could not be sure |
+| 1. A placeholder shaped like the content, on the pages that had a spinner or nothing | Not yet | Phases 3-6 |
+| 4. A changed filter keeps the last rows | Not yet | Phases 3-6 |
+| What is new is marked and said | Not yet | Phases 4-5 |
+| Video, patrol, drone, map, export states | Not yet | Phases 4-6 |
+
+What rule 2 found beyond what the audit had counted:
+
+- **A placeholder that never ends.** Seven places waited with
+  `loading || !data`. When the request had failed there was no data and never
+  would be, so the placeholder stayed for ever - an invoice, a payroll run, a
+  roster batch, the AI layer's status and its decision policy, a handover, a
+  man-down event. Each now answers "failed" first.
+- **A patrol in flight replaced by an error.** The drone patrol page fetches
+  its session every five seconds while the drone flies, and showed an error in
+  place of the whole page if any one of those fetches failed. It is replaced
+  now only when there is no session to show at all.
+- 42 places showed a request's error in their own way (a red alert with the
+  reason, and no way to try again). They show the shared state, which has one.

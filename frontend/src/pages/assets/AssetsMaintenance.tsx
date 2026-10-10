@@ -33,6 +33,7 @@ import {
   HEALTH_COLOUR, HEALTH_LABEL, KIND_LABEL, ORDER_COLOUR, ORDER_LABEL, ORIGIN_LABEL, STATUS_LABEL, WARRANTY_LABEL,
   dueIn, every, factLines, fmt, fmtDate, heldBy, madeBy, sinceLine, warrantyLine,
 } from '@/components/assets/assetFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const STATES: HealthState[] = ['DOWN', 'DEGRADED', 'NOT_KNOWN', 'OK', 'OFF']
@@ -43,7 +44,7 @@ function HealthTab() {
   const [state, setState] = useState<HealthState | ''>('')
   const [open, setOpen] = useState<{ kind: DeviceKind; device_id: string } | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['device-health', siteId, kind, state],
     queryFn: () => getHealth({ site_id: siteId || undefined, kind: kind || undefined, state: state || undefined }),
     placeholderData: keepPreviousData, refetchInterval: 60_000,
@@ -80,7 +81,7 @@ function HealthTab() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {isLoading ? <Skeleton height={200} /> : !data?.items.length && !error ? (
           <Alert severity="info">No device matches.</Alert>
         ) : (
@@ -132,7 +133,7 @@ function RegisterTab() {
   const [known, setKnown] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData2 } = useQuery({
     queryKey: ['security-assets', q, siteId, kind, status, warranty],
     queryFn: () => getRegister({ q: q || undefined, site_id: siteId || undefined, kind: kind || undefined,
                                  status: status || undefined, warranty: warranty || undefined }),
@@ -176,7 +177,7 @@ function RegisterTab() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData2} />}
         {isLoading ? <Skeleton height={200} /> : !items.length && !error ? (
           <Alert severity="info">
             {data?.can_manage ? 'No asset matches. Add one, or register the devices the platform already knows.'
@@ -237,7 +238,7 @@ function OrdersTab() {
   const [raising, setRaising] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const [hours, setHours] = useState('')
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData3 } = useQuery({
     queryKey: ['work-orders', q, state, mine],
     queryFn: () => listOrders({ q: q || undefined, state: state || undefined, mine: mine || undefined }),
     placeholderData: keepPreviousData,
@@ -300,7 +301,7 @@ function OrdersTab() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData3} />}
         {isLoading ? <Skeleton height={200} /> : !items.length && !error ? (
           <Alert severity="info">No work order matches.</Alert>
         ) : (
@@ -350,7 +351,7 @@ function OrdersTab() {
 function SchedulesTab() {
   const qc = useQueryClient()
   const [adding, setAdding] = useState(false)
-  const { data, isLoading, error } = useQuery({ queryKey: ['maintenance-schedules'], queryFn: listSchedules })
+  const { data, isLoading, error, refetch: refetchData4 } = useQuery({ queryKey: ['maintenance-schedules'], queryFn: listSchedules })
   const again = () => qc.invalidateQueries({ queryKey: ['maintenance-schedules'] })
   const flip = useMutation({
     mutationFn: (s: { id: string; is_active: boolean }) => changeSchedule(s.id, { is_active: !s.is_active }).then(again) })
@@ -365,7 +366,7 @@ function SchedulesTab() {
           {data?.can_manage && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAdding(true)}>Add a schedule</Button>)}
         </Stack>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData4} />}
         {flip.isError && <Alert severity="error">{apiError(flip.error)}</Alert>}
         {isLoading ? <Skeleton height={160} /> : !items.length && !error ? (
           <Alert severity="info">No schedule is kept.</Alert>

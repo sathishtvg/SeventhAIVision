@@ -24,6 +24,7 @@ import { listDoors } from '@/api/access'
 import { apiError, changePlace, drawPlace, listPlaces, restorePlace, retirePlace } from '@/api/siteMap'
 import type { Feature, PlaceKind } from '@/api/siteMap'
 import { PLACE_LABEL, about } from '@/components/securityMap/mapFormat'
+import { ErrorState } from '@/components/states'
 
 interface Draft {
   kind: PlaceKind; name: string; parentId: string; level: string; doorId: string; description: string
@@ -139,7 +140,7 @@ export default function SitePlaces() {
   const [asking, setAsking] = useState<{ editing: Feature | null } | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const site = (sites ?? []).find((s) => s.id === siteId) ?? null
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['site-places', siteId, retired], queryFn: () => listPlaces({ site_id: siteId, include_retired: retired }),
     enabled: !!siteId,
   })
@@ -169,7 +170,7 @@ export default function SitePlaces() {
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
         {!siteId ? <Alert severity="info">Choose a site to see or draw its places.</Alert>
-          : isLoading ? <Skeleton height={200} /> : !places.length ? (
+          : isLoading ? <Skeleton height={200} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !places.length ? (
             <Alert severity="info">No places have been drawn for this site. The security map shows its cameras,
               checkpoints and guards all the same.</Alert>
           ) : (
