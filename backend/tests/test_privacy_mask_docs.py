@@ -27,6 +27,7 @@ from app.routers import pdpa, streams
 from app.services import privacy_mask
 from app.services import vpatrol_snapshot as snap
 from tests._repo import REPO_ROOT, requires_repo_tree
+from tests.test_drone_clients import _served, client_calls
 
 pytestmark = requires_repo_tree
 
@@ -41,6 +42,13 @@ CHANGED = {
     "backend/app/ingestion_main.py", "backend/app/routers/streams.py", "backend/app/routers/pdpa.py",
     "backend/app/services/vpatrol_snapshot.py", "backend/app/services/hls_stream.py", "frontend/src/pages/Zones.tsx",
     "frontend/src/pages/LiveWall.tsx", "frontend/src/pages/intel/Situation.tsx",
+}
+
+
+#: The existing phone files the phone's part changed, a day later.
+PHONE_CHANGED = {
+    "mobile/src/screens/ZoneDrawScreen.tsx", "mobile/src/screens/CameraLiveScreen.tsx",
+    "mobile/src/screens/LiveWallScreen.tsx", "mobile/src/navigation/index.tsx",
 }
 
 
@@ -245,7 +253,58 @@ def test_no_player_plays_a_fixed_camera_through_hls_without_asking_first():
     assert "mayPlayHls: (id: string) => known && !ids.has(id)" in hook, "until it is known, the answer is the masked view"
     # The phone plays no HLS at all: its live view is the masked one.
     assert not [p for p, text_ in _sources(PHONE, (".ts", ".tsx")).items() if "/hls/" in text_]
-    assert "The phone draws nothing. Its live view is the MJPEG one, which is masked." in _flat(_doc())
+    assert "Its live view is the MJPEG one, which is masked; it plays no HLS." in _flat(_doc())
+
+
+def test_the_phone_uses_the_routes_the_web_uses_and_says_what_the_web_says():
+    spec = app.openapi()
+    calls = set(client_calls(PHONE / "api" / "privacyZones.ts"))
+    assert calls == {("GET", "/api/v1/privacy/zones"), ("POST", "/api/v1/privacy/zones"),
+                     ("DELETE", "/api/v1/privacy/zones/{}"), ("GET", "/api/v1/privacy/masked-cameras")}, calls
+    assert not [f"{m} {p}" for m, p in calls if not _served(m, p, spec)]
+    assert "with no route added for it" in _flat(_doc()) and len(_privacy_routes()) == 5
+    client = (PHONE / "api" / "privacyZones.ts").read_text(encoding="utf-8")
+    # The list is asked for by camera, which the route takes; and a corner is sent as an x and a y and nothing else.
+    taken = {p["name"] for p in spec["paths"]["/api/v1/privacy/zones"]["get"]["parameters"]}
+    assert "params: { camera_id: cameraId }" in client and "camera_id" in taken
+    assert "polygon: zone.polygon.map((p) => ({ x: p.x, y: p.y }))" in client
+    body = spec["components"]["schemas"]["PrivacyZoneCreate"]
+    assert {"camera_id", "name", "polygon"} <= set(body["properties"]) and body["required"] == ["camera_id", "polygon"]
+
+    # What a zone does is said in the same words wherever one is drawn.
+    def words(path) -> dict[str, str]:
+        text_ = path.read_text(encoding="utf-8")
+        return {name: re.sub(r"'\s*\+\s*'", "", re.sub(r"\s*\n\s*", " ", value)).strip()
+                for name, value in re.findall(r"export const (WHAT_A_ZONE_DOES|WHAT_DELETING_DOES|MASKED_LABEL) =\s*(.+?)(?:\n\n|\s*\Z)", text_, re.S)}
+
+    on_the_web = words(WEB / "components" / "privacy" / "privacyZoneWords.ts")
+    on_the_phone = words(PHONE / "lib" / "privacyZoneWords.ts")
+    assert set(on_the_phone) == {"WHAT_A_ZONE_DOES", "WHAT_DELETING_DOES", "MASKED_LABEL"}
+    assert on_the_phone == {name: on_the_web[name] for name in on_the_phone}
+
+    # Drawing and deleting are offered to somebody known to manage privacy - not while that is still loading -
+    # and each asks before it is done.
+    phone_words = (PHONE / "lib" / "privacyZoneWords.ts").read_text(encoding="utf-8")
+    assert "return !!permissions && permissions.includes(PRIVACY_PERMISSION)" in phone_words
+    assert "PRIVACY_PERMISSION = 'privacy:manage'" in phone_words
+    draw = (PHONE / "screens" / "ZoneDrawScreen.tsx").read_text(encoding="utf-8")
+    assert "const mayMask = managesPrivacy(useAuthStore((s) => s.permissions))" in draw
+    assert "mayMask ? ['restricted', 'crowd', 'privacy'] : ['restricted', 'crowd']" in draw
+    assert draw.index("Alert.alert('Mask this part of the picture?', WHAT_A_ZONE_DOES, [") < draw.index(
+        "{ text: 'Mask it', style: 'destructive', onPress: () => save() }")
+    assert "onPress={onSave}" in draw and "onPress={() => save()}" not in draw, "the button asks; only the answer saves"
+    live = (PHONE / "screens" / "CameraLiveScreen.tsx").read_text(encoding="utf-8")
+    assert "const canOpenPrivacy = mayMask && navigation.getState?.()?.routeNames?.includes('CameraPrivacyZones')" in live
+    zones = (PHONE / "screens" / "CameraPrivacyZonesScreen.tsx").read_text(encoding="utf-8")
+    assert zones.index("Alert.alert('Delete this privacy zone?'") < zones.index(
+        "{ text: 'Delete the zone', style: 'destructive', onPress: () => remove.mutate(zone.id) }")
+    assert zones.count("remove.mutate(") == 1, "a zone is deleted from the answer to the question, and nowhere else"
+    navigation = (PHONE / "navigation" / "index.tsx").read_text(encoding="utf-8")
+    assert '<CamerasStack.Screen name="CameraPrivacyZones" component={CameraPrivacyZonesScreen}' in navigation
+    section = _section(5)
+    for said in ("a third type, Privacy", "asks once more", "Deleting asks first and says what it changes.",
+                 "While a person's permissions are still loading the phone offers neither button"):
+        assert said in section, said
 
 
 def test_the_screen_says_what_the_document_says_a_zone_does_and_does_not_do():
@@ -274,7 +333,8 @@ def test_the_screen_says_what_the_document_says_a_zone_does_and_does_not_do():
 def test_the_files_the_document_names_exist_and_the_record_names_what_changed():
     files = _doc().split("## 6. Files", 1)[1].split("\n## ", 1)[0]
     new = re.findall(r"^- `([^`]+)`$", files, re.M)
-    assert len(new) == 8 and all((REPO_ROOT / p).exists() for p in new), [p for p in new if not (REPO_ROOT / p).exists()]
+    assert len(new) == 14 and all((REPO_ROOT / p).exists() for p in new), [p for p in new if not (REPO_ROOT / p).exists()]
+    assert len([p for p in new if p.startswith("mobile/")]) == 6
     changed = set(re.findall(r"`((?:backend|frontend)/[A-Za-z_/.]+)`", files.split("**Existing files changed:**", 1)[1]))
     assert changed == CHANGED
     for path in CHANGED:
@@ -286,3 +346,13 @@ def test_the_files_the_document_names_exist_and_the_record_names_what_changed():
     flat = _flat(built)
     assert "decided the same day that it be built" in flat and "`PRIVACY_MASKING.md`" in flat
     assert "No migration" in flat and "No permission was added" in flat
+    # The phone's part, a day later: the document, the design's addendum and the record name the same four files.
+    for text_, heading in ((files, "**Existing phone files changed:**"), (built, "**Existing phone files changed (4):**"),
+                           (DESIGN.read_text(encoding="utf-8").split("## Addendum, 10 October 2026: the phone", 1)[1],
+                            "Existing phone files changed:")):
+        listed = set(re.findall(r"`(mobile/[A-Za-z_/.]+)`", text_.split(heading, 1)[1].split("\n\n", 1)[0]))
+        assert listed == PHONE_CHANGED, (heading, listed)
+    for path in PHONE_CHANGED:
+        assert re.search(r"privacyZone|useMaskedCameras|CameraPrivacyZones", (REPO_ROOT / path).read_text(encoding="utf-8")), path
+    assert "chose that it draw, list and delete" in flat and "The phone has 57 screens." in flat
+    assert len(list((PHONE / "screens").glob("*Screen.tsx"))) == 57

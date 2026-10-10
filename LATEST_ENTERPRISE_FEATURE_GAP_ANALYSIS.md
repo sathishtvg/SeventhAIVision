@@ -916,3 +916,20 @@ For Windows: desktop 1.0.6 is the web build of this point, with the Privacy
 Zones tab and a live wall that shows a masked camera through the masked view -
 `desktop/package.json`, `desktop/package-lock.json`. Unsigned, with the same
 app id and MSI upgrade code, so it installs over 1.0.5.
+
+For the phone, on 10 October 2026: the owner asked that the phone be brought
+into it, and chose that it draw, list and delete. Whoever is known to hold
+`privacy:manage` draws a privacy zone in the Draw Zone screen that was there -
+a third type, which says what it does and asks once more before it masks - and
+opens the privacy zones of a camera from its live view, where a zone is deleted
+after the phone has asked. A camera with a zone is labelled on its live view
+and on its tile of the phone's live wall. No route was added: the phone uses
+the ones the web uses, and `backend/tests/test_privacy_mask_docs.py` holds it
+to them and its words to the web's.
+
+**Existing phone files changed (4):** `mobile/src/screens/ZoneDrawScreen.tsx`,
+`mobile/src/screens/CameraLiveScreen.tsx`,
+`mobile/src/screens/LiveWallScreen.tsx`, `mobile/src/navigation/index.tsx`.
+
+The phone has 57 screens. A restricted zone and a crowd zone are drawn on it as
+they were. None of it has been run on a device.

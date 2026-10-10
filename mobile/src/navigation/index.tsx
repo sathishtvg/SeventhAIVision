@@ -17,6 +17,7 @@ import { CamerasScreen }               from '@/screens/CamerasScreen'
 import { CameraLiveScreen }            from '@/screens/CameraLiveScreen'
 import { LiveWallScreen }              from '@/screens/LiveWallScreen'
 import { ZoneDrawScreen }              from '@/screens/ZoneDrawScreen'
+import { CameraPrivacyZonesScreen }    from '@/screens/CameraPrivacyZonesScreen'
 import { SitesScreen }                 from '@/screens/SitesScreen'
 import { WatchlistsScreen }            from '@/screens/WatchlistsScreen'
 import { EvidenceScreen }              from '@/screens/EvidenceScreen'
@@ -89,7 +90,8 @@ export type CamerasStackParamList = {
   Sites:       undefined
   CameraLive:  { cameraId: string; streamId: string; cameraName: string }
   LiveWall:    undefined
-  ZoneDraw:    { cameraId: string; streamId: string; cameraName: string }
+  ZoneDraw:    { cameraId: string; streamId: string; cameraName: string; kind?: 'privacy' }
+  CameraPrivacyZones: { cameraId: string; streamId: string; cameraName: string }
 }
 
 export type PatrolStackParamList = {
@@ -200,6 +202,7 @@ function CamerasNavigator() {
       <CamerasStack.Screen name="CameraLive"  component={CameraLiveScreen} options={{ title: 'Live View', headerBackTitle: 'Back' }} />
       <CamerasStack.Screen name="LiveWall"    component={LiveWallScreen}   options={{ title: 'Live Wall' }} />
       <CamerasStack.Screen name="ZoneDraw"    component={ZoneDrawScreen}   options={{ title: 'Draw Zone', headerBackTitle: 'Back' }} />
+      <CamerasStack.Screen name="CameraPrivacyZones" component={CameraPrivacyZonesScreen} options={{ title: 'Privacy Zones', headerBackTitle: 'Back' }} />
     </CamerasStack.Navigator>
   )
 }
