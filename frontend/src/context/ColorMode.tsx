@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { ThemeProvider, CssBaseline } from '@mui/material'
 import { createGlassTheme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
+import { applyMotionPreference, isMotionPreference } from '@/motion/preference'
+import type { MotionPreference } from '@/motion/preference'
 
 type ColorMode = 'light' | 'dark'
 
@@ -13,6 +15,9 @@ interface ColorModeContextValue {
   setBrandColor: (color: string) => void
   /** Back to the shipped defaults for this user. */
   reset: () => void
+  /** How much the app moves for this person: the system's setting, less, or all of it. */
+  motion: MotionPreference
+  setMotion: (motion: MotionPreference) => void
 }
 
 export const DEFAULT_BRAND = '#6C63FF'
@@ -35,6 +40,8 @@ const ColorModeContext = createContext<ColorModeContextValue>({
   brandColor: DEFAULT_BRAND,
   setBrandColor: () => {},
   reset: () => {},
+  motion: 'system',
+  setMotion: () => {},
 })
 
 export function useColorMode() {
@@ -55,7 +62,9 @@ export function useColorMode() {
  */
 const prefsKey = (userId?: string | null) => `seventh-ai-ui-prefs:${userId ?? 'anon'}`
 
-interface StoredPrefs { mode?: ColorMode; brandColor?: string }
+interface StoredPrefs { mode?: ColorMode; brandColor?: string; motion?: MotionPreference }
+
+const motionOf = (p: StoredPrefs): MotionPreference => (isMotionPreference(p.motion) ? p.motion : 'system')
 
 function loadPrefs(userId?: string | null): StoredPrefs {
   try {
@@ -86,6 +95,7 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
   const [brandColor, setBrandColorState] = useState<string>(
     () => loadPrefs(userId).brandColor ?? DEFAULT_BRAND,
   )
+  const [motion, setMotionState] = useState<MotionPreference>(() => motionOf(loadPrefs(userId)))
 
   // Re-read when the signed-in user changes: sign in, sign out, or one
   // operator handing the desk to another. Without this the previous user's
@@ -94,30 +104,41 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
     const p = loadPrefs(userId)
     setMode(p.mode ?? 'dark')
     setBrandColorState(p.brandColor ?? DEFAULT_BRAND)
+    setMotionState(motionOf(p))
   }, [userId])
+
+  // Written on the page's root, where the style sheet and the code that moves
+  // things read it. Here and not in the setter, so it also follows a change of
+  // user and is right from the first frame after a reload.
+  useEffect(() => { applyMotionPreference(motion) }, [motion])
 
   const toggle = useCallback(() => {
     setMode((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
-      savePrefs(userId, { mode: next, brandColor })
+      savePrefs(userId, { mode: next, brandColor, motion })
       return next
     })
-  }, [userId, brandColor])
+  }, [userId, brandColor, motion])
 
   const setBrandColor = useCallback((color: string) => {
     setBrandColorState(color)
-    savePrefs(userId, { mode, brandColor: color })
-  }, [userId, mode])
+    savePrefs(userId, { mode, brandColor: color, motion })
+  }, [userId, mode, motion])
 
   const reset = useCallback(() => {
     setBrandColorState(DEFAULT_BRAND)
-    savePrefs(userId, { mode, brandColor: DEFAULT_BRAND })
-  }, [userId, mode])
+    savePrefs(userId, { mode, brandColor: DEFAULT_BRAND, motion })
+  }, [userId, mode, motion])
+
+  const setMotion = useCallback((next: MotionPreference) => {
+    setMotionState(next)
+    savePrefs(userId, { mode, brandColor, motion: next })
+  }, [userId, mode, brandColor])
 
   const theme = useMemo(() => createGlassTheme(mode, brandColor), [mode, brandColor])
   const value = useMemo(
-    () => ({ mode, toggle, brandColor, setBrandColor, reset }),
-    [mode, toggle, brandColor, setBrandColor, reset],
+    () => ({ mode, toggle, brandColor, setBrandColor, reset, motion, setMotion }),
+    [mode, toggle, brandColor, setBrandColor, reset, motion, setMotion],
   )
 
   return (

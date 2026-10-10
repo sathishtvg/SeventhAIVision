@@ -1,4 +1,5 @@
 import { createTheme } from '@mui/material/styles'
+import { duration as motionTime, easing as motionEase } from '@/motion/tokens'
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 
@@ -90,13 +91,25 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
 
     shape: { borderRadius: 12 },
 
+    // The timings are the app's own (src/motion/tokens.ts), so a dialog, a
+    // drawer and a hand-written transition take the same time. They were
+    // written out here, and had drifted from the CSS variables: "standard"
+    // was 250 ms here and 220 ms there.
     transitions: {
-      duration:  { shortest: 100, shorter: 150, short: 200, standard: 250, complex: 350 },
+      duration: {
+        shortest: 100,
+        shorter: motionTime.fast,
+        short: 200,
+        standard: motionTime.standard,
+        complex: motionTime.slow,
+        enteringScreen: motionTime.panel,
+        leavingScreen: motionTime.exit,
+      },
       easing: {
-        easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
-        easeOut:   'cubic-bezier(0.0, 0.0, 0.2, 1)',
-        easeIn:    'cubic-bezier(0.4, 0, 1, 1)',
-        sharp:     'cubic-bezier(0.4, 0, 0.6, 1)',
+        easeInOut: motionEase.inOut,
+        easeOut:   motionEase.out,
+        easeIn:    motionEase.in,
+        sharp:     motionEase.sharp,
       },
     },
 
@@ -621,11 +634,19 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
       },
 
       MuiSkeleton: {
+        // One look for every placeholder: the shimmer. It was a pulse wherever
+        // a page did not say - and a pulse is an animation of the placeholder's
+        // own opacity, which would cancel the wait before a placeholder is
+        // seen (motion/motion.css). The shimmer moves a band across it and leaves its
+        // opacity alone.
+        defaultProps: { animation: 'wave' },
         styleOverrides: {
           root: {
             backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
             '&::after': {
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)',
+              background: isDark
+                ? 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)'
+                : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
             },
           },
         },

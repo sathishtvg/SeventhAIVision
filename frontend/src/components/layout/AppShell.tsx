@@ -11,6 +11,8 @@ import { useNativePickerOnClick } from '@/hooks/useNativePickerOnClick'
 import { ToastContainer } from './ToastContainer'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { useFocusModeStore } from '@/store/focusMode'
+import { pageEnterClass } from '@/motion'
+import { LiveAnnouncer, LoadFailureNotice } from '@/components/states'
 
 const PAGE_TITLES: Record<string, string> = {
   '/':                   'Dashboard',
@@ -168,7 +170,7 @@ export function AppShell() {
         <SupportSessionBanner />
         <Box
           key={location.pathname}
-          className="page-enter"
+          className={pageEnterClass(location.pathname)}
           sx={{
             flexGrow: 1,
             overflowY: 'auto',
@@ -199,6 +201,8 @@ export function AppShell() {
         </Box>
       </Box>
       <ToastContainer />
+      <LoadFailureNotice />
+      <LiveAnnouncer />
     </Box>
   )
 }
