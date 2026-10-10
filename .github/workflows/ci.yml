@@ -234,21 +234,34 @@ jobs:
       - name: Start the test camera source
         run: docker compose -f docker/docker-compose.yml up -d mediamtx
 
-      - name: Wait for a live RTSP stream
+      # The end-to-end run reads cam1, cam2 and cam3, and it opens cam3 first.
+      # Each is waited for by name: cam1 being there says nothing of the other
+      # two, which are published by a different encoder. (Waiting was not what
+      # failed the run on 10 October 2026 - cam3 was then read back from cam2
+      # inside the source and lost its packets; docker/mediamtx/mediamtx.yml
+      # says what replaced that - but a run that begins before its cameras are
+      # there fails the same way.)
+      - name: Wait for the live RTSP streams
         run: |
-          for i in $(seq 1 30); do
-            if docker compose -f docker/docker-compose.yml exec -T api \
-                 ffprobe -rtsp_transport tcp -timeout 5000000 \
-                 -i rtsp://mediamtx:8554/cam1 -show_entries stream=codec_name \
-                 -of csv=p=0 >/dev/null 2>&1; then
-              echo "cam1 is publishing"
-              exit 0
+          for cam in cam1 cam2 cam3; do
+            ready=no
+            for i in $(seq 1 30); do
+              if docker compose -f docker/docker-compose.yml exec -T api \
+                   ffprobe -rtsp_transport tcp -timeout 5000000 \
+                   -i rtsp://mediamtx:8554/$cam -show_entries stream=codec_name \
+                   -of csv=p=0 >/dev/null 2>&1; then
+                echo "$cam is publishing"
+                ready=yes
+                break
+              fi
+              sleep 4
+            done
+            if [ "$ready" != yes ]; then
+              echo "::error::mediamtx never published $cam; the end-to-end run cannot capture a frame"
+              docker compose -f docker/docker-compose.yml logs mediamtx | tail -60
+              exit 1
             fi
-            sleep 4
           done
-          echo "::error::mediamtx never published cam1; the end-to-end run cannot capture a frame"
-          docker compose -f docker/docker-compose.yml logs mediamtx | tail -40
-          exit 1
 
       - name: Virtual patrol end-to-end (§52)
         run: |
@@ -256,6 +269,12 @@ jobs:
             scripts/ops/vpatrol_e2e.py api:/tmp/vpatrol_e2e.py
           docker compose -f docker/docker-compose.yml exec -T api \
             python /tmp/vpatrol_e2e.py
+
+      # A snapshot that fails here is a question about the camera source, and
+      # nothing else in the log answers it.
+      - name: What the camera source said, if the end-to-end run failed
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs mediamtx | tail -80
 
       - name: Tear down
         if: always()
