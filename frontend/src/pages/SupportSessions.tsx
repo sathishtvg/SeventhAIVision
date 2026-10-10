@@ -28,6 +28,7 @@ import {
 } from '@/api/supportSessions'
 import { getTenants } from '@/api/tenants'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 /** Matches SUPPORT_TOKEN_MAX_MINUTES on the server, which clamps anything
  *  longer. An eight-hour "temporary" is a standing grant with extra steps. */
@@ -56,7 +57,7 @@ export default function SupportSessions() {
     useState<'read_only' | 'elevated'>('read_only')
   const [error, setError] = useState('')
 
-  const { data: sessions, isLoading } = useQuery({
+  const { data: sessions, isLoading, isLoadingError: sessionsFailed, error: sessionsError, refetch: refetchSessions } = useQuery({
     queryKey: ['support-sessions'],
     queryFn: listSupportSessions,
   })
@@ -120,7 +121,7 @@ export default function SupportSessions() {
       <GlassCard>
         {isLoading ? (
           <Skeleton variant="rectangular" height={180} />
-        ) : !sessions?.length ? (
+        ) : sessionsFailed ? <ErrorState compact error={sessionsError} onRetry={refetchSessions} /> : !sessions?.length ? (
           <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
             No support session has been opened yet.
           </Typography>

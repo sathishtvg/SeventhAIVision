@@ -31,6 +31,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { listIpRules, addIpRule, deleteIpRule, toggleIpRule } from '@/api/ipallowlist'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 function fmtDate(d: string | null) {
   if (!d) return '—'
@@ -108,7 +109,7 @@ export default function IpAllowlist() {
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
 
-  const { data: rules = [], isLoading } = useQuery({
+  const { data: rules = [], isLoading, isLoadingError: rulesFailed, error: rulesError, refetch: refetchRules } = useQuery({
     queryKey: ['ip-allowlist'],
     queryFn: listIpRules,
   })
@@ -185,7 +186,7 @@ export default function IpAllowlist() {
                         ))}
                       </TableRow>
                     ))
-                  : rules.length === 0
+                  : rulesFailed ? <TableErrorRow error={rulesError} onRetry={refetchRules} /> : rules.length === 0
                     ? (
                       <TableRow>
                         <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>

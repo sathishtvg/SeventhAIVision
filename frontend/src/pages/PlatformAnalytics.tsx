@@ -32,6 +32,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import {
   getModuleAdoption, getPlatformGrowth, getTenantHealth,
 } from '@/api/platform'
+import { ErrorState } from '@/components/states'
 
 function gb(bytes: number) {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`
@@ -77,7 +78,7 @@ function TrendBars({ points, label, colour = '#6C63FF' }: {
 export default function PlatformAnalytics() {
   const navigate = useNavigate()
 
-  const { data: growth, isLoading } = useQuery({
+  const { data: growth, isLoading, isLoadingError: growthFailed, error: growthError, refetch: refetchGrowth } = useQuery({
     queryKey: ['platform-growth'], queryFn: () => getPlatformGrowth(90),
   })
   const { data: adoption } = useQuery({
@@ -104,7 +105,7 @@ export default function PlatformAnalytics() {
 
       {isLoading ? (
         <Skeleton variant="rectangular" height={200} sx={{ mb: 2 }} />
-      ) : points.length < 2 ? (
+      ) : growthFailed ? <ErrorState compact error={growthError} onRetry={refetchGrowth} /> : points.length < 2 ? (
         // Honest rather than decorative: one point is not a trend, and drawing
         // a flat line through it would imply a stability nobody measured.
         <Alert severity="info" sx={{ mb: 2 }}>

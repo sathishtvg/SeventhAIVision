@@ -30,6 +30,7 @@ import { ConfidenceText, DroneMap, EventStatusChip, FitTo, LicenceBanner, RiskCh
 import { RISK_COLOR, droneIcon, fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { formatDistance } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 const OPEN = ['NEW', 'ACKNOWLEDGED', 'INVESTIGATING', 'ESCALATED']
 
@@ -269,7 +270,7 @@ function CctvPlayback({ cam, onClose }: { cam: CctvCamera; onClose: () => void }
 function Cctv({ eventId, canCorrelate }: { eventId: string; canCorrelate: boolean }) {
   const qc = useQueryClient()
   const [playing, setPlaying] = useState<CctvCamera | null>(null)
-  const { data, isLoading } = useQuery({ queryKey: ['drone-event-cctv', eventId], queryFn: () => getEventCctv(eventId) })
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['drone-event-cctv', eventId], queryFn: () => getEventCctv(eventId) })
   const redo = useMutation({
     mutationFn: () => correlateEvent(eventId),
     onSuccess: (v) => { qc.setQueryData(['drone-event-cctv', eventId], v); qc.invalidateQueries({ queryKey: ['drone-event', eventId] }) },
@@ -282,7 +283,7 @@ function Cctv({ eventId, canCorrelate }: { eventId: string; canCorrelate: boolea
           {redo.isPending ? 'Looking…' : 'Look again'}</Button>}
       </Stack>
       {redo.error && <Alert severity="error" sx={{ mb: 1 }}>{apiError(redo.error)}</Alert>}
-      {isLoading ? <Skeleton height={100} /> : !data?.cameras.length ? (
+      {isLoading ? <Skeleton height={100} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !data?.cameras.length ? (
         <Typography variant="body2" color="text.secondary">
           {data?.location.note ?? 'No fixed camera covers or is near this spot.'}</Typography>
       ) : (

@@ -42,6 +42,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import type { HeatmapCamera } from '@/types/api'
+import { ErrorState } from '@/components/states'
 
 const TIME_OPTIONS = [
   { label: 'Last 1h', value: 1 },
@@ -129,7 +130,7 @@ export default function Heatmap() {
   const [siteId, setSiteId] = useState('')
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
-  const { data: cameras = [], isLoading, isError } = useQuery({
+  const { data: cameras = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['heatmap', hours, moduleType, siteId],
     queryFn: () => getHeatmapData(hours, moduleType === 'All Modules' ? undefined : moduleType, siteId || undefined),
   })
@@ -196,7 +197,7 @@ export default function Heatmap() {
       </Stack>
 
       {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}
-      {isError && <Alert severity="error">Failed to load heatmap data.</Alert>}
+      {isError && <ErrorState error={error} onRetry={refetch} title="Could not load the heatmap" />}
 
       {!isLoading && !isError && (
         <>

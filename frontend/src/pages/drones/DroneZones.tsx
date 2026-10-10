@@ -27,6 +27,7 @@ import { ZoneDrawer, ZoneLayer } from '@/components/drones/MapEditors'
 import type { ZoneDraft } from '@/components/drones/geo'
 import { draftComplete, draftFromZone, emptyDraft } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -82,7 +83,7 @@ function ZonesTab() {
   const [chosenSite, setSiteId] = useState('')
   const siteId = chosenSite || sites?.[0]?.id || ''
   const site = sites?.find((s) => s.id === siteId)
-  const { data: zones, isLoading } = useQuery({ queryKey: ['drone-zones', siteId], queryFn: () => listZones(siteId),
+  const { data: zones, isLoading, isLoadingError: zonesFailed, error: zonesError, refetch: refetchZones } = useQuery({ queryKey: ['drone-zones', siteId], queryFn: () => listZones(siteId),
                                                 enabled: !!siteId })
 
   const [editing, setEditing] = useState<Zone | 'new' | null>(null)
@@ -234,7 +235,7 @@ function ZonesTab() {
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Zones at this site</Typography>
               {canCreate && siteId && <Button size="small" startIcon={<AddIcon />} onClick={() => start('new')}>New zone</Button>}
             </Stack>
-            {isLoading ? <Skeleton height={120} /> : !(zones ?? []).length ? (
+            {isLoading ? <Skeleton height={120} /> : zonesFailed ? <ErrorState compact error={zonesError} onRetry={refetchZones} /> : !(zones ?? []).length ? (
               <Alert severity="info">No zones yet. Without zones the drone judges every place the same.</Alert>
             ) : (
               <List dense>
@@ -264,7 +265,7 @@ function ProfilesTab() {
   const qc = useQueryClient()
   const canCreate = usePermission('drone:mission:create')
   const canUpdate = usePermission('drone:mission:update')
-  const { data: profiles, isLoading } = useQuery({ queryKey: ['drone-profiles'], queryFn: listProfiles })
+  const { data: profiles, isLoading, isLoadingError: profilesFailed, error: profilesError, refetch: refetchProfiles } = useQuery({ queryKey: ['drone-profiles'], queryFn: listProfiles })
   const [openId, setOpenId] = useState<string | 'new' | null>(null)
   return (
     <GlassCard sx={{ p: 2 }}>
@@ -274,7 +275,7 @@ function ProfilesTab() {
           The site's zones then raise or lower that.</Typography>
         {canCreate && <Button startIcon={<AddIcon />} variant="contained" onClick={() => setOpenId('new')}>New profile</Button>}
       </Stack>
-      {isLoading ? <Skeleton height={160} /> : !(profiles ?? []).length ? (
+      {isLoading ? <Skeleton height={160} /> : profilesFailed ? <ErrorState compact error={profilesError} onRetry={refetchProfiles} /> : !(profiles ?? []).length ? (
         <Alert severity="info">No profiles yet. Missions without one use every module at its defaults.</Alert>
       ) : (
         <Table size="small">

@@ -24,6 +24,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx } from '@/lib/motion'
+import { ErrorState } from '@/components/states'
 
 /** Icon, colour and wording per shift type, in one place so the cards, the
  *  chips and the create dialog cannot describe the same shift differently. */
@@ -320,7 +321,7 @@ export function ShiftsPage() {
   const [showRetired, setShowRetired] = useState(false)
   const [note, setNote] = useState<string | null>(null)
 
-  const { data: shifts = [], isLoading } = useQuery({
+  const { data: shifts = [], isLoading, isLoadingError: shiftsFailed, error: shiftsError, refetch: refetchShifts } = useQuery({
     queryKey: ['shift-definitions', showRetired],
     queryFn: () => listShiftDefinitions(showRetired),
   })
@@ -374,7 +375,7 @@ export function ShiftsPage() {
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">Loading shifts…</Typography>
         </GlassCard>
-      ) : shifts.length === 0 ? (
+      ) : shiftsFailed ? <ErrorState compact error={shiftsError} onRetry={refetchShifts} /> : shifts.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary" sx={{ mb: 1 }}>
             No shifts configured yet.

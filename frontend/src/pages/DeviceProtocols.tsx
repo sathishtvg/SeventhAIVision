@@ -30,6 +30,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { listDeviceFamilies, type ProtocolField } from '@/api/deviceProtocols'
+import { ErrorState } from '@/components/states'
 
 const FAMILY_LABELS: Record<string, string> = {
   barrier: 'Barriers & Gates',
@@ -101,7 +102,7 @@ function FieldRow({ f }: { f: ProtocolField }) {
 
 export default function DeviceProtocols() {
   const [tab, setTab] = useState(0)
-  const { data: families, isLoading } = useQuery({
+  const { data: families, isLoading, isLoadingError: familiesFailed, error: familiesError, refetch: refetchFamilies } = useQuery({
     queryKey: ['device-families'],
     queryFn: listDeviceFamilies,
   })
@@ -129,7 +130,7 @@ export default function DeviceProtocols() {
 
       {isLoading ? (
         <Skeleton variant="rounded" height={400} />
-      ) : (
+      ) : familiesFailed ? <ErrorState compact error={familiesError} onRetry={refetchFamilies} /> : (
         <>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
             {(families ?? []).map((f) => (

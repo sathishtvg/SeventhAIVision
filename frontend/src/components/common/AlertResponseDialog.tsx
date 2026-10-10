@@ -22,6 +22,7 @@ import {
   acknowledgeAlert, addAlertNote, assignAlert, dismissAlert,
   getEscalationTargets, markFalsePositive,
 } from '@/api/alerts'
+import { ErrorState } from '@/components/states'
 
 export interface AlertSummary {
   id: string
@@ -86,7 +87,7 @@ export function AlertResponseDialog({ alert, onClose, onResolved }: AlertRespons
     onSuccess: invalidateAndClose,
   })
 
-  const { data: targets = [], isLoading: targetsLoading } = useQuery({
+  const { data: targets = [], isLoading: targetsLoading, isLoadingError: targetsFailed, error: targetsError, refetch: refetchTargets } = useQuery({
     queryKey: ['escalation-targets', alert.id],
     queryFn: () => getEscalationTargets(alert.id),
     enabled: escalating,
@@ -141,7 +142,7 @@ export function AlertResponseDialog({ alert, onClose, onResolved }: AlertRespons
             </Typography>
             {targetsLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={20} /></Box>
-            ) : targets.length === 0 ? (
+            ) : targetsFailed ? <ErrorState compact error={targetsError} onRetry={refetchTargets} /> : targets.length === 0 ? (
               <Typography variant="caption" color="text.disabled">No staff available to escalate to.</Typography>
             ) : (
               <List dense sx={{ maxHeight: 200, overflowY: 'auto' }}>

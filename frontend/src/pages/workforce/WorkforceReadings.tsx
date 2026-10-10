@@ -28,6 +28,7 @@ import type { Figures, NotRead, Reading, Recommendation } from '@/api/workforce'
 import {
   ANSWER_LABEL, COLUMNS, PERIODS, about, answerLine, fmt, givenAbout, lines, named, periodLabel,
 } from '@/components/workforce/workforceFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 type Part = 'guards' | 'sites' | 'advice'
@@ -152,7 +153,7 @@ function GuardDialog({ id, days, onClose }: { id: string; days: number; onClose:
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{data ? `${named(data.guard.name)} — ${periodLabel(data.period.days).toLowerCase()}` : 'Reading'}</DialogTitle>
       <DialogContent>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetch} />}
         {isLoading && <Skeleton height={260} />}
         {data && <ReadingView data={data} onAnswered={again} />}
       </DialogContent>
@@ -187,13 +188,13 @@ function Filters({ siteId, setSiteId, days, setDays, period }: {
 
 function ReadingsTab({ part, siteId, days }: { part: 'guards' | 'sites'; siteId: string; days: number }) {
   const [open, setOpen] = useState<string | null>(null)
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['workforce-readings', siteId, days], queryFn: () => getReadings({ site_id: siteId || undefined, days }),
     placeholderData: keepPreviousData,
   })
   return (
     <>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={260} />}
       {data && (
         <>
@@ -221,7 +222,7 @@ function ReadingsTab({ part, siteId, days }: { part: 'guards' | 'sites'; siteId:
 
 function AdviceTab({ siteId }: { siteId: string }) {
   const qc = useQueryClient()
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData2 } = useQuery({
     queryKey: ['workforce-recommendations', siteId], queryFn: () => getRecommendations(siteId || undefined),
   })
   const answers = useQuery({ queryKey: ['workforce-answers'], queryFn: getAnswers })
@@ -235,7 +236,7 @@ function AdviceTab({ siteId }: { siteId: string }) {
     </GlassCard>)
   return (
     <>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData2} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={260} />}
       {data && (
         <>
@@ -291,7 +292,7 @@ export default function WorkforceReadings() {
 export function MyReading() {
   const own = usePermission('workforce:own')
   const [days, setDays] = useState(28)
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData3 } = useQuery({
     queryKey: ['workforce-mine', days], queryFn: () => getMyReading(days), enabled: own, placeholderData: keepPreviousData,
   })
   return (
@@ -307,7 +308,7 @@ export function MyReading() {
             {data && <Chip size="small" variant="outlined" label={named(data.guard.name)} />}
           </Stack>
         </GlassCard>)}
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData3} sx={{ mb: 2 }} />}
       {isLoading && own && <Skeleton height={260} />}
       {data && <ReadingView data={data} onAnswered={() => Promise.resolve()} />}
     </Box>

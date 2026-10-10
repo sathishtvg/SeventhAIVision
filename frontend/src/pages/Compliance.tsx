@@ -49,6 +49,7 @@ import {
 } from '@/api/compliance'
 import { apiClient } from '@/api/client'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // Assignable tour guards — Supervisor/Operator/Security Guard only. A raw
 // `role_id >= 4` range check would also sweep in Viewer(6), Client(7), and
@@ -328,7 +329,7 @@ function SchedulesTab() {
   const qc = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  const { data: schedules = [], isLoading } = useQuery({
+  const { data: schedules = [], isLoading, isLoadingError: schedulesFailed, error: schedulesError, refetch: refetchSchedules } = useQuery({
     queryKey: ['tour-schedules'],
     queryFn: () => listSchedules(),
     refetchInterval: 30_000,
@@ -353,7 +354,7 @@ function SchedulesTab() {
 
       {isLoading
         ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>
-        : schedules.length === 0
+        : schedulesFailed ? <ErrorState compact error={schedulesError} onRetry={refetchSchedules} /> : schedules.length === 0
           ? <Alert severity="info">No tour schedules yet. Create one to start tracking compliance.</Alert>
           : (
             <Paper sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
@@ -425,7 +426,7 @@ function OccurrencesTab() {
   const [selectedOcc, setSelectedOcc] = useState<TourOccurrence | null>(null)
   const [resolveNotes, setResolveNotes] = useState('')
 
-  const { data: occurrences = [], isLoading } = useQuery({
+  const { data: occurrences = [], isLoading, isLoadingError: occurrencesFailed, error: occurrencesError, refetch: refetchOccurrences } = useQuery({
     queryKey: ['tour-occurrences', dateFrom, dateTo, statusFilter],
     queryFn: () => listOccurrences({
       date_from: dateFrom,
@@ -474,7 +475,7 @@ function OccurrencesTab() {
 
       {isLoading
         ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>
-        : occurrences.length === 0
+        : occurrencesFailed ? <ErrorState compact error={occurrencesError} onRetry={refetchOccurrences} /> : occurrences.length === 0
           ? <Alert severity="info">No occurrences found for selected filters. Use "Generate 7d" on a schedule to create records.</Alert>
           : (
             <Paper sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
@@ -577,7 +578,7 @@ function ReportTab() {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [triggerFetch, setTriggerFetch] = useState(false)
 
-  const { data: report, isLoading, error } = useQuery({
+  const { data: report, isLoading, error, refetch: refetchReport } = useQuery({
     queryKey: ['compliance-report', dateFrom, dateTo],
     queryFn: () => getComplianceReport({ date_from: dateFrom, date_to: dateTo }),
     enabled: triggerFetch,
@@ -596,7 +597,7 @@ function ReportTab() {
       </Stack>
 
       {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>}
-      {error && <Alert severity="error">Failed to load report.</Alert>}
+      {error && <ErrorState compact error={error} onRetry={refetchReport} title="Could not load the report" />}
 
       {report && (
         <Stack spacing={3}>

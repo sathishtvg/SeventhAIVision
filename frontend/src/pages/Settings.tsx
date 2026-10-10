@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { useColorMode, BRAND_PRESETS } from '@/context/ColorMode'
-import { MotionPreferences } from '@/components/states'
+import { MotionPreferences, ErrorState } from '@/components/states'
 import { getSettings, upsertSetting } from '@/api/settings'
 import { getBranding, updateBranding } from '@/api/branding'
 import { get2FAStatus, setup2FA, enable2FA, disable2FA, get2faPolicy, set2faPolicy } from '@/api/guards'
@@ -208,7 +208,7 @@ function BrandingSection() {
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [dirty, setDirty] = useState(false)
 
-  const { data, isLoading } = useQuery({ queryKey: ['branding'], queryFn: getBranding })
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['branding'], queryFn: getBranding })
 
   useEffect(() => {
     if (!data) return
@@ -251,7 +251,7 @@ function BrandingSection() {
           <Skeleton height={56} />
           <Skeleton height={56} />
         </Box>
-      ) : (
+      ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
           {/* Company display name */}
           <PermissionGuard permission="settings:write">
@@ -625,7 +625,7 @@ function AdvancedLinksSection() {
 
 function SessionsSection() {
   const queryClient = useQueryClient()
-  const { data: sessions, isLoading } = useQuery({ queryKey: ['my-sessions'], queryFn: getMySessions })
+  const { data: sessions, isLoading, isLoadingError: sessionsFailed, error: sessionsError, refetch: refetchSessions } = useQuery({ queryKey: ['my-sessions'], queryFn: getMySessions })
 
   const { mutate: revoke } = useMutation({
     mutationFn: (sessionId: string) => revokeMySession(sessionId),
@@ -654,7 +654,7 @@ function SessionsSection() {
       </Box>
       {isLoading ? (
         <Box sx={{ p: 2 }}><Skeleton /><Skeleton /><Skeleton /></Box>
-      ) : !sessions?.length ? (
+      ) : sessionsFailed ? <ErrorState compact error={sessionsError} onRetry={refetchSessions} /> : !sessions?.length ? (
         <Box sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="text.secondary">No active sessions found.</Typography>
         </Box>
@@ -692,7 +692,7 @@ function TwoFASection() {
   const [showDisable, setShowDisable] = useState(false)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, isLoadingError: statusFailed, error: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ['2fa_status'],
     queryFn: () => get2FAStatus(),
   })
@@ -725,6 +725,7 @@ function TwoFASection() {
   })
 
   if (isLoading) return <Skeleton height={80} />
+  if (statusFailed) return <ErrorState error={statusError} onRetry={refetchStatus} />
 
   const is2FAEnabled = (status as any)?.totp_enabled
 
@@ -831,7 +832,7 @@ function AlertDedupRulesSection() {
   const [windowSeconds, setWindowSeconds] = useState(300)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const { data: rules, isLoading } = useQuery({ queryKey: ['dedup-rules'], queryFn: listDedupRules })
+  const { data: rules, isLoading, isLoadingError: rulesFailed, error: rulesError, refetch: refetchRules } = useQuery({ queryKey: ['dedup-rules'], queryFn: listDedupRules })
   const { data: cameras } = useQuery({ queryKey: ['cameras'], queryFn: () => getCameras() })
 
   const createMut = useMutation({
@@ -872,7 +873,7 @@ function AlertDedupRulesSection() {
       </Box>
       {isLoading ? (
         <Box sx={{ p: 2 }}><Skeleton /><Skeleton /><Skeleton /></Box>
-      ) : !rules?.length ? (
+      ) : rulesFailed ? <ErrorState compact error={rulesError} onRetry={refetchRules} /> : !rules?.length ? (
         <Box sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="text.secondary" variant="body2">No deduplication rules configured.</Typography>
         </Box>
@@ -967,7 +968,7 @@ function TwoFAPolicySection() {
   const [graceHours, setGraceHours] = useState<number>(0)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const { data: policy, isLoading } = useQuery({
+  const { data: policy, isLoading, isLoadingError: policyFailed, error: policyError, refetch: refetchPolicy } = useQuery({
     queryKey: ['2fa_policy'],
     queryFn: get2faPolicy,
   })
@@ -987,6 +988,7 @@ function TwoFAPolicySection() {
   })
 
   if (isLoading) return <Skeleton height={120} sx={{ maxWidth: 560 }} />
+  if (policyFailed) return <ErrorState error={policyError} onRetry={refetchPolicy} />
 
   const required = policy?.required ?? false
 

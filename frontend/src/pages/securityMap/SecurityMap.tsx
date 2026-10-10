@@ -25,12 +25,13 @@ import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { getSites } from '@/api/sites'
-import { apiError, getAround, getFeatures, getLayers } from '@/api/siteMap'
+import { getAround, getFeatures, getLayers } from '@/api/siteMap'
 import type { Feature, LayerKey, NearGuard } from '@/api/siteMap'
 import {
   DEFAULT_CENTRE, ON_AT_FIRST, TILE_ATTRIBUTION, TILE_URL, about, ago, colourOf, distance, fmt, gathered, pretty,
   sizeOf,
 } from '@/components/securityMap/mapFormat'
+import { ErrorState } from '@/components/states'
 
 type Selectable = 'INCIDENT' | 'ALERT' | 'SITUATION'
 const SELECTABLE: LayerKey[] = ['INCIDENT', 'ALERT', 'SITUATION']
@@ -96,12 +97,12 @@ export default function SecurityMap() {
   const [picked, setPicked] = useState<{ kind: Selectable; id: string } | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const { data: info } = useQuery({ queryKey: ['site-map-layers'], queryFn: getLayers, staleTime: 300_000 })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, isLoadingError: dataFailed, refetch: refetchData } = useQuery({
     queryKey: ['site-map-features', siteId, hours],
     queryFn: () => getFeatures({ site_id: siteId || undefined, hours }),
     refetchInterval: 30_000,
   })
-  const { data: near, error: nearError } = useQuery({
+  const { data: near, error: nearError, refetch: refetchNear } = useQuery({
     queryKey: ['site-map-around', picked], queryFn: () => getAround(picked!.kind, picked!.id), enabled: !!picked,
   })
 
@@ -166,10 +167,10 @@ export default function SecurityMap() {
         </Stack>
       </GlassCard>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: picked ? '1fr 380px' : '1fr' } }}>
         <GlassCard sx={{ p: 1, overflow: 'hidden' }}>
-          {isLoading ? <Skeleton height={520} /> : (
+          {isLoading ? <Skeleton height={520} /> : dataFailed ? <ErrorState compact error={error} onRetry={refetchData} /> : (
             <Box sx={{ height: 560, borderRadius: 1, overflow: 'hidden' }}>
               <MapContainer center={DEFAULT_CENTRE} zoom={12} style={{ height: '100%', width: '100%' }}>
                 <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
@@ -222,7 +223,7 @@ export default function SecurityMap() {
               </Box>
               <IconButton size="small" aria-label="Close" onClick={() => setPicked(null)}><CloseIcon fontSize="small" /></IconButton>
             </Stack>
-            {nearError && <Alert severity="error" sx={{ mt: 1 }}>{apiError(nearError)}</Alert>}
+            {nearError && <ErrorState compact error={nearError} onRetry={refetchNear} sx={{ mt: 1 }} />}
             {near && (
               <>
                 {HOME[near.subject.layer] && (

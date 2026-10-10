@@ -14,11 +14,12 @@ import { useQuery } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
-import { apiError, getInsight, getSiteScores } from '@/api/securityIntelligence'
+import { getInsight, getSiteScores } from '@/api/securityIntelligence'
 import type { InsightCounts, InsightFinding, SiteScore } from '@/api/securityIntelligence'
 import { AiMark } from '@/components/intel/intelUi'
 import { AI_COLOR, RISK_COLOR, SOURCE_LABEL, duration } from '@/components/intel/intelFormat'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
+import { ErrorState } from '@/components/states'
 
 const BAND: Record<SiteScore['band'], { label: string; color: string }> = {
   GOOD: { label: 'Good', color: RISK_COLOR.LOW }, FAIR: { label: 'Fair', color: RISK_COLOR.MEDIUM },
@@ -221,7 +222,7 @@ export default function Insight() {
         Starts at 100 and loses the points shown, for the things shown. The lowest first. It counts what is open and what
         went wrong; it is not a prediction, and not a grade of anybody.
       </Typography>
-      {scores.error ? <Alert severity="error" sx={{ mb: 2 }}>{apiError(scores.error)}</Alert>
+      {scores.error ? <ErrorState compact error={scores.error} onRetry={scores.refetch} sx={{ mb: 2 }} />
         : !scores.data ? <Skeleton height={160} sx={{ mb: 2 }} />
           : !sites.length ? <Alert severity="info" sx={{ mb: 2 }}>There is no site to score.</Alert>
             : (
@@ -236,7 +237,7 @@ export default function Insight() {
 
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
         {insight.data?.site ? insight.data.site.name : 'All sites'} · the last {days} days</Typography>
-      {insight.error ? <Alert severity="error">{apiError(insight.error)}</Alert>
+      {insight.error ? <ErrorState compact error={insight.error} onRetry={insight.refetch} />
         : !insight.data ? <Skeleton height={300} />
           : (
             <>

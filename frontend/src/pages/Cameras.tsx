@@ -31,6 +31,7 @@ import { getSites } from '@/api/sites'
 import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/store/auth'
 import type { Camera, Stream, StreamValidationResult } from '@/types/api'
+import { ErrorState } from '@/components/states'
 
 const ALL_MODULES = ['lpr', 'face', 'intrusion', 'ppe', 'crowd', 'fire_smoke', 'weapon', 'behavior']
 
@@ -471,7 +472,7 @@ function CameraStreams({ cameraId }: { cameraId: string }) {
   const [addOpen, setAddOpen] = useState(false)
   const [liveStream, setLiveStream] = useState<Stream | null>(null)
 
-  const { data: streams = [], isLoading } = useQuery({
+  const { data: streams = [], isLoading, isLoadingError: streamsFailed, error: streamsError, refetch: refetchStreams } = useQuery({
     queryKey: ['streams', cameraId],
     queryFn: () => getStreams(cameraId),
   })
@@ -501,7 +502,7 @@ function CameraStreams({ cameraId }: { cameraId: string }) {
       </Box>
       {isLoading ? (
         <Skeleton height={32} />
-      ) : streams.length === 0 ? (
+      ) : streamsFailed ? <ErrorState compact error={streamsError} onRetry={refetchStreams} /> : streams.length === 0 ? (
         <Typography variant="caption" color="text.disabled">No streams configured</Typography>
       ) : (
         <List dense disablePadding>
@@ -663,7 +664,7 @@ function CameraCard({ camera }: { camera: Camera }) {
 export default function Cameras() {
   const [addOpen, setAddOpen] = useState(false)
   const [siteFilter, setSiteFilter] = useState('')
-  const { data: cameras, isLoading } = useQuery({
+  const { data: cameras, isLoading, isLoadingError: camerasFailed, error: camerasError, refetch: refetchCameras } = useQuery({
     queryKey: ['cameras'],
     queryFn: getCameras,
     refetchInterval: 30_000,
@@ -704,7 +705,7 @@ export default function Cameras() {
                 <GlassCard sx={{ p: 3 }}><Skeleton variant="rectangular" height={160} /></GlassCard>
               </Grid>
             ))
-          : (filtered ?? []).length === 0
+          : camerasFailed ? <ErrorState compact error={camerasError} onRetry={refetchCameras} /> : (filtered ?? []).length === 0
           ? (
               <Grid size={{ xs: 12 }}>
                 <Typography color="text.secondary" align="center" sx={{ mt: 8 }}>

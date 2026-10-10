@@ -25,6 +25,7 @@ import {
 import type { Contractor, Delivery } from '@/api/contractors'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -262,7 +263,7 @@ function ContractorsTab() {
   const [addOpen, setAddOpen] = useState(false)
   const [vetTarget, setVetTarget] = useState<Contractor | null>(null)
 
-  const { data: contractors = [], isLoading } = useQuery({
+  const { data: contractors = [], isLoading, isLoadingError: contractorsFailed, error: contractorsError, refetch: refetchContractors } = useQuery({
     queryKey: ['contractors'],
     queryFn: () => listContractors(),
     refetchInterval: 30000,
@@ -278,7 +279,7 @@ function ContractorsTab() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : contractorsFailed ? <ErrorState compact error={contractorsError} onRetry={refetchContractors} /> : (
         <Paper>
           <Table size="small">
             <TableHead>
@@ -355,7 +356,7 @@ function WorkPermitsTab() {
   const [statusFilter, setStatusFilter] = useState('')
   const qc = useQueryClient()
 
-  const { data: _permData, isLoading } = useQuery({
+  const { data: _permData, isLoading, isLoadingError: _permDataFailed, error: _permDataError, refetch: refetch_permData } = useQuery({
     queryKey: ['work-permits', statusFilter],
     queryFn: () => listWorkPermits(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 30000,
@@ -407,7 +408,7 @@ function WorkPermitsTab() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : _permDataFailed ? <ErrorState compact error={_permDataError} onRetry={refetch_permData} /> : (
         <Paper>
           <Table size="small">
             <TableHead>
@@ -504,7 +505,7 @@ function DeliveriesTab() {
   const [collectTarget, setCollectTarget] = useState<Delivery | null>(null)
   const qc = useQueryClient()
 
-  const { data: deliveries = [], isLoading } = useQuery({
+  const { data: deliveries = [], isLoading, isLoadingError: deliveriesFailed, error: deliveriesError, refetch: refetchDeliveries } = useQuery({
     queryKey: ['deliveries', statusFilter],
     queryFn: () => listDeliveries(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 30000,
@@ -542,7 +543,7 @@ function DeliveriesTab() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : deliveriesFailed ? <ErrorState compact error={deliveriesError} onRetry={refetchDeliveries} /> : (
         <Paper>
           <Table size="small">
             <TableHead>

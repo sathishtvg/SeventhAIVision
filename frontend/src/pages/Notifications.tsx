@@ -18,6 +18,7 @@ import {
 } from '@/api/notifications'
 import type { NotificationChannel } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 interface TabPanelProps { children: React.ReactNode; value: number; index: number }
 function TabPanel({ children, value, index }: TabPanelProps) {
@@ -87,7 +88,7 @@ function ChannelDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
 function ChannelsTable() {
   const qc = useQueryClient()
-  const { data, isLoading } = useQuery({ queryKey: ['notification-channels'], queryFn: getChannels })
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['notification-channels'], queryFn: getChannels })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
 
@@ -122,7 +123,7 @@ function ChannelsTable() {
           <TableBody>
             {isLoading
               ? <SkeletonRows cols={5} />
-              : data?.map((ch) => (
+              : dataFailed ? <TableErrorRow error={dataError} onRetry={refetchData} /> : data?.map((ch) => (
                   <TableRow key={ch.id} hover>
                     <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{ch.name}</Typography></TableCell>
                     <TableCell><Chip label={ch.channel_type} size="small" variant="outlined" /></TableCell>
@@ -223,7 +224,7 @@ function RuleDialog({ open, onClose, channels }: { open: boolean; onClose: () =>
 
 function RulesTable() {
   const qc = useQueryClient()
-  const { data: rules, isLoading: rulesLoading } = useQuery({ queryKey: ['notification-rules'], queryFn: getRules })
+  const { data: rules, isLoading: rulesLoading, isLoadingError: rulesFailed, error: rulesError, refetch: refetchRules } = useQuery({ queryKey: ['notification-rules'], queryFn: getRules })
   const { data: channels = [] } = useQuery({ queryKey: ['notification-channels'], queryFn: getChannels })
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -257,7 +258,7 @@ function RulesTable() {
           <TableBody>
             {rulesLoading
               ? <SkeletonRows cols={7} />
-              : rules?.map((rule) => (
+              : rulesFailed ? <TableErrorRow error={rulesError} onRetry={refetchRules} /> : rules?.map((rule) => (
                   <TableRow key={rule.id} hover>
                     <TableCell>{channelName(rule.channel_id)}</TableCell>
                     <TableCell><Chip label={rule.min_severity} size="small" color="warning" /></TableCell>
@@ -300,7 +301,7 @@ function RulesTable() {
 // ──────────────────────────────────────────────────────────
 
 function LogsTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['notification-logs'], queryFn: () => getLogs(undefined, undefined, 200) })
+  const { data, isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({ queryKey: ['notification-logs'], queryFn: () => getLogs(undefined, undefined, 200) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -317,7 +318,7 @@ function LogsTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={6} />
-            : data?.map((log) => (
+            : dataFailed2 ? <TableErrorRow error={dataError2} onRetry={refetchData2} /> : data?.map((log) => (
                 <TableRow key={log.id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{log.alert_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell><Chip label={log.channel_type} size="small" variant="outlined" /></TableCell>

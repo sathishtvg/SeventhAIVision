@@ -20,7 +20,7 @@ import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import {
-  addNote, apiError, closeInvestigation, getInvestigation, reopenInvestigation, setAside,
+  addNote, closeInvestigation, getInvestigation, reopenInvestigation, setAside,
 } from '@/api/investigations'
 import type { Entry } from '@/api/investigations'
 import { listPackages } from '@/api/evidencePackages'
@@ -29,6 +29,7 @@ import { CreatePackageDialog } from '@/components/evidence/EvidenceDialogs'
 import { TrailDialog, WhyDialog } from '@/components/investigations/InvestigationDialogs'
 import { KIND_LABEL, fmt, followable, home, pretty, subject } from '@/components/investigations/investigationFormat'
 import { InvestigationNav } from './InvestigationNav'
+import { ErrorState } from '@/components/states'
 
 type Asking = { what: 'note' | 'close' | 'reopen' } | { what: 'aside'; entry: Entry } | null
 
@@ -83,7 +84,7 @@ export default function Investigation() {
   const [packaging, setPackaging] = useState(false)
   const seesPackages = usePermission('evidence:package:read')
   const makesPackages = usePermission('evidence:package:manage')
-  const { data: file, isLoading, error } = useQuery({
+  const { data: file, isLoading, error, refetch } = useQuery({
     queryKey: ['investigation', id], queryFn: () => getInvestigation(id), enabled: !!id })
   const { data: packages } = useQuery({
     queryKey: ['evidence-packages', 'of-investigation', id], queryFn: () => listPackages({ investigation_id: id }),
@@ -97,7 +98,9 @@ export default function Investigation() {
       <Box sx={{ p: 3 }}>
         <PageHeader title="Investigation" />
         <InvestigationNav />
-        <Alert severity="error">{error ? apiError(error) : 'Investigation not found.'}</Alert>
+        {error
+          ? <ErrorState error={error} onRetry={refetch} title="Could not open the investigation" />
+          : <Alert severity="error">Investigation not found.</Alert>}
       </Box>
     )
   }

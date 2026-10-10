@@ -22,6 +22,7 @@ import {
 import { getUsers } from '@/api/users'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 /** Same set the roster auto-scheduler treats as schedulable. */
 const GUARD_ROLES = new Set([3, 4, 5, 8])
@@ -264,7 +265,7 @@ function TeamColumn({ siteId, shift, rows, guards, postedElsewhere }: {
 }
 
 function SiteTeamDialog({ row, onClose }: { row: DutyOverviewRow | null; onClose: () => void }) {
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isLoadingError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['duty-assignments', row?.site_id],
     queryFn: () => getDutyAssignments(row!.site_id),
     enabled: Boolean(row),
@@ -306,7 +307,7 @@ function SiteTeamDialog({ row, onClose }: { row: DutyOverviewRow | null; onClose
           <Stack spacing={1}>
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={44} />)}
           </Stack>
-        ) : (
+        ) : rowsFailed ? <ErrorState compact error={rowsError} onRetry={refetchRows} /> : (
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
             {SHIFTS.map((shift) => (
               <TeamColumn
@@ -330,7 +331,7 @@ function SiteTeamDialog({ row, onClose }: { row: DutyOverviewRow | null; onClose
 export function DutyAssignmentsPage() {
   const [openSite, setOpenSite] = useState<DutyOverviewRow | null>(null)
 
-  const { data: overview = [], isLoading } = useQuery({
+  const { data: overview = [], isLoading, isLoadingError: overviewFailed, error: overviewError, refetch: refetchOverview } = useQuery({
     queryKey: ['duty-overview'],
     queryFn: getDutyOverview,
     refetchInterval: 120_000,
@@ -367,7 +368,7 @@ export function DutyAssignmentsPage() {
         }}>
           {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={128} />)}
         </Box>
-      ) : sorted.length === 0 ? (
+      ) : overviewFailed ? <ErrorState compact error={overviewError} onRetry={refetchOverview} /> : sorted.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">No active sites yet.</Typography>
         </GlassCard>

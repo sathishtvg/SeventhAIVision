@@ -31,6 +31,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 
@@ -379,7 +380,7 @@ function KeyEditorDialog({ row, sites, onClose }: {
 }
 
 function HistoryDialog({ row, onClose }: { row: SiteKey | null; onClose: () => void }) {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['key-transactions', row?.id],
     queryFn: () => listKeyTransactions({ key_id: row!.id }),
     enabled: Boolean(row),
@@ -400,7 +401,7 @@ function HistoryDialog({ row, onClose }: { row: SiteKey | null; onClose: () => v
           <Stack spacing={1}>
             {[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={52} />)}
           </Stack>
-        ) : data.length === 0 ? (
+        ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : data.length === 0 ? (
           <Typography color="text.secondary" variant="body2">
             This key has never been issued.
           </Typography>
@@ -460,7 +461,7 @@ export function KeyRegisterPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: keys = [], isLoading } = useQuery({
+  const { data: keys = [], isLoading, isLoadingError: keysFailed, error: keysError, refetch: refetchKeys } = useQuery({
     queryKey: ['keys', siteFilter, tab],
     queryFn: () => listKeys({
       site_id: siteFilter || undefined,
@@ -531,7 +532,7 @@ export function KeyRegisterPage() {
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
             {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}
           </Box>
-        ) : keys.length === 0 ? (
+        ) : keysFailed ? <ErrorState compact error={keysError} onRetry={refetchKeys} /> : keys.length === 0 ? (
           <GlassCard sx={{ p: 4, textAlign: 'center' }}>
             <VpnKeyIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
             <Typography color="text.secondary">

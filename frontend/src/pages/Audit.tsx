@@ -24,6 +24,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { getAuditLogs, verifyAuditChain, type VerifyResult } from '@/api/audit'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 function VerifyBanner({ result }: { result: VerifyResult }) {
   if (result.verified) {
@@ -57,7 +58,7 @@ export default function Audit() {
   const canVerify = usePermission('audit:verify')
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
 
-  const { data: logs, isLoading } = useQuery({
+  const { data: logs, isLoading, isLoadingError: logsFailed, error: logsError, refetch: refetchLogs } = useQuery({
     queryKey: ['audit-logs'],
     queryFn: () => getAuditLogs(200),
   })
@@ -114,7 +115,7 @@ export default function Audit() {
                       ))}
                     </TableRow>
                   ))
-                : !logs?.items?.length
+                : logsFailed ? <TableErrorRow error={logsError} onRetry={refetchLogs} /> : !logs?.items?.length
                 ? (
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ py: 4 }}>

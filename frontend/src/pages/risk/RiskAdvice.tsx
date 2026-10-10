@@ -25,6 +25,7 @@ import {
   ANSWER_LABEL, LEVEL_LABEL, STEPS, WEEK_CHOICES, answerLine, cellTitle, fmt, peak, step, stepRange, totalLine,
   weeksLabel,
 } from '@/components/risk/riskFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const SHADE = [0, 0.22, 0.42, 0.68, 1]
@@ -173,7 +174,7 @@ export default function RiskAdvice() {
 
       <GlassCard sx={{ p: 2, mb: 2 }} data-testid="advice">
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>What stands out</Typography>
-        {!!advice.error && <Alert severity="error" sx={{ mt: 1 }}>{apiError(advice.error)}</Alert>}
+        {!!advice.error && <ErrorState compact error={advice.error} onRetry={advice.refetch} sx={{ mt: 1 }} />}
         {advice.isLoading && <Skeleton height={140} />}
         {advice.data && (
           <>
@@ -197,7 +198,7 @@ export default function RiskAdvice() {
           <FormControlLabel label="Show the numbers" sx={{ ml: 0 }}
                             control={<Switch size="small" checked={numbers} onChange={(e) => setNumbers(e.target.checked)} />} />
         </Stack>
-        {!!patterns.error && <Alert severity="error">{apiError(patterns.error)}</Alert>}
+        {!!patterns.error && <ErrorState compact error={patterns.error} onRetry={patterns.refetch} />}
         {patterns.isLoading && <Skeleton height={220} />}
         {patterns.data && (
           <>
@@ -233,7 +234,7 @@ export default function RiskAdvice() {
 
       <GlassCard sx={{ p: 2 }} data-testid="answers">
         <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>Answers given</Typography>
-        {!!answers.error && <Alert severity="error">{apiError(answers.error)}</Alert>}
+        {!!answers.error && <ErrorState compact error={answers.error} onRetry={answers.refetch} />}
         {answers.data && !answers.data.length && (
           <Typography variant="body2" color="text.secondary">No advice has been answered yet.</Typography>)}
         {(answers.data ?? []).slice(0, 10).map((a) => (

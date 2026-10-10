@@ -24,6 +24,7 @@ import {
 import type { BodyCamera, BWCRecording } from '@/api/bwc'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ function CamerasTab() {
   const [recordTarget, setRecordTarget] = useState<BodyCamera | null>(null)
   const qc = useQueryClient()
 
-  const { data: cameras = [], isLoading } = useQuery({
+  const { data: cameras = [], isLoading, isLoadingError: camerasFailed, error: camerasError, refetch: refetchCameras } = useQuery({
     queryKey: ['bwc-cameras'],
     queryFn: () => listCameras(),
     refetchInterval: 15000,
@@ -243,7 +244,7 @@ function CamerasTab() {
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : camerasFailed ? <ErrorState compact error={camerasError} onRetry={refetchCameras} /> : (
         <Grid container spacing={2}>
           {cameras.map(cam => (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={cam.id}>
@@ -397,7 +398,7 @@ function RecordingsTab() {
   const [linkTarget, setLinkTarget] = useState<BWCRecording | null>(null)
   const qc = useQueryClient()
 
-  const { data: _recData, isLoading } = useQuery({
+  const { data: _recData, isLoading, isLoadingError: _recDataFailed, error: _recDataError, refetch: refetch_recData } = useQuery({
     queryKey: ['bwc-recordings', statusFilter],
     queryFn: () => listRecordings(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 15000,
@@ -439,7 +440,7 @@ function RecordingsTab() {
       <Box sx={{ flex: 1, minWidth: 0 }}>
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : _recDataFailed ? <ErrorState compact error={_recDataError} onRetry={refetch_recData} /> : (
         <Paper>
           <Table size="small">
             <TableHead>
@@ -524,7 +525,7 @@ function RecordingsTab() {
 // ── Events Tab ────────────────────────────────────────────────────────────────
 
 function EventsTab() {
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
     queryKey: ['bwc-events'],
     queryFn: () => listBWCEvents(),
     refetchInterval: 20000,
@@ -541,7 +542,7 @@ function EventsTab() {
     <Box>
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : (
+      ) : eventsFailed ? <ErrorState compact error={eventsError} onRetry={refetchEvents} /> : (
         <Paper>
           <Table size="small">
             <TableHead>

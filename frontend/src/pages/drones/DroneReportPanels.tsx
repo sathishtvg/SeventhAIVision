@@ -28,6 +28,7 @@ import type { ReportDelivery, ReportFrequency, ReportRecipient } from '@/api/dro
 import { RiskChip } from '@/components/drones/droneUi'
 import { fmt, pretty } from '@/components/drones/droneFormat'
 import { formatDistance } from '@/components/drones/geo'
+import { ErrorState } from '@/components/states'
 
 const FREQUENCY_HELP: Record<ReportFrequency, string> = {
   IMMEDIATE: 'The PDF of each flight, a few minutes after it ends',
@@ -54,7 +55,7 @@ export function SummaryPanel() {
   const [siteId, setSiteId] = useState('')
   const query = { from, to, site_id: siteId || undefined }
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData3 } = useQuery({
     queryKey: ['drone-report-summary', query], queryFn: () => getPeriodSummary(query), enabled: !!from && !!to,
     retry: false,
   })
@@ -88,7 +89,7 @@ export function SummaryPanel() {
         </Typography>}
         {download.error && <Alert severity="error" sx={{ mt: 1 }}>{apiError(download.error)}</Alert>}
       </GlassCard>
-      {error ? <Alert severity="error">{apiError(error)}</Alert> : isLoading || !t ? <Skeleton height={160} /> : (
+      {error ? <ErrorState compact error={error} onRetry={refetchData3} /> : isLoading || !t ? <Skeleton height={160} /> : (
         <>
           <Grid container spacing={2} sx={{ mb: 2 }}>
             {([
@@ -138,7 +139,7 @@ export function RecipientsPanel() {
   const qc = useQueryClient()
   const canChange = usePermission('drone:report:export')
   const [adding, setAdding] = useState(false)
-  const { data, isLoading } = useQuery({ queryKey: ['drone-report-recipients'], queryFn: listRecipients })
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['drone-report-recipients'], queryFn: listRecipients })
   const done = () => qc.invalidateQueries({ queryKey: ['drone-report-recipients'] })
   const toggle = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => updateRecipient(id, { is_active }),
@@ -156,7 +157,7 @@ export function RecipientsPanel() {
                               onClick={() => setAdding(true)}>Add recipient</Button>}
       </Stack>
       {problem && <Alert severity="error" sx={{ mb: 1 }}>{apiError(problem)}</Alert>}
-      {isLoading ? <Skeleton height={160} /> : !(data ?? []).length ? (
+      {isLoading ? <Skeleton height={160} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !(data ?? []).length ? (
         <Alert severity="info">Nobody is emailed reports yet. They can still be downloaded from each flight.</Alert>
       ) : (
         <TableContainer>
@@ -267,7 +268,7 @@ function deliveryNote(d: ReportDelivery): string {
 export function DeliveriesPanel() {
   const qc = useQueryClient()
   const canRetry = usePermission('drone:report:export')
-  const { data, isLoading } = useQuery({ queryKey: ['drone-report-deliveries'], queryFn: () => listDeliveries(),
+  const { data, isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({ queryKey: ['drone-report-deliveries'], queryFn: () => listDeliveries(),
                                          refetchInterval: 30_000 })
   const retry = useMutation({
     mutationFn: (id: string) => retryDelivery(id),
@@ -280,7 +281,7 @@ export function DeliveriesPanel() {
         Every report email, newest first. A failed one is retried by itself up to five times, further apart each
         time; after that it waits here to be sent again.</Typography>
       {retry.error && <Alert severity="error" sx={{ mb: 1 }}>{apiError(retry.error)}</Alert>}
-      {isLoading ? <Skeleton height={160} /> : !items.length ? (
+      {isLoading ? <Skeleton height={160} /> : dataFailed2 ? <ErrorState compact error={dataError2} onRetry={refetchData2} /> : !items.length ? (
         <Alert severity="info">No report has been emailed yet.</Alert>
       ) : (
         <TableContainer>

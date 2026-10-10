@@ -15,6 +15,7 @@ import { getFaceWatchlist, getPlateWatchlist } from '@/api/watchlist'
 import { listVisitors } from '@/api/visitors'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 export default function Reports() {
   const [tab, setTab] = useState(0)
@@ -208,7 +209,7 @@ function DsarTab() {
   })
   const [fulfillForm, setFulfillForm] = useState({ status: 'fulfilled', fulfillment_notes: '', records_erased: '' })
 
-  const { data: dsars = [], isLoading } = useQuery({ queryKey: ['dsars'], queryFn: () => getDsars() })
+  const { data: dsars = [], isLoading, isLoadingError: dsarsFailed, error: dsarsError, refetch: refetchDsars } = useQuery({ queryKey: ['dsars'], queryFn: () => getDsars() })
 
   const createMut = useMutation({
     mutationFn: () => createDsar(createForm),
@@ -236,7 +237,7 @@ function DsarTab() {
 
       {isLoading ? (
         <CircularProgress />
-      ) : (
+      ) : dsarsFailed ? <ErrorState compact error={dsarsError} onRetry={refetchDsars} /> : (
         <Paper>
           <Table size="small">
             <TableHead>

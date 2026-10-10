@@ -28,6 +28,7 @@ import {
   listAlertRules, getAlertRuleCatalogue, upsertAlertRule, resetAlertRule,
   type EffectiveAlertRule,
 } from '@/api/alertRules'
+import { ErrorState } from '@/components/states'
 
 const SEVERITY_COLOR: Record<string, string> = {
   info: '#6C63FF',
@@ -91,7 +92,7 @@ export default function AlertRules() {
   const canManage = usePermission('alert_rule:manage')
   const [toast, setToast] = useState<string | null>(null)
 
-  const { data: rules, isLoading } = useQuery({
+  const { data: rules, isLoading, isLoadingError: rulesFailed, error: rulesError, refetch: refetchRules } = useQuery({
     queryKey: ['alert-rules'],
     queryFn: listAlertRules,
   })
@@ -165,7 +166,7 @@ export default function AlertRules() {
 
       {isLoading ? (
         <Skeleton variant="rounded" height={360} />
-      ) : (
+      ) : rulesFailed ? <ErrorState compact error={rulesError} onRetry={refetchRules} /> : (
         <Stack spacing={2}>
           {byModule.map(([moduleType, moduleRules]) => (
             <GlassCard key={moduleType} sx={{ p: 0, overflow: 'hidden' }}>

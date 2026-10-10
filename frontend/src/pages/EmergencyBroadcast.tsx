@@ -17,6 +17,7 @@ import {
 import GlassCard from '@/components/common/GlassCard'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const SEV_CONFIG = {
   info:     { color: '#2196F3', label: 'Info',     bg: 'rgba(33,150,243,0.15)' },
@@ -62,7 +63,7 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
   const [detailOpen, setDetailOpen] = useState(false)
   const qc = useQueryClient()
 
-  const { data: detail, isLoading: detailLoading } = useQuery({
+  const { data: detail, isLoading: detailLoading, isLoadingError: detailFailed, error: detailError, refetch: refetchDetail } = useQuery({
     queryKey: ['broadcast-detail', b.id],
     queryFn: () => getBroadcast(b.id),
     enabled: detailOpen,
@@ -145,6 +146,7 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
         <DialogTitle>Recipient List — {b.title}</DialogTitle>
         <DialogContent>
           {detailLoading && <CircularProgress />}
+          {detailFailed && <ErrorState compact error={detailError} onRetry={refetchDetail} />}
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -188,7 +190,7 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
 // ── History tab ───────────────────────────────────────────────────────────────
 
 function HistoryTab() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['broadcasts'],
     queryFn: () => listBroadcasts(),
     refetchInterval: 30_000,
@@ -212,8 +214,9 @@ function HistoryTab() {
               {[...Array(5)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}
             </TableRow>
           ))}
+          {dataFailed && <TableErrorRow error={dataError} onRetry={refetchData} />}
           {data.map(b => <BroadcastRow key={b.id} b={b} />)}
-          {!isLoading && !data.length && (
+          {!isLoading && !dataFailed && !data.length && (
             <TableRow>
               <TableCell colSpan={5} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 4 }}>
                 No emergency broadcasts sent yet
@@ -229,7 +232,7 @@ function HistoryTab() {
 // ── My Broadcasts tab ─────────────────────────────────────────────────────────
 
 function MyBroadcastsTab() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({
     queryKey: ['my-broadcasts'],
     queryFn: getMyBroadcasts,
     refetchInterval: 30_000,
@@ -264,8 +267,9 @@ function MyBroadcastsTab() {
                 {[...Array(5)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}
               </TableRow>
             ))}
+            {dataFailed2 && <TableErrorRow error={dataError2} onRetry={refetchData2} />}
             {data.map(b => <BroadcastRow key={b.id} b={b} showAck />)}
-            {!isLoading && !data.length && (
+            {!isLoading && !dataFailed2 && !data.length && (
               <TableRow>
                 <TableCell colSpan={5} align="center" sx={{ color: 'rgba(255,255,255,0.3)', py: 4 }}>
                   No broadcasts received

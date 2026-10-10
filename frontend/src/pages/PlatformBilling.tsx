@@ -30,6 +30,7 @@ import {
   createBillingPlan, getBillingModules, getBillingPlans, updateBillingModule,
   updateBillingPlan, type BillingModule, type BillingPlan,
 } from '@/api/platformBilling'
+import { ErrorState } from '@/components/states'
 
 const BILLING_TYPE_LABEL: Record<string, string> = {
   included: 'Included',
@@ -64,10 +65,10 @@ export default function PlatformBilling() {
   const [moduleEdit, setModuleEdit] = useState<BillingModule | null>(null)
   const [error, setError] = useState('')
 
-  const { data: plans, isLoading: plansLoading } = useQuery({
+  const { data: plans, isLoading: plansLoading, isLoadingError: plansFailed, error: plansError, refetch: refetchPlans } = useQuery({
     queryKey: ['platform-plans'], queryFn: getBillingPlans,
   })
-  const { data: modules, isLoading: modulesLoading } = useQuery({
+  const { data: modules, isLoading: modulesLoading, isLoadingError: modulesFailed, error: modulesError, refetch: refetchModules } = useQuery({
     queryKey: ['platform-modules'], queryFn: getBillingModules,
   })
 
@@ -133,7 +134,7 @@ export default function PlatformBilling() {
 
       {tab === 0 && (
         <GlassCard sx={{ p: 0 }}>
-          {plansLoading ? <Skeleton variant="rectangular" height={200} /> : (
+          {plansLoading ? <Skeleton variant="rectangular" height={200} /> : plansFailed ? <ErrorState compact error={plansError} onRetry={refetchPlans} /> : (
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -213,7 +214,7 @@ export default function PlatformBilling() {
             something else. Invoices already issued are frozen and are not
             affected.
           </Alert>
-          {modulesLoading ? <Skeleton variant="rectangular" height={220} /> : (
+          {modulesLoading ? <Skeleton variant="rectangular" height={220} /> : modulesFailed ? <ErrorState compact error={modulesError} onRetry={refetchModules} /> : (
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>

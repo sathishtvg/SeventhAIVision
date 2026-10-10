@@ -40,6 +40,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
+import { ErrorState } from '@/components/states'
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   open: { label: 'Open', color: '#00E396' },
@@ -88,7 +89,7 @@ export function BarriersPage() {
   const [overrideReason, setOverrideReason] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { data: barriers = [], isLoading } = useQuery({
+  const { data: barriers = [], isLoading, isLoadingError: barriersFailed, error: barriersError, refetch: refetchBarriers } = useQuery({
     queryKey: ['barriers', siteFilter],
     queryFn: () => listBarriers(siteFilter || undefined),
   })
@@ -197,8 +198,9 @@ export function BarriersPage() {
       </Stack>
 
       {isLoading && <Skeleton variant="rounded" height={180} />}
+      {barriersFailed && <ErrorState compact error={barriersError} onRetry={refetchBarriers} />}
 
-      {!isLoading && barriers.length === 0 && (
+      {!isLoading && !barriersFailed && barriers.length === 0 && (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">
             No barriers configured. Add one to control a gate from here — it can be driven by a
@@ -512,7 +514,7 @@ function BarrierFormDialog({
 }
 
 function CommandLogDialog({ barrier, onClose }: { barrier: Barrier | null; onClose: () => void }) {
-  const { data: commands = [], isLoading } = useQuery({
+  const { data: commands = [], isLoading, isLoadingError: commandsFailed, error: commandsError, refetch: refetchCommands } = useQuery({
     queryKey: ['barrier-commands', barrier?.id],
     queryFn: () => listBarrierCommands(barrier!.id),
     enabled: !!barrier,
@@ -528,7 +530,8 @@ function CommandLogDialog({ barrier, onClose }: { barrier: Barrier | null; onClo
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton variant="rounded" height={120} />}
-        {!isLoading && commands.length === 0 && (
+        {commandsFailed && <ErrorState compact error={commandsError} onRetry={refetchCommands} />}
+        {!isLoading && !commandsFailed && commands.length === 0 && (
           <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
             No commands recorded yet.
           </Typography>

@@ -18,6 +18,7 @@ import { getSites } from '@/api/sites'
 import { apiError, closeInstruction, issueInstruction, listInstructions, readInstruction } from '@/api/occurrenceBook'
 import type { Instruction } from '@/api/occurrenceBook'
 import { fmt, standsUntil } from '@/components/occurrenceBook/bookFormat'
+import { ErrorState } from '@/components/states'
 
 const shown = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -100,7 +101,7 @@ export default function BookInstructions() {
   const [issuing, setIssuing] = useState(false)
   const [closing, setClosing] = useState<Instruction | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['dob-instructions', siteId, state], queryFn: () => listInstructions({ site_id: siteId || undefined, state }) })
   const again = () => qc.invalidateQueries({ queryKey: ['dob-instructions'] })
   const read = useMutation({ mutationFn: (id: string) => readInstruction(id).then(again) })
@@ -124,7 +125,7 @@ export default function BookInstructions() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setIssuing(true)}>Issue an instruction</Button>)}
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading ? <Skeleton height={160} /> : !items.length && !error ? (
         <Alert severity="info">
           {state === 'in_force' ? 'No instruction is in force. A shift\'s summary will say so.' : 'No instruction has ended.'}

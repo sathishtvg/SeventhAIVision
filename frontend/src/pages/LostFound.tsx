@@ -35,6 +35,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const CAN_DISPOSE = new Set([1, 2, 3, 8])
 
@@ -473,7 +474,7 @@ export function LostFoundPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: items = [], isLoading } = useQuery({
+  const { data: items = [], isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems } = useQuery({
     queryKey: ['lost-found', siteFilter, statusFilter, categoryFilter, search],
     queryFn: () => listLostFound({
       site_id: siteFilter || undefined,
@@ -534,7 +535,7 @@ export function LostFoundPage() {
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))' }}>
             {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}
           </Box>
-        ) : items.length === 0 ? (
+        ) : itemsFailed ? <ErrorState compact error={itemsError} onRetry={refetchItems} /> : items.length === 0 ? (
           <GlassCard sx={{ p: 4, textAlign: 'center' }}>
             <Inventory2Icon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
             <Typography color="text.secondary">

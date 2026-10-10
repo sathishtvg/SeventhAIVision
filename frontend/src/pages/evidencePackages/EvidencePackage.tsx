@@ -36,6 +36,7 @@ import {
   KIND_LABEL, STEP_LABEL, WEIGHTY, fmt, length, roleName, said, short, size,
 } from '@/components/evidence/evidenceFormat'
 import { InvestigationNav } from '@/pages/investigations/InvestigationNav'
+import { ErrorState } from '@/components/states'
 
 const keyOf = (t: Pick<Thing, 'kind' | 'id'>) => `${t.kind}:${t.id}`
 
@@ -56,7 +57,7 @@ export default function EvidencePackage() {
   const [picked, setPicked] = useState<Record<string, Thing>>({})
   const [asking, setAsking] = useState<'seal' | 'export' | 'disclose' | 'lift' | null>(null)
   const [exported, setExported] = useState<ExportResult | null>(null)
-  const { data: file, isLoading, error } = useQuery({
+  const { data: file, isLoading, error, refetch } = useQuery({
     queryKey: ['evidence-package', id], queryFn: () => getPackage(id), enabled: !!id })
   const draft = file?.status === 'DRAFT'
   const { data: offered } = useQuery({
@@ -82,7 +83,9 @@ export default function EvidencePackage() {
       <Box sx={{ p: 3 }}>
         <PageHeader title="Evidence Package" />
         <InvestigationNav />
-        <Alert severity="error">{error ? apiError(error) : 'Evidence package not found.'}</Alert>
+        {error
+          ? <ErrorState error={error} onRetry={refetch} title="Could not open the evidence package" />
+          : <Alert severity="error">Evidence package not found.</Alert>}
       </Box>
     )
   }

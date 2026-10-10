@@ -39,6 +39,7 @@ import { RISK_COLOR, droneIcon, fmt, pretty, useDroneRealtime } from '@/componen
 import { RouteEditor, ZoneLayer } from '@/components/drones/MapEditors'
 import { formatDistance } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 const WP_COLOR: Record<string, 'default' | 'success' | 'primary' | 'warning' | 'error'> = {
   PENDING: 'default', REACHED: 'primary', OBSERVED: 'success', SKIPPED: 'warning', FAILED: 'error',
@@ -47,7 +48,7 @@ const WP_COLOR: Record<string, 'default' | 'success' | 'primary' | 'warning' | '
 export default function DronePatrol() {
   const { id } = useParams()
   const qc = useQueryClient()
-  const { data: session, isLoading, error } = useQuery({
+  const { data: session, isLoading, error, refetch } = useQuery({
     queryKey: ['drone-patrol', id], queryFn: () => getSession(id!),
     refetchInterval: (q) => (q.state.data && IN_FLIGHT.includes(q.state.data.status) ? 5_000 : false),
   })
@@ -74,8 +75,17 @@ export default function DronePatrol() {
   useEffect(() => { if (!live) qc.invalidateQueries({ queryKey: ['drone-track', id] }) }, [live, id, qc])
 
   if (isLoading) return <Box sx={{ p: 3 }}><Skeleton height={500} /></Box>
-  if (error || !session) {
-    return <Box sx={{ p: 3 }}><Alert severity="error">{error ? apiError(error) : 'Patrol session not found.'}</Alert></Box>
+  // A patrol in flight is fetched again every few seconds. One of those failing does not take the page away
+  // from whoever is watching the flight - the notice at the foot of the screen says the figures may be out of
+  // date. The page is replaced only when there is no session to show at all.
+  if (!session) {
+    return (
+      <Box sx={{ p: 3 }}>
+        {error
+          ? <ErrorState error={error} onRetry={refetch} title="Could not open the patrol" />
+          : <Alert severity="error">Patrol session not found.</Alert>}
+      </Box>
+    )
   }
   const points = track?.points ?? []
   const now = latest && (!points.length || latest.recorded_at > points[points.length - 1].recorded_at)

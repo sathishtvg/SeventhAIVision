@@ -20,6 +20,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { RecordingPolicyDialog } from '@/components/common/RecordingPolicyDialog'
 import { LocationPickerMap } from '@/components/common/LocationPickerMap'
 import { usePermission } from '@/hooks/usePermission'
+import { ErrorState } from '@/components/states'
 
 interface SiteDialogProps {
   open: boolean
@@ -288,7 +289,7 @@ function SiteDialog({ open, site, onClose }: SiteDialogProps) {
 
 export function SitesPage() {
   const qc = useQueryClient()
-  const { data: sites = [], isLoading } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
+  const { data: sites = [], isLoading, isLoadingError: sitesFailed, error: sitesError, refetch: refetchSites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editSite, setEditSite] = useState<Site | undefined>()
   const [policySite, setPolicySite] = useState<Site | undefined>()
@@ -314,7 +315,7 @@ export function SitesPage() {
 
       {isLoading ? (
         <Typography color="text.secondary">Loading…</Typography>
-      ) : sites.length === 0 ? (
+      ) : sitesFailed ? <ErrorState compact error={sitesError} onRetry={refetchSites} /> : sites.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">No sites yet. Create your first site to organize cameras by location.</Typography>
         </GlassCard>

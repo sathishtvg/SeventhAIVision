@@ -16,6 +16,7 @@ import { dispatchGuard, guardArrived } from '@/api/guards'
 import { getUsers } from '@/api/users'
 import type { Incident, IncidentSeverity } from '@/types/api'
 import { MODULE_LABELS } from '@/api/licenses'
+import { ErrorState, TableErrorRow } from '@/components/states'
 
 const STATUS_STEPS = ['open', 'dispatched', 'en_route', 'on_scene', 'contained', 'resolved'] as const
 const NEXT_STATUS: Record<string, string> = {
@@ -43,7 +44,7 @@ function IncidentDrawer({ incident, onClose }: IncidentDrawerProps) {
 
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => getUsers() })
 
-  const { data: timeline, isLoading: timelineLoading } = useQuery({
+  const { data: timeline, isLoading: timelineLoading, isLoadingError: timelineFailed, error: timelineError, refetch: refetchTimeline } = useQuery({
     queryKey: ['incident-timeline', incident?.id],
     queryFn: () => getIncidentTimeline(incident!.id),
     enabled: !!incident && tab === 1,
@@ -245,7 +246,7 @@ function IncidentDrawer({ incident, onClose }: IncidentDrawerProps) {
               <>
                 {timelineLoading ? (
                   <Box><Skeleton /><Skeleton /><Skeleton /><Skeleton /></Box>
-                ) : !(timeline as any[])?.length ? (
+                ) : timelineFailed ? <ErrorState compact error={timelineError} onRetry={refetchTimeline} /> : !(timeline as any[])?.length ? (
                   <Typography color="text.secondary">No timeline entries yet.</Typography>
                 ) : (
                   (timeline as any[]).map((entry: any, i: number) => (
@@ -296,7 +297,7 @@ export default function Incidents() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: incidents, isLoading } = useQuery({
+  const { data: incidents, isLoading, isLoadingError: incidentsFailed, error: incidentsError, refetch: refetchIncidents } = useQuery({
     queryKey: ['incidents', statusFilter, siteFilter, moduleFilter],
     queryFn: () =>
       getIncidents(
@@ -403,7 +404,7 @@ export default function Incidents() {
                       ))}
                     </TableRow>
                   ))
-                : !incidents?.items?.length
+                : incidentsFailed ? <TableErrorRow error={incidentsError} onRetry={refetchIncidents} /> : !incidents?.items?.length
                 ? (
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ py: 4 }}>

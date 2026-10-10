@@ -32,6 +32,7 @@ import {
   previewPrice, recordPayment, setInvoiceStatus,
 } from '@/api/platformBilling'
 import { getTenantUsage } from '@/api/platform'
+import { ErrorState } from '@/components/states'
 
 const STATUS_COLOUR: Record<string, string> = {
   draft: '#8B85FF',
@@ -74,7 +75,7 @@ export default function PlatformInvoices() {
   const [payReference, setPayReference] = useState('')
   const [error, setError] = useState('')
 
-  const { data: invoices, isLoading } = useQuery({
+  const { data: invoices, isLoading, isLoadingError: invoicesFailed, error: invoicesError, refetch: refetchInvoices } = useQuery({
     queryKey: ['platform-invoices', filter],
     queryFn: () => getInvoices(filter === 'all' ? {} : { status: filter }),
   })
@@ -171,7 +172,7 @@ export default function PlatformInvoices() {
       </ToggleButtonGroup>
 
       <GlassCard sx={{ p: 0 }}>
-        {isLoading ? <Skeleton variant="rectangular" height={200} /> : !invoices?.length ? (
+        {isLoading ? <Skeleton variant="rectangular" height={200} /> : invoicesFailed ? <ErrorState compact error={invoicesError} onRetry={refetchInvoices} /> : !invoices?.length ? (
           <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
             No invoices {filter === 'all' ? 'yet' : `in ${filter}`}.
           </Typography>

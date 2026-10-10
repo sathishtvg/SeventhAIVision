@@ -19,6 +19,7 @@ import type { SituationFilters } from '@/api/securityIntelligence'
 import { DecisionStatusChip, RiskChip } from '@/components/intel/intelUi'
 import { SOURCE_LABEL, STATUS_LABEL, fmt, pretty, useIntelRealtime } from '@/components/intel/intelFormat'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
+import { ErrorState } from '@/components/states'
 
 export default function Situations() {
   const navigate = useNavigate()
@@ -35,7 +36,7 @@ export default function Situations() {
     site_id: siteId || undefined, risk_level: risk || undefined, decision_status: stands || undefined,
     open: openOnly && !stands ? true : undefined, sort,
   }
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['intel-situations', params, page, rows],
     queryFn: () => listSituations({ ...params, limit: rows, offset: page * rows }),
     refetchInterval: 15_000,
@@ -74,7 +75,7 @@ export default function Situations() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {isLoading ? <Skeleton height={240} /> : !situations.length ? (
+        {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !situations.length ? (
           <Alert severity="info">{openOnly && !stands ? 'No open situations.' : 'No situations match.'}</Alert>
         ) : (
           <TableContainer>

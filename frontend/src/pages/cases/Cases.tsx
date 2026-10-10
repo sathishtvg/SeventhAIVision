@@ -7,8 +7,7 @@
  */
 import { useState } from 'react'
 import {
-  Alert, Box, Button, Chip, FormControlLabel, MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, Typography,
+  Box, Button, Chip, FormControlLabel, MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -16,10 +15,11 @@ import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { getSites } from '@/api/sites'
-import { apiError, getCaseOptions, listCases } from '@/api/cases'
+import { getCaseOptions, listCases } from '@/api/cases'
 import type { CaseFile, Status } from '@/api/cases'
 import { CaseDialog, OpenCaseDialog } from '@/components/cases/CaseDialogs'
 import { PRIORITY_LABEL, STATUS_COLOUR, fmt } from '@/components/cases/caseFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -29,7 +29,7 @@ export default function Cases() {
   const [mine, setMine] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['cases', status, mine], queryFn: () => listCases({ status: status || undefined, mine: mine || undefined }),
     placeholderData: keepPreviousData,
   })
@@ -57,7 +57,7 @@ export default function Cases() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpening(true)}>Open a case</Button>)}
         </Stack>
       </GlassCard>
-      {!!error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+      {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={240} />}
       {data && (
         <GlassCard sx={{ p: 0 }}>

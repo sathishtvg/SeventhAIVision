@@ -16,6 +16,7 @@ import { getSites } from '@/api/sites'
 import { apiError, correctEntry, getEntry, reviewEntries, reviewEntry, searchEntries } from '@/api/occurrenceBook'
 import type { Entry, Kinds, ReviewOutcome, ReviewState } from '@/api/occurrenceBook'
 import { REVIEW_COLOUR, REVIEW_LABEL, correctionMark, fmt, kindLabel, since } from '@/components/occurrenceBook/bookFormat'
+import { ErrorState } from '@/components/states'
 
 type Period = 'today' | 'day' | 'week' | 'all'
 const PERIODS: { key: Period; label: string }[] = [
@@ -109,13 +110,13 @@ function EntryDialog({ entry, onClose }: { entry: Entry | null; onClose: () => v
 }
 
 function EntryView({ entry, onClose }: { entry: Entry; onClose: () => void }) {
-  const { data, isLoading, error } = useQuery({ queryKey: ['dob-entry', entry.id], queryFn: () => getEntry(entry.id) })
+  const { data, isLoading, error, refetch: refetchData } = useQuery({ queryKey: ['dob-entry', entry.id], queryFn: () => getEntry(entry.id) })
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{kindLabel(entry.entry_type)} · {fmt(entry.occurred_at)}</DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={140} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {data && (
           <Stack sx={{ gap: 1.5 }}>
             <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{data.body}</Typography>
@@ -165,7 +166,7 @@ export default function BookEntries({ kinds }: { kinds: Kinds }) {
   const [correcting, setCorrecting] = useState<Entry | null>(null)
   const [reading, setReading] = useState<Entry | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData2 } = useQuery({
     queryKey: ['dob-entries', q, kind, siteId, review, period, offset],
     queryFn: () => searchEntries({
       q: q || undefined, entry_type: kind ? [kind] : undefined, site_id: siteId || undefined,
@@ -209,7 +210,7 @@ export default function BookEntries({ kinds }: { kinds: Kinds }) {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData2} />}
         {kinds.can_review && toNote.length > 0 && (
           <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>
             <Typography variant="body2">{toNote.length} on this page {toNote.length === 1 ? 'has' : 'have'} not been reviewed.</Typography>

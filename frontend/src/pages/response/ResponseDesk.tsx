@@ -19,10 +19,11 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SeverityChip } from '@/components/common/SeverityChip'
 import { getSites } from '@/api/sites'
-import { apiError, getDesk } from '@/api/incidentResponses'
+import { getDesk } from '@/api/incidentResponses'
 import type { DeskItem, DeskView } from '@/api/incidentResponses'
 import { ClockChips, RecommendDialog, ResponseDetailDialog, StandDownDialog } from '@/components/response/ResponseDialogs'
 import { NEEDS_LABEL, STATE_COLOUR, STATE_LABEL, overBecause, since } from '@/components/response/responseFormat'
+import { ErrorState } from '@/components/states'
 
 /** How often the desk asks again. The clocks on it are the server's, not the browser's. */
 const REFRESH_MS = 15_000
@@ -49,7 +50,7 @@ export default function ResponseDesk() {
   const [standing, setStanding] = useState<DeskItem | null>(null)
   const [reading, setReading] = useState<DeskItem | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['response-desk', siteId, view], queryFn: () => getDesk({ site_id: siteId || undefined, view }),
     refetchInterval: REFRESH_MS,
   })
@@ -89,7 +90,7 @@ export default function ResponseDesk() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {isLoading ? <Skeleton height={220} /> : !items.length && !error ? (
           <Alert severity="info">
             {view === 'late' ? 'Nothing is late.' : view === 'waiting' ? 'No open incident is waiting for a guard.'

@@ -68,6 +68,7 @@ import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { openAttendanceWindow } from '@/lib/attendanceWindow'
 import { useAuthStore } from '@/store/auth'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
+import { ErrorState } from '@/components/states'
 
 // ── Status vocabulary ────────────────────────────────────────────────────────
 
@@ -677,7 +678,7 @@ export function AttendancePage() {
   const [statDrill, setStatDrill] = useState<StatKey | null>(null)
   const [selectedGuard, setSelectedGuard] = useState<LiveAttendanceShift | null>(null)
 
-  const { data: board, isLoading } = useQuery({
+  const { data: board, isLoading, isLoadingError: boardFailed, error: boardError, refetch: refetchBoard } = useQuery({
     queryKey: ['attendance-live'],
     queryFn: () => getLiveAttendance(),
     // WebSocket invalidation is the primary path; this is the safety net for a
@@ -899,7 +900,7 @@ export function AttendancePage() {
       {/* ── Site grid ──────────────────────────────────────────────────── */}
       {isLoading ? (
         <GlassCard sx={{ p: 2 }}><Skeleton height={120} /></GlassCard>
-      ) : filteredSites.length === 0 ? (
+      ) : boardFailed ? <ErrorState compact error={boardError} onRetry={refetchBoard} /> : filteredSites.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">
             {anyFilter ? 'No guards match these filters.' : 'No guards rostered today.'}

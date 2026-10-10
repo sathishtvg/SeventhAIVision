@@ -40,6 +40,7 @@ import { pretty } from '@/components/drones/droneFormat'
 import { RouteEditor, ZoneLayer } from '@/components/drones/MapEditors'
 import { formatDistance, routeLengthM } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
+import { ErrorState } from '@/components/states'
 
 const SYNC_MODES: { v: SyncMode | ''; label: string }[] = [
   { v: '', label: "Site's recording policy" },
@@ -54,14 +55,20 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export default function MissionDesigner() {
   const { id } = useParams()
   const isNew = !id || id === 'new'
-  const { data: mission, isLoading, error } = useQuery({ queryKey: ['drone-mission', id],
+  const { data: mission, isLoading, error, refetch } = useQuery({ queryKey: ['drone-mission', id],
                                                           queryFn: () => getMission(id!), enabled: !isNew })
   const { data: route, isLoading: routeLoading } = useQuery({
     queryKey: ['drone-route', mission?.route_id], queryFn: () => getRoute(mission!.route_id!),
     enabled: !!mission?.route_id })
   if (!isNew && (isLoading || routeLoading)) return <Box sx={{ p: 3 }}><Skeleton height={400} /></Box>
   if (!isNew && !mission) {
-    return <Box sx={{ p: 3 }}><Alert severity="error">{error ? apiError(error) : 'Mission not found.'}</Alert></Box>
+    return (
+      <Box sx={{ p: 3 }}>
+        {error
+          ? <ErrorState error={error} onRetry={refetch} title="Could not open the mission" />
+          : <Alert severity="error">Mission not found.</Alert>}
+      </Box>
+    )
   }
   // Keyed, so opening another mission (or the one just created) starts the
   // form afresh from what the server holds.

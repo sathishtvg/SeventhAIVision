@@ -42,6 +42,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 
@@ -212,7 +213,7 @@ function HandoverDialog({ handoverId, canManage, onClose }: {
   const [disputeReason, setDisputeReason] = useState('')
   const [error, setError] = useState('')
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['handover', handoverId],
     queryFn: () => getHandover(handoverId),
   })
@@ -261,7 +262,7 @@ function HandoverDialog({ handoverId, canManage, onClose }: {
       </DialogTitle>
       <DialogContent dividers>
         {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
-        {isLoading || !data ? (
+        {dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : isLoading || !data ? (
           <Stack spacing={1}>
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={40} />)}
           </Stack>
@@ -589,7 +590,7 @@ export function HandoversPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: handovers = [], isLoading } = useQuery({
+  const { data: handovers = [], isLoading, isLoadingError: handoversFailed, error: handoversError, refetch: refetchHandovers } = useQuery({
     queryKey: ['handovers', siteFilter, statusFilter, openOnly],
     queryFn: () => listHandovers({
       site_id: siteFilter || undefined,
@@ -599,7 +600,7 @@ export function HandoversPage() {
     refetchInterval: 60_000,
   })
 
-  const { data: templates = [], isLoading: templatesLoading } = useQuery({
+  const { data: templates = [], isLoading: templatesLoading, isLoadingError: templatesFailed, error: templatesError, refetch: refetchTemplates } = useQuery({
     queryKey: ['handover-templates'],
     queryFn: () => listTemplates(true),
     enabled: tab === 1,
@@ -654,7 +655,7 @@ export function HandoversPage() {
               <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))' }}>
                 {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={140} />)}
               </Box>
-            ) : handovers.length === 0 ? (
+            ) : handoversFailed ? <ErrorState compact error={handoversError} onRetry={refetchHandovers} /> : handovers.length === 0 ? (
               <GlassCard sx={{ p: 4, textAlign: 'center' }}>
                 <SwapHorizIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
                 <Typography color="text.secondary">
@@ -677,7 +678,7 @@ export function HandoversPage() {
           <Stack spacing={1.5}>
             {[0, 1].map((i) => <Skeleton key={i} variant="rounded" height={160} />)}
           </Stack>
-        ) : templates.length === 0 ? (
+        ) : templatesFailed ? <ErrorState compact error={templatesError} onRetry={refetchTemplates} /> : templates.length === 0 ? (
           <GlassCard sx={{ p: 4, textAlign: 'center' }}>
             <ChecklistIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
             <Typography color="text.secondary">

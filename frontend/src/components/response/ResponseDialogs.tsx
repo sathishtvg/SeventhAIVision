@@ -20,6 +20,7 @@ import type { ClockName, Clocks, DeskItem, RankedGuard } from '@/api/incidentRes
 import {
   CLOCK_LABEL, STATE_COLOUR, STATE_LABEL, STEP_LABEL, TONE_COLOUR, fmt, reached, readClock, span, toldSentence,
 } from './responseFormat'
+import { ErrorState } from '@/components/states'
 
 type Incident = Pick<DeskItem, 'id' | 'title' | 'severity' | 'site_name' | 'camera_name'>
 
@@ -58,7 +59,7 @@ export function RecommendDialog(props: RecommendProps) {
 function RecommendForm({ incident, onClose, onSent }: RecommendProps & { incident: Incident }) {
   const [chosen, setChosen] = useState<RankedGuard | null>(null)
   const [notes, setNotes] = useState('')
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData } = useQuery({
     queryKey: ['response-recommend', incident.id], queryFn: () => recommend(incident.id) })
   const send = useMutation({
     // The dispatch the platform has always had: this dialog only helped choose.
@@ -72,7 +73,7 @@ function RecommendForm({ incident, onClose, onSent }: RecommendProps & { inciden
       <DialogContent>
         <Stack sx={{ gap: 1.5, mt: 0.5 }}>
           {isLoading && <Skeleton height={160} />}
-          {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+          {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
           {data && (
             <>
               <Alert severity="info">{data.note}</Alert>
@@ -163,7 +164,7 @@ export function ResponseDetailDialog(props: DetailProps) {
 }
 
 function ResponseDetailView({ incident, onClose }: DetailProps & { incident: Incident }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch: refetchData2 } = useQuery({
     queryKey: ['response-detail', incident.id], queryFn: () => getResponse(incident.id) })
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="md">
@@ -174,7 +175,7 @@ function ResponseDetailView({ incident, onClose }: DetailProps & { incident: Inc
       </DialogTitle>
       <DialogContent>
         {isLoading && <Skeleton height={200} />}
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetchData2} />}
         {data && (
           <Stack sx={{ gap: 2 }}>
             <Typography variant="body2" color="text.secondary">

@@ -40,6 +40,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 4, 8])
 
@@ -285,7 +286,7 @@ function ResolveDialog({ row, onClose }: { row: ManDownEvent; onClose: () => voi
 
 function SettingsDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['man-down-settings'],
     queryFn: getManDownSettings,
   })
@@ -311,7 +312,7 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
       <DialogTitle>Man-down thresholds</DialogTitle>
       <DialogContent dividers>
         {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
-        {isLoading || !current ? (
+        {dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : isLoading || !current ? (
           <Stack spacing={1}>
             {[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={44} />)}
           </Stack>
@@ -380,7 +381,7 @@ export function ManDownPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
     queryKey: ['man-down', siteFilter],
     queryFn: () => listManDown({ site_id: siteFilter || undefined }),
     // Deliberately aggressive. Every other list here refetches lazily; thirty
@@ -426,7 +427,7 @@ export function ManDownPage() {
           <Stack spacing={1.5}>
             {[0, 1].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}
           </Stack>
-        ) : (
+        ) : eventsFailed ? <ErrorState compact error={eventsError} onRetry={refetchEvents} /> : (
           <>
             {live.length > 0 && (
               <Stack spacing={1.5} sx={{ mb: 2.5 }}>

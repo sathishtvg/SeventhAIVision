@@ -53,6 +53,7 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useAuthStore } from '@/store/auth'
+import { ErrorState } from '@/components/states'
 
 const GUARD_ROLES = new Set([3, 4, 5, 8])
 const _GUARD_ONLY_ROLES = new Set([4, 5])
@@ -335,7 +336,7 @@ function RequestsTab() {
     leave_type_id: typeId || undefined,
     request_status: status || undefined,
   }
-  const { data: requests = [], isLoading } = useQuery({
+  const { data: requests = [], isLoading, isLoadingError: requestsFailed, error: requestsError, refetch: refetchRequests } = useQuery({
     queryKey: ['leave-requests', filters],
     queryFn: () => listLeaveRequests(filters),
   })
@@ -372,7 +373,7 @@ function RequestsTab() {
 
       {isLoading ? (
         <Skeleton height={80} />
-      ) : requests.length === 0 ? (
+      ) : requestsFailed ? <ErrorState compact error={requestsError} onRetry={refetchRequests} /> : requests.length === 0 ? (
         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>No leave requests found.</Typography>
       ) : (
         <Stack divider={<Divider />} spacing={1.5}>
@@ -417,7 +418,7 @@ function BalancesTab() {
   const [year, setYear] = useState(new Date().getFullYear())
   const effectiveGuard = isGuardOnly ? user?.id : (guardId || undefined)
 
-  const { data: balances = [], isLoading } = useQuery({
+  const { data: balances = [], isLoading, isLoadingError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
     queryKey: ['leave-balances', effectiveGuard, year],
     queryFn: () => getLeaveBalances(effectiveGuard, year),
     enabled: !!effectiveGuard,
@@ -447,7 +448,7 @@ function BalancesTab() {
         <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>Select a guard to view their leave balances.</Typography>
       ) : isLoading ? (
         <Skeleton height={80} />
-      ) : (
+      ) : balancesFailed ? <ErrorState compact error={balancesError} onRetry={refetchBalances} /> : (
         <TableContainer>
           <Table size="small">
             <TableHead>
@@ -520,7 +521,7 @@ function LeaveTypeDialog({ open, onClose, editing }: { open: boolean; onClose: (
 
 function LeaveTypesTab() {
   const qc = useQueryClient()
-  const { data: types = [], isLoading } = useQuery({ queryKey: ['leave-types'], queryFn: () => getLeaveTypes() })
+  const { data: types = [], isLoading, isLoadingError: typesFailed, error: typesError, refetch: refetchTypes } = useQuery({ queryKey: ['leave-types'], queryFn: () => getLeaveTypes() })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<LeaveType | null>(null)
 
@@ -538,7 +539,7 @@ function LeaveTypesTab() {
       </Stack>
       {isLoading ? (
         <Skeleton height={80} />
-      ) : (
+      ) : typesFailed ? <ErrorState compact error={typesError} onRetry={refetchTypes} /> : (
         <TableContainer>
           <Table size="small">
             <TableHead>

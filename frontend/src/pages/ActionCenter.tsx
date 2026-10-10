@@ -30,6 +30,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
+import { ErrorState } from '@/components/states'
 
 const SEV_COLOR: Record<ActionItem['severity'], string> = {
   critical: '#FF4560',
@@ -139,7 +140,7 @@ export default function ActionCenter() {
   const qc = useQueryClient()
   const [responding, setResponding] = useState<AlertSummary | null>(null)
   const { kiosk, toggleKiosk } = useKioskToggle()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['action-center'],
     queryFn: getActionCenter,
     refetchInterval: 30_000, // fallback; WS invalidation is the primary refresh
@@ -189,7 +190,7 @@ export default function ActionCenter() {
 
       {isLoading ? (
         <GlassCard sx={{ p: 2 }}><Skeleton height={72} /></GlassCard>
-      ) : items.length === 0 ? (
+      ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : items.length === 0 ? (
         <GlassCard sx={{ p: 5, textAlign: 'center' }}>
           <TaskAltIcon sx={{ fontSize: 44, color: '#00E396', mb: 1 }} />
           <Typography variant="h6" sx={{ fontWeight: 700 }}>All clear</Typography>

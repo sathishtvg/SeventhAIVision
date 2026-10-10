@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { MediaViewer } from '@/components/common/MediaViewer'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import type { Recording } from '@/types/api'
+import { TableErrorRow } from '@/components/states'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return '—'
@@ -43,7 +44,7 @@ export function RecordingsPage() {
   })
 
   // For each camera, fetch their streams and recordings (simplified: fetch all in one query)
-  const { data: allRecordings = [], isLoading } = useQuery({
+  const { data: allRecordings = [], isLoading, isLoadingError: allRecordingsFailed, error: allRecordingsError, refetch: refetchAllRecordings } = useQuery({
     queryKey: ['all-recordings', cameras],
     queryFn: async () => {
       const recs: (Recording & { camera_name: string; site_id: string | null })[] = []
@@ -109,7 +110,7 @@ export function RecordingsPage() {
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={6} align="center">Loading…</TableCell></TableRow>
-            ) : filtered.length === 0 ? (
+            ) : allRecordingsFailed ? <TableErrorRow error={allRecordingsError} onRetry={refetchAllRecordings} /> : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={6} align="center" sx={{ color: 'text.secondary' }}>No recordings</TableCell></TableRow>
             ) : filtered.map((rec: any) => (
               <TableRow key={rec.id} hover>

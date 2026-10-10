@@ -19,6 +19,7 @@ import {
 } from '@/api/operationsBoard'
 import type { Briefing, BriefingSection } from '@/api/operationsBoard'
 import { AS_AT_LABEL, STATE_COLOUR, STATE_LABEL, briefingFor, briefingLine, dayBefore, fmt, fmtDay } from './boardFormat'
+import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -124,7 +125,7 @@ function BriefingView({ id, onClose, onChanged, onCorrect }: ReadProps & { id: s
         {data ? `${briefingFor(data)} — ${fmtDay(data.briefing_date)}` : 'Briefing'}
       </DialogTitle>
       <DialogContent data-testid="briefing">
-        {!!error && <Alert severity="error">{apiError(error)}</Alert>}
+        {!!error && <ErrorState compact error={error} onRetry={refetch} />}
         {isLoading && <Skeleton height={220} />}
         {data && (
           <>

@@ -55,6 +55,7 @@ import { getParkingDashboard } from '@/api/parking'
 import { getBWCDashboard } from '@/api/bwc'
 import { getGPSDashboard } from '@/api/gps'
 import { getAlarmDashboard } from '@/api/alarms'
+import { ErrorState } from '@/components/states'
 
 /**
  * Created once, at module scope.
@@ -234,7 +235,7 @@ function LiveEventsFeed() {
 
 // ── Camera status grid (stream-based) ─────────────────────────
 function CameraStatusGrid({ siteFilter }: { siteFilter: string }) {
-  const { data: streams = [], isLoading } = useQuery({
+  const { data: streams = [], isLoading, isLoadingError: streamsFailed, error: streamsError, refetch: refetchStreams } = useQuery({
     queryKey: ['all-streams', siteFilter],
     queryFn: () => listAllStreams(siteFilter ? { site_id: siteFilter } : undefined),
     refetchInterval: 30_000,
@@ -252,7 +253,7 @@ function CameraStatusGrid({ siteFilter }: { siteFilter: string }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 1, maxHeight: 240, overflowY: 'auto' }}>
         {isLoading
           ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={60} />)
-          : streams.map((s) => (
+          : streamsFailed ? <ErrorState compact error={streamsError} onRetry={refetchStreams} /> : streams.map((s) => (
             <Tooltip key={s.id} title={`${s.status}${s.last_frame_at ? ` · ${new Date(s.last_frame_at).toLocaleTimeString()}` : ''}`}>
               <Box sx={{ p: 1, borderRadius: 1, border: '1px solid', borderColor: `${statusColor(s.status)}33`, bgcolor: `${statusColor(s.status)}08` }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -481,7 +482,7 @@ function IncidentResolutionPanel() {
 
 // ── System health strip ───────────────────────────────────────
 function SystemHealth() {
-  const { data: health, isLoading } = useQuery({
+  const { data: health, isLoading, isLoadingError: healthFailed, error: healthError, refetch: refetchHealth } = useQuery({
     queryKey: ['system-health'],
     queryFn: () => apiClient.get('/api/v1/system/health').then((r) => r.data),
     refetchInterval: 60_000,
@@ -491,6 +492,7 @@ function SystemHealth() {
   const WORKERS = ['lpr', 'face', 'intrusion', 'ppe', 'crowd', 'fire_smoke', 'weapon', 'behavior', 'tampering', 'abandoned', 'fall']
 
   if (isLoading) return <Skeleton height={40} />
+  if (healthFailed) return <ErrorState error={healthError} onRetry={refetchHealth} />
 
   const services = health?.services ?? {}
 

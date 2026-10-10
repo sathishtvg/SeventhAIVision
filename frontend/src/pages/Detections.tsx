@@ -13,6 +13,7 @@ import {
   getTamperingEvents, getAbandonedEvents, getFallEvents,
 } from '@/api/detections'
 import { PageHeader } from '@/components/common/PageHeader'
+import { TableErrorRow } from '@/components/states'
 
 interface TabPanelProps {
   children: React.ReactNode
@@ -30,7 +31,7 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 // ──────────────────────────────────────────────────────────
 
 function LprTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['lpr-events'], queryFn: () => getLprEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({ queryKey: ['lpr-events'], queryFn: () => getLprEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -48,7 +49,7 @@ function LprTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={7} />
-            : data?.map((e) => (
+            : dataFailed ? <TableErrorRow error={dataError} onRetry={refetchData} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="body2" sx={{ fontWeight: 700 }}>{e.plate_number}</Typography></TableCell>
                   <TableCell>{e.plate_confidence ? `${(e.plate_confidence * 100).toFixed(1)}%` : '—'}</TableCell>
@@ -70,7 +71,7 @@ function LprTable() {
 }
 
 function FaceTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['face-events'], queryFn: () => getFaceEvents(100) })
+  const { data, isLoading, isLoadingError: dataFailed2, error: dataError2, refetch: refetchData2 } = useQuery({ queryKey: ['face-events'], queryFn: () => getFaceEvents(100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -86,7 +87,7 @@ function FaceTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={5} />
-            : data?.map((e) => (
+            : dataFailed2 ? <TableErrorRow error={dataError2} onRetry={refetchData2} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell>
@@ -106,7 +107,7 @@ function FaceTable() {
 }
 
 function IntrusionTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['intrusion-events'], queryFn: () => getIntrusionEvents(100) })
+  const { data, isLoading, isLoadingError: dataFailed3, error: dataError3, refetch: refetchData3 } = useQuery({ queryKey: ['intrusion-events'], queryFn: () => getIntrusionEvents(100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -122,7 +123,7 @@ function IntrusionTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={5} />
-            : data?.map((e) => (
+            : dataFailed3 ? <TableErrorRow error={dataError3} onRetry={refetchData3} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.zone_id.slice(0, 8)}…</Typography></TableCell>
@@ -142,7 +143,7 @@ function IntrusionTable() {
 // ──────────────────────────────────────────────────────────
 
 function PpeTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['ppe-events'], queryFn: () => getPpeEvents(100) })
+  const { data, isLoading, isLoadingError: dataFailed4, error: dataError4, refetch: refetchData4 } = useQuery({ queryKey: ['ppe-events'], queryFn: () => getPpeEvents(100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -159,7 +160,7 @@ function PpeTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={6} />
-            : data?.map((e) => (
+            : dataFailed4 ? <TableErrorRow error={dataError4} onRetry={refetchData4} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell>
@@ -188,7 +189,7 @@ function PpeTable() {
 }
 
 function CrowdTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['crowd-events'], queryFn: () => getCrowdEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed5, error: dataError5, refetch: refetchData5 } = useQuery({ queryKey: ['crowd-events'], queryFn: () => getCrowdEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -205,7 +206,7 @@ function CrowdTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={6} />
-            : data?.map((e) => (
+            : dataFailed5 ? <TableErrorRow error={dataError5} onRetry={refetchData5} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.zone_id.slice(0, 8)}…</Typography></TableCell>
@@ -232,7 +233,7 @@ function CrowdTable() {
 }
 
 function FireSmokeTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['fire-smoke-events'], queryFn: () => getFireSmokeEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed6, error: dataError6, refetch: refetchData6 } = useQuery({ queryKey: ['fire-smoke-events'], queryFn: () => getFireSmokeEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -248,7 +249,7 @@ function FireSmokeTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={5} />
-            : data?.map((e) => (
+            : dataFailed6 ? <TableErrorRow error={dataError6} onRetry={refetchData6} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell>
@@ -270,7 +271,7 @@ function FireSmokeTable() {
 }
 
 function WeaponTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['weapon-events'], queryFn: () => getWeaponEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed7, error: dataError7, refetch: refetchData7 } = useQuery({ queryKey: ['weapon-events'], queryFn: () => getWeaponEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -286,7 +287,7 @@ function WeaponTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={5} />
-            : data?.map((e) => (
+            : dataFailed7 ? <TableErrorRow error={dataError7} onRetry={refetchData7} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell>
@@ -308,7 +309,7 @@ function WeaponTable() {
 }
 
 function BehaviorTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['behavior-events'], queryFn: () => getBehaviorEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed8, error: dataError8, refetch: refetchData8 } = useQuery({ queryKey: ['behavior-events'], queryFn: () => getBehaviorEvents(undefined, 100) })
   const BEHAVIOR_COLORS: Record<string, 'error' | 'warning' | 'info' | 'default'> = {
     aggression: 'error',
     tailgating: 'warning',
@@ -331,7 +332,7 @@ function BehaviorTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={6} />
-            : data?.map((e) => (
+            : dataFailed8 ? <TableErrorRow error={dataError8} onRetry={refetchData8} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.detection_id.slice(0, 8)}…</Typography></TableCell>
                   <TableCell>
@@ -354,7 +355,7 @@ function BehaviorTable() {
 }
 
 function TamperingTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['tampering-events'], queryFn: () => getTamperingEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed9, error: dataError9, refetch: refetchData9 } = useQuery({ queryKey: ['tampering-events'], queryFn: () => getTamperingEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -371,7 +372,7 @@ function TamperingTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={6} />
-            : data?.map((e) => (
+            : dataFailed9 ? <TableErrorRow error={dataError9} onRetry={refetchData9} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell>{e.camera_name ?? e.camera_id.slice(0, 8)}</TableCell>
                   <TableCell><Chip label={e.tampering_type.replace('_', ' ')} size="small" color="warning" /></TableCell>
@@ -388,7 +389,7 @@ function TamperingTable() {
 }
 
 function AbandonedTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['abandoned-events'], queryFn: () => getAbandonedEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed10, error: dataError10, refetch: refetchData10 } = useQuery({ queryKey: ['abandoned-events'], queryFn: () => getAbandonedEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -404,7 +405,7 @@ function AbandonedTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={5} />
-            : data?.map((e) => (
+            : dataFailed10 ? <TableErrorRow error={dataError10} onRetry={refetchData10} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell>{e.camera_name ?? e.camera_id.slice(0, 8)}</TableCell>
                   <TableCell><Chip label={e.object_class.replace('_', ' ')} size="small" /></TableCell>
@@ -420,7 +421,7 @@ function AbandonedTable() {
 }
 
 function FallTable() {
-  const { data, isLoading } = useQuery({ queryKey: ['fall-events'], queryFn: () => getFallEvents(undefined, 100) })
+  const { data, isLoading, isLoadingError: dataFailed11, error: dataError11, refetch: refetchData11 } = useQuery({ queryKey: ['fall-events'], queryFn: () => getFallEvents(undefined, 100) })
   return (
     <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
       <Table size="small">
@@ -435,7 +436,7 @@ function FallTable() {
         <TableBody>
           {isLoading
             ? <SkeletonRows cols={4} />
-            : data?.map((e) => (
+            : dataFailed11 ? <TableErrorRow error={dataError11} onRetry={refetchData11} /> : data?.map((e) => (
                 <TableRow key={e.detection_id} hover>
                   <TableCell>{e.camera_name ?? e.camera_id.slice(0, 8)}</TableCell>
                   <TableCell>
