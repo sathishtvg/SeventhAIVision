@@ -20,6 +20,19 @@ what was and was not verified, is in `DRONE_PATROL_GAP_ANALYSIS.md` §28.
 - A release needs a new build — the native side changes with the SDK — and
   `google-services.json`, which is not in the repository. Minimum iOS 16.4,
   minimum Android 7.0.
+- **Building an APK.** `npx eas-cli build -p android --profile <profile>`, signed
+  in to Expo (`npx eas-cli login`), with `google-services.json` in this folder.
+  Three profiles make an APK or a bundle: `preview` (an APK, https only, the
+  server typed at sign-in), `production` (the store's bundle), and `lan-test`.
+- **`lan-test` is for trying the app against a development machine on the same
+  network, and for nothing else.** It is the one build that allows plain http
+  (`APP_ALLOW_HTTP=1`, read by `app.config.js`) and it has that machine's
+  address built in as the default server (`EXPO_PUBLIC_API_URL` in `eas.json`
+  - change it when the machine's address changes; it can also be typed at
+  sign-in). It is not what guards are given: their server is reached over
+  https. `__tests__/buildConfig.test.ts` holds that no other profile allows http.
+- **What is uploaded.** Expo's build service is sent the repository, not only
+  this folder. `.easignore` at the repository's root limits that to `mobile/`.
 - Do not run `npm audit fix` here. It installs a second React Native inside the
   first (gap analysis §27.5). Update a package by name and check the lockfile
   gained no entries.
