@@ -1,0 +1,178 @@
+/*
+ * How the app moves: the rules that have to be in a style sheet.
+ *
+ * Imported once, by main.tsx. THAT IS THE POINT OF THIS FILE: src/index.css
+ * holds timing variables, keyframes, a page entrance and a reduced-motion rule,
+ * and nothing has ever imported it - none of it has run in the product. It was
+ * found by looking at the built style sheet for a rule that should have been
+ * there (10 October 2026). It is left as it is: loading it whole would also
+ * load its page background, which is dark whatever the theme, and break light
+ * mode. What the app needs of it is here, where a test holds it to
+ * src/motion/tokens.ts and another holds that main.tsx imports it.
+ *
+ * Everything here is plain CSS on names; nothing depends on index.css.
+ */
+
+:root {
+  /* The timings of src/motion/tokens.ts. Change one, change both - motion.test.ts holds them equal. */
+  --d-fast:         150ms;
+  --d-standard:     220ms;
+  --d-panel:        280ms;
+  --d-exit:         190ms;
+  --d-page:         320ms;
+  --d-slow:         350ms;
+  --d-appear-delay: 150ms;
+  --d-stagger:      40ms;
+  --d-new:          6000ms;
+
+  --ease-out:    cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-in:     cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ── Entrances ─────────────────────────────────────────────────────────────── */
+@keyframes sav-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes sav-fade-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* The name fadeUpSx() has always used. It was defined only in index.css, so the
+   cards that asked for it never moved; they do now. */
+@keyframes fade-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Something confirmed - a snapshot saved, a bookmark kept. Once, small. */
+@keyframes sav-tick {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+/* ── How a page arrives ────────────────────────────────────────────────────────
+   The page area carries `page-enter` and one more class for the kind of page
+   it is (pageKind.ts). A screen somebody is watching or working on - the
+   camera wall, a patrol in progress - should appear, not arrive: no movement
+   there, and the shortest time.
+
+   Whatever the class, the page is drawn and answers a click from its first
+   frame. These play over it; nothing waits for them. */
+.page-enter              { animation: sav-fade-in var(--d-standard) var(--ease-out); }
+.page-enter--dashboard   { animation: fade-up     var(--d-page)     var(--ease-out); }
+.page-enter--detail      { animation: sav-fade-up var(--d-panel)    var(--ease-out); }
+.page-enter--operational { animation: sav-fade-in var(--d-fast)     var(--ease-out); }
+
+/* ── A placeholder waits before it is seen ─────────────────────────────────────
+   A skeleton or a spinner is in the page from the first frame, taking the room
+   the content will take, so nothing moves when the content replaces it. It
+   becomes visible only after --d-appear-delay. Most answers on a local network
+   come back sooner than that, and used to be preceded by a flash of grey.
+
+   The content is never held back for this: when the answer arrives it is
+   shown, whether the placeholder had been seen or not.
+
+   @starting-style is what gives a newly added element somewhere to fade from.
+   A browser without it shows the placeholder at once, as before. */
+.MuiSkeleton-root,
+.MuiCircularProgress-indeterminate,
+.MuiLinearProgress-indeterminate,
+.sav-waits {
+  transition: opacity var(--d-standard) var(--ease-out) var(--d-appear-delay);
+}
+@starting-style {
+  .MuiSkeleton-root,
+  .MuiCircularProgress-indeterminate,
+  .MuiLinearProgress-indeterminate,
+  .sav-waits { opacity: 0; }
+}
+
+/* ── What has just arrived ─────────────────────────────────────────────────────
+   A row or a card that came in after its list was first shown (useNewItems)
+   carries `sav-new` for --d-new: a tint, and a bar at its leading edge, in the
+   colour of what it is. Both are there without any movement, and a screen
+   reader is told in words. The mark holds for most of that time and fades out
+   before the class is taken off, so its going is not a jump.
+
+   With reduced motion the fade is not played at all (see the end of this
+   file) and the mark simply stays until it is taken off: an animation cut to
+   nothing would otherwise end the mark the moment it began.
+
+   The colours are the theme's own for error, warning, info and success. */
+.sav-new { --sav-new: #38BDF8; }
+.sav-new[data-tone='critical'] { --sav-new: #FF4560; }
+.sav-new[data-tone='high']     { --sav-new: #FB923C; }
+.sav-new[data-tone='medium']   { --sav-new: #F59E0B; }
+.sav-new[data-tone='low']      { --sav-new: #38BDF8; }
+.sav-new[data-tone='success']  { --sav-new: #22C55E; }
+
+tr.sav-new > td,
+tr.sav-new > th,
+:not(tr).sav-new {
+  background-color: color-mix(in srgb, var(--sav-new) 14%, transparent);
+  animation: sav-new-fade var(--d-new) linear forwards;
+}
+tr.sav-new > td:first-child,
+tr.sav-new > th:first-child,
+:not(tr).sav-new {
+  box-shadow: inset 3px 0 0 var(--sav-new);
+}
+@keyframes sav-new-fade {
+  75%       { background-color: color-mix(in srgb, var(--sav-new) 14%, transparent); }
+  90%, 100% { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+
+/* ── Rows kept while a changed filter loads ────────────────────────────────────
+   The line says the list is being refreshed; what follows it in the same
+   container is the last list's, and is dimmed until this one's arrives. */
+.sav-refreshing ~ * {
+  opacity: 0.55;
+  /* It waits as the line does: a filter that answers at once dims nothing. */
+  transition: opacity var(--d-fast) var(--ease-out) var(--d-appear-delay);
+}
+
+/* ── Less motion, for whoever asks ─────────────────────────────────────────────
+   By the operating system's setting, or by the app's own (Settings, kept per
+   person; preference.ts writes it on the root as data-motion). "full" chosen
+   in the app is a choice made knowingly and wins over the system's.
+
+   Nothing moves and nothing takes turns; a state is simply there. A
+   placeholder still waits before it shows - that is a delay, not a movement,
+   and it is what stops the flash. No state is told by movement alone, so
+   nothing is lost: what pulsed is still coloured and still says what it is.
+
+   Until this file the app had no such rule in force at all. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) *,
+  :root:not([data-motion='full']) *::before,
+  :root:not([data-motion='full']) *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+/* The mark on what has just arrived stays put, and is not faded away. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .sav-new,
+  :root:not([data-motion='full']) tr.sav-new > td,
+  :root:not([data-motion='full']) tr.sav-new > th { animation-name: none !important; }
+}
+:root[data-motion='reduced'] .sav-new,
+:root[data-motion='reduced'] tr.sav-new > td,
+:root[data-motion='reduced'] tr.sav-new > th { animation-name: none !important; }

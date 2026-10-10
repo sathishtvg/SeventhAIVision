@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { useColorMode, BRAND_PRESETS } from '@/context/ColorMode'
+import { MotionPreferences } from '@/components/states'
 import { getSettings, upsertSetting } from '@/api/settings'
 import { getBranding, updateBranding } from '@/api/branding'
 import { get2FAStatus, setup2FA, enable2FA, disable2FA, get2faPolicy, set2faPolicy } from '@/api/guards'
@@ -516,6 +517,8 @@ function AppearanceSection() {
         label={mode === 'light' ? 'Light mode' : 'Dark mode'}
         sx={{ mb: 3 }}
       />
+
+      <MotionPreferences />
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
         Accent colour
