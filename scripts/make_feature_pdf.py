@@ -44,7 +44,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "10 October 2026"
-EDITION = "Edition 9"
+EDITION = "Edition 10"
 HEAD = "0158"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -97,6 +97,12 @@ EDITIONS = [
      "live view, sees that camera's zones and deletes one, each after the phone has "
      "asked; a masked camera is labelled on the phone's live view and live wall. No "
      "route is added. The phone has 57 screens."],
+    ["Edition 10", "10 October 2026", "0158",
+     "The platform owner's two-factor sign-in now completes on the web, the phone "
+     "and the desktop app. The server had asked for the code since the control was "
+     "switched on; until this day no client had a step to give it. The desktop app "
+     "is 1.0.7. The sign-in page is no longer reused by a browser without asking, "
+     "and a build of the phone app for testing on the same network is described."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -287,7 +293,7 @@ story += [
     Spacer(1, 6),
     stat_strip([
         ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
-        ("6,216", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,253", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -503,7 +509,12 @@ story += module(
         "de-provisioning from the customer's own directory.",
         "<b>Two-factor authentication (TOTP)</b> — required, not optional, for "
         "the platform owner — with IP allow-listing, API keys, rate limits, and "
-        "per-user session management with forced revocation and account unlock.",
+        "per-user session management with forced revocation and account unlock. "
+        "After a correct password the server asks for the 6-digit code, and the "
+        "web, the desktop app and the phone each have the step that gives it; a "
+        "locked account is told so in the server's words. <i>Corrected in edition "
+        "10:</i> until 10 October 2026 no client had that step, so an account "
+        "with two-factor switched on could not be signed in to at all.",
         "<b>Hash-chained audit log</b> covering every privileged action, with the "
         "actor, role, tenant, site, result and request id, and verifiable end to end.",
         "<b>Per-tenant branding</b> — company name, logo and primary colour — "
@@ -1687,9 +1698,10 @@ story += bullets([
     "and each held to the server by a test, but "
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.6 is built and carries every "
+    "<b>A code-signing certificate.</b> Desktop 1.0.7 is built and carries every "
     "screen of this edition. Its installer is not code-signed, so Windows warns "
-    "before it runs.",
+    "before it runs - and where Smart App Control is on, may refuse a newly "
+    "built installer for some minutes before it allows it.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
     "alarm panels have not been connected.",
     "<b>A cluster install.</b> The Helm chart lints and renders in CI and has "
@@ -1716,7 +1728,9 @@ story.append(data_table(
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.6, which installs over 1.0.5."],
+         "Version 1.0.7, which installs over 1.0.6. It is a copy of the web "
+         "console taken when it is built: a fix to the web reaches it in the "
+         "next build."],
     ],
     widths=[32 * mm, 38 * mm, 20 * mm, 80 * mm]))
 
@@ -1830,6 +1844,10 @@ story += bullets([
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
     "<b>The phone app</b> needs a new build and a device pass for what was added "
     "after its SDK upgrade; <b>the desktop app</b> is not code-signed.",
+    "<b>A browser tab left open keeps the web console it loaded.</b> After the "
+    "console is rebuilt, the page is fetched afresh the next time it is opened "
+    "or reloaded, but a tab already open goes on running the old one until it "
+    "is reloaded. Nothing tells it that a newer build exists.",
     "<b>The Helm chart</b> has not been installed on a cluster.",
 ])
 
@@ -1839,8 +1857,8 @@ story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
     "database migrations, 282 tables, 108 API modules serving 1,043 operations, 115 backend "
-    "services, 111 web routes and 57 phone screens, covered by 6,216 automated tests "
-    "(backend 4,047, repository inspection 1,335, web 504, phone 330). Capability counts "
+    "services, 111 web routes and 57 phone screens, covered by 6,253 automated tests "
+    "(backend 4,047, repository inspection 1,338, web 522, phone 346). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
