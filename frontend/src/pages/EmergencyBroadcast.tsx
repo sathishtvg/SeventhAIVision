@@ -17,7 +17,7 @@ import {
 import GlassCard from '@/components/common/GlassCard'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, TableBlockSkeleton, TableErrorRow } from '@/components/states'
 
 const SEV_CONFIG = {
   info:     { color: '#2196F3', label: 'Info',     bg: 'rgba(33,150,243,0.15)' },
@@ -145,7 +145,7 @@ function BroadcastRow({ b, showAck = false }: { b: any; showAck?: boolean }) {
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Recipient List — {b.title}</DialogTitle>
         <DialogContent>
-          {detailLoading && <CircularProgress />}
+          {detailLoading && <TableBlockSkeleton rows={3} />}
           {detailFailed && <ErrorState compact error={detailError} onRetry={refetchDetail} />}
           <Table size="small">
             <TableHead>

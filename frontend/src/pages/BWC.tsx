@@ -24,7 +24,7 @@ import {
 import type { BodyCamera, BWCRecording } from '@/api/bwc'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -243,7 +243,7 @@ function CamerasTab() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <CardGridSkeleton />
       ) : camerasFailed ? <ErrorState compact error={camerasError} onRetry={refetchCameras} /> : (
         <Grid container spacing={2}>
           {cameras.map(cam => (
@@ -439,7 +439,7 @@ function RecordingsTab() {
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : _recDataFailed ? <ErrorState compact error={_recDataError} onRetry={refetch_recData} /> : (
         <Paper>
           <Table size="small">
@@ -541,7 +541,7 @@ function EventsTab() {
   return (
     <Box>
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : eventsFailed ? <ErrorState compact error={eventsError} onRetry={refetchEvents} /> : (
         <Paper>
           <Table size="small">

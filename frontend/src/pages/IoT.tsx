@@ -1,9 +1,6 @@
 import React, { useState } from 'react'
 import {
-  Box, Typography, Grid, Paper, Chip, Stack, Divider, CircularProgress,
-  Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, Tab, Tabs, Table, TableBody, TableCell,
-  TableHead, TableRow, Tooltip, IconButton, Alert,
+  Box, Typography, Grid, Paper, Chip, Stack, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Tab, Tabs, Table, TableBody, TableCell, TableHead, TableRow, Tooltip, IconButton, Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CheckIcon from '@mui/icons-material/Check'
@@ -21,7 +18,7 @@ import type { IoTSensor, IoTAlert } from '@/api/iot'
 import { getSites } from '@/api/sites'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // ── constants / helpers ───────────────────────────────────────────────────────
 
@@ -219,7 +216,7 @@ function AlertsTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['iot-alerts'] }),
   })
 
-  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+  if (isLoading) return <TableBlockSkeleton />
   if (alertsFailed) return <ErrorState error={alertsError} onRetry={refetchAlerts} />
   if (!alerts.length) return <Alert severity="success" sx={{ mt: 2 }}>No open IoT alerts.</Alert>
 
@@ -314,7 +311,7 @@ export default function IoTPage() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : (
         <>
           {/* KPI Summary */}

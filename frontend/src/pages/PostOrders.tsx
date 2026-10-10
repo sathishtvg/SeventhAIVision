@@ -48,6 +48,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 const CATEGORY_COLORS: Record<string, 'default' | 'error' | 'primary' | 'warning' | 'info' | 'success'> = {
   general: 'default', emergency: 'error', access: 'primary',
@@ -211,7 +212,7 @@ export function PostOrdersPage() {
   const [acksId, setAcksId] = useState<string | null>(null)
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
-  const { data: orders = [] } = useQuery({
+  const { data: orders = [], isLoading, isLoadingError: ordersFailed, error: ordersError, refetch: refetchOrders } = useQuery({
     queryKey: ['post-orders', siteFilter],
     queryFn: () => listPostOrders(siteFilter || undefined),
   })
@@ -255,7 +256,11 @@ export function PostOrdersPage() {
 
       <GlassCard>
         <List>
-          {orders.length === 0 ? (
+          {isLoading ? (
+            <ListItem><ListSkeleton rows={4} height={48} /></ListItem>
+          ) : ordersFailed ? (
+            <ListItem><ErrorState compact error={ordersError} onRetry={refetchOrders} title="Could not load the post orders" /></ListItem>
+          ) : orders.length === 0 ? (
             <ListItem>
               <ListItemText secondary="No post orders for this selection." />
             </ListItem>

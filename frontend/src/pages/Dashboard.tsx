@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   Grid,
   IconButton,
@@ -55,7 +54,7 @@ import { getParkingDashboard } from '@/api/parking'
 import { getBWCDashboard } from '@/api/bwc'
 import { getGPSDashboard } from '@/api/gps'
 import { getAlarmDashboard } from '@/api/alarms'
-import { ErrorState } from '@/components/states'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 /**
  * Created once, at module scope.
@@ -748,7 +747,7 @@ export default function Dashboard() {
   // were called on any given render.
   if (isClient) {
     return (
-      <React.Suspense fallback={<Box sx={{ p: 3 }}><CircularProgress /></Box>}>
+      <React.Suspense fallback={<Box sx={{ p: 3 }}><DetailSkeleton lines={4} block={240} /></Box>}>
         <ClientPortalLazy />
       </React.Suspense>
     )

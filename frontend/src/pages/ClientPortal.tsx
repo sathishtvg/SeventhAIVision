@@ -40,6 +40,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { MediaViewer } from '@/components/common/MediaViewer'
 import { SeverityChip } from '@/components/common/SeverityChip'
 import type { AlertSeverity } from '@/types/api'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 const INVOICE_STATUS_COLOR: Record<Invoice['status'], 'default' | 'warning' | 'success'> = {
   draft: 'default',
@@ -79,26 +80,26 @@ export default function ClientPortal() {
     queryKey: ['branding'],
     queryFn: () => apiClient.get('/api/v1/branding').then((r) => r.data),
   })
-  const { data: alertsPage } = useQuery({
+  const { data: alertsPage, isLoading: alertsLoading, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts } = useQuery({
     queryKey: ['client-alerts'],
     queryFn: () => getAlerts('open'),
     refetchInterval: 30_000,
   })
-  const { data: incidents } = useQuery({
+  const { data: incidents, isLoading: incidentsLoading, isLoadingError: incidentsFailed, error: incidentsError, refetch: refetchIncidents } = useQuery({
     queryKey: ['client-incidents'],
     queryFn: () => apiClient.get('/api/v1/incidents?status_filter=open').then((r) => r.data),
     refetchInterval: 60_000,
   })
-  const { data: streams = [] } = useQuery({
+  const { data: streams = [], isLoading: streamsLoading, isLoadingError: streamsFailed, error: streamsError, refetch: refetchStreams } = useQuery({
     queryKey: ['client-streams'],
     queryFn: () => listAllStreams(),
     refetchInterval: 60_000,
   })
-  const { data: dobEntries = [] } = useQuery({
+  const { data: dobEntries = [], isLoading: dobLoading, isLoadingError: dobFailed, error: dobError, refetch: refetchDob } = useQuery({
     queryKey: ['client-dob'],
     queryFn: () => apiClient.get('/api/v1/dob?limit=10').then((r) => r.data),
   })
-  const { data: invoices = [] } = useQuery({
+  const { data: invoices = [], isLoading: invoicesLoading, isLoadingError: invoicesFailed, error: invoicesError, refetch: refetchInvoices } = useQuery({
     queryKey: ['client-invoices'],
     queryFn: () => listInvoices(),
     refetchInterval: 120_000,
@@ -141,19 +142,19 @@ export default function ClientPortal() {
         <Grid container spacing={1.5} sx={{ mb: 2 }}>
           <Grid size={{ xs: 12, sm: 3 }}>
             <KpiCard icon={<NotificationsActiveIcon />} label="Open alerts"
-                     value={alerts.length} accent="#FF4560" />
+                     value={alertsLoading || alertsFailed ? '—' : alerts.length} accent="#FF4560" />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <KpiCard icon={<ReportProblemIcon />} label="Open incidents"
-                     value={incidents?.total ?? openIncidents.length} accent="#FFA500" />
+                     value={incidentsLoading || incidentsFailed ? '—' : incidents?.total ?? openIncidents.length} accent="#FFA500" />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <KpiCard icon={<VideocamIcon />} label="Cameras online"
-                     value={`${onlineCams}/${streams.length}`} accent="#00E396" />
+                     value={streamsLoading || streamsFailed ? '—' : `${onlineCams}/${streams.length}`} accent="#00E396" />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <KpiCard icon={<ReceiptLongIcon />} label="Unpaid invoices"
-                     value={unpaidInvoices} accent="#6C63FF" />
+                     value={invoicesLoading || invoicesFailed ? '—' : unpaidInvoices} accent="#6C63FF" />
           </Grid>
         </Grid>
 
@@ -165,7 +166,11 @@ export default function ClientPortal() {
                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Recent Alerts
                 </Typography>
-                {alerts.length === 0 ? (
+                {alertsLoading ? (
+                  <ListSkeleton rows={3} height={36} />
+                ) : alertsFailed ? (
+                  <ErrorState compact error={alertsError} onRetry={refetchAlerts} title="Could not load the alerts" />
+                ) : alerts.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No open alerts at your site.
                   </Typography>
@@ -194,7 +199,11 @@ export default function ClientPortal() {
                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Open Incidents
                 </Typography>
-                {openIncidents.length === 0 ? (
+                {incidentsLoading ? (
+                  <ListSkeleton rows={3} height={36} />
+                ) : incidentsFailed ? (
+                  <ErrorState compact error={incidentsError} onRetry={refetchIncidents} title="Could not load the incidents" />
+                ) : openIncidents.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No open incidents.
                   </Typography>
@@ -223,7 +232,11 @@ export default function ClientPortal() {
                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Cameras
                 </Typography>
-                {streams.length === 0 ? (
+                {streamsLoading ? (
+                  <ListSkeleton rows={3} height={36} />
+                ) : streamsFailed ? (
+                  <ErrorState compact error={streamsError} onRetry={refetchStreams} title="Could not load the cameras" />
+                ) : streams.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No cameras are assigned to your account yet — contact your
                     security provider.
@@ -273,7 +286,11 @@ export default function ClientPortal() {
                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Occurrence Book
                 </Typography>
-                {dobEntries.length === 0 ? (
+                {dobLoading ? (
+                  <ListSkeleton rows={3} height={36} />
+                ) : dobFailed ? (
+                  <ErrorState compact error={dobError} onRetry={refetchDob} title="Could not load the occurrence book" />
+                ) : dobEntries.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No recent entries.
                   </Typography>
@@ -307,7 +324,11 @@ export default function ClientPortal() {
                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
                   Invoices
                 </Typography>
-                {invoices.length === 0 ? (
+                {invoicesLoading ? (
+                  <ListSkeleton rows={3} height={36} />
+                ) : invoicesFailed ? (
+                  <ErrorState compact error={invoicesError} onRetry={refetchInvoices} title="Could not load the invoices" />
+                ) : invoices.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No invoices yet.
                   </Typography>

@@ -26,7 +26,6 @@ import {
   Chip,
   Button,
   LinearProgress,
-  CircularProgress,
   Alert,
   Tooltip,
 } from '@mui/material'
@@ -42,7 +41,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import type { HeatmapCamera } from '@/types/api'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState } from '@/components/states'
 
 const TIME_OPTIONS = [
   { label: 'Last 1h', value: 1 },
@@ -196,7 +195,7 @@ export default function Heatmap() {
         </FormControl>
       </Stack>
 
-      {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>}
+      {isLoading && <CardGridSkeleton />}
       {isError && <ErrorState error={error} onRetry={refetch} title="Could not load the heatmap" />}
 
       {!isLoading && !isError && (

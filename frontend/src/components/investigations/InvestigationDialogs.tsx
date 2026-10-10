@@ -12,8 +12,7 @@
  */
 import { useState } from 'react'
 import {
-  Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
-  TextField, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField, Typography,
 } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
@@ -24,7 +23,7 @@ import {
 } from '@/api/investigations'
 import type { Found } from '@/api/investigations'
 import { distance, fmt, gap, refOf } from './investigationFormat'
-import { ErrorState } from '@/components/states'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 // ── One reason ───────────────────────────────────────────────────────────────
 
@@ -198,7 +197,7 @@ export function TrailDialog({ subject, onClose }: {
     <Dialog open={!!subject} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>Where {who || 'this'} was seen</DialogTitle>
       <DialogContent>
-        {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>}
+        {isLoading && <DetailSkeleton lines={4} block={120} />}
         {error && <ErrorState compact error={error} onRetry={refetchData} />}
         {data && (
           <>

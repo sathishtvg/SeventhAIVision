@@ -62,7 +62,7 @@ import {
 } from '@/api/vms'
 import { getSites } from '@/api/sites'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -263,7 +263,7 @@ function UpcomingTab() {
       </Stack>
 
       {isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : visitorsFailed ? <ErrorState compact error={visitorsError} onRetry={refetch} /> : filtered.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6, opacity: 0.5 }}>
           <ScheduleIcon sx={{ fontSize: 48, mb: 1 }} />
@@ -354,7 +354,7 @@ function TodayLogTab() {
         <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
       </Stack>
       {isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : logsFailed ? <ErrorState compact error={logsError} onRetry={refetch} /> : todayLogs.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6, opacity: 0.5 }}>
           <PersonOffIcon sx={{ fontSize: 48, mb: 1 }} />
@@ -454,7 +454,7 @@ function AllVisitorsTab() {
       </Stack>
 
       {isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : visitorsFailed2 ? <ErrorState compact error={visitorsError2} onRetry={refetch} /> : (
         <TableContainer component={Paper} sx={{ background: 'transparent' }}>
           <Table size="small">

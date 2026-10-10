@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -22,7 +21,7 @@ import {
   acknowledgeAlert, addAlertNote, assignAlert, dismissAlert,
   getEscalationTargets, markFalsePositive,
 } from '@/api/alerts'
-import { ErrorState } from '@/components/states'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 export interface AlertSummary {
   id: string
@@ -141,7 +140,7 @@ export function AlertResponseDialog({ alert, onClose, onResolved }: AlertRespons
               Escalate to on-duty / site staff
             </Typography>
             {targetsLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={20} /></Box>
+              <ListSkeleton />
             ) : targetsFailed ? <ErrorState compact error={targetsError} onRetry={refetchTargets} /> : targets.length === 0 ? (
               <Typography variant="caption" color="text.disabled">No staff available to escalate to.</Typography>
             ) : (

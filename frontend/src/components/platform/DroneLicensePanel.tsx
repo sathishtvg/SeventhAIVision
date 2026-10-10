@@ -8,13 +8,14 @@
  * why not) is shown as the server says it.
  */
 import { useState } from 'react'
-import { Alert, Box, Button, Chip, CircularProgress, FormControlLabel, Switch, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, Chip, FormControlLabel, Switch, TextField, Typography } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { apiError, getDroneLicense, putDroneLicense } from '@/api/platformDroneLicense'
 import type { DroneLicense } from '@/api/platformDroneLicense'
 import { asLimit, bodyOf, draftOf, licenceDay, limitsValid } from '@/components/platform/droneLicenseFormat'
 import type { Draft } from '@/components/platform/droneLicenseFormat'
+import { TableBlockSkeleton } from '@/components/states'
 
 function Form({ tenantId, licence }: { tenantId: string; licence: DroneLicense }) {
   const qc = useQueryClient()
@@ -70,7 +71,7 @@ function Form({ tenantId, licence }: { tenantId: string; licence: DroneLicense }
 export function DroneLicensePanel({ tenantId }: { tenantId: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['drone-license', tenantId], queryFn: () => getDroneLicense(tenantId), retry: false })
-  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+  if (isLoading) return <TableBlockSkeleton />
   // The platform's own organisation runs no drone patrols: the server says so, and that is shown as it is.
   if (error) return <Alert severity="info" data-testid="drone-license-refused">{apiError(error)}</Alert>
   if (!data) return null

@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import {
-  Box, Typography, Chip, Button, IconButton, Tooltip,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  Table, TableBody, TableCell, TableHead, TableRow,
-  Switch, FormControlLabel, Divider, MenuItem,
-  Drawer, Stack, CircularProgress, Tabs, Tab,
+  Box, Typography, Chip, Button, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Table, TableBody, TableCell, TableHead, TableRow, Switch, FormControlLabel, Divider, MenuItem, Drawer, Stack, Tabs, Tab,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
@@ -25,7 +21,7 @@ import type { TenantProduct } from '@/api/platform_licenses'
 import { DroneLicensePanel } from '@/components/platform/DroneLicensePanel'
 import type { Tenant } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, ListSkeleton, TableErrorRow } from '@/components/states'
 
 const TIMEZONES = [
   'Asia/Singapore',
@@ -86,9 +82,7 @@ function AiModulesPanel({ tenant }: { tenant: Tenant }) {
       />
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={32} />
-        </Box>
+        <ListSkeleton rows={6} height={48} />
       ) : licensesFailed ? <ErrorState compact error={licensesError} onRetry={refetchLicenses} /> : (
         <Stack spacing={1.5}>
           {ALL_AI_MODULES.map((moduleType) => {
@@ -198,9 +192,7 @@ function PlatformProductsPanel({ tenant }: { tenant: Tenant }) {
       />
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={32} />
-        </Box>
+        <ListSkeleton rows={4} height={64} />
       ) : productsFailed ? <ErrorState compact error={productsError} onRetry={refetchProducts} /> : (
         <Stack spacing={2}>
           {(products as TenantProduct[]).map((product) => {

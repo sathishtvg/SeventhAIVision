@@ -32,6 +32,18 @@ describe('a failed request says what kind of failure it was', () => {
     expect(errorText(undefined)).toBe('Something went wrong.')
   })
 
+  it('keeps every shape a refusal comes in, so no page lost its own wording by using this', () => {
+    // A message with the words of a search phrase that were not understood (the investigation search).
+    expect(errorText(refused(422, { message: 'Nothing in that was understood.', not_understood: ['odd', 'going'] })))
+      .toBe('Nothing in that was understood. Not understood: odd, going.')
+    // A message alone (evidence packages, data retention, the response desk).
+    expect(errorText(refused(409, { message: 'This package is sealed.' }))).toBe('This package is sealed.')
+    // What was wrong with what was sent, without the validator's own preface (privacy zones, the drone licence).
+    expect(errorText(refused(422, [{ msg: 'Value error, a zone needs at least three points' }]))).toBe('a zone needs at least three points')
+    // An object that says nothing a person can read falls back to the kind of refusal it was.
+    expect(errorText(refused(409, { code: 'conflict' }))).toBe('The request was not accepted.')
+  })
+
   it('does not show a person what a broken server said to itself', () => {
     const said = errorText(refused(500, 'Traceback (most recent call last): asyncpg.exceptions.UndefinedColumnError'))
     expect(said).toBe('The server had a problem answering. It has been recorded; try again in a moment.')

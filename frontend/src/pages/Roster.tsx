@@ -54,7 +54,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx } from '@/lib/motion'
-import { ErrorState } from '@/components/states'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 // Manual-assignment guard pickers include Manager(8) — an admin can put a
@@ -194,7 +194,7 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
   if (isLoading || !batch) {
     return (
       <GlassCard sx={{ p: 2, mb: 2 }}>
-        <Typography variant="body2" color="text.secondary">Loading draft…</Typography>
+        <DetailSkeleton lines={3} block={120} />
       </GlassCard>
     )
   }

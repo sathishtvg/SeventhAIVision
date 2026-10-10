@@ -28,11 +28,24 @@ export function errorText(err: unknown): string {
   if (status === 429) return 'Too many requests in a short time. Wait a minute and try again.'
   if (status >= 500) return 'The server had a problem answering. It has been recorded; try again in a moment.'
 
+  // Every shape the server refuses in, so that nothing a page used to say with its own wording is lost by
+  // saying it here: a sentence; a list of what was wrong with what was sent; or a message with the words of a
+  // search phrase that were not understood.
   const detail = e.response?.data?.detail
   if (typeof detail === 'string' && detail.trim()) return detail
   if (Array.isArray(detail)) {
-    const said = detail.map((x: { msg?: string }) => x?.msg ?? String(x)).filter(Boolean).join('; ')
+    const said = detail
+      .map((x: { msg?: string }) => (x?.msg ?? String(x)).replace(/^Value error, /, ''))
+      .filter(Boolean).join('; ')
     if (said) return said
+  }
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    const told = detail as { message?: unknown; not_understood?: unknown }
+    if (typeof told.message === 'string' && told.message.trim()) {
+      const words = Array.isArray(told.not_understood) && told.not_understood.length
+        ? ` Not understood: ${told.not_understood.join(', ')}.` : ''
+      return `${told.message}${words}`
+    }
   }
   if (status === 401) return 'Your session has ended. Sign in again.'
   if (status === 403) return 'You do not have permission to see this.'

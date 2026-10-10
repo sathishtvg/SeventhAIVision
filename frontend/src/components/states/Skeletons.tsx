@@ -19,6 +19,21 @@ export function TableSkeleton({ cols, rows = 6 }: { cols: number; rows?: number 
   return <SkeletonRows cols={cols} rows={rows} />
 }
 
+/**
+ * A table, where the placeholder cannot be rows of the table itself because
+ * the table is not drawn until there is something to put in it: a header
+ * strip and rows, the width of whatever it is in. Where the `<TableBody>` is
+ * there to put rows into, `TableSkeleton` is the truer shape.
+ */
+export function TableBlockSkeleton({ rows = 6, rowHeight = 40 }: { rows?: number; rowHeight?: number }) {
+  return (
+    <Box aria-busy="true" sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 0.75, gridColumn: '1 / -1' }}>
+      <Skeleton variant="rounded" height={36} />
+      {Array.from({ length: rows }).map((_, i) => <Skeleton key={i} variant="rounded" height={rowHeight} />)}
+    </Box>
+  )
+}
+
 /** A grid of cards: sites, cameras, drones, packages. */
 export function CardGridSkeleton({ cards = 6, height = 132, minWidth = 260, sx }: {
   cards?: number; height?: number; minWidth?: number; sx?: SxProps<Theme>

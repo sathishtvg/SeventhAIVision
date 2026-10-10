@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Box, Typography, Grid, Paper, Chip, Divider, CircularProgress,
-  Tooltip, IconButton, Button,
+  Box, Typography, Grid, Paper, Chip, Divider, Tooltip, IconButton, Button,
 } from '@mui/material'
 import LiveTvIcon from '@mui/icons-material/LiveTv'
 import VideocamIcon from '@mui/icons-material/Videocam'
@@ -29,7 +28,7 @@ import { openLiveWallWindow } from '@/lib/liveWallWindow'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import type { SiteStatus, RecentAlert, GuardStatus } from '@/api/commandCentre'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState, KpiSkeleton } from '@/components/states'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -472,8 +471,9 @@ export default function CommandCentre() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-          <CircularProgress size={40} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, p: 2 }}>
+          <KpiSkeleton count={5} height={84} />
+          <CardGridSkeleton cards={6} height={150} minWidth={300} />
         </Box>
       ) : dataFailed ? <ErrorState compact error={dataError} onRetry={refetch} /> : (
         <>

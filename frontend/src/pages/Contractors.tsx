@@ -25,7 +25,7 @@ import {
 import type { Contractor, Delivery } from '@/api/contractors'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // ── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -278,7 +278,7 @@ function ContractorsTab() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : contractorsFailed ? <ErrorState compact error={contractorsError} onRetry={refetchContractors} /> : (
         <Paper>
           <Table size="small">
@@ -407,7 +407,7 @@ function WorkPermitsTab() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : _permDataFailed ? <ErrorState compact error={_permDataError} onRetry={refetch_permData} /> : (
         <Paper>
           <Table size="small">
@@ -542,7 +542,7 @@ function DeliveriesTab() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : deliveriesFailed ? <ErrorState compact error={deliveriesError} onRetry={refetchDeliveries} /> : (
         <Paper>
           <Table size="small">
