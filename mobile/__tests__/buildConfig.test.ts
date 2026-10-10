@@ -72,8 +72,8 @@ describe('a build of the phone app', () => {
       else if (value && typeof value === 'object') Object.values(value).forEach(walk)
     }
     walk(app.expo)
-    expect(named.sort()).toEqual(['./assets/adaptive-icon.png', './assets/icon.png', './assets/notification-icon.png',
-      './google-services.json'])
+    expect(Array.from(new Set(named)).sort()).toEqual(['./assets/adaptive-icon.png', './assets/icon.png',
+      './assets/notification-icon.png', './google-services.json'])
     for (const file of named.filter((name) => name !== './google-services.json')) {
       expect([file, fs.existsSync(file)]).toEqual([file, true])
     }
@@ -84,6 +84,17 @@ describe('a build of the phone app', () => {
       .toEqual({ width: 96, height: 96, depth: 8, colourAndAlpha: true })
     const notifications = app.expo.plugins.find((p) => nameOf(p) === 'expo-notifications') as [string, { icon: string; color: string }]
     expect(notifications[1]).toMatchObject({ icon: './assets/notification-icon.png', color: '#6C63FF' })
+  })
+
+  it('gives the launch screen a picture, without which Android will not compile the app', () => {
+    // The launch screen was given a colour and no picture. Android's launch theme refers to the picture by name
+    // whether one was given or not, so the second cloud build failed fourteen minutes in: "resource
+    // drawable/splashscreen_logo not found" (10 October 2026). The picture is the app's own icon, whose
+    // background is the launch screen's colour, so what shows is the disc and the 7 on the dark screen.
+    const launch = app.expo.plugins.find((p) => nameOf(p) === 'expo-splash-screen') as [string, Record<string, string>]
+    expect(launch[1]).toEqual({ backgroundColor: '#080818', image: './assets/icon.png' })
+    expect((app.expo as unknown as { icon: string }).icon).toBe(launch[1].image)
+    expect(app.expo.android).toMatchObject({ adaptiveIcon: { backgroundColor: launch[1].backgroundColor } })
   })
 
   it('sends Expo\'s build service the phone app and nothing else of the repository', () => {
