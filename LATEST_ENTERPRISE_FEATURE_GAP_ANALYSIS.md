@@ -933,3 +933,20 @@ to them and its words to the web's.
 
 The phone has 57 screens. A restricted zone and a crowd zone are drawn on it as
 they were. None of it has been run on a device.
+
+### The owner's sign-in, and the desktop app
+
+The platform owner's account needs a code from an authenticator after its
+password. The API has asked for it since the control was switched on; no client
+could give it until 10 October 2026, when the web page and the phone screen
+were given the step (commit `42ce6de`, another piece of work). Desktop 1.0.6
+had been built the day before from the web as it then was, and so had no such
+step: installed on the owner's machine, it took the password, was asked for a
+code it had no way to ask for, and said the sign-in had failed.
+
+Desktop 1.0.7 is the web build of this point, with the step -
+`desktop/package.json`, `desktop/package-lock.json`. Unsigned, with the same
+app id and MSI upgrade code, so it installs over 1.0.6.
+
+What this says about the desktop app: it is a copy of the web app taken on the
+day it is built. A fix to the web reaches it only in the next build.
