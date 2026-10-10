@@ -313,6 +313,15 @@ jobs:
         run: npm run test:run
         working-directory: frontend
 
+      # The desktop app's build scripts: how a build is signed, and the check
+      # that every file of a signed build is trusted. They use Node's own test
+      # runner and no packages, so they ride with the web checks, with no
+      # install step and no job of their own. What only Windows can answer is
+      # skipped here and runs on the machine that builds the installers.
+      - name: Desktop build script tests
+        run: npm test
+        working-directory: desktop
+
       - name: Build
         run: npm run build
         working-directory: frontend
