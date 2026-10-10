@@ -10,6 +10,8 @@ import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { useMaskedCameras } from '@/hooks/useMaskedCameras'
+import { MASKED_LABEL } from '@/lib/privacyZoneWords'
 import { loadLiveWallCameras, saveLiveWallCameras, type LiveWallEntry } from '@/lib/liveWallStorage'
 
 const MAX_TILES = 4
@@ -18,6 +20,9 @@ export function LiveWallScreen() {
   const accessToken = useAuthStore((s) => s.accessToken)
   const [entries, setEntries] = useState<LiveWallEntry[] | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Each picture is the server's masked one already. A camera with a privacy
+  // zone is named as one, so that a black block in its tile is read as meant.
+  const masked = useMaskedCameras()
 
   const { data: cameras = [] } = useQuery({ queryKey: ['cameras'], queryFn: () => getCameras() })
   const { data: streams = [] } = useQuery({ queryKey: ['streams'], queryFn: () => getStreams() })
@@ -62,7 +67,7 @@ export function LiveWallScreen() {
       return `
         <div class="tile">
           <img src="${url}" onerror="this.style.display='none'" />
-          <div class="label">${e.cameraName.replace(/</g, '&lt;')}</div>
+          <div class="label">${e.cameraName.replace(/</g, '&lt;')}${masked.has(e.cameraId) ? ` · ${MASKED_LABEL}` : ''}</div>
         </div>`
     }).join('')
 
@@ -93,7 +98,8 @@ export function LiveWallScreen() {
   <div class="grid">${tiles}</div>
 </body>
 </html>`
-  }, [entries, accessToken])
+    // Rebuilt when the cameras that have a zone change, not each time that is read again.
+  }, [entries, accessToken, masked.key])
 
   return (
     <View style={styles.root}>

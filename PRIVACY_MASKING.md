@@ -104,7 +104,20 @@ deleted and drawn again. Deleting asks first and says what it changes.
 On the live wall a camera with a zone carries the label "Privacy zone", so that
 a black block is read as meant and not as a fault.
 
-The phone draws nothing. Its live view is the MJPEG one, which is masked.
+**The phone** (added 10 October 2026, with no route added for it). Its live
+view is the MJPEG one, which is masked; it plays no HLS. Whoever is known to
+hold `privacy:manage` is given two things more:
+
+- In **Draw Zone**, reached from a camera's live view, a third type, Privacy.
+  It shows what the web shows before a zone is drawn, has no severity, and asks
+  once more - "Not yet" or "Mask it" - before it masks anything.
+- From a camera's live view, **the privacy zones of that camera**: what each
+  covers, who drew it and when. Deleting asks first and says what it changes.
+  A zone drawn on a phone by mistake can be deleted on the phone.
+
+A camera with a zone is labelled "Privacy zone" on its live view and on its
+tile of the phone's live wall. While a person's permissions are still loading
+the phone offers neither button: what they open masks a camera for good.
 
 ## 6. Files
 
@@ -118,12 +131,22 @@ New:
 - `frontend/src/components/privacy/PrivacyZonesPanel.tsx`
 - `frontend/src/components/privacy/privacyZoneWords.ts`
 - `frontend/src/components/privacy/privacyZonesPanel.test.tsx`
+- `mobile/src/api/privacyZones.ts`
+- `mobile/src/api/privacyZones.test.ts`
+- `mobile/src/lib/privacyZoneWords.ts`
+- `mobile/src/hooks/useMaskedCameras.ts`
+- `mobile/src/screens/CameraPrivacyZonesScreen.tsx`
+- `mobile/__tests__/privacyZoneScreens.test.tsx`
 
 **Existing files changed:** `backend/app/ingestion_main.py`,
 `backend/app/routers/streams.py`, `backend/app/routers/pdpa.py`,
 `backend/app/services/vpatrol_snapshot.py`,
 `backend/app/services/hls_stream.py`, `frontend/src/pages/Zones.tsx`,
 `frontend/src/pages/LiveWall.tsx`, `frontend/src/pages/intel/Situation.tsx`.
+
+**Existing phone files changed:** `mobile/src/screens/ZoneDrawScreen.tsx`,
+`mobile/src/screens/CameraLiveScreen.tsx`,
+`mobile/src/screens/LiveWallScreen.tsx`, `mobile/src/navigation/index.tsx`.
 
 ## 7. What this does not do
 
@@ -148,3 +171,6 @@ New:
   until it is masked; a server that stopped in that moment would leave the file.
 - **It has run on test streams.** No camera at a customer's site has been
   masked by it.
+- **The phone's part has not been run on a device.** It is type-checked and its
+  screens are tested mounted; it needs a build and a pass on a device, like
+  everything on the phone since its SDK upgrade.

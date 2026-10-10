@@ -5,6 +5,8 @@ import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/api/client'
+import { useMaskedCameras } from '@/hooks/useMaskedCameras'
+import { MASKED_LABEL, managesPrivacy } from '@/lib/privacyZoneWords'
 import { colors, fontSize, spacing } from '@/theme'
 
 type LiveParams = { cameraId: string; streamId: string; cameraName: string }
@@ -20,22 +22,45 @@ export function CameraLiveScreen({ route }: Props) {
   // only offer the "Draw Zone" action when it's actually reachable from
   // whichever stack this instance is currently mounted in.
   const canDrawZone = navigation.getState?.()?.routeNames?.includes('ZoneDraw')
+  // The privacy zones of this camera, for whoever is known to manage privacy -
+  // and, like Draw Zone, only where the stack this is mounted in has the screen.
+  const mayMask = managesPrivacy(useAuthStore((s) => s.permissions))
+  const canOpenPrivacy = mayMask && navigation.getState?.()?.routeNames?.includes('CameraPrivacyZones')
+  // The picture is the server's masked one whatever this says. It is asked so
+  // that a black block in it is labelled as meant, and not taken for a fault.
+  const masked = useMaskedCameras().has(cameraId)
 
   useLayoutEffect(() => {
     navigation.setOptions({
       title: cameraName,
-      headerRight: canDrawZone
+      headerRight: canDrawZone || canOpenPrivacy
         ? () => (
-            <Pressable
-              onPress={() => navigation.navigate('ZoneDraw', { cameraId, streamId, cameraName })}
-              style={{ paddingHorizontal: spacing.xs }}
-            >
-              <Ionicons name="shapes-outline" size={20} color={colors.primary} />
-            </Pressable>
+            <View style={styles.headerButtons}>
+              {canOpenPrivacy && (
+                <Pressable
+                  onPress={() => navigation.navigate('CameraPrivacyZones', { cameraId, streamId, cameraName })}
+                  style={{ paddingHorizontal: spacing.xs }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Privacy zones of this camera"
+                >
+                  <Ionicons name="eye-off-outline" size={20} color={colors.primary} />
+                </Pressable>
+              )}
+              {canDrawZone && (
+                <Pressable
+                  onPress={() => navigation.navigate('ZoneDraw', { cameraId, streamId, cameraName })}
+                  style={{ paddingHorizontal: spacing.xs }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Draw a zone"
+                >
+                  <Ionicons name="shapes-outline" size={20} color={colors.primary} />
+                </Pressable>
+              )}
+            </View>
           )
         : undefined,
     })
-  }, [navigation, cameraName, cameraId, streamId, canDrawZone])
+  }, [navigation, cameraName, cameraId, streamId, canDrawZone, canOpenPrivacy])
 
   const liveUrl = useMemo(() => {
     const base = (apiClient.defaults.baseURL ?? 'http://10.0.2.2:8000').replace(/\/$/, '')
@@ -88,6 +113,12 @@ export function CameraLiveScreen({ route }: Props) {
         mixedContentMode="always"
         javaScriptEnabled={true}
       />
+      {masked && (
+        <View style={styles.maskedLabel} pointerEvents="none">
+          <Ionicons name="eye-off-outline" size={12} color="#fff" />
+          <Text style={styles.maskedText}>{MASKED_LABEL}</Text>
+        </View>
+      )}
     </View>
   )
 }
@@ -127,5 +158,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fontSize.md,
     textAlign: 'center',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  maskedLabel: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderColor: 'rgba(255,255,255,0.5)',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  maskedText: {
+    color: '#fff',
+    fontSize: fontSize.xs,
+    fontWeight: '600',
   },
 })

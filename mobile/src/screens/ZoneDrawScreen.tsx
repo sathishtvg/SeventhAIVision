@@ -3,51 +3,83 @@ import {
   ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View,
 } from 'react-native'
 import { WebView } from 'react-native-webview'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/store/auth'
 import { createZone, createCrowdZone, type ZoneSeverity } from '@/api/zones'
+import { createPrivacyZone } from '@/api/privacyZones'
 import { ZoneDrawOverlay, type ZonePoint } from '@/components/ZoneDrawOverlay'
 import { Card } from '@/components/Card'
+import { MASKED_CAMERAS_KEY } from '@/hooks/useMaskedCameras'
+import { apiErrorText } from '@/lib/apiErrorText'
+import { WHAT_A_ZONE_DOES, managesPrivacy } from '@/lib/privacyZoneWords'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
-type Props = { route: { params: { cameraId: string; streamId: string; cameraName: string } } }
+type Props = { route: { params: { cameraId: string; streamId: string; cameraName: string; kind?: 'privacy' } } }
 
 const SEVERITIES: ZoneSeverity[] = ['low', 'medium', 'high', 'critical']
-type ZoneKind = 'restricted' | 'crowd'
+// A privacy zone is not a rule for the AI, as the other two are: it is painted
+// out of the camera's picture by the server, for good in what is recorded
+// after it. It is offered only to whoever is known to manage privacy.
+type ZoneKind = 'restricted' | 'crowd' | 'privacy'
+const KIND_LABEL: Record<ZoneKind, string> = { restricted: 'Restricted', crowd: 'Crowd', privacy: 'Privacy' }
+/** The colour a privacy zone is drawn in while it is placed. It is applied in black. */
+const PRIVACY_DRAWING_COLOUR = '#B0BEC5'
 
 export function ZoneDrawScreen({ route }: Props) {
   const { cameraId, streamId, cameraName } = route.params
   const navigation = useNavigation<any>()
   const accessToken = useAuthStore((s) => s.accessToken)
+  const mayMask = managesPrivacy(useAuthStore((s) => s.permissions))
+  const qc = useQueryClient()
 
   const [points, setPoints] = useState<ZonePoint[]>([])
   const [closed, setClosed] = useState(false)
   const [name, setName] = useState('')
   const [severity, setSeverity] = useState<ZoneSeverity>('medium')
-  const [kind, setKind] = useState<ZoneKind>('restricted')
+  const [kind, setKind] = useState<ZoneKind>(route.params.kind === 'privacy' && mayMask ? 'privacy' : 'restricted')
+  const kinds: ZoneKind[] = mayMask ? ['restricted', 'crowd', 'privacy'] : ['restricted', 'crowd']
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: `Draw Zone — ${cameraName}` })
   }, [navigation, cameraName])
 
   const { mutate: save, isPending } = useMutation({
-    mutationFn: () => {
+    mutationFn: (): Promise<unknown> => {
       const polygon = points.map((p) => ({ x: p.x, y: p.y }))
+      if (kind === 'privacy') return createPrivacyZone({ camera_id: cameraId, name, polygon })
       return kind === 'restricted'
         ? createZone({ camera_id: cameraId, name, polygon, severity })
         : createCrowdZone({ camera_id: cameraId, name, polygon, severity })
     },
     onSuccess: () => {
-      Alert.alert('Zone saved', `"${name}" has been created.`)
+      if (kind === 'privacy') {
+        // The list of this camera's zones, and the label on its live picture, are read again.
+        void qc.invalidateQueries({ queryKey: ['privacy-zones', cameraId] })
+        void qc.invalidateQueries({ queryKey: MASKED_CAMERAS_KEY })
+        Alert.alert('Privacy zone drawn', `Within about ten seconds "${name.trim()}" is masked on this camera.`)
+      } else {
+        Alert.alert('Zone saved', `"${name}" has been created.`)
+      }
       navigation.goBack()
     },
-    onError: () => {
-      Alert.alert('Save failed', 'Could not save the zone. Please try again.')
+    onError: (err) => {
+      // A privacy zone is refused for reasons worth reading - a drone's camera, twenty zones already - so the
+      // server's own words are shown.
+      Alert.alert('Save failed', kind === 'privacy' ? apiErrorText(err) : 'Could not save the zone. Please try again.')
     },
   })
+
+  // A privacy zone cannot be undone for what is recorded after it: the phone asks once more, and says what it does.
+  const onSave = () => {
+    if (kind !== 'privacy') { save(); return }
+    Alert.alert('Mask this part of the picture?', WHAT_A_ZONE_DOES, [
+      { text: 'Not yet', style: 'cancel' },
+      { text: 'Mask it', style: 'destructive', onPress: () => save() },
+    ])
+  }
 
   const liveUrl = accessToken
     ? `${(apiClient.defaults.baseURL ?? 'http://10.0.2.2:8000').replace(/\/$/, '')}/api/v1/cameras/${cameraId}/streams/${streamId}/live?token=${accessToken}`
@@ -100,6 +132,7 @@ export function ZoneDrawScreen({ route }: Props) {
           closed={closed}
           onAddPoint={(p) => setPoints((prev) => [...prev, p])}
           onClose={() => setClosed(true)}
+          color={kind === 'privacy' ? PRIVACY_DRAWING_COLOUR : undefined}
         />
       </View>
 
@@ -143,19 +176,27 @@ export function ZoneDrawScreen({ route }: Props) {
           <View style={styles.row}>
             <Text style={styles.label}>Type</Text>
             <View style={styles.pillRow}>
-              {(['restricted', 'crowd'] as ZoneKind[]).map((k) => (
+              {kinds.map((k) => (
                 <Pressable
                   key={k}
                   style={[styles.pill, kind === k && styles.pillActive]}
                   onPress={() => setKind(k)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: kind === k }}
                 >
                   <Text style={[styles.pillText, kind === k && styles.pillTextActive]}>
-                    {k === 'restricted' ? 'Restricted' : 'Crowd'}
+                    {KIND_LABEL[k]}
                   </Text>
                 </Pressable>
               ))}
             </View>
           </View>
+          {kind === 'privacy' ? (
+            // What it does is said before the button that does it. A privacy zone has no severity: it alerts nobody.
+            <View style={styles.warning}>
+              <Text style={styles.warningText} testID="what-a-zone-does">{WHAT_A_ZONE_DOES}</Text>
+            </View>
+          ) : (
           <View style={styles.row}>
             <Text style={styles.label}>Severity</Text>
             <View style={styles.pillRow}>
@@ -172,13 +213,15 @@ export function ZoneDrawScreen({ route }: Props) {
               ))}
             </View>
           </View>
+          )}
           <Pressable
             style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
             disabled={!canSave || isPending}
-            onPress={() => save()}
+            onPress={onSave}
+            accessibilityRole="button"
           >
             {isPending ? <ActivityIndicator color="#fff" size="small" /> : (
-              <Text style={styles.saveBtnText}>Save Zone</Text>
+              <Text style={styles.saveBtnText}>{kind === 'privacy' ? 'Mask this part of the picture' : 'Save Zone'}</Text>
             )}
           </Pressable>
         </Card>
@@ -209,5 +252,7 @@ const styles = StyleSheet.create({
   pillTextActive:  { color: '#fff', fontWeight: '700' },
   saveBtn:         { backgroundColor: colors.primary, borderRadius: radius.md, alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs },
   saveBtnDisabled: { opacity: 0.4 },
+  warning:         { borderWidth: 1, borderColor: colors.warning, borderRadius: radius.md, padding: spacing.sm },
+  warningText:     { color: colors.text, fontSize: fontSize.sm },
   saveBtnText:     { color: '#fff', fontWeight: '700', fontSize: fontSize.md },
 })
