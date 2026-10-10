@@ -12,7 +12,9 @@
     "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "copy:dist": "npm run clean:dist && xcopy /E /I /Y ..\\frontend\\dist dist",
     "predist": "node scripts/build-icons.js",
-    "dist": "npm run build:frontend && npm run copy:dist && electron-builder --win"
+    "dist": "npm run build:frontend && npm run copy:dist && electron-builder --win",
+    "verify:signed": "node scripts/check-signatures.js",
+    "test": "node --test scripts/signing-config.test.js scripts/check-signatures.test.js"
   },
   "dependencies": {
     "electron-store": "^8.2.0",

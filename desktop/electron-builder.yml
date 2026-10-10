@@ -15,17 +15,23 @@ win:
     # MSI for silent/managed deployment via Group Policy / Intune / SCCM (Gap 94)
     - target: msi
       arch: [x64]
-  # Authenticode code signing (Gap 94). electron-builder signs automatically
-  # when the CSC_LINK (path or base64 of the .pfx) and CSC_KEY_PASSWORD
-  # environment variables are present; without them the build is unsigned
-  # (unchanged from before). publisherName must match the certificate's
-  # subject CN — override via the WIN_PUBLISHER_NAME env var at build time.
+  # Authenticode code signing (Gap 94). Whether the build is signed, and with
+  # what, is read from the environment by scripts/signing-config.js, which
+  # this file builds on (`extends`, at the foot): Azure Artifact Signing, a
+  # certificate in the Windows certificate store (a token, or an authority's
+  # cloud key), or a .pfx file. With none of them set the build is unsigned
+  # (unchanged from before). CODE_SIGNING.md says which to get and how.
+  #
+  # The publisher's name is set there too, from WIN_PUBLISHER_NAME. It used to
+  # be written here as `publisherName: ${env.WIN_PUBLISHER_NAME}`, and that
+  # was never filled in: electron-builder fills such a name in only in file
+  # names, so the publisher was, to the letter, "${env.WIN_PUBLISHER_NAME}".
+  # Nothing read it - it is what an update is checked against, and updates
+  # are not published (`publish: null`) - so nothing broke. It would have, the
+  # day they were.
   signtoolOptions:
-    # Was `win.publisherName`, which electron-builder deprecated in favour of
-    # this block — it warned on every single build. Left where it was, it
-    # stops being read at the next major, and the failure mode is bad: the
-    # build still succeeds, just unsigned or with a mismatched publisher.
-    publisherName: ${env.WIN_PUBLISHER_NAME}
+    # (Was `win.publisherName` before that, which electron-builder deprecated
+    # in favour of this block and warned about on every build.)
     # rfc3161TimeStampServer keeps signatures valid after the cert expires.
     rfc3161TimeStampServer: http://timestamp.digicert.com
     signingHashAlgorithms:
@@ -56,3 +62,7 @@ extraResources:
   - from: dist
     to: dist
     filter: "**/*"
+
+# Signing, from the environment. This file is laid over what that one answers,
+# so anything said here wins; with no signing asked for it answers nothing.
+extends: ./scripts/signing-config.js

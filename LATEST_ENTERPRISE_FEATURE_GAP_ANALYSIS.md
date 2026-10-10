@@ -950,3 +950,52 @@ app id and MSI upgrade code, so it installs over 1.0.6.
 
 What this says about the desktop app: it is a copy of the web app taken on the
 day it is built. A fix to the web reaches it only in the next build.
+
+### A page left open, and an installer Windows refuses
+
+Two things that day's sign-in showed, each put right as far as code can.
+
+**A tab left open goes on being the build it loaded.** The owner's tab had been
+open since before the web app was rebuilt, and its sign-in page had no code
+step. The web server now tells a browser to ask for the page every time
+(`docker/nginx.conf`), but that is only read when a page is loaded, and nothing
+loads a page that is already open. So the sign-in page asks: when it opens,
+when its tab is come back to, and every five minutes while it is in front, it
+fetches the page the server has now and compares the built files each names -
+`frontend/src/lib/freshBuild.ts`, `frontend/src/hooks/useFreshBuild.ts`. If
+they differ it reloads itself, once for that build, and never under a sign-in
+that is on its way or a code that is being typed. It does nothing in the
+desktop app, whose pages are a copy inside the app, nor under the development
+server. Existing file changed: `frontend/src/pages/Login.tsx` (one call). Only
+the sign-in page does this; a page somebody is signed in to and leaves open
+for days is still the build it loaded.
+
+**Windows refused the 1.0.7 installer on the machine that built it.** Smart App
+Control runs a program only if Microsoft's service already knows the file, or
+the file is signed by a public certificate authority. A new unsigned build is
+neither, and was let through a quarter of an hour later by nothing we did. No
+code changes that: it takes a certificate issued to the business, which has not
+been bought. What is done is everything short of it. The build reads from its
+environment how to sign - Azure Artifact Signing, a certificate in the Windows
+store (a token, or an authority's cloud key), or a `.pfx` file -
+`desktop/scripts/signing-config.js`; a signed build signs every library as
+well as every program, and ends by asking Windows about each file it made and
+failing unless all are trusted and timestamped -
+`desktop/scripts/check-signatures.js`. It was rehearsed with a throwaway
+certificate: all nine files of the installer build were signed and
+timestamped, and the build was failed, as it should be, because nobody trusts
+that certificate. `desktop/CODE_SIGNING.md` now says what Windows accepts,
+which route is open to whom, and what does not work (a certificate made on the
+build machine; switching the control off). Existing files changed:
+`desktop/electron-builder.yml`, `desktop/package.json`,
+`.github/workflows/ci.yml` (the two scripts' tests run with the web checks).
+
+Found on the way: the publisher's name was written in
+`desktop/electron-builder.yml` as `${env.WIN_PUBLISHER_NAME}`, which the build
+tool never fills in, so the publisher was that text to the letter. Nothing
+read it - it is what an update is checked against, and updates are not
+published - so nothing had broken. It is now set from the environment by the
+signing configuration.
+
+With no signing variable set the build is what it was: unsigned, same app id,
+same MSI upgrade code. The desktop app was not rebuilt for this.
