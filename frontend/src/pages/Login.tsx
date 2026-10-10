@@ -11,6 +11,7 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import BusinessIcon from '@mui/icons-material/Business'
 import EmailIcon from '@mui/icons-material/Email'
 import LockIcon from '@mui/icons-material/Lock'
+import PinIcon from '@mui/icons-material/Pin'
 import DomainIcon from '@mui/icons-material/Domain'
 import { useAuthStore } from '@/store/auth'
 import { resolveSubdomain, type TenantInfo } from '@/api/auth'
@@ -25,6 +26,7 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const loginFn = useAuthStore((s) => s.login)
+  const completeTwoFactor = useAuthStore((s) => s.completeTwoFactor)
   const accessToken = useAuthStore((s) => s.accessToken)
 
   // Where RequireAuth sent the user here from (e.g. a Live Wall pop-out
@@ -51,6 +53,10 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set once the password has been accepted on an account with two-factor on:
+  // the page then asks for the code instead of the credentials.
+  const [challenge, setChallenge] = useState<string | null>(null)
+  const [code, setCode] = useState('')
 
   // Declared after the state it writes to, which it previously was not.
   // It worked — an effect body runs after the whole component function has,
@@ -83,20 +89,64 @@ export default function Login() {
     setLoading(true)
     setError(null)
     try {
-      await loginFn(tenantSlug.trim(), email.trim(), password)
+      const pending = await loginFn(tenantSlug.trim(), email.trim(), password)
+      if (pending) {
+        // The password has done its work; it is not kept while the code is asked for.
+        setChallenge(pending)
+        setCode('')
+        setPassword('')
+        return
+      }
       navigate(redirectTarget)
     } catch (err: any) {
-      const code = err?.response?.data?.detail?.code
-      if (code === '2fa_setup_required') {
+      const status = err?.response?.status
+      const detail = err?.response?.data?.detail
+      if (detail?.code === '2fa_setup_required') {
         setError(
           'Two-factor authentication is required. Contact your administrator to complete 2FA setup.'
         )
+      } else if (status === 403 && typeof detail === 'string') {
+        // A locked account. The server says until when; "invalid credentials"
+        // here sent people back to retype a password that was not the problem.
+        setError(detail)
+      } else if (status === 429) {
+        setError('Too many sign-in attempts. Wait a minute and try again.')
       } else {
         setError('Invalid credentials. Check your organisation slug, email and password.')
       }
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleCode(e: React.FormEvent) {
+    e.preventDefault()
+    if (!challenge) return
+    setLoading(true)
+    setError(null)
+    try {
+      await completeTwoFactor(challenge, code.trim())
+      navigate(redirectTarget)
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        // The challenge lasts five minutes. It cannot be renewed: the password is asked for again.
+        backToPassword('That took longer than five minutes. Sign in again.')
+      } else if (status === 429) {
+        setError('Too many attempts. Wait a minute and try again.')
+      } else {
+        setError('That code was not accepted. Codes change every 30 seconds: enter the one showing now.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function backToPassword(message: string | null = null) {
+    setChallenge(null)
+    setCode('')
+    setPassword('')
+    setError(message)
   }
 
   // ── Computed branding values ───────────────────────────────────────────────
@@ -335,6 +385,59 @@ export default function Login() {
               </Alert>
             )}
 
+            {challenge && (
+              <Box
+                component="form"
+                onSubmit={handleCode}
+                sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+              >
+                <Typography variant="body2" sx={{ fontSize: '0.82rem' }}>
+                  Your password was accepted. This account has two-factor authentication on: enter the
+                  6-digit code from your authenticator app.
+                </Typography>
+                <TextField
+                  label="Authenticator code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  required
+                  fullWidth
+                  autoFocus
+                  autoComplete="one-time-code"
+                  size="small"
+                  placeholder="123456"
+                  slotProps={{
+                    htmlInput: { inputMode: 'numeric', maxLength: 6 },
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <PinIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  fullWidth
+                  disabled={loading || code.length !== 6}
+                  sx={{
+                    mt: 0.5, py: 1.35, fontSize: '0.9rem', fontWeight: 700, borderRadius: '10px',
+                    background: `linear-gradient(135deg, ${accentColor} 0%, ${accentDark} 100%)`,
+                    boxShadow: `0 4px 18px ${accentGlow}`,
+                    '&.Mui-disabled': { background: `${accentColor}38`, boxShadow: 'none' },
+                  }}
+                >
+                  {loading ? <CircularProgress size={20} color="inherit" /> : 'Verify and sign in'}
+                </Button>
+                <Button size="small" onClick={() => backToPassword()} disabled={loading}
+                        sx={{ color: 'text.secondary', textTransform: 'none' }}>
+                  Back to sign in
+                </Button>
+              </Box>
+            )}
+
+            {!challenge && (
             <Box
               component="form"
               onSubmit={handleSubmit}
@@ -461,6 +564,7 @@ export default function Login() {
                 {loading ? <CircularProgress size={20} color="inherit" /> : 'Sign in'}
               </Button>
             </Box>
+            )}
 
             {/* Footer */}
             <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>

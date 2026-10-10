@@ -189,7 +189,12 @@ export default function Analytics() {
 
   const totalBySeverity = bySeverity?.reduce((s, i) => s + i.count, 0) ?? 0
   const totalByModule = byModule?.reduce((s, i) => s + i.count, 0) ?? 0
-  const maxCamAlerts = topCams?.length ? topCams[0].alert_count : 1
+  // An alert need not come from a camera: a roster or payroll alert has none
+  // (migration 0119), and the API counts those under a camera of null. They are
+  // not a camera to rank, so they are counted under the table instead.
+  const rankedCams = topCams?.filter((c) => c.camera_id != null)
+  const withoutCamera = topCams?.find((c) => c.camera_id == null)?.alert_count ?? 0
+  const maxCamAlerts = rankedCams?.length ? rankedCams[0].alert_count : 1
 
   return (
     <Box>
@@ -332,9 +337,9 @@ export default function Analytics() {
       {/* Top cameras */}
       <GlassCard sx={{ p: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Top Cameras by Alerts ({window}d)</Typography>
-        {!topCams ? (
+        {!rankedCams ? (
           <Skeleton height={160} />
-        ) : topCams.length === 0 ? (
+        ) : rankedCams.length === 0 ? (
           <Typography color="text.secondary" variant="body2">No alert data</Typography>
         ) : (
           <TableContainer component={Paper} elevation={0} sx={{ background: 'transparent' }}>
@@ -347,7 +352,7 @@ export default function Analytics() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {topCams.map((cam, i) => (
+                {rankedCams.map((cam, i) => (
                   <TableRow key={cam.camera_id} hover>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -357,7 +362,7 @@ export default function Analytics() {
                             {cam.camera_name ?? 'Unknown'}
                           </Typography>
                           <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                            {cam.camera_id.slice(0, 8)}…
+                            {cam.camera_id!.slice(0, 8)}…
                           </Typography>
                         </Box>
                       </Box>
@@ -388,6 +393,12 @@ export default function Analytics() {
               </TableBody>
             </Table>
           </TableContainer>
+        )}
+        {withoutCamera > 0 && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+            {withoutCamera} more {withoutCamera === 1 ? 'alert' : 'alerts'} in this period did not come from a
+            camera — roster, payroll and similar.
+          </Typography>
         )}
       </GlassCard>
     </Box>

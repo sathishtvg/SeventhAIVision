@@ -453,7 +453,8 @@ export interface AnalyticsTrendPoint {
 }
 
 export interface TopCamera {
-  camera_id: string
+  /** Null for the alerts that did not come from a camera (roster, payroll …), counted together. */
+  camera_id: string | null
   camera_name: string | null
   alert_count: number
 }

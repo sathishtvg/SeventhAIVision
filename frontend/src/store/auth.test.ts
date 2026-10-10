@@ -123,3 +123,56 @@ describe('a wrong password', () => {
     expect(seen.map((r) => `${r.method} ${r.url}`)).toEqual(['POST /api/v1/auth/login'])
   })
 })
+
+describe('an account with two-factor on', () => {
+  const nobody = () => {
+    localStorage.removeItem(REFRESH_KEY)
+    useAuthStore.setState({ accessToken: null, user: null, permissions: null, supportSession: null, platformToken: null })
+  }
+
+  it('is not signed in by its password alone: the store hands back the challenge', async () => {
+    nobody()
+    network(() => ({ status: 200, data: { requires_2fa: true, challenge_token: 'challenge-1' } }))
+    await expect(useAuthStore.getState().login('seventhaivision', 'owner@example.com', 'right')).resolves.toBe('challenge-1')
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().user).toBeNull()
+    expect(localStorage.getItem(REFRESH_KEY)).toBeNull()
+    // Nothing is asked of the server as that person until the code is given.
+    expect(seen.map((r) => `${r.method} ${r.url}`)).toEqual(['POST /api/v1/auth/login'])
+  })
+
+  it('is signed in by the code, sent with the challenge under the names the server reads', async () => {
+    nobody()
+    let sent: unknown = null
+    network((config) => {
+      if (config.url === '/api/v1/auth/2fa-verify') {
+        sent = JSON.parse(config.data as string)
+        return { status: 200, data: { access_token: FRESH, refresh_token: 'r1' } }
+      }
+      return { status: 200, data: { permissions: ['tenant:manage'] } }
+    })
+    await useAuthStore.getState().completeTwoFactor('challenge-1', '123456')
+    expect(sent).toEqual({ challenge_token: 'challenge-1', totp_code: '123456' })
+    expect(useAuthStore.getState().accessToken).toBe(FRESH)
+    expect(useAuthStore.getState().permissions).toEqual(['tenant:manage'])
+    expect(localStorage.getItem(REFRESH_KEY)).toBe('r1')
+  })
+
+  it('signs in at once when the account has no two-factor, as before', async () => {
+    nobody()
+    network((config) => config.url === '/api/v1/auth/login'
+      ? { status: 200, data: { access_token: FRESH, refresh_token: 'r2' } }
+      : { status: 200, data: { permissions: [] } })
+    await expect(useAuthStore.getState().login('demo', 'a@b.c', 'right')).resolves.toBeNull()
+    expect(useAuthStore.getState().accessToken).toBe(FRESH)
+  })
+
+  it('does not take a refused code as a reason to refresh', async () => {
+    nobody()
+    network(() => ({ status: 401, data: { detail: 'Invalid or expired challenge token' } }))
+    await expect(useAuthStore.getState().completeTwoFactor('old', '123456')).rejects.toMatchObject({
+      response: { status: 401 } })
+    expect(seen.map((r) => `${r.method} ${r.url}`)).toEqual(['POST /api/v1/auth/2fa-verify'])
+    expect(useAuthStore.getState().accessToken).toBeNull()
+  })
+})

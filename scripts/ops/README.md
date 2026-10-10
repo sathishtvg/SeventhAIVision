@@ -39,3 +39,26 @@ Never move a hash through a shell argument. This script never does.
                 AND strpos(hashed_password, '$2') = 1);
 
 A bcrypt hash is always exactly 60 characters. Anything else cannot authenticate.
+
+## demo_showcase.py
+
+Loads a demonstration's worth of sample data into the `demo` organisation: one
+connected story at Jurong Logistics Hub across the response desk, the security
+map, the occurrence book, investigations, evidence packages, the SOP library
+and visitor authorisations. `docs/DEMO-SCRIPT.md` is the presenter's route
+through it.
+
+It works through the running application, signed in as the demo accounts, so
+what it makes is numbered and audited as a person's work would be. It only
+adds, and it can be run again at any time. It is read from standard input, so
+nothing is copied into the container:
+
+    docker exec -i -e DEMO_STEP=today docker-api-1 python - < scripts/ops/demo_showcase.py
+
+`DEMO_STEP` is `setup` (what lasts), `today` (what goes stale: run it an hour
+before a demonstration) or `live` (an unanswered incident and a situation
+awaiting a decision: run it five minutes before). With none it runs `setup`,
+then `today`.
+
+The demo accounts' password is read from `backend/scripts/seed_demo.py` and is
+never printed. Do not run `seed_demo.py` itself: it deletes the organisation.

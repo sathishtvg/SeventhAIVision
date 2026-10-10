@@ -1,6 +1,6 @@
 import { jwtDecode } from 'jwt-decode'
 import { create } from 'zustand'
-import { login as apiLogin, refreshTokens } from '@/api/auth'
+import { login as apiLogin, needsCode, refreshTokens, verifyTwoFactor } from '@/api/auth'
 import { apiClient } from '@/api/client'
 
 interface JwtClaims {
@@ -40,7 +40,11 @@ interface AuthState {
   // Effective permission codes fetched from the backend (Gap 91). null until
   // loaded; usePermission falls back to the hardcoded matrix while null.
   permissions: string[] | null
-  login: (tenantSlug: string, email: string, password: string) => Promise<void>
+  /** Signs in. Resolves to a challenge token when the account has two-factor
+   *  on: the password was right, and nobody is signed in until
+   *  `completeTwoFactor` is given the code. Resolves to null when signed in. */
+  login: (tenantSlug: string, email: string, password: string) => Promise<string | null>
+  completeTwoFactor: (challengeToken: string, code: string) => Promise<void>
   logout: () => void
   refresh: () => Promise<void>
   loadPermissions: () => Promise<void>
@@ -68,7 +72,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   async login(tenantSlug, email, password) {
-    const tokens = await apiLogin(tenantSlug, email, password)
+    const answer = await apiLogin(tenantSlug, email, password)
+    // Two-factor: the answer carries no tokens. Reading one out of it anyway is
+    // what used to fail here, and the sign-in page called that "invalid
+    // credentials" for a password that had just been accepted.
+    if (needsCode(answer)) return answer.challenge_token
+    get()._setTokens(answer.access_token, answer.refresh_token)
+    await get().loadPermissions()
+    return null
+  },
+
+  async completeTwoFactor(challengeToken, code) {
+    const tokens = await verifyTwoFactor(challengeToken, code)
     get()._setTokens(tokens.access_token, tokens.refresh_token)
     await get().loadPermissions()
   },
@@ -138,7 +153,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
  * load, which could then refuse the sign-in that followed. And a wrong
  * password — a 401 from the login itself — was "refreshed" and posted twice.
  */
-const ITS_OWN_ANSWER = ['/api/v1/auth/refresh', '/api/v1/auth/login']
+const ITS_OWN_ANSWER = ['/api/v1/auth/refresh', '/api/v1/auth/login', '/api/v1/auth/2fa-verify']
 
 let _refreshing: Promise<void> | null = null
 

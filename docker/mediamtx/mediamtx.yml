@@ -43,24 +43,31 @@ paths:
   cam2:
     runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam2
     runOnInitRestart: yes
+  # cam3 to cam8 show the same photograph as cam2. They used to run an
+  # encoder each: six more copies of one picture, about a fifth of a core and
+  # 85 MB apiece, which with the rest of the stack was enough to push this
+  # 8-core, 3.8 GB Docker machine to a load of 37 and into swap (8 Oct 2026) —
+  # every screen of the application slowed to seconds. They now read cam2's
+  # stream from this same server, so the picture is encoded once. Each is
+  # still its own path with its own URL: nothing that reads them changes.
   cam3:
-    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam3
-    runOnInitRestart: yes
+    source: rtsp://127.0.0.1:8554/cam2
+    rtspTransport: tcp
   cam4:
-    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam4
-    runOnInitRestart: yes
+    source: rtsp://127.0.0.1:8554/cam2
+    rtspTransport: tcp
   cam5:
-    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam5
-    runOnInitRestart: yes
+    source: rtsp://127.0.0.1:8554/cam2
+    rtspTransport: tcp
   cam6:
-    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam6
-    runOnInitRestart: yes
+    source: rtsp://127.0.0.1:8554/cam2
+    rtspTransport: tcp
   cam7:
-    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam7
-    runOnInitRestart: yes
+    source: rtsp://127.0.0.1:8554/cam2
+    rtspTransport: tcp
   cam8:
-    runOnInit: ffmpeg -re -loop 1 -i /videos/bus.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam8
-    runOnInitRestart: yes
+    source: rtsp://127.0.0.1:8554/cam2
+    rtspTransport: tcp
   cam9:
     runOnInit: ffmpeg -re -loop 1 -i /videos/zidane.jpg -c:v libx264 -tune stillimage -preset ultrafast -pix_fmt yuv420p -g 1 -keyint_min 1 -r 6 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/cam9
     runOnInitRestart: yes

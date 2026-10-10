@@ -106,6 +106,9 @@ export function AnalyticsScreen() {
     queryKey: ['analytics-top-cameras'],
     queryFn: () => getTopCameras({ limit: 5, days: 7 }),
   })
+  // Alerts that came from no camera (roster, payroll) are counted under a camera
+  // of null: not a camera to rank, and it has no name to show.
+  const rankedCameras = topCameras.filter((cam) => cam.camera_id != null)
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -174,11 +177,11 @@ export function AnalyticsScreen() {
       )}
 
       {/* Top cameras */}
-      {topCameras.length > 0 && (
+      {rankedCameras.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Top Cameras by Alerts (7d)</Text>
           <Card>
-            {topCameras.map((cam: TopCamera, i: number) => (
+            {rankedCameras.map((cam: TopCamera, i: number) => (
               <View key={cam.camera_id} style={styles.camRow}>
                 <Text style={styles.camRank}>#{i + 1}</Text>
                 <Text style={styles.camName} numberOfLines={1}>{cam.camera_name}</Text>

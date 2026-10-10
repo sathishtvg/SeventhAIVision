@@ -11,12 +11,14 @@ import { useAuthStore } from '@/store/auth'
 import { useServerStore } from '@/store/server'
 import { useBiometricStore } from '@/store/biometric'
 import { setApiBaseUrl } from '@/api/client'
+import { codeRefusal, digitsOnly, isWholeCode, loginRefusal } from '@/lib/signIn'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const REFRESH_TOKEN_KEY = 'seventh_ai_refresh_token'
 
 export function LoginScreen() {
   const login = useAuthStore((s) => s.login)
+  const completeTwoFactor = useAuthStore((s) => s.completeTwoFactor)
   const restoreSession = useAuthStore((s) => s.restoreSession)
   const { serverUrl, setServerUrl } = useServerStore()
   const { initialized, enabled: biometricEnabled, hardwareAvailable, biometricType, authenticate } = useBiometricStore()
@@ -28,6 +30,10 @@ export function LoginScreen() {
   const [showPw, setShowPw] = useState(false)
   const [canBiometric, setCanBiometric] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
+  // Set once the password has been accepted on an account with two-factor on:
+  // the screen then asks for the code instead of the credentials.
+  const [challenge, setChallenge] = useState<string | null>(null)
+  const [code, setCode] = useState('')
   const autoPromptedRef = useRef(false)
 
   // Once biometric store is initialized, check whether quick sign-in is available
@@ -75,9 +81,36 @@ export function LoginScreen() {
     try {
       await setServerUrl(serverInput)
       setApiBaseUrl(serverInput)
-      await login(email, password, tenantSlug)
-    } catch {
-      Alert.alert('Login failed', 'Check your server URL and credentials.')
+      const pending = await login(email, password, tenantSlug)
+      if (pending) {
+        // The password has done its work; it is not kept while the code is asked for.
+        setChallenge(pending)
+        setCode('')
+        setPassword('')
+      }
+    } catch (err) {
+      const said = loginRefusal(err)
+      Alert.alert(said.title, said.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const backToPassword = () => {
+    setChallenge(null)
+    setCode('')
+  }
+
+  const handleCode = async () => {
+    if (!challenge || !isWholeCode(code)) return
+    setLoading(true)
+    try {
+      await completeTwoFactor(challenge, code, email)
+    } catch (err) {
+      const said = codeRefusal(err)
+      Alert.alert(said.title, said.message)
+      // The five minutes ran out: the challenge cannot be renewed.
+      if (said.expired) backToPassword()
     } finally {
       setLoading(false)
     }
@@ -127,6 +160,55 @@ export function LoginScreen() {
               style={styles.accentBar}
             />
 
+            {challenge !== null && (
+              <>
+                <Text style={styles.codeHint}>
+                  Your password was accepted. This account has two-factor authentication on: enter the
+                  6-digit code from your authenticator app.
+                </Text>
+                <View style={styles.field}>
+                  <Text style={styles.label}>Authenticator code</Text>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="keypad-outline" size={15} color={colors.textSecondary} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="123456"
+                      placeholderTextColor={colors.textDisabled}
+                      value={code}
+                      onChangeText={(typed) => setCode(digitsOnly(typed))}
+                      keyboardType="number-pad"
+                      textContentType="oneTimeCode"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      autoFocus
+                      accessibilityLabel="Authenticator code"
+                    />
+                  </View>
+                </View>
+                <Pressable onPress={handleCode} disabled={loading || !isWholeCode(code)}
+                           style={[styles.btnWrap, (loading || !isWholeCode(code)) && { opacity: 0.6 }]}
+                           accessibilityRole="button" accessibilityLabel="Verify and sign in">
+                  <LinearGradient
+                    colors={['#6C63FF', '#00D9C0']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.btn}
+                  >
+                    {loading
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={styles.btnText}>Verify and sign in</Text>
+                    }
+                  </LinearGradient>
+                </Pressable>
+                <Pressable onPress={backToPassword} disabled={loading} style={styles.biometricBtn}
+                           accessibilityRole="button">
+                  <Text style={styles.biometricText}>Back to sign in</Text>
+                </Pressable>
+              </>
+            )}
+
+            {challenge === null && (
+            <>
             {/* Server URL */}
             <View style={styles.field}>
               <Text style={styles.label}>Server URL</Text>
@@ -245,6 +327,8 @@ export function LoginScreen() {
                 )}
               </Pressable>
             )}
+            </>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -336,6 +420,13 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     marginBottom: spacing.lg,
     opacity: 0.8,
+  },
+  // The line above the code field
+  codeHint: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+    lineHeight: 20,
+    marginBottom: spacing.md,
   },
   // Form
   field: {

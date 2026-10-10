@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store'
 import { jwtDecode } from 'jwt-decode'
 import { create } from 'zustand'
 import { apiClient } from '@/api/client'
-import { getMyPermissions } from '@/api/auth'
+import { getMyPermissions, signIn, verifyTwoFactor } from '@/api/auth'
 
 const REFRESH_KEY = 'seventh_ai_refresh_token'
 /** Cached so the menu is gated correctly on the next cold start before the
@@ -33,13 +33,28 @@ interface AuthState {
    *  See src/lib/access.ts for why that is the safe direction. */
   permissions: string[] | null
   loadPermissions: () => Promise<void>
-  login: (email: string, password: string, tenantSlug: string) => Promise<void>
+  /** Resolves to a challenge token when the account has two-factor on — the
+   *  password was right and nobody is signed in until `completeTwoFactor` is
+   *  given the code — and to null when signed in. */
+  login: (email: string, password: string, tenantSlug: string) => Promise<string | null>
+  completeTwoFactor: (challengeToken: string, code: string, email: string) => Promise<void>
   logout: () => Promise<void>
   restoreSession: () => Promise<void>
   refresh: () => Promise<boolean>
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set, get) => {
+  /** The same for a password alone and for a password and a code. */
+  const signedIn = async (accessToken: string, refreshToken: string, email: string) => {
+    const claims = jwtDecode<JwtClaims>(accessToken)
+    const user: AuthUser = { id: claims.sub, email, roleId: claims.role_id, tenantId: claims.tenant_id }
+    await SecureStore.setItemAsync(REFRESH_KEY, refreshToken)
+    set({ accessToken, user })
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+    await get().loadPermissions()
+  }
+
+  return {
   accessToken: null,
   user: null,
   permissions: null,
@@ -63,14 +78,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (email, password, tenantSlug) => {
-    const res = await apiClient.post('/api/v1/auth/login', { email, password, tenant_slug: tenantSlug })
-    const { access_token, refresh_token } = res.data as { access_token: string; refresh_token: string }
-    const claims = jwtDecode<JwtClaims>(access_token)
-    const user: AuthUser = { id: claims.sub, email, roleId: claims.role_id, tenantId: claims.tenant_id }
-    await SecureStore.setItemAsync(REFRESH_KEY, refresh_token)
-    set({ accessToken: access_token, user })
-    apiClient.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-    await get().loadPermissions()
+    const answer = await signIn(email, password, tenantSlug)
+    // Two-factor: there are no tokens yet. Reading one out of the answer anyway
+    // is what used to fail here, and the screen called it a failed login.
+    if (answer.kind === 'code') return answer.challengeToken
+    await signedIn(answer.accessToken, answer.refreshToken, email)
+    return null
+  },
+
+  completeTwoFactor: async (challengeToken, code, email) => {
+    const tokens = await verifyTwoFactor(challengeToken, code)
+    await signedIn(tokens.accessToken, tokens.refreshToken, email)
   },
 
   logout: async () => {
@@ -111,4 +129,5 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return false
     }
   },
-}))
+  }
+})

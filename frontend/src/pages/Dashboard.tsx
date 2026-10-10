@@ -926,11 +926,13 @@ export default function Dashboard() {
 
             <GlassCard sx={{ p: 2.5 }}>
               <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700 }}>Top Cameras by Alerts (30 days)</Typography>
-              {(topCameras as any[]).length === 0 ? (
+              {/* Alerts that came from no camera (roster, payroll) are counted by the API under a
+                  camera of null. That is not a camera to rank, and it has no name to show. */}
+              {(topCameras as any[]).filter((c) => c.camera_id != null).length === 0 ? (
                 <Typography variant="caption" color="text.disabled">No data</Typography>
               ) : (
                 <Stack spacing={0.5}>
-                  {(topCameras as any[]).slice(0, 5).map((cam: any, i: number) => (
+                  {(topCameras as any[]).filter((c) => c.camera_id != null).slice(0, 5).map((cam: any, i: number) => (
                     <Box key={cam.camera_id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="caption" color="text.disabled" sx={{ width: 14 }}>{i + 1}</Typography>
                       <Typography variant="caption" sx={{ flex: 1 }} noWrap>{cam.camera_name}</Typography>
