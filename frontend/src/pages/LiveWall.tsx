@@ -30,6 +30,8 @@ import {
   type WallLayout,
 } from '@/api/wallLayouts'
 import { HlsPlayer } from '@/components/common/HlsPlayer'
+import { LiveImage } from '@/components/common/LiveImage'
+import { ErrorState } from '@/components/states'
 import { MASKED_LABEL } from '@/components/privacy/privacyZoneWords'
 import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { DetectionOverlay } from '@/components/common/DetectionOverlay'
@@ -162,24 +164,28 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
           border: alertTitle ? '2px solid #FF4560' : '1px solid rgba(255,255,255,0.08)',
           '& .cell-hover-controls': { opacity: 0, transition: 'opacity 0.15s' },
           '&:hover .cell-hover-controls, &:focus-within .cell-hover-controls': { opacity: 1 },
+          // A camera with an alert on it has a red frame and the alert's name at
+          // its top for as long as it is flagged. The frame used to be a glow
+          // that pulsed without end: a shadow animated round a picture is
+          // painted again with the picture, on every frame, on every flagged
+          // tile of the wall. What draws the eye now is the frame itself,
+          // which beats three times as the alert arrives and then stays -
+          // only its opacity changes, which costs nothing to draw, and with
+          // reduced motion it is simply there.
           ...(alertTitle && {
-            animation: 'alert-cell-pulse 1s ease-in-out infinite',
-            '@keyframes alert-cell-pulse': {
-              '0%, 100%': { boxShadow: '0 0 4px 1px rgba(255,69,96,0.55)' },
-              '50%': { boxShadow: '0 0 18px 5px rgba(255,69,96,0.95)' },
+            boxShadow: '0 0 0 2px rgba(255,69,96,0.55)',
+            '&::after': {
+              content: '""', position: 'absolute', inset: 0, borderRadius: 'inherit', pointerEvents: 'none',
+              boxShadow: 'inset 0 0 0 3px #FF4560',
+              animation: 'sav-alert-beat 900ms ease-in-out 3',
             },
           }),
         }}
       >
         {playHls && hlsUrl ? (
-          <HlsPlayer src={hlsUrl} sx={fill ? { height: '100%', width: '100%' } : { aspectRatio: '16/9' }} />
+          <HlsPlayer src={hlsUrl} alt={cell.camera_name} sx={fill ? { height: '100%', width: '100%' } : { aspectRatio: '16/9' }} />
         ) : liveUrl ? (
-          <Box
-            component="img"
-            src={liveUrl}
-            alt={cell.camera_name}
-            sx={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-          />
+          <LiveImage src={liveUrl} alt={cell.camera_name} />
         ) : null}
 
         {/* AI annotation layer (Gap 92), filtered to the operator's selected modules */}
@@ -299,9 +305,9 @@ function LiveCell({ cell, onRemove, alert, mode, activeModules, onDrawZone, onOp
         </DialogTitle>
         <DialogContent sx={{ p: 0 }}>
           {playHls && hlsUrl ? (
-            <HlsPlayer src={hlsUrl} sx={{ maxHeight: '80vh' }} />
+            <HlsPlayer src={hlsUrl} alt={cell.camera_name} sx={{ maxHeight: '80vh' }} />
           ) : liveUrl ? (
-            <Box component="img" src={liveUrl} alt={cell.camera_name} sx={{ width: '100%', display: 'block' }} />
+            <LiveImage src={liveUrl} alt={cell.camera_name} fill={false} />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -320,7 +326,8 @@ export function LiveWallPage() {
 
   // Which AI modules' overlays are currently shown — restricted to what this
   // tenant actually licenses (Live Wall analytics switcher).
-  const { data: licensedModules = [] } = useQuery({ queryKey: ['my-enabled-modules'], queryFn: getMyEnabledModules })
+  const { data: licensedModules = [], isLoadingError: modulesFailed, error: modulesError, refetch: refetchModules } =
+    useQuery({ queryKey: ['my-enabled-modules'], queryFn: getMyEnabledModules })
   const availableModules = ALL_AI_MODULES.filter((m) => licensedModules.includes(m))
   const [activeModules, setActiveModules] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(OVERLAY_MODULES_KEY) ?? '[]') } catch { return [] }
@@ -460,7 +467,8 @@ export function LiveWallPage() {
   const [saveName, setSaveName] = useState('')
   const [saveShared, setSaveShared] = useState(false)
   const [overwrite, setOverwrite] = useState(true)
-  const { data: layouts = [] } = useQuery({ queryKey: ['wall-layouts'], queryFn: listWallLayouts })
+  const { data: layouts = [], isLoadingError: layoutsFailed, error: layoutsError, refetch: refetchLayouts } =
+    useQuery({ queryKey: ['wall-layouts'], queryFn: listWallLayouts })
   const currentLayout = layouts.find((l) => l.id === layoutId)
 
   const applyLayout = (layout: WallLayout) => {
@@ -528,7 +536,22 @@ export function LiveWallPage() {
   // the same mechanism used for a single-layout pop-out). A small stagger
   // avoids every window trying to open in the same instant.
   const [profileSetupOpen, setProfileSetupOpen] = useState(false)
-  const { data: profiles = [] } = useQuery({ queryKey: ['wall-profiles'], queryFn: listWallProfiles })
+  const { data: profiles = [], isLoadingError: profilesFailed, error: profilesError, refetch: refetchProfiles } =
+    useQuery({ queryKey: ['wall-profiles'], queryFn: listWallProfiles })
+
+  // What the wall's toolbar offers is fetched; the cameras on it are not. When one of those lists could not
+  // be fetched its menu is simply shorter, which reads as "you have saved none" - so it is said, in one line
+  // above the wall, and the wall itself is left as it is.
+  const notLoaded = [
+    layoutsFailed ? 'saved layouts' : null,
+    profilesFailed ? 'screen profiles' : null,
+    modulesFailed ? 'analytics choices' : null,
+  ].filter((what): what is string => what !== null)
+  const retryNotLoaded = () => {
+    if (layoutsFailed) void refetchLayouts()
+    if (profilesFailed) void refetchProfiles()
+    if (modulesFailed) void refetchModules()
+  }
 
   // The profile currently driving this wall — tracked so an operator can grow
   // or delete the set after the fact ("if need more screen more camera need
@@ -834,6 +857,17 @@ export function LiveWallPage() {
           Add Camera
         </Button>
       </Box>
+
+      {notLoaded.length > 0 && (
+        <ErrorState
+          compact
+          title={`The ${notLoaded.join(' and the ')} could not be loaded`}
+          error={layoutsError ?? profilesError ?? modulesError}
+          onRetry={retryNotLoaded}
+          // One line, and it does not take the wall's height: every row it used would be a row of picture.
+          sx={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 1.5, py: 0.5, mb: 1, flexShrink: 0 }}
+        />
+      )}
 
       {kiosk ? (
         // Full screen / kiosk: the wall is height-constrained to the

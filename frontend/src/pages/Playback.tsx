@@ -9,6 +9,7 @@ import {
   Chip,
   MenuItem,
   Select,
+  Skeleton,
   Snackbar,
   TextField,
   Tooltip,
@@ -27,6 +28,7 @@ import { useAuthStore } from '@/store/auth'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { VideoPlayer } from '@/components/common/VideoPlayer'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -75,12 +77,17 @@ export function PlaybackPage() {
     else setPlaying(seg)
   }
 
-  const { data: cameras = [] } = useQuery({
+  const { data: cameras = [], isLoadingError: camerasFailed, error: camerasError, refetch: refetchCameras } = useQuery({
     queryKey: ['cameras'],
     queryFn: () => apiClient.get('/api/v1/cameras').then((r) => r.data),
   })
 
-  const { data: timeline } = useQuery({
+  // A camera's day is one thing: another camera's bar is never left on screen under this one's name while
+  // this one's is fetched. It waits with a placeholder, and says so when it could not be fetched - an empty
+  // bar is what a day with no recordings looks like.
+  const {
+    data: timeline, isLoading: timelineLoading, isLoadingError: timelineFailed, error: timelineError, refetch: refetchTimeline,
+  } = useQuery({
     queryKey: ['recording-timeline', cameraId, date],
     queryFn: () => getRecordingTimeline(cameraId, date),
     enabled: Boolean(cameraId && date),
@@ -135,9 +142,15 @@ export function PlaybackPage() {
 
       {!cameraId ? (
         <GlassCard>
-          <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
-            Select a camera to browse its recorded footage.
-          </Typography>
+          {camerasFailed ? <ErrorState title="Could not load the cameras" error={camerasError} onRetry={refetchCameras} /> : (
+            <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
+              Select a camera to browse its recorded footage.
+            </Typography>
+          )}
+        </GlassCard>
+      ) : timelineFailed ? (
+        <GlassCard>
+          <ErrorState title="Could not load this day's recordings" error={timelineError} onRetry={refetchTimeline} />
         </GlassCard>
       ) : (
         <>
@@ -155,6 +168,9 @@ export function PlaybackPage() {
                     background: 'rgba(255,255,255,0.05)',
                   }} />
                 ))}
+                {timelineLoading && (
+                  <Skeleton variant="rounded" sx={{ position: 'absolute', left: 8, right: 8, top: 8, bottom: 8, height: 'auto' }} />
+                )}
                 {/* Recording segments */}
                 {timeline?.segments.map((seg) => {
                   const { left, width } = segmentSpan(seg, dayStartMs)
@@ -247,7 +263,7 @@ export function PlaybackPage() {
           {/* Segment list */}
           <GlassCard>
             <Box sx={{ p: 1.5 }}>
-              {timeline?.segments.length === 0 ? (
+              {timelineLoading ? <ListSkeleton rows={4} height={32} /> : timeline?.segments.length === 0 ? (
                 <Typography color="text.secondary" variant="body2" sx={{ p: 1 }}>
                   No recordings on {date}. Enable continuous recording on this camera's
                   stream (Cameras page) for 24/7 footage.

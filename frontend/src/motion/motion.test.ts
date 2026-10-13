@@ -304,3 +304,21 @@ describe('what has just arrived is marked', () => {
     expect(css).toContain('box-shadow: inset 3px 0 0 var(--sav-new);')
   })
 })
+
+describe('an alert on a camera of the wall', () => {
+  const wall = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../pages/LiveWall.tsx'), 'utf8')
+
+  it('is a frame that beats a few times and stays, and only its opacity ever changes', () => {
+    const beat = css.slice(css.indexOf('@keyframes sav-alert-beat {'), css.indexOf('}\n}', css.indexOf('@keyframes sav-alert-beat {')))
+    expect(beat).toContain('0%, 100% { opacity: 1; }')
+    expect(beat.replace(/opacity/g, '')).not.toMatch(/box-shadow|transform|filter|background/)
+    // It ends as it began: there, at full strength.
+    expect(wall).toContain("animation: 'sav-alert-beat 900ms ease-in-out 3',")
+    expect(wall).toContain("boxShadow: 'inset 0 0 0 3px #FF4560',")
+  })
+
+  it('no longer animates a shadow round the picture, and nothing on the wall moves without end', () => {
+    expect(wall).not.toContain('alert-cell-pulse')
+    expect(wall).not.toMatch(/animation:[^\n]*infinite/)
+  })
+})

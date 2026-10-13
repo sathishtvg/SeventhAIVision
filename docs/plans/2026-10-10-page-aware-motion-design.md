@@ -71,7 +71,7 @@ touched.
 | Command centre, alerts, incidents | New rows marked and announced; cards enter and leave; status changes cross-fade. No acknowledge, escalate or emergency control waits |
 | Platform owner | Counters from real values; staggered widgets; drawer and dialog transitions; saving / saved / failed |
 | Dashboard, sites | Staggered cards; offline and degraded always visible |
-| Video | Connecting, buffering, failed on the player and the wall's tiles. The alert glow becomes a steady border and a badge — the glow made the browser repaint the video. A tick when a snapshot or bookmark is really saved |
+| Video | Connecting, buffering, failed on the player and the wall's tiles. The alert glow becomes a steady border and a badge — the glow made the browser repaint the video. (Built: a red frame that beats three times as the alert arrives and then stays; only its opacity changes.) A tick when a snapshot or bookmark is really saved |
 | Investigation, evidence | Searching state; results as they arrive; thumbnails fade in. "Verified" only when it is |
 | Virtual patrol | Active camera and step; snapshot tick; checklist feedback. Animation cannot advance a patrol or skip an answer |
 | Drone | Mission states; "telemetry is stale". Nothing drawn as live without fresh data |

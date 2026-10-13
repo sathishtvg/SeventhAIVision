@@ -16,11 +16,12 @@
  * date); it never blanks a list an operator is reading.
  */
 
-/** Pages that fetch and do not yet have the shared failed state, and the phase that gives it to them. */
-export const NOT_YET_CONVERTED: Record<string, string> = {
-  'LiveWall.tsx': 'the wall: its tiles need the video states, not a list state - phase 4',
-  'Playback.tsx': 'the timeline and player need the video states - phase 4',
-}
+/**
+ * Pages that fetch and do not yet have the shared failed state, and the phase that gives it to them.
+ * Empty since phase 4, when the camera wall and playback - the last two - were given theirs with the video
+ * states. A page added without one fails `conversion.test.ts` until it has it or is named here with a reason.
+ */
+export const NOT_YET_CONVERTED: Record<string, string> = {}
 
 /** Files under pages/ that are not a page: what they fetch is a detail of something else. */
 export const NOT_A_PAGE: Record<string, string> = {

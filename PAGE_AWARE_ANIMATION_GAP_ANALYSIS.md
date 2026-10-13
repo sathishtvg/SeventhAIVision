@@ -275,11 +275,12 @@ themselves, so it cannot say more than is true.
 | Rule | Done | How |
 |---|---|---|
 | Every page arrives in the way its kind of page should; placeholders wait before they show; less motion for whoever asks; no request fails without a word | All pages | Phases 1-2, in the shell and the style sheet - no page was edited for it |
-| 2. A failed request says it failed | 108 of the 110 pages that fetch (241 places in 121 files, pages and the components they use). The two left are the camera wall and playback, whose tiles need the video states | A script over each page's syntax tree, then by hand where it could not be sure |
-| 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4) or nothing at all, but the two video pages: 46 shaped placeholders in 27 files. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
+| 2. A failed request says it failed | All 110 pages that fetch (247 places in 125 files, pages and the components they use). The camera wall and playback were the last two, done with the video states | A script over each page's syntax tree, then by hand where it could not be sure |
+| 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4) or nothing at all: 46 shaped placeholders in 27 files, and playback's day. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
 | 4. A changed filter keeps the last rows | Not yet | Phases 3-6 |
 | What is new is marked and said | Not yet | Phases 4-5 |
-| Video, patrol, drone, map, export states | Not yet | Phases 4-6 |
+| Video states | The player (`HlsPlayer`) and the frame-by-frame live view (`LiveImage`): the wall's tiles and its full-screen view, the situation page's live view, the drone screens' player. The wall's alert is a steady frame | Phase 4, by hand, and looked at in a browser against streams that play, wait, fail and stop |
+| Patrol, drone, map, export states | Not yet | Phases 5-6 |
 
 What rule 2 found beyond what the audit had counted:
 
@@ -309,3 +310,54 @@ What rule 2 found beyond what the audit had counted:
   inside an object, a validator's preface taken off. The shared wording reads
   every one of those shapes; a test that already existed caught the first of
   them when its page was converted.
+
+What the video states found (phase 4):
+
+- **A tile with no picture was a black rectangle, whatever the reason.** A
+  camera still connecting, one whose stream could not be opened, and one
+  looking at a dark room all looked the same on the wall. The player says
+  "Connecting" until there is a first frame, "Buffering" over the last frame
+  when a picture that was playing stops for more, and "No picture" with "Try
+  again" when the stream could not be played. What it says comes from the
+  video element and from hls.js - never from a timer - and is taken away the
+  moment there is a picture. The way the player recovers by itself is as it
+  was.
+- **The frame-by-frame view had no states at all on the wall.** It is an
+  `<img>` fed by a stream that never ends; it now says "Connecting" and "No
+  picture" as the player does. A browser is not obliged to say that such an
+  image has "loaded", so the tile also looks for its first frame itself - a
+  tile must never go on saying "Connecting" over a picture that is there.
+  When the session's token is renewed the address changes and the picture is
+  kept until the new stream's first frame, so the wall does not blink.
+- **The camera's name and its controls stay above the state.** On a tile with
+  no picture they are what is wanted: which camera it is, and "remove from
+  wall".
+- **The alert glow was a shadow animated without end** round a picture, which
+  is painted again with the picture on every frame, on every flagged tile.
+  It is a red frame that beats three times as the alert arrives and then
+  stays, for as long as the tile is flagged; only its opacity changes. With
+  reduced motion it is simply there. The alert's name on the tile is as it was.
+- **Playback drew a day it could not fetch as an empty day.** The bar and the
+  list wait with a placeholder and say so when the day could not be loaded;
+  "No recordings on ..." is said only when the server answered with none. A
+  camera's day is one thing, so another camera's bar is never kept on screen
+  while this one's is fetched.
+- **The wall's menus were shorter when their lists failed**, which reads as
+  "you have saved none". One line above the wall says which of the saved
+  layouts, screen profiles and analytics choices could not be loaded; the
+  wall itself is left as it is.
+
+Not done, and why:
+
+- **A frame-by-frame tile whose stream stops part-way keeps its last frame and
+  says nothing.** The browser reports nothing when such a stream ends (it was
+  tried: six frames and a closed connection leave a still picture and no
+  event). Telling a frozen picture from a still scene needs the server's word
+  on when the camera last sent a frame, tile by tile; that is its own piece of
+  work and is not part of this one. It was so before, and is so still.
+- **The player's states against a real HLS stream were not watched in a
+  browser.** Its tests drive the same events the element and hls.js raise;
+  the local stack was not rebuilt, and no sign-in was made, to watch it.
+- A browser allows about six connections at once to one address over
+  HTTP/1.1. A wall of more frame-by-frame tiles than that, served that way,
+  has tiles that wait; they now say "Connecting" where they used to be blank.

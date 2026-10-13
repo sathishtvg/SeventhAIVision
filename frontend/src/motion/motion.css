@@ -55,6 +55,13 @@
   100% { transform: scale(1);    opacity: 1; }
 }
 
+/* An alert has arrived on a camera's tile: its red frame beats a few times and stays (LiveWall). Opacity and
+   nothing else - the frame lies over a picture, and anything that had to be painted would be painted with it. */
+@keyframes sav-alert-beat {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+
 /* ── How a page arrives ────────────────────────────────────────────────────────
    The page area carries `page-enter` and one more class for the kind of page
    it is (pageKind.ts). A screen somebody is watching or working on - the
