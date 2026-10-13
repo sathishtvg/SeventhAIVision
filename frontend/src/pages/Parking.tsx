@@ -48,7 +48,7 @@ import {
 import type { CarPark, ParkingBay, ParkingSession, LprCameraConfig } from '@/api/parking'
 import { getCameras } from '@/api/cameras'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ function OccupancyGrid({ carparkId }: { carparkId: string }) {
     refetchInterval: 10000,
   })
 
-  if (isLoading) return <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>
+  if (isLoading) return <TableBlockSkeleton />
   if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   if (!data) return null
 
@@ -437,7 +437,7 @@ function OverviewTab() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <CardGridSkeleton />
       ) : carparksFailed ? <ErrorState compact error={carparksError} onRetry={refetchCarparks} /> : (
         <Grid container spacing={2}>
           {carparks.map(cp => {
@@ -586,7 +586,7 @@ function SessionsTab() {
       </Box>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <TableBlockSkeleton />
       ) : _sessDataFailed ? <ErrorState compact error={_sessDataError} onRetry={refetch_sessData} /> : (
         <Paper>
           <Table size="small">
@@ -789,7 +789,7 @@ function LprCamerasTab() {
       </Stack>
 
       {isLoading ? (
-        <CircularProgress size={24} />
+        <TableBlockSkeleton rows={3} />
       ) : configsFailed ? <ErrorState compact error={configsError} onRetry={refetchConfigs} /> : configs.length === 0 ? (
         <Typography color="text.secondary" variant="body2" sx={{ mb: 4 }}>
           No LPR cameras configured. Add a camera to automatically create parking sessions on plate detection.

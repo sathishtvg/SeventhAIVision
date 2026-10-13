@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -49,7 +48,7 @@ import {
 } from '@/api/compliance'
 import { apiClient } from '@/api/client'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // Assignable tour guards — Supervisor/Operator/Security Guard only. A raw
 // `role_id >= 4` range check would also sweep in Viewer(6), Client(7), and
@@ -353,7 +352,7 @@ function SchedulesTab() {
       </Box>
 
       {isLoading
-        ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>
+        ? <TableBlockSkeleton />
         : schedulesFailed ? <ErrorState compact error={schedulesError} onRetry={refetchSchedules} /> : schedules.length === 0
           ? <Alert severity="info">No tour schedules yet. Create one to start tracking compliance.</Alert>
           : (
@@ -474,7 +473,7 @@ function OccurrencesTab() {
       </Stack>
 
       {isLoading
-        ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>
+        ? <TableBlockSkeleton />
         : occurrencesFailed ? <ErrorState compact error={occurrencesError} onRetry={refetchOccurrences} /> : occurrences.length === 0
           ? <Alert severity="info">No occurrences found for selected filters. Use "Generate 7d" on a schedule to create records.</Alert>
           : (
@@ -596,7 +595,7 @@ function ReportTab() {
         </Button>
       </Stack>
 
-      {isLoading && <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>}
+      {isLoading && <CardGridSkeleton />}
       {error && <ErrorState compact error={error} onRetry={refetchReport} title="Could not load the report" />}
 
       {report && (

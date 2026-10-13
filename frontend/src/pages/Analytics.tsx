@@ -13,6 +13,7 @@ import {
 import type { AnalyticsCount, AnalyticsTrendPoint } from '@/types/api'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/states'
 
 // ──────────────────────────────────────────────────────────
 // Helpers
@@ -168,18 +169,18 @@ export default function Analytics() {
   const [window, setWindow] = useState<'7' | '30' | '90'>('30')
   const days = parseInt(window, 10)
 
-  const { data: summary } = useQuery({
+  const { data: summary, isLoadingError: summaryFailed, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['analytics-summary', days],
     queryFn: () => getSummary(undefined, days),
   })
-  const { data: bySeverity } = useQuery({ queryKey: ['analytics-by-severity', days], queryFn: () => getAlertsBySeverity(days) })
-  const { data: byModule } = useQuery({ queryKey: ['analytics-by-module', days], queryFn: () => getAlertsByModule(days) })
+  const { data: bySeverity, isLoadingError: bySeverityFailed, error: bySeverityError, refetch: refetchBySeverity } = useQuery({ queryKey: ['analytics-by-severity', days], queryFn: () => getAlertsBySeverity(days) })
+  const { data: byModule, isLoadingError: byModuleFailed, error: byModuleError, refetch: refetchByModule } = useQuery({ queryKey: ['analytics-by-module', days], queryFn: () => getAlertsByModule(days) })
   // Pinned to 7 before, so selecting 30/90 left these two charts showing a
   // week — and reading "No data" whenever the last week happened to be quiet.
-  const { data: detTrend } = useQuery({ queryKey: ['analytics-det-trend', days], queryFn: () => getDetectionsTrend(days) })
-  const { data: alertTrend } = useQuery({ queryKey: ['analytics-alert-trend', days], queryFn: () => getAlertsTrend(days) })
-  const { data: topCams } = useQuery({ queryKey: ['analytics-top-cameras', days], queryFn: () => getTopCameras(days, 8) })
-  const { data: resolutionTime } = useQuery({ queryKey: ['analytics-resolution', days], queryFn: () => getIncidentResolutionTime(days) })
+  const { data: detTrend, isLoadingError: detTrendFailed, error: detTrendError, refetch: refetchDetTrend } = useQuery({ queryKey: ['analytics-det-trend', days], queryFn: () => getDetectionsTrend(days) })
+  const { data: alertTrend, isLoadingError: alertTrendFailed, error: alertTrendError, refetch: refetchAlertTrend } = useQuery({ queryKey: ['analytics-alert-trend', days], queryFn: () => getAlertsTrend(days) })
+  const { data: topCams, isLoadingError: topCamsFailed, error: topCamsError, refetch: refetchTopCams } = useQuery({ queryKey: ['analytics-top-cameras', days], queryFn: () => getTopCameras(days, 8) })
+  const { data: resolutionTime, isLoadingError: resolutionTimeFailed, error: resolutionTimeError, refetch: refetchResolutionTime } = useQuery({ queryKey: ['analytics-resolution', days], queryFn: () => getIncidentResolutionTime(days) })
 
   const detAge = relativeAge(summary?.last_detection_at)
   const alertAge = relativeAge(summary?.last_alert_at)
@@ -234,10 +235,13 @@ export default function Analytics() {
       </Box>
 
       {/* KPI summary row */}
+      {summaryFailed && (
+        <ErrorState compact error={summaryError} onRetry={refetchSummary} title="Could not load the figures" sx={{ mb: 2 }} />
+      )}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(0)}>
           <StatCard
-            label="Detections Today" value={summary?.detections_today} color="#6C63FF"
+            label="Detections Today" value={summaryFailed ? null : summary?.detections_today} color="#6C63FF"
             sub={detAge && (
               <Typography variant="caption" color={detAge.days > 1 ? 'warning.main' : 'text.secondary'}>
                 last detection {detAge.text}
@@ -247,7 +251,7 @@ export default function Analytics() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(1)}>
           <StatCard
-            label="Alerts Today" value={summary?.alerts_today} color="#FF4560"
+            label="Alerts Today" value={summaryFailed ? null : summary?.alerts_today} color="#FF4560"
             sub={alertAge && (
               <Typography variant="caption" color={alertAge.days > 1 ? 'warning.main' : 'text.secondary'}>
                 last alert {alertAge.text}
@@ -257,13 +261,13 @@ export default function Analytics() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(2)}>
           <StatCard
-            label={`Detections (${window}d)`} value={summary?.detections_window} color="#00D9C0"
+            label={`Detections (${window}d)`} value={summaryFailed ? null : summary?.detections_window} color="#00D9C0"
             sub={<TrendDelta current={summary?.detections_window} previous={summary?.detections_window_prev} days={days} />}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={fadeUpSx(3)}>
           <StatCard
-            label={`Alerts (${window}d)`} value={summary?.alerts_window} color="#FF9800"
+            label={`Alerts (${window}d)`} value={summaryFailed ? null : summary?.alerts_window} color="#FF9800"
             sub={<TrendDelta current={summary?.alerts_window} previous={summary?.alerts_window_prev} days={days} />}
           />
         </Grid>
@@ -274,13 +278,13 @@ export default function Analytics() {
         <Grid size={{ xs: 12, md: 6 }}>
           <GlassCard sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Detections (last {days} days)</Typography>
-            {!detTrend ? <Skeleton height={80} /> : <TrendBars data={detTrend} color="#6C63FF" />}
+            {detTrendFailed ? <ErrorState compact error={detTrendError} onRetry={refetchDetTrend} /> : !detTrend ? <Skeleton height={80} /> : <TrendBars data={detTrend} color="#6C63FF" />}
           </GlassCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <GlassCard sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Alerts (last {days} days)</Typography>
-            {!alertTrend ? <Skeleton height={80} /> : <TrendBars data={alertTrend} color="#FF4560" />}
+            {alertTrendFailed ? <ErrorState compact error={alertTrendError} onRetry={refetchAlertTrend} /> : !alertTrend ? <Skeleton height={80} /> : <TrendBars data={alertTrend} color="#FF4560" />}
           </GlassCard>
         </Grid>
       </Grid>
@@ -290,7 +294,7 @@ export default function Analytics() {
         <Grid size={{ xs: 12, md: 4 }}>
           <GlassCard sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Alerts by Severity ({window}d)</Typography>
-            {!bySeverity
+            {bySeverityFailed ? <ErrorState compact error={bySeverityError} onRetry={refetchBySeverity} /> : !bySeverity
               ? <Skeleton height={120} />
               : <HorizontalBar items={bySeverity} total={totalBySeverity} colorMap={SEVERITY_COLORS} />}
           </GlassCard>
@@ -299,7 +303,7 @@ export default function Analytics() {
         <Grid size={{ xs: 12, md: 4 }}>
           <GlassCard sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Alerts by Module ({window}d)</Typography>
-            {!byModule
+            {byModuleFailed ? <ErrorState compact error={byModuleError} onRetry={refetchByModule} /> : !byModule
               ? <Skeleton height={120} />
               : <HorizontalBar items={byModule} total={totalByModule} />}
           </GlassCard>
@@ -308,7 +312,7 @@ export default function Analytics() {
         <Grid size={{ xs: 12, md: 4 }}>
           <GlassCard sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Incident Resolution ({window}d)</Typography>
-            {!resolutionTime ? (
+            {resolutionTimeFailed ? <ErrorState compact error={resolutionTimeError} onRetry={refetchResolutionTime} /> : !resolutionTime ? (
               <Skeleton height={120} />
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -337,7 +341,9 @@ export default function Analytics() {
       {/* Top cameras */}
       <GlassCard sx={{ p: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Top Cameras by Alerts ({window}d)</Typography>
-        {!rankedCams ? (
+        {topCamsFailed ? (
+          <ErrorState compact error={topCamsError} onRetry={refetchTopCams} />
+        ) : !rankedCams ? (
           <Skeleton height={160} />
         ) : rankedCams.length === 0 ? (
           <Typography color="text.secondary" variant="body2">No alert data</Typography>

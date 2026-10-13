@@ -20,7 +20,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { RecordingPolicyDialog } from '@/components/common/RecordingPolicyDialog'
 import { LocationPickerMap } from '@/components/common/LocationPickerMap'
 import { usePermission } from '@/hooks/usePermission'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState } from '@/components/states'
 
 interface SiteDialogProps {
   open: boolean
@@ -314,7 +314,7 @@ export function SitesPage() {
       />
 
       {isLoading ? (
-        <Typography color="text.secondary">Loading…</Typography>
+        <CardGridSkeleton cards={6} height={150} minWidth={300} />
       ) : sitesFailed ? <ErrorState compact error={sitesError} onRetry={refetchSites} /> : sites.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">No sites yet. Create your first site to organize cameras by location.</Typography>

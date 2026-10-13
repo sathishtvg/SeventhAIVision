@@ -24,7 +24,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx } from '@/lib/motion'
-import { ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState } from '@/components/states'
 
 /** Icon, colour and wording per shift type, in one place so the cards, the
  *  chips and the create dialog cannot describe the same shift differently. */
@@ -372,9 +372,7 @@ export function ShiftsPage() {
       {note && <Alert severity="info" sx={{ mb: 2 }} onClose={() => setNote(null)}>{note}</Alert>}
 
       {isLoading ? (
-        <GlassCard sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">Loading shifts…</Typography>
-        </GlassCard>
+        <CardGridSkeleton cards={4} height={170} minWidth={320} />
       ) : shiftsFailed ? <ErrorState compact error={shiftsError} onRetry={refetchShifts} /> : shifts.length === 0 ? (
         <GlassCard sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary" sx={{ mb: 1 }}>

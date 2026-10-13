@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { MediaViewer } from '@/components/common/MediaViewer'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import type { Recording } from '@/types/api'
-import { TableErrorRow } from '@/components/states'
+import { TableErrorRow, TableSkeleton } from '@/components/states'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return '—'
@@ -109,7 +109,7 @@ export function RecordingsPage() {
           </TableHead>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} align="center">Loading…</TableCell></TableRow>
+              <TableSkeleton cols={6} rows={6} />
             ) : allRecordingsFailed ? <TableErrorRow error={allRecordingsError} onRetry={refetchAllRecordings} /> : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={6} align="center" sx={{ color: 'text.secondary' }}>No recordings</TableCell></TableRow>
             ) : filtered.map((rec: any) => (

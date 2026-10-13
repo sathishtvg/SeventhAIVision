@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -54,7 +53,7 @@ import {
   type AlarmZone,
 } from '@/api/alarms'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -622,7 +621,7 @@ function EventsTab() {
       </Stack>
 
       {isLoading
-        ? <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}><CircularProgress /></Box>
+        ? <TableBlockSkeleton />
         : eventsFailed ? <ErrorState compact error={eventsError} onRetry={refetchEvents} /> : (
           <Paper sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
             <Table size="small">

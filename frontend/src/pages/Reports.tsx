@@ -15,7 +15,7 @@ import { getFaceWatchlist, getPlateWatchlist } from '@/api/watchlist'
 import { listVisitors } from '@/api/visitors'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 export default function Reports() {
   const [tab, setTab] = useState(0)
@@ -236,7 +236,7 @@ function DsarTab() {
       </Box>
 
       {isLoading ? (
-        <CircularProgress />
+        <TableBlockSkeleton />
       ) : dsarsFailed ? <ErrorState compact error={dsarsError} onRetry={refetchDsars} /> : (
         <Paper>
           <Table size="small">

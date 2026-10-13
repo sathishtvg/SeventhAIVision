@@ -275,8 +275,8 @@ themselves, so it cannot say more than is true.
 | Rule | Done | How |
 |---|---|---|
 | Every page arrives in the way its kind of page should; placeholders wait before they show; less motion for whoever asks; no request fails without a word | All pages | Phases 1-2, in the shell and the style sheet - no page was edited for it |
-| 2. A failed request says it failed | 102 of the 110 pages that fetch (226 places in 116 files, pages and the components they use) | A script over each page's syntax tree, then by hand where it could not be sure |
-| 1. A placeholder shaped like the content, on the pages that had a spinner or nothing | Not yet | Phases 3-6 |
+| 2. A failed request says it failed | 108 of the 110 pages that fetch (241 places in 121 files, pages and the components they use). The two left are the camera wall and playback, whose tiles need the video states | A script over each page's syntax tree, then by hand where it could not be sure |
+| 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4) or nothing at all, but the two video pages: 46 shaped placeholders in 27 files. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
 | 4. A changed filter keeps the last rows | Not yet | Phases 3-6 |
 | What is new is marked and said | Not yet | Phases 4-5 |
 | Video, patrol, drone, map, export states | Not yet | Phases 4-6 |
@@ -294,3 +294,18 @@ What rule 2 found beyond what the audit had counted:
   now only when there is no session to show at all.
 - 42 places showed a request's error in their own way (a red alert with the
   reason, and no way to try again). They show the shared state, which has one.
+- **The client's portal told the customer things that were not known.** Its
+  five lists said "No open alerts at your site", "No open incidents" and "No
+  cameras are assigned to your account" while they were loading and when
+  their requests had failed, and its figures read 0 and 0/0. Each list waits
+  with a placeholder and says so when it could not be loaded; a figure that
+  is not known is a dash.
+- **The analytics page's charts never gave up.** Seven requests, each drawn as
+  "no data yet, so a placeholder" - which a failed request left there for
+  ever. Each chart says it could not be loaded, and can be asked again.
+- **Refusals come in more shapes than one.** Eighteen modules each had their
+  own copy of the function that turns a refusal into words, and seven of them
+  were not copies: a search phrase's words that were not understood, a message
+  inside an object, a validator's preface taken off. The shared wording reads
+  every one of those shapes; a test that already existed caught the first of
+  them when its page was converted.

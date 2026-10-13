@@ -35,6 +35,7 @@ import {
 } from '@/api/roles'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 const BUILTIN_LABELS: Record<number, string> = {
   1: 'Super Admin', 2: 'Admin', 3: 'Supervisor', 4: 'Operator',
@@ -135,7 +136,8 @@ export default function Roles() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<RoleRow | null>(null)
 
-  const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: listRoles })
+  const { data: roles = [], isLoading, isLoadingError: rolesFailed, error: rolesError, refetch: refetchRoles } = useQuery({
+    queryKey: ['roles'], queryFn: listRoles })
 
   const { mutate: remove } = useMutation({
     mutationFn: (id: number) => deleteRole(id),
@@ -159,6 +161,8 @@ export default function Roles() {
 
       <GlassCard>
         <List>
+          {isLoading && <ListItem><ListSkeleton rows={5} height={48} /></ListItem>}
+          {rolesFailed && <ListItem><ErrorState compact error={rolesError} onRetry={refetchRoles} title="Could not load the roles" /></ListItem>}
           {roles.map((role) => (
             <ListItem key={role.id} divider
                       sx={{ '&:hover': { background: 'rgba(255,255,255,0.03)' } }}>

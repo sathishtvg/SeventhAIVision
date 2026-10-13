@@ -14,8 +14,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Alert, Box, Button, Checkbox, Chip, Collapse, Link, MenuItem, Skeleton, Table, TableBody, TableCell,
-  TableContainer, TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
+  Alert, Box, Button, Checkbox, Chip, Collapse, Link, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import RouteIcon from '@mui/icons-material/Route'
@@ -28,7 +27,7 @@ import { SeverityChip } from '@/components/common/SeverityChip'
 import { usePermission } from '@/hooks/usePermission'
 import { getSites } from '@/api/sites'
 import { getCameras } from '@/api/cameras'
-import { apiError, getSources, search } from '@/api/investigations'
+import { getSources, search } from '@/api/investigations'
 import type { Found, Kind, SearchAnswer, SearchBody, Severity } from '@/api/investigations'
 import type { AlertSeverity } from '@/types/api'
 import { FileDialog, TrailDialog } from '@/components/investigations/InvestigationDialogs'
@@ -36,6 +35,7 @@ import {
   KIND_LABEL, fmt, followable, fromLocalInput, home, keyOf, pretty, subject, toLocalInput,
 } from '@/components/investigations/investigationFormat'
 import { InvestigationNav } from './InvestigationNav'
+import { ErrorState, InvestigationLoadingState } from '@/components/states'
 
 const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info']
 const ROWS = 50
@@ -200,14 +200,21 @@ export default function InvestigationSearch() {
           A plate is matched whole; write * for the part you do not have.</Typography>
       </GlassCard>
 
-      {run.isError && <Alert severity="error" sx={{ mb: 2 }}>{apiError(run.error)}</Alert>}
+      {run.isError && (
+        <ErrorState compact error={run.error} title="The search could not be run" sx={{ mb: 2 }}
+                    onRetry={run.variables ? () => run.mutate(run.variables!) : undefined} />
+      )}
       {filed && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setFiled(null)}
                action={<Button color="inherit" size="small" onClick={() => navigate(`/investigations/${filed.id}`)}>Open it</Button>}>
           {filed.added} record{filed.added === 1 ? '' : 's'} filed
           {filed.already > 0 && `; ${filed.already} already in the investigation`}.</Alert>)}
 
-      {run.isPending && <GlassCard sx={{ p: 2 }}><Skeleton height={240} /></GlassCard>}
+      {run.isPending && (
+        <GlassCard sx={{ p: 2 }}>
+          <InvestigationLoadingState asked={run.variables?.fill ? run.variables.body.phrase : undefined} />
+        </GlassCard>
+      )}
       {answer && !run.isPending && (
         <GlassCard sx={{ p: 2 }}>
           <Stack direction="row" sx={{ gap: 0.75, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>

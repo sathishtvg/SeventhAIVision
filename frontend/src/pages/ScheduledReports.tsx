@@ -21,7 +21,7 @@ import type { ScheduleCreate } from '@/api/scheduled_reports'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning'> = {
   success: 'success',
@@ -90,7 +90,7 @@ export default function ScheduledReports() {
 
       <GlassCard>
         {isLoading ? (
-          <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>
+          <Box sx={{ p: 2 }}><TableBlockSkeleton /></Box>
         ) : schedulesFailed ? <ErrorState compact error={schedulesError} onRetry={refetchSchedules} /> : (
           <Table>
             <TableHead>
