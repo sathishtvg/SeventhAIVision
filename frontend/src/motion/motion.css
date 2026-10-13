@@ -75,6 +75,91 @@
 .page-enter--detail      { animation: sav-fade-up var(--d-panel)    var(--ease-out); }
 .page-enter--operational { animation: sav-fade-in var(--d-fast)     var(--ease-out); }
 
+/* ── A page's own scene ────────────────────────────────────────────────────────
+   Each page has a drawing of what it is about (scenes.ts says which). As the
+   page is entered the drawing makes itself in the middle of the page area,
+   over the page's name, and clears; the page arrives as it clears. If the
+   page is still fetching then, the same drawing goes on, small, beside
+   "Loading ..." until the first answers are in (PageScene.tsx).
+
+   The scene takes no click and no key - the page beneath has them from its
+   first frame, and the first of either ends the scene. It is timed here, and
+   it ends hidden whether or not anything hears that it ended. */
+:root {
+  /* The two timings of scenes.ts. motion.test.ts holds them equal. */
+  --d-scene:      520ms;
+  --d-scene-exit: 190ms;
+}
+
+.sav-scene { position: relative; height: 0; z-index: 2; pointer-events: none; }
+.sav-scene__cover {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--sav-scene-h, 100vh);
+  display: grid; place-items: center;
+  animation: sav-scene-clear var(--d-scene-exit) var(--ease-in) var(--d-scene) forwards;
+}
+.sav-scene__mark {
+  position: relative; display: grid; justify-items: center; gap: 14px; text-align: center;
+  animation:
+    sav-scene-arrive 260ms var(--ease-out) backwards,
+    sav-scene-pass var(--d-scene-exit) var(--ease-in) var(--d-scene) forwards;
+}
+/* A soft light behind the emblem, in the emblem's colour. It is painted once and does not move. */
+.sav-scene__mark::before {
+  content: ''; position: absolute; z-index: -1; top: 56px; left: 50%; width: 300px; height: 300px;
+  translate: -50% -50%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, currentColor 16%, transparent), transparent);
+}
+.sav-scene__top { animation: sav-fade-in var(--d-fast) var(--ease-out) backwards; }
+@keyframes sav-scene-arrive { from { transform: scale(0.92); opacity: 0; } }
+@keyframes sav-scene-pass   { to   { transform: scale(1.06); } }
+@keyframes sav-scene-clear  { to   { opacity: 0; visibility: hidden; } }
+
+/* The page waits behind its scene and arrives as the scene clears. A scene cut short, or one that plays at the
+   top of a page that is never covered, does not carry `--cover`, and the page is not made to wait. */
+.sav-scene--cover + .page-enter {
+  animation-delay: var(--d-scene);
+  animation-fill-mode: backwards;
+}
+
+/* The parts of a drawing. `--i` is the turn a part takes; the last part of the longest drawing is in place
+   before the scene begins to clear. */
+.sc-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: sc-draw 300ms var(--ease-out) calc(var(--i, 0) * 40ms) forwards;
+}
+.sc-pop {
+  transform-box: fill-box; transform-origin: center;
+  animation: sc-pop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2) calc(var(--i, 0) * 40ms) backwards;
+}
+.sc-rise {
+  transform-box: fill-box; transform-origin: center bottom;
+  animation: sc-rise 280ms var(--ease-out) calc(var(--i, 0) * 40ms) backwards;
+}
+@keyframes sc-draw { to   { stroke-dashoffset: 0; } }
+@keyframes sc-pop  { from { transform: scale(0.4); opacity: 0; } }
+@keyframes sc-rise { from { transform: scaleY(0); } }
+
+/* What goes on moving: the page's loading. These are the only things here that move without end, and they
+   are on screen only while a scene is. */
+.sc-spin  { transform-box: fill-box; transform-origin: center; animation: sc-turn 700ms linear infinite; }
+.sc-sweep { transform-origin: 32px 32px; animation: sc-turn 1800ms linear infinite; }
+.sc-ring  { transform-box: fill-box; transform-origin: center; animation: sc-ring 1300ms var(--ease-out) infinite; }
+.sc-scan  { animation: sc-scan 1100ms var(--ease-in-out) infinite alternate; }
+.sc-pulse { animation: sc-pulse 1100ms var(--ease-in-out) calc(var(--i, 0) * 180ms) infinite alternate; }
+.sc-swing { transform-box: fill-box; transform-origin: center top; animation: sc-swing 900ms var(--ease-in-out) infinite alternate; }
+.sc-bob   { animation: sc-bob 1000ms var(--ease-in-out) infinite alternate; }
+.sc-lift  { transform-origin: 17px 30px; animation: sc-lift 1300ms var(--ease-in-out) infinite alternate; }
+.sc-trace { stroke-dasharray: 0.3 0.7; animation: sc-trace 1300ms linear infinite; }
+@keyframes sc-turn  { to   { transform: rotate(360deg); } }
+@keyframes sc-ring  { from { transform: scale(0.5); opacity: 0.9; } to { transform: scale(1.4); opacity: 0; } }
+@keyframes sc-scan  { to   { transform: translate(var(--dx, 0), var(--dy, 0)); } }
+@keyframes sc-pulse { from { opacity: 0.25; } to { opacity: 1; } }
+@keyframes sc-swing { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@keyframes sc-bob   { from { transform: translateY(-1.5px); } to { transform: translateY(1.5px); } }
+@keyframes sc-lift  { to   { transform: rotate(-38deg); } }
+@keyframes sc-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
 /* ── A placeholder waits before it is seen ─────────────────────────────────────
    A skeleton or a spinner is in the page from the first frame, taking the room
    the content will take, so nothing moves when the content replaces it. It
@@ -174,6 +259,12 @@ tr.sav-new > th:first-child,
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+/* No scene at all: the page is simply there. (PageScene draws none either; this is the same rule, kept where
+   the style sheet can keep it.) */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .sav-scene { display: none; }
+}
+:root[data-motion='reduced'] .sav-scene { display: none; }
 /* The mark on what has just arrived stays put, and is not faded away. */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .sav-new,
