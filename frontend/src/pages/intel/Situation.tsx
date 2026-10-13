@@ -29,6 +29,7 @@ import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { HlsPlayer } from '@/components/common/HlsPlayer'
+import { LiveImage } from '@/components/common/LiveImage'
 import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { usePermission } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
@@ -342,9 +343,9 @@ function LiveDialog({ camera, onClose }: { camera: RecommendedCamera; onClose: (
                 <HlsPlayer src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}`
                   + `/hls/index.m3u8?token=${token}`} sx={{ width: '100%', aspectRatio: '16/9' }} />
               ) : (
-                <Box component="img" alt={`${camera.name}, live`}
-                     src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}/live?token=${token}`}
-                     sx={{ width: '100%', aspectRatio: '16/9', objectFit: 'contain', display: 'block', bgcolor: '#000' }} />
+                <LiveImage alt={`${camera.name}, live`}
+                           src={`${apiClient.defaults.baseURL ?? ''}/api/v1/cameras/${camera.id}/streams/${stream.id}/live?token=${token}`}
+                           sx={{ aspectRatio: '16/9', bgcolor: '#000' }} />
               )
             ) : <Typography variant="body2" color="text.secondary">This camera has no stream to open.</Typography>}
       </DialogContent>

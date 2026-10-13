@@ -110,7 +110,9 @@ export function VideoLoadingState({ state, detail, onRetry }: VideoLoadingStateP
     <Box
       role={failed ? 'alert' : 'status'}
       sx={{
-        position: 'absolute', inset: 0, zIndex: 1,
+        // Over the picture and under whatever the tile draws after it: a camera's name and its controls stay
+        // in sight and in reach on a tile that has no picture - which is when "remove from wall" is wanted.
+        position: 'absolute', inset: 0,
         // The tile is the container: on a wall of thirty-six the tile is small, and what does not fit is left out
         // (the camera's name first, then the button) so that the state itself is never cut off.
         containerType: 'size',
