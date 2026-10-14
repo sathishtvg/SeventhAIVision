@@ -38,8 +38,13 @@ const yes = (on: boolean, applies = true) => (on ? 'yes' : applies ? 'NO' : '-')
 
 interface Row { file: string; cells: string[]; fetches: boolean; failed: boolean; scene: boolean; routed: boolean }
 
-const rows: Row[] = sources(join(SRC, 'pages')).map((full) => {
-  const file = relative(join(SRC, 'pages'), full).split('\\').join('/')
+// In one fixed order, whatever order a machine lists a folder in: Windows gives names alphabetically, Linux does
+// not, and the file is compared with what is written here on both.
+const pageFiles = sources(join(SRC, 'pages'))
+  .map((full) => ({ full, file: relative(join(SRC, 'pages'), full).split('\\').join('/') }))
+  .sort((a, b) => (a.file.toLowerCase() < b.file.toLowerCase() ? -1 : a.file.toLowerCase() > b.file.toLowerCase() ? 1 : a.file < b.file ? -1 : 1))
+
+const rows: Row[] = pageFiles.map(({ full, file }) => {
   const text = read(full)
   const routes = routesOf.get(file) ?? []
   const inShell = routes.filter((r) => !/^\/(login|forgot-password|reset-password)$/.test(r))
