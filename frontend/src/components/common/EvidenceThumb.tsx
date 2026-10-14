@@ -3,6 +3,7 @@ import { Box, Tooltip } from '@mui/material'
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported'
 import { evidenceImageUrl } from '@/api/evidence'
 import { useAuthStore } from '@/store/auth'
+import { fadeImageProps } from '@/motion'
 import { MediaViewer } from './MediaViewer'
 
 interface EvidenceThumbProps {
@@ -52,6 +53,8 @@ export function EvidenceThumb({ frameEvidenceId, plateEvidenceId }: EvidenceThum
             <Tooltip key={id} title={`${label} — click to enlarge`}>
               <Box
                 component="img"
+                // Not seen until it is there; then it fades in, in place of a row of pictures popping in one by one.
+                {...fadeImageProps}
                 src={evidenceImageUrl(id, token, THUMB * 2) ?? undefined}
                 alt={label}
                 loading="lazy"
@@ -64,7 +67,7 @@ export function EvidenceThumb({ frameEvidenceId, plateEvidenceId }: EvidenceThum
                   borderRadius: 1,
                   cursor: 'pointer',
                   border: '1px solid rgba(255,255,255,0.15)',
-                  transition: 'border-color 0.15s',
+                  transition: 'border-color 0.15s, opacity 0.22s',
                   '&:hover': { borderColor: 'primary.main' },
                 }}
               />

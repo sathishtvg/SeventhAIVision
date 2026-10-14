@@ -10,7 +10,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import AddIcon from '@mui/icons-material/Add'
 import UploadIcon from '@mui/icons-material/Upload'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
@@ -22,7 +22,7 @@ import {
 } from '@/api/watchlist'
 import type { WatchlistEntry, VehicleCategory } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
-import { TableErrorRow } from '@/components/states'
+import { TableErrorRow, TableRefreshingRow } from '@/components/states'
 
 function BulkImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
@@ -133,8 +133,9 @@ function PlateTable() {
   const [search, setSearch] = useState('')
   const queryClient = useQueryClient()
 
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['plate-watchlist', categoryFilter, search],
+    placeholderData: keepPreviousData,
     queryFn: () => getPlateWatchlist({
       category: categoryFilter || undefined,
       search: search.trim() || undefined,
@@ -224,6 +225,7 @@ function PlateTable() {
             </TableRow>
           </TableHead>
           <TableBody>
+            {dataRefreshing && <TableRefreshingRow />}
             {isLoading
               ? Array.from({ length: 4 }).map((_, i) => (
                   <TableRow key={i}>{Array.from({ length: 7 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>

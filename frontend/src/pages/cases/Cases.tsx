@@ -19,7 +19,7 @@ import { getCaseOptions, listCases } from '@/api/cases'
 import type { CaseFile, Status } from '@/api/cases'
 import { CaseDialog, OpenCaseDialog } from '@/components/cases/CaseDialogs'
 import { PRIORITY_LABEL, STATUS_COLOUR, fmt } from '@/components/cases/caseFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -29,7 +29,7 @@ export default function Cases() {
   const [mine, setMine] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
-  const { data, isLoading, error, refetch: refetchData } = useQuery({
+  const { data, isLoading, error, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['cases', status, mine], queryFn: () => listCases({ status: status || undefined, mine: mine || undefined }),
     placeholderData: keepPreviousData,
   })
@@ -57,6 +57,7 @@ export default function Cases() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpening(true)}>Open a case</Button>)}
         </Stack>
       </GlassCard>
+      {dataRefreshing && <RefreshingLine />}
       {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={240} />}
       {data && (

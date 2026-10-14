@@ -277,11 +277,13 @@ themselves, so it cannot say more than is true.
 | Every page arrives in the way its kind of page should; placeholders wait before they show; less motion for whoever asks; no request fails without a word | All pages | Phases 1-2, in the shell and the style sheet - no page was edited for it |
 | Each page's own scene: an entrance related to the page, then a loading related to it | All 107 pages inside the shell, each with its own name and words; 24 drawings between them. Asked for by the owner on 13 October 2026 | One list of pages and one component in the shell - no page was edited for it. Section 4 of the design note |
 | 2. A failed request says it failed | All 110 pages that fetch (247 places in 125 files, pages and the components they use). The camera wall and playback were the last two, done with the video states | A script over each page's syntax tree, then by hand where it could not be sure |
-| 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4) or nothing at all: 46 shaped placeholders in 27 files, and playback's day. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
-| 4. A changed filter keeps the last rows | Not yet | Phases 3-6 |
-| What is new is marked and said | The four lists that fetch themselves again while they are open: alerts, incidents, drone events, situations. A row that arrives is tinted in its severity's colour for six seconds and a screen reader is told how many ("2 new alerts"); the rows a list first shows, and the first after a filter changes, are not new. The command centre, action center, man down and the response desk are not done | Phase 4, by hand |
+| 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4), the brand's loader standing in for a tab (7) or nothing at all: 53 shaped placeholders, and playback's day. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
+| 4. A changed filter keeps the last rows | 47 lists in 42 files (41 pages): the last answer stays, dimmed, behind a line that says the list is being refreshed, until the new one arrives. Done only for a list whose key is made of the page's own filters. Left alone on purpose: one record (62 requests keyed by a route parameter or a prop - another record's rows must never stand under this one's name), a request that can be switched off (61), and the analytics charts | A script over each page's syntax tree that follows every part of a key back to where it is declared; it reports what it leaves and why |
+| What is new is marked and said | Eight screens that fetch themselves again while they are open: alerts, incidents, drone events, situations, the response desk (rows, tinted in the severity's colour), and man down, the action center and the command centre's alert feed (cards, framed in it). Six seconds, and a screen reader is told how many ("2 new alerts"). The rows a list first shows, the first after a filter changes, and rows kept from the last list are not new | By hand |
 | Video states | The player (`HlsPlayer`) and the frame-by-frame live view (`LiveImage`): the wall's tiles and its full-screen view, the situation page's live view, the drone screens' player. The wall's alert is a steady frame | Phase 4, by hand, and looked at in a browser against streams that play, wait, fail and stop |
-| Patrol, drone, map, export states | Not yet | Phases 5-6 |
+| Patrol, drone, map, export states | **Patrol**: "Snapshot saved" when the server has the snapshot, and the snapshot fades in; it completes nothing. **Drone**: in flight, the telemetry panel says "Live" or "Stale - 40 s ago" and the drone is drawn faint on the map once it has not been heard from for 20 s; a replay says nothing. **GPS**: a vehicle's marker pulses only while it is moving and was heard from in the last two minutes; after that it is faint and its tip says "Not live". **Exports**: "Export ready" once the file has been handed to the browser, a failure in the shared words, no percentage. **Evidence**: thumbnails fade in when they are there | Phases 5-6, by hand |
+| Tidying (phase 7) | No `transition: all` is left (14 places: each names what it animates - how a control is painted, not its size or place). A critical chip keeps its glow, steady, and its pulsing dot; the glow no longer pulses. Two animations asked for by a name nothing defined are gone | By hand |
+| The page-by-page matrix | `PAGE_AWARE_ANIMATION_MATRIX.md`, written from the pages by `frontend/src/motion/matrix.test.ts`, which fails when the two disagree | Generated |
 
 What rule 2 found beyond what the audit had counted:
 
@@ -375,7 +377,46 @@ What each page's own scene is (13 October 2026):
   looked at stopped at a moment, not in motion. The sign-in pages and the
   client's portal are outside the shell and have no scene.
 
-Not done, and why:
+What the last phases found:
+
+- **"Moving" was the last thing a tracker said, for ever.** The GPS map pulsed
+  a vehicle's marker whenever its last report said it was moving - an hour
+  after the tracker had gone quiet as much as a second after. A screen that
+  works out "is this live?" only when data arrives goes on calling the last
+  reading live for exactly as long as none does. The marker, the drone on its
+  map and the drone's telemetry now go by the clock, read again every five
+  seconds whether or not anything was fetched.
+- **Two animations had never run.** The dashboard's recording dots and the
+  body-camera list's recording light asked for an animation called `pulse`,
+  which only the GPS page defined - so they pulsed only for somebody who had
+  opened the GPS page first. They are steady, as they have in fact always been.
+- **A list kept from the last filter must not be called new.** Once a list
+  keeps its rows while the next is fetched, the rows on screen for a moment
+  belong to the old filter and the first rows of the new one would all have
+  been marked as just arrived. Every list that does both says which is which.
+- **A request that keeps its rows and can also be switched off** shows the last
+  rows for ever once it is off, with nothing fetching. The script does not
+  write that; one such request exists from earlier work (`workforce-mine`),
+  where being switched off does not happen while the page is in view. It was
+  left as it is.
+
+What is still not done, and why:
+
+- **The scenes, and everything else that moves, have been looked at stopped,
+  not in motion.** The browser used to look at them does not draw frames.
+- **The sign-in pages keep their three copies of the same keyframes**, and the
+  top bar still asks for `pulse-ring`, which has no rule. Nothing there was
+  touched: they are the way in, and they work.
+- **Clickable cards that are not buttons cannot be reached by keyboard** - the
+  command centre's alert feed, a vehicle's card. That is older than this work
+  and is its own piece of work; it is not a motion matter and was not hidden
+  by one.
+- **Charts and figures do not keep the last answer** when their range changes;
+  each shows its placeholder. Only lists do.
+- **The phone app** is not part of this, and the **desktop app** has it at its
+  next build.
+
+Not done in the video states, and why:
 
 - **A frame-by-frame tile whose stream stops part-way keeps its last frame and
   says nothing.** The browser reports nothing when such a stream ends (it was

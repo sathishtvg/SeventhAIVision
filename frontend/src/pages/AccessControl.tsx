@@ -14,7 +14,7 @@ import WarningIcon from '@mui/icons-material/Warning'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import KeyIcon from '@mui/icons-material/Key'
 import DoorFrontIcon from '@mui/icons-material/DoorFront'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   getAccessDashboard, listDoors, createDoor, deactivateDoor,
   listCredentials, createCredential, deactivateCredential,
@@ -25,7 +25,7 @@ import GlassCard from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, TableErrorRow, TableRefreshingRow } from '@/components/states'
 
 const EVENT_COLOR: Record<string, string> = {
   granted:     '#00E396',
@@ -531,8 +531,9 @@ function RulesTab() {
 function EventsTab() {
   const [eventType, setEventType] = useState<string>('')
 
-  const { data = [], isLoading, isLoadingError: dataFailed5, error: dataError5, refetch: refetchData5 } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed5, error: dataError5, refetch: refetchData5, isPlaceholderData: dataRefreshing5 } = useQuery({
     queryKey: ['access-events', eventType],
+    placeholderData: keepPreviousData,
     queryFn: () => listAccessEvents({ hours: 48, limit: 200, event_type: eventType || undefined }),
     refetchInterval: 30_000,
   })
@@ -569,6 +570,7 @@ function EventsTab() {
             {isLoading && [...Array(6)].map((_, i) => (
               <TableRow key={i}>{[...Array(6)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {dataRefreshing5 && <TableRefreshingRow />}
             {dataFailed5 && <TableErrorRow error={dataError5} onRetry={refetchData5} />}
             {data.map(ev => (
               <TableRow key={ev.id} hover>

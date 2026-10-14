@@ -9,14 +9,14 @@ import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, MenuItem, Skeleton, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography,
 } from '@mui/material'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { getSites } from '@/api/sites'
 import { apiError, correctEntry, getEntry, reviewEntries, reviewEntry, searchEntries } from '@/api/occurrenceBook'
 import type { Entry, Kinds, ReviewOutcome, ReviewState } from '@/api/occurrenceBook'
 import { REVIEW_COLOUR, REVIEW_LABEL, correctionMark, fmt, kindLabel, since } from '@/components/occurrenceBook/bookFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 type Period = 'today' | 'day' | 'week' | 'all'
 const PERIODS: { key: Period; label: string }[] = [
@@ -166,8 +166,9 @@ export default function BookEntries({ kinds }: { kinds: Kinds }) {
   const [correcting, setCorrecting] = useState<Entry | null>(null)
   const [reading, setReading] = useState<Entry | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error, refetch: refetchData2 } = useQuery({
+  const { data, isLoading, error, refetch: refetchData2, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['dob-entries', q, kind, siteId, review, period, offset],
+    placeholderData: keepPreviousData,
     queryFn: () => searchEntries({
       q: q || undefined, entry_type: kind ? [kind] : undefined, site_id: siteId || undefined,
       review: review || undefined, date_from: since(period), limit: PAGE, offset }),
@@ -210,6 +211,7 @@ export default function BookEntries({ kinds }: { kinds: Kinds }) {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {!!error && <ErrorState compact error={error} onRetry={refetchData2} />}
         {kinds.can_review && toNote.length > 0 && (
           <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>

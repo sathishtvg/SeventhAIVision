@@ -23,7 +23,7 @@ import { apiError, askLibrary, getLibrary } from '@/api/sop'
 import type { DocumentState } from '@/api/sop'
 import { ProcedureDialog, WriteDialog } from '@/components/sop/SopDialogs'
 import { STATE_COLOUR, STATE_LABEL, label, matched, source, standing } from '@/components/sop/sopFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 type Shown = DocumentState | 'AWAITING' | ''
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
@@ -37,7 +37,7 @@ export default function SopLibrary() {
   const [state, setState] = useState<Shown>('')
   const [writing, setWriting] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
-  const { data, isLoading, error, refetch: refetchData } = useQuery({
+  const { data, isLoading, error, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['sop-library', q, category, state],
     queryFn: () => getLibrary({ q: q || undefined, category: category || undefined, state: state || undefined }),
     // What was there stays on screen while a narrower list is fetched, so the filters do not flicker away.
@@ -108,6 +108,7 @@ export default function SopLibrary() {
       </GlassCard>
 
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {isLoading ? <Skeleton height={200} /> : !items.length && !error ? (
           <Alert severity="info">

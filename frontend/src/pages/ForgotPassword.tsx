@@ -218,7 +218,7 @@ export default function ForgotPassword() {
                       background: `linear-gradient(135deg, ${accentColor} 0%, ${accentDark} 100%)`,
                       boxShadow: `0 4px 18px ${accentGlow}`,
                       letterSpacing: '0.01em',
-                      transition: 'all 0.22s',
+                      transition: 'background-color 0.22s, box-shadow 0.22s, transform 0.22s, opacity 0.22s',
                       '&:hover': {
                         background: `linear-gradient(135deg, ${accentColor}cc 0%, ${accentColor} 100%)`,
                         boxShadow: `0 6px 28px ${accentColor}b3`,

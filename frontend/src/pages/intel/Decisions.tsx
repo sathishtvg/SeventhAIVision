@@ -10,7 +10,7 @@ import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Skeleton, Switch,
   Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -22,7 +22,7 @@ import {
   BASIS_LABEL, DECISION_LABEL, ROLE_LABEL, STATE_LABEL, STEP_LABEL, fmt, useIntelRealtime,
 } from '@/components/intel/intelFormat'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 export default function Decisions() {
   const navigate = useNavigate()
@@ -32,8 +32,9 @@ export default function Decisions() {
   const [rows, setRows] = useState(25)
   const [verdict, setVerdict] = useState<{ decision: Decision; approve: boolean } | null>(null)
   useIntelRealtime([['intel-decisions']])
-  const { data, isLoading, error, isLoadingError: dataFailed, refetch: refetchData } = useQuery({
+  const { data, isLoading, error, isLoadingError: dataFailed, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['intel-decisions', waitingOnly, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listDecisions({ state: waitingOnly ? 'pending_approval' : undefined, limit: rows, offset: page * rows }),
     refetchInterval: 20_000,
   })
@@ -54,6 +55,7 @@ export default function Decisions() {
       <GlassCard sx={{ p: 2 }}>
         <FormControlLabel sx={{ mb: 1 }} label="Waiting for approval only"
                           control={<Switch checked={waitingOnly} onChange={(_, v) => { setWaitingOnly(v); setPage(0) }} />} />
+        {dataRefreshing && <RefreshingLine />}
         {error ? <ErrorState compact error={error} onRetry={refetchData} />
           : isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={error} onRetry={refetchData} /> : !decisions.length ? (
             <Alert severity="info">{waitingOnly ? 'No decision is waiting for approval.' : 'No decisions have been recorded yet.'}</Alert>

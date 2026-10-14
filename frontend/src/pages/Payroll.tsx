@@ -39,7 +39,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import AddIcon from '@mui/icons-material/Add'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import DownloadIcon from '@mui/icons-material/Download'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   createPayrollRun, listPayrollRuns, getPayrollRun, finalizePayrollRun,
   payslipPdfUrl, getIr8aSummary, ir8aPdfUrl, getPwmCompliance,
@@ -52,7 +52,7 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 function hexToRgb(hex: string) {
   const m = hex.replace('#', '').match(/.{2}/g)
@@ -323,8 +323,9 @@ function RunsTab() {
 function Ir8aTab() {
   const accessToken = useAuthStore((s) => s.accessToken)
   const [year, setYear] = useState(new Date().getFullYear())
-  const { data: rows = [], isLoading, isLoadingError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
+  const { data: rows = [], isLoading, isLoadingError: rowsFailed, error: rowsError, refetch: refetchRows, isPlaceholderData: rowsRefreshing } = useQuery({
     queryKey: ['ir8a', year],
+    placeholderData: keepPreviousData,
     queryFn: () => getIr8aSummary(year),
   })
 
@@ -345,6 +346,7 @@ function Ir8aTab() {
           Download IR8A PDF
         </Button>
       </Stack>
+      {rowsRefreshing && <RefreshingLine />}
       {isLoading ? (
         <Skeleton height={80} />
       ) : rowsFailed ? <ErrorState compact error={rowsError} onRetry={refetchRows} /> : rows.length === 0 ? (

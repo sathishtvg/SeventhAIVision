@@ -28,7 +28,7 @@ import GavelIcon from '@mui/icons-material/Gavel'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlined'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import ChecklistIcon from '@mui/icons-material/Checklist'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   acceptHandover, addChecklistItem, createTemplate, deleteChecklistItem,
@@ -42,7 +42,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 
@@ -590,8 +590,9 @@ export function HandoversPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: handovers = [], isLoading, isLoadingError: handoversFailed, error: handoversError, refetch: refetchHandovers } = useQuery({
+  const { data: handovers = [], isLoading, isLoadingError: handoversFailed, error: handoversError, refetch: refetchHandovers, isPlaceholderData: handoversRefreshing } = useQuery({
     queryKey: ['handovers', siteFilter, statusFilter, openOnly],
+    placeholderData: keepPreviousData,
     queryFn: () => listHandovers({
       site_id: siteFilter || undefined,
       status_filter: statusFilter || undefined,
@@ -651,6 +652,7 @@ export function HandoversPage() {
               </Button>
             </Stack>
 
+            {handoversRefreshing && <RefreshingLine />}
             {isLoading ? (
               <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))' }}>
                 {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={140} />)}

@@ -30,7 +30,7 @@ import GroupIcon from '@mui/icons-material/Group'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   listViolations, createViolation, reviewViolation, getViolationsSummary,
   type Violation, type ViolationType, type ViolationStatus,
@@ -41,7 +41,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const GUARD_ROLES = new Set([3, 4, 5, 8])
 
@@ -294,8 +294,9 @@ export function ViolationsPage() {
     violation_type: type || undefined,
     violation_status: status || undefined,
   }
-  const { data: violations = [], isLoading, isLoadingError: violationsFailed, error: violationsError, refetch: refetchViolations } = useQuery({
+  const { data: violations = [], isLoading, isLoadingError: violationsFailed, error: violationsError, refetch: refetchViolations, isPlaceholderData: violationsRefreshing } = useQuery({
     queryKey: ['violations', filters],
+    placeholderData: keepPreviousData,
     queryFn: () => listViolations(filters),
   })
   const { data: summary = [] } = useQuery({
@@ -393,6 +394,7 @@ export function ViolationsPage() {
       </Stack>
 
       <GlassCard sx={{ p: 2 }}>
+        {violationsRefreshing && <RefreshingLine />}
         {isLoading ? (
           <Skeleton height={80} />
         ) : violationsFailed ? <ErrorState compact error={violationsError} onRetry={refetchViolations} /> : violations.length === 0 ? (

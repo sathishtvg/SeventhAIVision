@@ -11,14 +11,14 @@ import {
   ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { getSites } from '@/api/sites'
 import { apiError, closeInstruction, issueInstruction, listInstructions, readInstruction } from '@/api/occurrenceBook'
 import type { Instruction } from '@/api/occurrenceBook'
 import { fmt, standsUntil } from '@/components/occurrenceBook/bookFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const shown = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -101,8 +101,9 @@ export default function BookInstructions() {
   const [issuing, setIssuing] = useState(false)
   const [closing, setClosing] = useState<Instruction | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error, refetch: refetchData } = useQuery({
-    queryKey: ['dob-instructions', siteId, state], queryFn: () => listInstructions({ site_id: siteId || undefined, state }) })
+  const { data, isLoading, error, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
+    queryKey: ['dob-instructions', siteId, state],
+    placeholderData: keepPreviousData, queryFn: () => listInstructions({ site_id: siteId || undefined, state }) })
   const again = () => qc.invalidateQueries({ queryKey: ['dob-instructions'] })
   const read = useMutation({ mutationFn: (id: string) => readInstruction(id).then(again) })
   const items = data?.items ?? []
@@ -125,6 +126,7 @@ export default function BookInstructions() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setIssuing(true)}>Issue an instruction</Button>)}
         </Stack>
       </GlassCard>
+      {dataRefreshing && <RefreshingLine />}
       {!!error && <ErrorState compact error={error} onRetry={refetchData} sx={{ mb: 2 }} />}
       {isLoading ? <Skeleton height={160} /> : !items.length && !error ? (
         <Alert severity="info">

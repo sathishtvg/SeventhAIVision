@@ -94,6 +94,17 @@ branch, bound to that query's own error and retry — and every page it could
 not read with certainty is listed and done by hand. The result is held by the
 type check, the lint, the tests and the build, and read page by page.
 
+**As built (14 October 2026).** Every group above has what its row says, with
+these differences, each of them a thing that turned out not to be there to
+animate: investigation results come in one answer, so nothing "arrives" in
+parts; there is no long-running export with progress from the server, so an
+export says "ready" when the browser has the file and nothing in between; and
+the dashboard's and the command centre's figures and cards were already
+counted and staggered and were left as they are (the platform owner's
+dashboard was given the same). What each page has is in
+`PAGE_AWARE_ANIMATION_MATRIX.md`, written from the pages and held to them by a
+test; what was found on the way is in section 9 of the audit.
+
 ## 4. Each page's own scene (added 13 October 2026)
 
 The owner asked on 13 October 2026 for more than the four quiet entrances of

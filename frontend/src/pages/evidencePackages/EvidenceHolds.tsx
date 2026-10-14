@@ -12,7 +12,7 @@ import {
   Alert, Box, Button, Chip, Link, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
   TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -22,7 +22,7 @@ import type { Hold } from '@/api/evidencePackages'
 import { WhyDialog } from '@/components/investigations/InvestigationDialogs'
 import { KIND_LABEL, fmt } from '@/components/evidence/evidenceFormat'
 import { InvestigationNav } from '@/pages/investigations/InvestigationNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 export default function EvidenceHolds() {
   const navigate = useNavigate()
@@ -32,8 +32,9 @@ export default function EvidenceHolds() {
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState(25)
   const [lifting, setLifting] = useState<Hold | null>(null)
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['evidence-holds', inForce, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listHolds({ in_force: inForce, limit: rows, offset: page * rows }),
   })
   const holds = data?.items ?? []
@@ -54,6 +55,7 @@ export default function EvidenceHolds() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !holds.length ? (
           <Alert severity="info">{inForce ? 'Nothing is under a hold.' : 'No hold has been lifted.'}</Alert>
         ) : (

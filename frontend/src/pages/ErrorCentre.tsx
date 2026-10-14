@@ -16,7 +16,7 @@
  * new bug.
  */
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   Skeleton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -28,7 +28,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import {
   getPlatformError, getPlatformErrors, updatePlatformError,
 } from '@/api/platform'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const SEVERITY_COLOUR: Record<string, string> = {
   critical: '#FF4560',
@@ -46,8 +46,9 @@ export default function ErrorCentre() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [resolution, setResolution] = useState('')
 
-  const { data: errors, isLoading, isLoadingError: errorsFailed, error: errorsError, refetch: refetchErrors } = useQuery({
+  const { data: errors, isLoading, isLoadingError: errorsFailed, error: errorsError, refetch: refetchErrors, isPlaceholderData: errorsRefreshing } = useQuery({
     queryKey: ['platform-errors', statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => getPlatformErrors(
       statusFilter === 'all' ? {} : { status: statusFilter },
     ),
@@ -88,6 +89,7 @@ export default function ErrorCentre() {
       </ToggleButtonGroup>
 
       <GlassCard sx={{ p: 0 }}>
+        {errorsRefreshing && <RefreshingLine />}
         {isLoading ? (
           <Skeleton variant="rectangular" height={200} />
         ) : errorsFailed ? <ErrorState compact error={errorsError} onRetry={refetchErrors} /> : !errors?.length ? (

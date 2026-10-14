@@ -13,7 +13,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast'
 import PaidIcon from '@mui/icons-material/Paid'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   createShiftDefinition, deleteShiftDefinition, listShiftDefinitions,
@@ -24,7 +24,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx } from '@/lib/motion'
-import { CardGridSkeleton, ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState, RefreshingLine } from '@/components/states'
 
 /** Icon, colour and wording per shift type, in one place so the cards, the
  *  chips and the create dialog cannot describe the same shift differently. */
@@ -321,8 +321,9 @@ export function ShiftsPage() {
   const [showRetired, setShowRetired] = useState(false)
   const [note, setNote] = useState<string | null>(null)
 
-  const { data: shifts = [], isLoading, isLoadingError: shiftsFailed, error: shiftsError, refetch: refetchShifts } = useQuery({
+  const { data: shifts = [], isLoading, isLoadingError: shiftsFailed, error: shiftsError, refetch: refetchShifts, isPlaceholderData: shiftsRefreshing } = useQuery({
     queryKey: ['shift-definitions', showRetired],
+    placeholderData: keepPreviousData,
     queryFn: () => listShiftDefinitions(showRetired),
   })
 
@@ -371,6 +372,7 @@ export function ShiftsPage() {
 
       {note && <Alert severity="info" sx={{ mb: 2 }} onClose={() => setNote(null)}>{note}</Alert>}
 
+      {shiftsRefreshing && <RefreshingLine />}
       {isLoading ? (
         <CardGridSkeleton cards={4} height={170} minWidth={320} />
       ) : shiftsFailed ? <ErrorState compact error={shiftsError} onRetry={refetchShifts} /> : shifts.length === 0 ? (

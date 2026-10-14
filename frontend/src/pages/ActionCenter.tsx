@@ -31,6 +31,7 @@ import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { ErrorState } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const SEV_COLOR: Record<ActionItem['severity'], string> = {
   critical: '#FF4560',
@@ -147,6 +148,8 @@ export default function ActionCenter() {
   })
 
   const items = data?.items ?? []
+  // Something that joins the list while it is open is framed in its severity's colour, and said.
+  const fresh = useNewItems(items, (item) => item.id, { say: (n) => countOf(n, 'new action') })
 
   return (
     <Box>
@@ -203,7 +206,9 @@ export default function ActionCenter() {
           <Stack spacing={1}>
             {items.map((item, i) => (
               <Box key={item.id} sx={fadeUpSx(i, { stepMs: 35 })}>
-                <ActionRow item={item} onNavigate={navigate} onRespond={setResponding} />
+                <Box {...newItemProps(fresh.has(String(item.id)), toneOf(item.severity), 'card')} sx={{ borderRadius: '10px' }}>
+                  <ActionRow item={item} onNavigate={navigate} onRespond={setResponding} />
+                </Box>
               </Box>
             ))}
           </Stack>

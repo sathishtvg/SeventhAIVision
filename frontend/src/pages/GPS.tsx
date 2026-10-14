@@ -37,6 +37,10 @@ import {
 import type { Vehicle } from '@/api/gps'
 import { PageHeader } from '@/components/common/PageHeader'
 import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
+import { freshAt, useNow } from '@/motion'
+
+/** A tracker reports every few seconds to a minute. A position older than this is where the vehicle was. */
+const POSITION_STALE_MS = 120_000
 
 // ── status helpers ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
@@ -62,6 +66,7 @@ function relativeTime(ts: string | null): string {
 
 // ── Simple map placeholder (Leaflet not installed) ─────────────────────────
 function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
+  const now = useNow()
   const active = vehicles.filter(v => v.last_lat !== null && v.last_lon !== null)
   if (active.length === 0) {
     return (
@@ -98,7 +103,11 @@ function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
             borderTop: '1px solid rgba(255,255,255,0.05)' }} />
         </React.Fragment>
       ))}
-      {active.map(v => (
+      {active.map(v => {
+        // "Moving" is the last thing the tracker said. It is drawn as moving - pulsing - only while the tracker
+        // is still being heard from; after that the marker is faint and says so.
+        const heard = freshAt(v.last_position_at, POSITION_STALE_MS, now)
+        return (
         <Tooltip key={v.id} title={
           <Box>
             <Typography variant="caption" sx={{ fontWeight: 700 }}>{v.name}</Typography>
@@ -112,6 +121,9 @@ function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {relativeTime(v.last_position_at)}
             </Typography>
+            {!heard && (
+              <Typography variant="caption" sx={{ display: 'block', fontWeight: 700 }}>Not live: the last position it sent</Typography>
+            )}
           </Box>
         } arrow>
           <Box sx={{
@@ -121,18 +133,15 @@ function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
             transform: 'translate(-50%, -50%)',
             cursor: 'pointer',
             zIndex: 10,
+            opacity: heard ? 1 : 0.5,
           }}>
             <Box sx={{
               width: 14, height: 14, borderRadius: '50%',
               bgcolor: STATUS_COLOR[v.current_status],
               border: '2px solid rgba(255,255,255,0.6)',
               boxShadow: `0 0 8px ${STATUS_COLOR[v.current_status]}`,
-              animation: v.current_status === 'moving' ? 'pulse 1.5s infinite' : 'none',
-              '@keyframes pulse': {
-                '0%': { boxShadow: `0 0 0 0 ${STATUS_COLOR['moving']}88` },
-                '70%': { boxShadow: `0 0 0 8px ${STATUS_COLOR['moving']}00` },
-                '100%': { boxShadow: `0 0 0 0 ${STATUS_COLOR['moving']}00` },
-              },
+              color: STATUS_COLOR['moving'],
+              animation: v.current_status === 'moving' && heard ? 'sav-live-pulse 1.5s infinite' : 'none',
             }} />
             <Typography variant="caption" sx={{
               position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
@@ -143,7 +152,8 @@ function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
             </Typography>
           </Box>
         </Tooltip>
-      ))}
+        )
+      })}
       <Typography variant="caption" sx={{ position: 'absolute', bottom: 8, right: 12,
         color: 'rgba(255,255,255,0.3)', fontSize: '0.6rem' }}>
         Relative position map • {active.length} vehicles
@@ -160,7 +170,7 @@ function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle; onClick: () => vo
       p: 2, cursor: 'pointer', borderRadius: 2,
       border: `1px solid ${STATUS_COLOR[vehicle.current_status]}44`,
       bgcolor: 'rgba(255,255,255,0.03)',
-      transition: 'all 0.2s',
+      transition: 'background-color 0.2s, border-color 0.2s',
       '&:hover': { bgcolor: 'rgba(255,255,255,0.07)', borderColor: STATUS_COLOR[vehicle.current_status] },
     }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>

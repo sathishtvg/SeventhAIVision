@@ -37,7 +37,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone'
 import ComputerIcon from '@mui/icons-material/Computer'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { SeverityChip } from '@/components/common/SeverityChip'
@@ -48,7 +48,7 @@ import { getUsers } from '@/api/users'
 import { getSites } from '@/api/sites'
 import type { AlertSeverity } from '@/types/api'
 import { MODULE_LABELS } from '@/api/licenses'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, TableErrorRow, TableRefreshingRow } from '@/components/states'
 import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const STATUS_FILTERS = ['all', 'open', 'acknowledged', 'resolved', 'dismissed'] as const
@@ -218,8 +218,9 @@ export default function Alerts() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: alerts, isLoading, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts } = useQuery({
+  const { data: alerts, isLoading, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts, isPlaceholderData: alertsRefreshing } = useQuery({
     queryKey: ['alerts', statusFilter, siteFilter, moduleFilter],
+    placeholderData: keepPreviousData,
     queryFn: () =>
       getAlerts(
         statusFilter === 'all' ? undefined : statusFilter,
@@ -256,7 +257,8 @@ export default function Alerts() {
   // An alert that arrives while the list is open (a live event makes the list fetch itself again) is marked in
   // its severity's colour for a few seconds, and a screen reader is told how many.
   const fresh = useNewItems(alerts?.items as { id: string }[] | undefined, (a) => a.id, {
-    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), say: (n) => countOf(n, 'new alert'),
+    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), settled: !alertsRefreshing,
+    say: (n) => countOf(n, 'new alert'),
   })
 
   const allIds = alerts?.items?.map((a: any) => a.id) ?? []
@@ -344,6 +346,7 @@ export default function Alerts() {
               </TableRow>
             </TableHead>
             <TableBody>
+              {alertsRefreshing && <TableRefreshingRow />}
               {isLoading
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>

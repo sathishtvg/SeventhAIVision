@@ -32,6 +32,14 @@ function darken(hex: string, amount: number): string {
 
 // ── Theme factory ─────────────────────────────────────────────────────────────
 
+/**
+ * What a control animates when it is hovered, pressed or selected: how it is painted, and nothing else.
+ * These used to be `transition: all`, which also animates size and position whenever they change for any
+ * other reason - a theme switch, a window being resized - on every button, chip and menu row at once.
+ */
+const paintOnly = (time: string) =>
+  ['background-color', 'border-color', 'color', 'box-shadow', 'transform', 'opacity'].map((p) => `${p} ${time}`).join(', ')
+
 export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF') {
   const isDark = mode === 'dark'
   const p  = primaryHex                    // primary
@@ -218,7 +226,7 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
             fontWeight: 600,
             fontFamily: '"Fira Sans", sans-serif',
             borderRadius: 10,
-            transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: paintOnly('0.22s cubic-bezier(0.4, 0, 0.2, 1)'),
             cursor: 'pointer',
           },
           // NOTE: MUI v9's Button overridesResolver only reads `styles.root` /
@@ -280,7 +288,7 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
         styleOverrides: {
           root: {
             borderRadius: 10,
-            transition: 'all 0.18s ease',
+            transition: paintOnly('0.18s ease'),
             cursor: 'pointer',
             '&:hover': {
               backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
@@ -297,7 +305,7 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
             fontWeight: 600,
             fontFamily: '"Fira Sans", sans-serif',
             backdropFilter: 'blur(8px)',
-            transition: 'all 0.18s ease',
+            transition: paintOnly('0.18s ease'),
             cursor: 'default',
           },
           colorPrimary: {
@@ -358,7 +366,7 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
             fontSize: '0.8rem',
             color: isDark ? 'rgba(248,250,252,0.60)' : '#475569',
             padding: '5px 14px',
-            transition: 'all 0.18s ease',
+            transition: paintOnly('0.18s ease'),
             cursor: 'pointer',
             '&:hover': {
               backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
@@ -389,7 +397,7 @@ export function createGlassTheme(mode: 'light' | 'dark', primaryHex = '#6C63FF')
         styleOverrides: {
           root: {
             borderRadius: 10,
-            transition: 'all 0.18s ease',
+            transition: paintOnly('0.18s ease'),
             cursor: 'pointer',
             '&.Mui-selected': {
               background: `linear-gradient(90deg, ${hex2rgba(p, 0.22)} 0%, ${hex2rgba(p, 0.06)} 100%)`,

@@ -27,7 +27,7 @@ import { AskDialog, AuthorisationDialog } from '@/components/visitorAuth/AuthDia
 import {
   STANDINGS, STANDING_COLOUR, STANDING_LABEL, about, against, door, fmt, period, who,
 } from '@/components/visitorAuth/authFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -42,7 +42,7 @@ export default function VisitorAuthorisations() {
   const [asking, setAsking] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error, refetch: refetchData } = useQuery({
+  const { data, isLoading, error, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['visitor-auths', siteId, standing, subject, q, history],
     queryFn: () => listAuthorisations({ site_id: siteId || undefined, standing: standing || undefined,
                                         subject: subject || undefined, q: q || undefined, history: history || undefined }),
@@ -130,6 +130,7 @@ export default function VisitorAuthorisations() {
       </GlassCard>
 
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {isLoading ? <Skeleton height={200} /> : !items.length && !error ? (
           <Alert severity="info">

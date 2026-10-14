@@ -26,7 +26,7 @@ import PushPinIcon from '@mui/icons-material/PushPin'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import HistoryIcon from '@mui/icons-material/History'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   listBarriers, createBarrier, updateBarrier, deleteBarrier, issueBarrierCommand,
   getBarrierStatus, listBarrierCommands, getVendorCapabilities,
@@ -40,7 +40,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   open: { label: 'Open', color: '#00E396' },
@@ -89,8 +89,9 @@ export function BarriersPage() {
   const [overrideReason, setOverrideReason] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { data: barriers = [], isLoading, isLoadingError: barriersFailed, error: barriersError, refetch: refetchBarriers } = useQuery({
+  const { data: barriers = [], isLoading, isLoadingError: barriersFailed, error: barriersError, refetch: refetchBarriers, isPlaceholderData: barriersRefreshing } = useQuery({
     queryKey: ['barriers', siteFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listBarriers(siteFilter || undefined),
   })
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
@@ -198,6 +199,7 @@ export function BarriersPage() {
       </Stack>
 
       {isLoading && <Skeleton variant="rounded" height={180} />}
+      {barriersRefreshing && <RefreshingLine />}
       {barriersFailed && <ErrorState compact error={barriersError} onRetry={refetchBarriers} />}
 
       {!isLoading && !barriersFailed && barriers.length === 0 && (

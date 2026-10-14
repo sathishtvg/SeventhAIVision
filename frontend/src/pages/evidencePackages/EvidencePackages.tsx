@@ -10,7 +10,7 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -21,7 +21,7 @@ import type { PackageStatus } from '@/api/evidencePackages'
 import { CreatePackageDialog } from '@/components/evidence/EvidenceDialogs'
 import { fmt } from '@/components/evidence/evidenceFormat'
 import { InvestigationNav } from '@/pages/investigations/InvestigationNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 export default function EvidencePackages() {
   const navigate = useNavigate()
@@ -34,8 +34,9 @@ export default function EvidencePackages() {
   const [creating, setCreating] = useState(false)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const words = q.trim().length >= 2 ? q.trim() : undefined
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['evidence-packages', status, siteId, words, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listPackages({
       status: status || undefined, site_id: siteId || undefined, q: words, limit: rows, offset: page * rows }),
   })
@@ -66,6 +67,7 @@ export default function EvidencePackages() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !packages.length ? (
           <Alert severity="info">{status || siteId || words ? 'No packages match.'
             : 'No evidence has been put together yet. A package is made for an investigation or an incident.'}</Alert>

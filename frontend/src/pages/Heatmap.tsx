@@ -34,14 +34,14 @@ import {
   Error as CriticalIcon,
   VideocamOff as OfflineIcon,
 } from '@mui/icons-material'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { getHeatmapData } from '@/api/analytics'
 import { getSites } from '@/api/sites'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import type { HeatmapCamera } from '@/types/api'
-import { CardGridSkeleton, ErrorState } from '@/components/states'
+import { CardGridSkeleton, ErrorState, RefreshingLine } from '@/components/states'
 
 const TIME_OPTIONS = [
   { label: 'Last 1h', value: 1 },
@@ -129,8 +129,9 @@ export default function Heatmap() {
   const [siteId, setSiteId] = useState('')
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
-  const { data: cameras = [], isLoading, isError, error, refetch } = useQuery({
+  const { data: cameras = [], isLoading, isError, error, refetch, isPlaceholderData: camerasRefreshing } = useQuery({
     queryKey: ['heatmap', hours, moduleType, siteId],
+    placeholderData: keepPreviousData,
     queryFn: () => getHeatmapData(hours, moduleType === 'All Modules' ? undefined : moduleType, siteId || undefined),
   })
 
@@ -196,6 +197,7 @@ export default function Heatmap() {
       </Stack>
 
       {isLoading && <CardGridSkeleton />}
+      {camerasRefreshing && <RefreshingLine />}
       {isError && <ErrorState error={error} onRetry={refetch} title="Could not load the heatmap" />}
 
       {!isLoading && !isError && (

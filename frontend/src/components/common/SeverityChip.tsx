@@ -35,13 +35,9 @@ export function SeverityChip({ severity, size = 'small' }: Props) {
         backdropFilter: 'blur(8px)',
         boxShadow: cfg.glow,
         flexShrink: 0,
-        ...(isCritical && {
-          animation: 'glow-pulse-critical 1.6s ease-in-out infinite',
-          '@keyframes glow-pulse-critical': {
-            '0%,100%': { boxShadow: '0 0 8px rgba(255,69,96,0.3)', borderColor: 'rgba(255,69,96,0.4)' },
-            '50%':     { boxShadow: '0 0 16px rgba(255,69,96,0.7)', borderColor: 'rgba(255,69,96,0.75)' },
-          },
-        }),
+        // A critical chip has its glow, steady, and a dot that pulses. The glow itself used to pulse: a shadow
+        // animated behind a blurred chip is painted again on every frame, once for every critical row of a
+        // list. The dot's opacity costs nothing, and says the same.
       }}
     >
       {isCritical && (

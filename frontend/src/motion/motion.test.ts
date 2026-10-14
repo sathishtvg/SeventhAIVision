@@ -300,7 +300,14 @@ describe('what has just arrived is marked', () => {
       expect(css).toContain(`.sav-new[data-tone='${tone}']`)
     }
     // The mark is there without any movement: a tint and a bar. The fade only takes it away.
-    expect(rule('tr.sav-new > td,\ntr.sav-new > th,\n:not(tr).sav-new {')).toContain('background-color: color-mix(')
+    expect(rule("tr.sav-new > td,\ntr.sav-new > th,\n:not(tr):not([data-shape='card']).sav-new {")).toContain('background-color: color-mix(')
+    // A card keeps its own surface and is framed instead.
+    expect(newItemProps(true, 'high', 'card')).toEqual({ className: 'sav-new', 'data-tone': 'high', 'data-shape': 'card' })
+    expect(rule(".sav-new[data-shape='card']::after {")).toContain('box-shadow: inset 0 0 0 2px var(--sav-new);')
+    expect(rule(".sav-new[data-shape='card']::after {")).not.toContain('background')
+    // Its fade is opacity alone, and with reduced motion the frame stays until the mark is taken off.
+    expect(rule('@keyframes sav-new-frame {') + css.slice(css.indexOf('@keyframes sav-new-frame {'), css.indexOf('@keyframes sav-new-fade {'))).not.toMatch(/box-shadow|transform/)
+    expect(css).toContain(":root[data-motion='reduced'] .sav-new[data-shape='card']::after,")
     expect(css).toContain('box-shadow: inset 3px 0 0 var(--sav-new);')
   })
 })

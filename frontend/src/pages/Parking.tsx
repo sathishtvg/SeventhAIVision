@@ -29,7 +29,7 @@ import {
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import LocalParkingIcon from '@mui/icons-material/LocalParking'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
@@ -48,7 +48,7 @@ import {
 import type { CarPark, ParkingBay, ParkingSession, LprCameraConfig } from '@/api/parking'
 import { getCameras } from '@/api/cameras'
 import { PageHeader } from '@/components/common/PageHeader'
-import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
+import { CardGridSkeleton, ErrorState, TableBlockSkeleton, RefreshingLine } from '@/components/states'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -535,8 +535,9 @@ function SessionsTab() {
   const [plateSearch, setPlateSearch] = useState('')
   const qc = useQueryClient()
 
-  const { data: _sessData, isLoading, isLoadingError: _sessDataFailed, error: _sessDataError, refetch: refetch_sessData } = useQuery({
+  const { data: _sessData, isLoading, isLoadingError: _sessDataFailed, error: _sessDataError, refetch: refetch_sessData, isPlaceholderData: _sessDataRefreshing } = useQuery({
     queryKey: ['parking-sessions', statusFilter, plateSearch],
+    placeholderData: keepPreviousData,
     queryFn: () => listSessions({
       status: statusFilter || undefined,
       plate: plateSearch || undefined,
@@ -585,6 +586,7 @@ function SessionsTab() {
         </Button>
       </Box>
 
+      {_sessDataRefreshing && <RefreshingLine />}
       {isLoading ? (
         <TableBlockSkeleton />
       ) : _sessDataFailed ? <ErrorState compact error={_sessDataError} onRetry={refetch_sessData} /> : (

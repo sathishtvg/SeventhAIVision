@@ -23,7 +23,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlin
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import EditIcon from '@mui/icons-material/Edit'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   fetchDefectPhoto, getDefectSummary, listDefects, referDefect, reportDefect,
@@ -35,7 +35,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 const CLIENT_ROLE = 7
@@ -493,8 +493,9 @@ export function DefectLogPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: defects = [], isLoading, isLoadingError: defectsFailed, error: defectsError, refetch: refetchDefects } = useQuery({
+  const { data: defects = [], isLoading, isLoadingError: defectsFailed, error: defectsError, refetch: refetchDefects, isPlaceholderData: defectsRefreshing } = useQuery({
     queryKey: ['defects', siteFilter, statusFilter, categoryFilter, severityFilter, activeOnly],
+    placeholderData: keepPreviousData,
     queryFn: () => listDefects({
       site_id: siteFilter || undefined,
       status_filter: statusFilter || undefined,
@@ -562,6 +563,7 @@ export function DefectLogPage() {
           )}
         </Stack>
 
+        {defectsRefreshing && <RefreshingLine />}
         {isLoading ? (
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))' }}>
             {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}

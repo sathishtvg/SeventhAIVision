@@ -408,7 +408,7 @@ function NavLink({ label, path, icon, permission, rail = false }: NavLinkProps) 
         overflow: 'hidden',
         py: 0.9,
         ...(rail && { justifyContent: 'center', px: 0 }),
-        transition: 'all 0.18s ease',
+        transition: 'background-color 0.18s ease, color 0.18s ease, margin 0.18s ease, padding 0.18s ease',
         ...(selected
           ? {
               background:

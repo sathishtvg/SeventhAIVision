@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Drawer, Divider, Button, TextField, Skeleton, Paper,
   MenuItem, Stepper, Step, StepLabel, Tabs, Tab, Checkbox,
 } from '@mui/material'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { SeverityChip } from '@/components/common/SeverityChip'
@@ -16,7 +16,7 @@ import { dispatchGuard, guardArrived } from '@/api/guards'
 import { getUsers } from '@/api/users'
 import type { Incident, IncidentSeverity } from '@/types/api'
 import { MODULE_LABELS } from '@/api/licenses'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, TableErrorRow, TableRefreshingRow } from '@/components/states'
 import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const STATUS_STEPS = ['open', 'dispatched', 'en_route', 'on_scene', 'contained', 'resolved'] as const
@@ -298,8 +298,9 @@ export default function Incidents() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: incidents, isLoading, isLoadingError: incidentsFailed, error: incidentsError, refetch: refetchIncidents } = useQuery({
+  const { data: incidents, isLoading, isLoadingError: incidentsFailed, error: incidentsError, refetch: refetchIncidents, isPlaceholderData: incidentsRefreshing } = useQuery({
     queryKey: ['incidents', statusFilter, siteFilter, moduleFilter],
+    placeholderData: keepPreviousData,
     queryFn: () =>
       getIncidents(
         statusFilter === 'all' ? undefined : statusFilter,
@@ -311,7 +312,8 @@ export default function Incidents() {
   // An incident that arrives while the list is open is marked in its severity's colour for a few seconds, and a
   // screen reader is told how many.
   const fresh = useNewItems(incidents?.items as { id: string }[] | undefined, (i) => i.id, {
-    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), say: (n) => countOf(n, 'new incident'),
+    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), settled: !incidentsRefreshing,
+    say: (n) => countOf(n, 'new incident'),
   })
 
   const { mutate: bulkResolve, isPending: bulkResolvePending } = useMutation({
@@ -403,6 +405,7 @@ export default function Incidents() {
               </TableRow>
             </TableHead>
             <TableBody>
+              {incidentsRefreshing && <TableRefreshingRow />}
               {isLoading
                 ? Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={i}>

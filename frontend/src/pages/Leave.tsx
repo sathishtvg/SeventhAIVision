@@ -39,7 +39,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import TodayIcon from '@mui/icons-material/Today'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   getLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType,
   listLeaveRequests, createLeaveRequest, approveLeaveRequest, rejectLeaveRequest,
@@ -53,7 +53,7 @@ import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const GUARD_ROLES = new Set([3, 4, 5, 8])
 const _GUARD_ONLY_ROLES = new Set([4, 5])
@@ -336,8 +336,9 @@ function RequestsTab() {
     leave_type_id: typeId || undefined,
     request_status: status || undefined,
   }
-  const { data: requests = [], isLoading, isLoadingError: requestsFailed, error: requestsError, refetch: refetchRequests } = useQuery({
+  const { data: requests = [], isLoading, isLoadingError: requestsFailed, error: requestsError, refetch: refetchRequests, isPlaceholderData: requestsRefreshing } = useQuery({
     queryKey: ['leave-requests', filters],
+    placeholderData: keepPreviousData,
     queryFn: () => listLeaveRequests(filters),
   })
 
@@ -371,6 +372,7 @@ function RequestsTab() {
         </Button>
       </Stack>
 
+      {requestsRefreshing && <RefreshingLine />}
       {isLoading ? (
         <Skeleton height={80} />
       ) : requestsFailed ? <ErrorState compact error={requestsError} onRetry={refetchRequests} /> : requests.length === 0 ? (

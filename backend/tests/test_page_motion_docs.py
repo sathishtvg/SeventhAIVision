@@ -172,3 +172,54 @@ def test_each_page_has_its_own_scene_and_it_is_bounded_as_the_design_says():
     shell = _read(SRC / "components" / "layout" / "AppShell.tsx")
     assert shell.index("<PageScene key=") < shell.index("className={pageEnterClass(location.pathname)}")
     assert "Page animations" in _read(SRC / "components" / "states" / "MotionPreferences.tsx")
+
+
+def test_the_last_phases_are_what_the_documents_say_and_the_matrix_is_there():
+    audit, design = _flat(_read(AUDIT)), _flat(_read(DESIGN))
+    # The matrix is written from the pages by a web test that fails when the two disagree.
+    matrix = _read(REPO_ROOT / "PAGE_AWARE_ANIMATION_MATRIX.md")
+    assert "Written by `frontend/src/motion/matrix.test.ts` from the pages themselves" in matrix
+    rows = [line for line in matrix.splitlines() if line.startswith("| `")]
+    assert len(rows) == 116, len(rows)
+    missing = [line.split("|")[1].strip() for line in rows if "| NO |" in line or "| NONE |" in line]
+    assert missing == ["`intel/IntelNav.tsx`"], missing
+    assert "`PAGE_AWARE_ANIMATION_MATRIX.md`" in audit and "`PAGE_AWARE_ANIMATION_MATRIX.md`" in design
+
+    # Rule 4 is done where it is safe and nowhere else.
+    assert "another record's rows must never stand under this one's name" in audit
+    pages = {p.relative_to(SRC / "pages").as_posix(): _read(p) for p in (SRC / "pages").rglob("*.tsx") if ".test." not in p.name}
+    kept = [name for name, text in pages.items() if "isPlaceholderData: " in text]
+    assert len(kept) == 41, len(kept)
+    for name in kept:
+        assert "RefreshingRow />}" in pages[name] or "RefreshingLine />}" in pages[name], name
+    # One record is never kept: a day of one camera's recordings, an investigation, a patrol in flight.
+    for name in ("Playback.tsx", "investigations/Investigation.tsx", "drones/DronePatrol.tsx", "evidencePackages/EvidencePackage.tsx"):
+        assert "keepPreviousData" not in pages[name], name
+
+    # Nothing is drawn as live by what it last said: the clock is read again whether or not anything was fetched.
+    assert '"Moving" was the last thing a tracker said, for ever.' in audit
+    now = _read(SRC / "motion" / "useNow.ts")
+    assert "setInterval(() => setNow(Date.now()), everyMs)" in now
+    assert "freshAt(v.last_position_at, POSITION_STALE_MS, now)" in pages["GPS.tsx"]
+    assert "freshAt(now?.recorded_at, TELEMETRY_STALE_MS, useNow())" in pages["drones/DronePatrol.tsx"]
+
+    # The tick on a patrol is the server's word and nothing more.
+    patrol = pages["PatrolExecution.tsx"]
+    assert "setSnapped(r.ok && camera ? camera.id : null)" in patrol
+    assert patrol.count("finish.mutate()") == 1 and patrol.count("onAdvance()") == 1
+    assert "Animation cannot advance a patrol or skip an answer" in design
+
+    # An export says "ready" when the browser has the file, and never a percentage.
+    export = pages["Export.tsx"]
+    assert export.index("await onExport()") < export.index("setReady(true)")
+    card = export.split("function ExportCard(", 1)[1].split("\n}\n", 1)[0]
+    # A spinner while it works, and no bar that would have to show how far along it is.
+    assert "LinearProgress" not in card and "determinate" not in card
+    assert "There is no percentage: the server reports" in card
+
+    # Tidying: no control animates "all" of itself, in the theme or anywhere else.
+    everywhere = [p for p in _sources() if ".test." not in p.name]
+    assert [p.relative_to(SRC).as_posix() for p in everywhere if re.search(r"transition: ?['\"`]all\b", _read(p))] == []
+    for said in ("have been looked at stopped, not in motion", "Clickable cards that are not buttons cannot be reached by keyboard"):
+        assert said in audit, said
+

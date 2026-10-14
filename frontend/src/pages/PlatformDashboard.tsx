@@ -35,7 +35,8 @@ import {
   getPlatformDashboard, getPlatformHealth, getPlatformRevenue, getTenantUsage,
 } from '@/api/platform'
 import { acknowledgeNotification, getNotifications } from '@/api/platformBilling'
-import { ErrorState } from '@/components/states'
+import { AnimatedCounter, ErrorState } from '@/components/states'
+import { fadeUpSx } from '@/motion'
 
 /** Four states, not two. `unknown` is amber rather than green because a check
  *  that could not run tells you nothing, and showing nothing as healthy is how
@@ -63,15 +64,19 @@ function money(n: number) {
 
 /** A KPI card. `sub` is the second line — the movement behind the number,
  *  because a total with no direction is a number nobody acts on. */
-function Kpi({ icon, label, value, sub, tone }: {
+function Kpi({ icon, label, value, sub, tone, turn = 0, format }: {
   icon: React.ReactNode
   label: string
   value: string | number
   sub?: string
   tone?: string
+  /** The card's place in the row: the cards arrive one after another. */
+  turn?: number
+  /** How a number is written, when it is not simply a count. */
+  format?: (n: number) => string
 }) {
   return (
-    <GlassCard sx={{ p: 2, flex: '1 1 190px', minWidth: 175 }}>
+    <GlassCard sx={{ p: 2, flex: '1 1 190px', minWidth: 175, ...fadeUpSx(turn) }}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
         <Box sx={{ color: tone ?? '#6C63FF', display: 'flex' }}>{icon}</Box>
         <Typography
@@ -83,7 +88,9 @@ function Kpi({ icon, label, value, sub, tone }: {
         </Typography>
       </Stack>
       <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-        {value}
+        {/* A figure counts up to what the server said, and a screen reader is given that figure at once. Something
+            that is not a number - a dash for "not known" - is written as it is. */}
+        {typeof value === 'number' ? <AnimatedCounter value={value} format={format} /> : value}
       </Typography>
       {sub && (
         <Typography variant="caption" sx={{ color: 'text.disabled' }}>{sub}</Typography>
@@ -151,22 +158,22 @@ export default function PlatformDashboard() {
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1.5, mb: 1.5 }}>
             <Kpi
               icon={<BusinessIcon fontSize="small" />} label="Tenants"
-              value={kpi.tenants_total}
+              value={kpi.tenants_total} turn={0}
               sub={`${kpi.tenants_active} active · ${kpi.tenants_trial} trial`}
             />
             <Kpi
               icon={<PeopleIcon fontSize="small" />} label="Users"
-              value={kpi.users_total.toLocaleString()}
+              value={kpi.users_total} turn={1}
               sub={`${kpi.users_active_today} active today`}
             />
             <Kpi
               icon={<ApartmentIcon fontSize="small" />} label="Sites"
-              value={kpi.sites_total.toLocaleString()}
+              value={kpi.sites_total} turn={2}
               sub={`${kpi.sites_new_this_month} added this month`}
             />
             <Kpi
               icon={<VideocamIcon fontSize="small" />} label="Cameras"
-              value={kpi.cameras_total.toLocaleString()}
+              value={kpi.cameras_total} turn={3}
               sub={`${kpi.cameras_active} active`}
               tone="#00D9C0"
             />
@@ -175,25 +182,25 @@ export default function PlatformDashboard() {
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
             <Kpi
               icon={<PaymentsIcon fontSize="small" />} label="MRR"
-              value={revenue ? money(revenue.mrr) : '—'}
+              value={revenue ? revenue.mrr : '—'} format={money} turn={4}
               sub={revenue ? `${money(revenue.arr)} ARR` : undefined}
               tone="#00D9C0"
             />
             <Kpi
               icon={<EventRepeatIcon fontSize="small" />} label="Subscriptions"
-              value={revenue?.subscriptions_active ?? '—'}
+              value={revenue?.subscriptions_active ?? '—'} turn={5}
               sub={revenue
                 ? `${revenue.subscriptions_trial} trial · ${revenue.renewals_next_30_days} renewing in 30d`
                 : undefined}
             />
             <Kpi
               icon={<AutoAwesomeIcon fontSize="small" />} label="AI Modules"
-              value={kpi.modules_active}
+              value={kpi.modules_active} turn={6}
               sub={`${kpi.modules_licensed} licensed`}
             />
             <Kpi
               icon={<ReportProblemIcon fontSize="small" />} label="Open Issues"
-              value={kpi.errors_critical + kpi.errors_warning}
+              value={kpi.errors_critical + kpi.errors_warning} turn={7}
               sub={`${kpi.errors_critical} critical · ${kpi.errors_resolved_today} resolved today`}
               tone={kpi.errors_critical > 0 ? '#FF4560' : '#00D9C0'}
             />

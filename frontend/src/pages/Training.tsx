@@ -45,7 +45,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import ErrorIcon from '@mui/icons-material/Error'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   getTrainingDashboard, listCourses, createCourse,
   listRecords, createRecord, deleteRecord,
@@ -60,7 +60,7 @@ import GlassCard from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, TableErrorRow, TableRefreshingRow } from '@/components/states'
 
 const CATEGORY_COLOR: Record<string, string> = {
   general:            '#6C63FF',
@@ -539,8 +539,9 @@ function RecordsTab() {
     user_id: '', course_id: '', completed_at: '', score: '', passed: 'true', notes: '',
   })
 
-  const { data: records = [], isLoading, isLoadingError: recordsFailed, error: recordsError, refetch: refetchRecords } = useQuery({
+  const { data: records = [], isLoading, isLoadingError: recordsFailed, error: recordsError, refetch: refetchRecords, isPlaceholderData: recordsRefreshing } = useQuery({
     queryKey: ['training-records', filterPassed],
+    placeholderData: keepPreviousData,
     queryFn: () => listRecords(filterPassed !== 'all' ? { passed: filterPassed === 'true' } : undefined),
   })
   const { data: courses = [] } = useQuery({ queryKey: ['training-courses'], queryFn: () => listCourses({ is_active: true }) })
@@ -596,6 +597,7 @@ function RecordsTab() {
             {isLoading && [...Array(5)].map((_, i) => (
               <TableRow key={i}>{[...Array(6)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {recordsRefreshing && <TableRefreshingRow />}
             {recordsFailed && <TableErrorRow error={recordsError} onRetry={refetchRecords} />}
             {records.map(r => {
               const isExpired = r.expires_at && new Date(r.expires_at) < new Date()
@@ -735,8 +737,9 @@ function CertificationsTab() {
     certificate_number: '', issued_at: '', expires_at: '',
   })
 
-  const { data: certs = [], isLoading, isLoadingError: certsFailed, error: certsError, refetch: refetchCerts } = useQuery({
+  const { data: certs = [], isLoading, isLoadingError: certsFailed, error: certsError, refetch: refetchCerts, isPlaceholderData: certsRefreshing } = useQuery({
     queryKey: ['guard-certifications', filter],
+    placeholderData: keepPreviousData,
     queryFn: () => listCertifications(filter === 'expiring' ? { expiring_days: 30 } : undefined),
     refetchInterval: 60_000,
   })
@@ -786,6 +789,7 @@ function CertificationsTab() {
             {isLoading && [...Array(4)].map((_, i) => (
               <TableRow key={i}>{[...Array(7)].map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
             ))}
+            {certsRefreshing && <TableRefreshingRow />}
             {certsFailed && <TableErrorRow error={certsError} onRetry={refetchCerts} />}
             {displayed.map(c => {
               const cfg = EXPIRY_STATUS_CONFIG[c.expiry_status] ?? EXPIRY_STATUS_CONFIG.valid
