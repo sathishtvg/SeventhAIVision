@@ -43,8 +43,8 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "10 October 2026"
-EDITION = "Edition 10"
+GENERATED = "14 October 2026"
+EDITION = "Edition 11"
 HEAD = "0158"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -103,6 +103,12 @@ EDITIONS = [
      "switched on; until this day no client had a step to give it. The desktop app "
      "is 1.0.7. The sign-in page is no longer reused by a browser without asking, "
      "and a build of the phone app for testing on the same network is described."],
+    ["Edition 11", "14 October 2026", "0158",
+     "How the web console moves, waits and fails, in a section of its own: every "
+     "page has its own entrance and its own loading; a page that could not fetch "
+     "says so; a camera's tile says what it is doing; nothing is drawn as live that "
+     "is not. No route and no table is added. <b>Corrects Known limits:</b> the "
+     "sign-in page has fetched a newer console by itself since 10 October."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -293,7 +299,7 @@ story += [
     Spacer(1, 6),
     stat_strip([
         ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
-        ("6,253", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,437", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1735,6 +1741,62 @@ story.append(data_table(
     widths=[32 * mm, 38 * mm, 20 * mm, 80 * mm]))
 
 story.append(Spacer(1, 10))
+story.append(Paragraph("How the web console moves, waits and fails", S["h1"]))
+story.append(rule(thickness=2))
+story.append(Spacer(1, 8))
+story.append(Paragraph(
+    "One set of rules for all 111 routes, kept in one place in the code, so the "
+    "same thing looks and reads the same wherever it happens. What each page has "
+    "is listed page by page in <font face='Courier'>PAGE_AWARE_ANIMATION_MATRIX.md</font>, "
+    "which is written from the pages and checked against them by a test.", S["body"]))
+story += bullets([
+    "<b>Every page has its own entrance and its own loading.</b> As a page is "
+    "opened, a drawing of what it is about makes itself over the page's name - "
+    "camera tiles lighting up for the live wall, a sweep for a map, rotors for a "
+    "drone screen, a bell for alerts - and clears in about half a second; if the "
+    "page is still fetching, the same drawing goes on, small, beside the page's "
+    "own words until the first answers are in. Twenty-four drawings for the pages "
+    "inside the console.",
+    "<b>It never takes the screen from the person using it.</b> The page beneath "
+    "answers a click or a key from its first moment and the first of either ends "
+    "the entrance. Man down, emergency alert, alarm panels, the response desk, "
+    "the action center and a drone patrol in flight are never covered. Each person "
+    "can switch page animations off, or all motion down, in Settings; the "
+    "device's own reduced-motion setting is followed.",
+    "<b>A page that could not fetch says so.</b> Every page that fetches has four "
+    "answers and not three: a placeholder shaped like the content while it loads, "
+    "what failed and a way to try again when it fails, \"nothing here\" only when "
+    "the server answered with nothing, and the content. Before, a failed request "
+    "read as an empty list.",
+    "<b>A changed filter keeps the rows that were there</b>, dimmed, behind a line "
+    "that says the list is being refreshed, on 47 lists. One record is never kept "
+    "under another's name.",
+    "<b>What arrives is marked and said.</b> On eight screens that refresh "
+    "themselves - alerts, incidents, drone events, situations, the response desk, "
+    "man down, the action center and the command centre's alert feed - a row or "
+    "card that was not there before is marked in its severity's colour for six "
+    "seconds, and a screen reader is told how many.",
+    "<b>A camera's tile says what it is doing</b>: connecting, buffering, or no "
+    "picture with a way to try again - on the live wall, its full-screen view, a "
+    "situation's live view and the drone screens. An alert on a camera is a red "
+    "frame that beats three times and stays.",
+    "<b>Nothing is drawn as live that is not.</b> A vehicle's marker pulses only "
+    "while it is moving and was heard from in the last two minutes; a drone in "
+    "flight says \"Live\" or \"Stale\" beside its telemetry and is drawn faint "
+    "once it has not been heard from for twenty seconds. Both go by the clock, "
+    "not by when the page last fetched.",
+    "<b>Said when it is so.</b> \"Snapshot saved\" on a patrol when the server has "
+    "the snapshot - it completes nothing; \"Export ready\" when the browser has "
+    "the file. No percentage is shown that the server did not report.",
+    "<b>Limits.</b> The motion has been checked stopped at a moment, not watched "
+    "at a screen's frame rate. A frame-by-frame camera tile whose stream stops "
+    "part-way keeps its last frame and says nothing: the browser reports nothing. "
+    "Cards that are clicked but are not buttons cannot yet be reached by keyboard. "
+    "The phone app is not part of this, and the desktop app has it at its next "
+    "build.",
+])
+
+story.append(Spacer(1, 10))
 story.append(Paragraph("Roles", S["h1"]))
 story.append(rule(thickness=2))
 story.append(Spacer(1, 8))
@@ -1844,10 +1906,8 @@ story += bullets([
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
     "<b>The phone app</b> needs a new build and a device pass for what was added "
     "after its SDK upgrade; <b>the desktop app</b> is not code-signed.",
-    "<b>A browser tab left open keeps the web console it loaded.</b> After the "
-    "console is rebuilt, the page is fetched afresh the next time it is opened "
-    "or reloaded, but a tab already open goes on running the old one until it "
-    "is reloaded. Nothing tells it that a newer build exists.",
+    "<b>A signed-in browser tab left open keeps the web console it loaded</b> "
+    "until it is reloaded. The sign-in page fetches a newer console by itself.",
     "<b>The Helm chart</b> has not been installed on a cluster.",
 ])
 
@@ -1857,8 +1917,8 @@ story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
     "database migrations, 282 tables, 108 API modules serving 1,043 operations, 115 backend "
-    "services, 111 web routes and 57 phone screens, covered by 6,253 automated tests "
-    "(backend 4,047, repository inspection 1,338, web 522, phone 346). Capability counts "
+    "services, 111 web routes and 57 phone screens, covered by 6,437 automated tests "
+    "(backend 4,047, repository inspection 1,348, web 694, phone 348). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
