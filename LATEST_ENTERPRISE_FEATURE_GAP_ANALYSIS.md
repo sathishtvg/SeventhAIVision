@@ -1005,3 +1005,14 @@ answered that there is no registered business yet. `desktop/CODE_SIGNING.md`
 says what is open to a person - a certificate in their own name, the Microsoft
 Store, or registering the business first - and that the choice turns on the
 name customers are to see on the installer. Nothing was bought.
+
+### Desktop 1.0.8
+
+Desktop 1.0.8 is the web build of 14 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.7: every page's own entrance and loading, a page that says so when a
+request failed, rows kept while a changed filter is fetched, what arrives
+marked, and a camera's tile that says what it is doing
+(`PAGE_AWARE_ANIMATION_GAP_ANALYSIS.md` is the record of that work). Nothing
+in the desktop shell was changed for it. It is unsigned, with the same app id
+and MSI upgrade code, so it installs over 1.0.7.

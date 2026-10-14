@@ -66,6 +66,8 @@ import { MyWorkOrdersScreen }          from '@/screens/MyWorkOrdersScreen'
 import { MyCaseTasksScreen }           from '@/screens/MyCaseTasksScreen'
 import { useAuthStore }                from '@/store/auth'
 import { colors }                      from '@/theme'
+import { sceneLayout }                 from '@/motion/ScreenScene'
+import { useMotionStore }              from '@/motion/motionStore'
 
 // ── Param list types ─────────────────────────────────────────────────────────
 
@@ -176,7 +178,7 @@ const screenOptions = {
 
 function AlertsNavigator() {
   return (
-    <AlertsStack.Navigator screenOptions={screenOptions}>
+    <AlertsStack.Navigator screenOptions={screenOptions} screenLayout={sceneLayout}>
       <AlertsStack.Screen name="AlertsList"  component={AlertsScreen}      options={{ title: 'Alerts' }} />
       <AlertsStack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: 'Alert Detail' }} />
       <AlertsStack.Screen name="AlertDroneEvent" component={DroneEventDetailScreen} options={{ title: 'Drone Event', headerBackTitle: 'Back' }} />
@@ -186,7 +188,7 @@ function AlertsNavigator() {
 
 function IncidentsNavigator() {
   return (
-    <IncidentsStack.Navigator screenOptions={screenOptions}>
+    <IncidentsStack.Navigator screenOptions={screenOptions} screenLayout={sceneLayout}>
       <IncidentsStack.Screen name="IncidentsList"      component={IncidentsScreen}      options={{ title: 'Incidents' }} />
       <IncidentsStack.Screen name="IncidentDetail"     component={IncidentDetailScreen} options={{ title: 'Incident Detail' }} />
       <IncidentsStack.Screen name="IncidentCameraLive" component={CameraLiveScreen}     options={{ title: 'Live View', headerBackTitle: 'Back' }} />
@@ -196,7 +198,7 @@ function IncidentsNavigator() {
 
 function CamerasNavigator() {
   return (
-    <CamerasStack.Navigator screenOptions={screenOptions}>
+    <CamerasStack.Navigator screenOptions={screenOptions} screenLayout={sceneLayout}>
       <CamerasStack.Screen name="CamerasList" component={CamerasScreen}    options={{ title: 'Cameras' }} />
       <CamerasStack.Screen name="Sites"       component={SitesScreen}      options={{ title: 'Sites', headerBackTitle: 'Back' }} />
       <CamerasStack.Screen name="CameraLive"  component={CameraLiveScreen} options={{ title: 'Live View', headerBackTitle: 'Back' }} />
@@ -209,7 +211,7 @@ function CamerasNavigator() {
 
 function PatrolNavigator() {
   return (
-    <PatrolStack.Navigator screenOptions={screenOptions}>
+    <PatrolStack.Navigator screenOptions={screenOptions} screenLayout={sceneLayout}>
       <PatrolStack.Screen name="Shifts"         component={ShiftScreen}          options={{ title: 'My Shifts' }} />
       <PatrolStack.Screen name="PatrolSelect"   component={PatrolSelectScreen}   options={{ title: 'Select Route' }} />
       <PatrolStack.Screen name="PatrolScan"     component={PatrolScanScreen}     options={{ title: 'Patrol', headerBackTitle: 'Back' }} />
@@ -224,7 +226,7 @@ function PatrolNavigator() {
 
 function MoreNavigator() {
   return (
-    <MoreStack.Navigator screenOptions={screenOptions}>
+    <MoreStack.Navigator screenOptions={screenOptions} screenLayout={sceneLayout}>
       <MoreStack.Screen name="MoreMenu"      component={MoreMenuScreen}             options={{ title: 'More' }} />
       <MoreStack.Screen name="ActionCenter"  component={ActionCenterScreen}         options={{ title: 'Action Center' }} />
       <MoreStack.Screen name="Attendance"    component={AttendanceScreen}           options={{ title: 'Live Attendance' }} />
@@ -296,6 +298,9 @@ function MainTabs() {
     canSee({ permission, audience }, permissions, roleId)
   return (
     <Tab.Navigator
+      // Each screen's own scene as it is opened. A tab that only holds a stack has none of its own - the
+      // screens inside it have (motion/scenes.ts).
+      screenLayout={sceneLayout}
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           const icons = TAB_ICONS[route.name] ?? { active: 'ellipse', inactive: 'ellipse-outline' }
@@ -341,9 +346,13 @@ function MainTabs() {
 export function RootNavigator() {
   const accessToken = useAuthStore((s) => s.accessToken)
   const initBiometric = useBiometricStore((s) => s.init)
+  const initMotion = useMotionStore((s) => s.init)
 
   useEffect(() => {
     initBiometric()
+    // Whether the phone has asked for less motion, and whether this person has switched screen animations
+    // off. Until both are known no scene is played.
+    void initMotion()
   }, [])
 
   return (

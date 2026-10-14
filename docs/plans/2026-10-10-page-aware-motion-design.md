@@ -185,7 +185,23 @@ match, so those follow its general rules (cross-fade for content replaced in
 place; transform and opacity only) and not a specific entry. Its preference
 for spring curves was not taken: the brief asks for no bounce.
 
+## 5. The phone (added 14 October 2026)
+
+The owner asked on 14 October 2026 for the phone as well. Each of its screens
+has its own scene, as each page of the web has: the screen's emblem and name
+as it opens, then the emblem small at the top with the screen's own words
+while it loads. It is made with React Native's own animation and the icons
+the app already ships - no library added, so nothing about the build
+changes - and put round every screen by the navigators. The bounds are the
+web's: no touch is taken and the first one ends it; screens where seconds
+matter and camera pictures are never covered; nothing moves on a phone set to
+remove animations; a switch in Settings. One more, for the phone: a request
+waiting for a signal is not loading, so a guard out of signal is not shown
+"Loading". The rest of this design - the failed state, kept rows, new rows -
+was not asked for the phone and is not done there.
+
 ## Not in this work
 
 Lazy routes; a progress bar for exports (the server reports no progress); the
-phone app; any change to who may see or do what.
+phone app beyond its screens' scenes (section 5); any change to who may see or
+do what.
