@@ -141,3 +141,34 @@ def test_the_documents_say_what_was_found_and_what_was_decided():
     # The phone app and the route-splitting are said not to be part of it, and the web is what was touched.
     assert "The **phone app** (`mobile/`) is a separate React Native code base" in audit
     assert "Lazy routes; a progress bar for exports" in design
+
+
+def test_each_page_has_its_own_scene_and_it_is_bounded_as_the_design_says():
+    design, audit = _flat(_read(DESIGN)), _flat(_read(AUDIT))
+    assert "## 4. Each page's own scene (added 13 October 2026)" in _read(DESIGN)
+    for said in ("**the first click or key ends it at once**", "**A page where seconds matter is never covered**",
+                 "**Settings has a switch, \"Page animations\"**", "and only those being fetched for the first time"):
+        assert said in design, said
+    assert "Each page's own scene: an entrance related to the page, then a loading related to it" in audit
+    assert "have not been watched at the frame rate of a real screen" in audit
+
+    scenes = _read(SRC / "motion" / "scenes.ts")
+    # The pages that are never covered are the ones the design names.
+    urgent = sorted(re.findall(r"'(/[\w-]+)': scene\([^\n]*urgent: true", scenes))
+    assert urgent == ["/action-center", "/alarms", "/emergency", "/man-down", "/response-desk"], urgent
+    assert re.search(r"drone-patrols\\/\[\^/\]\+\$/, scene\([^\n]*urgent: true", scenes), "a drone patrol in flight"
+    assert "export const SCENE_MS = 520" in scenes and "export const SCENE_EXIT_MS = 190" in scenes
+
+    player = _read(SRC / "components" / "scenes" / "PageScene.tsx")
+    # It is drawn over the page and takes nothing from it; a key or a click ends it; it reads real requests.
+    assert "aria-hidden" in player and "if (reduced || !wanted) return null" in player
+    assert "window.addEventListener('pointerdown', cut, true)" in player and "window.addEventListener('keydown', cut, true)" in player
+    assert "useIsFetching({ predicate: firstFetch })" in player
+    assert "query.state.data === undefined" in player
+    sheet = _read(SRC / "motion" / "motion.css")
+    assert ".sav-scene { position: relative; height: 0; z-index: 2; pointer-events: none; }" in sheet
+    assert ".sav-scene--cover + .page-enter {" in sheet
+    # The shell draws it just before the page area, which is what the style sheet's rule relies on.
+    shell = _read(SRC / "components" / "layout" / "AppShell.tsx")
+    assert shell.index("<PageScene key=") < shell.index("className={pageEnterClass(location.pathname)}")
+    assert "Page animations" in _read(SRC / "components" / "states" / "MotionPreferences.tsx")

@@ -94,6 +94,60 @@ branch, bound to that query's own error and retry — and every page it could
 not read with certainty is listed and done by hand. The result is held by the
 type check, the lint, the tests and the build, and read page by page.
 
+## 4. Each page's own scene (added 13 October 2026)
+
+The owner asked on 13 October 2026 for more than the four quiet entrances of
+section 1: **an animation related to each page as the page is entered, and
+then a loading animation related to it.** This section is that, and it is
+built.
+
+**What is seen.** Every page has a drawing of what it is about - a wall of
+tiles lighting up for the camera wall, a sweep for a map, rotors turning for a
+drone screen, a bell for alerts, bars growing for analytics; twenty-four
+drawings for the 107 pages inside the shell, each page with its own name and
+its own words (`frontend/src/motion/scenes.ts`).
+
+1. **Entrance.** The drawing makes itself in the middle of the page area, over
+   the page's name, for about half a second (520 ms), and clears in 190 ms.
+   The page arrives as it clears.
+2. **Loading.** If the page is still fetching when the entrance is over, the
+   same drawing goes on, small, at the top of the page area beside the page's
+   words ("Loading alerts...", "Connecting the cameras...") until the page's
+   first answers are in. The page's own placeholders are beneath it as before.
+3. **The page.**
+
+**What it must not cost.** Section 2 says real content is never held back,
+and this is the one place where the page is out of sight for a moment that it
+need not be. It was the owner's choice, and it is bounded:
+
+- The page is there and takes a click or a key from its first frame. The scene
+  takes neither, and **the first click or key ends it at once**.
+- **A page where seconds matter is never covered**: man down, emergency
+  alert, alarm panels, the response desk, the action center and a drone patrol
+  in flight. There the emblem plays at the top while the page is already in
+  view. The same is done for any screen in full-screen focus.
+- The loading is read from the requests really in flight, and only those being
+  fetched for the first time: a refresh of what is on screen, and the shell's
+  own polls, are not "the page is loading". Nothing is timed and there is no
+  least time on screen.
+- It waits before it is seen, as every placeholder does, so a page that
+  answers at once shows no "Loading".
+- **Settings has a switch, "Page animations"**, per person. Reduced motion
+  stops the scenes with everything else.
+- The entrance is timed by the style sheet and ends hidden whether or not any
+  code hears that it ended.
+
+**Checked against the design skill** (`ui-ux-pro-max`, 13 October 2026). It
+has no entry for a page transition, so its general animation rules were used:
+every animation means something (the drawing says where you have arrived and
+what is being fetched); never block input during an animation; animations can
+be interrupted; leaving is quicker than arriving (190 ms against 520 ms);
+transform and opacity, with a drawn stroke on a drawing 112 pixels across;
+movement without end only for a loading indicator - the parts that go on
+moving are on screen only while a scene is; no indicator flashed for work
+that is over at once; never depend on an animation's end for a state to be
+right.
+
 ## Checked against the design skill
 
 The owner asked for the design portions to be done with the project's design

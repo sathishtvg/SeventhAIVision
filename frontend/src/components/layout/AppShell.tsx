@@ -13,6 +13,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { useFocusModeStore } from '@/store/focusMode'
 import { pageEnterClass } from '@/motion'
 import { LiveAnnouncer, LoadFailureNotice } from '@/components/states'
+import { PageScene } from '@/components/scenes/PageScene'
 
 const PAGE_TITLES: Record<string, string> = {
   '/':                   'Dashboard',
@@ -168,6 +169,9 @@ export function AppShell() {
             are standing in a customer's tenant is worthless if it can be
             scrolled off the top and forgotten. */}
         <SupportSessionBanner />
+        {/* The page's own scene, drawn over the page area as the page is entered. It must stay the element
+            just before the page area: the style sheet times the page's arrival against it. */}
+        <PageScene key={`scene:${location.pathname}`} pathname={location.pathname} docked={isFocusMode} />
         <Box
           key={location.pathname}
           className={pageEnterClass(location.pathname)}

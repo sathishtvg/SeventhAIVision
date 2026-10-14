@@ -275,6 +275,7 @@ themselves, so it cannot say more than is true.
 | Rule | Done | How |
 |---|---|---|
 | Every page arrives in the way its kind of page should; placeholders wait before they show; less motion for whoever asks; no request fails without a word | All pages | Phases 1-2, in the shell and the style sheet - no page was edited for it |
+| Each page's own scene: an entrance related to the page, then a loading related to it | All 107 pages inside the shell, each with its own name and words; 24 drawings between them. Asked for by the owner on 13 October 2026 | One list of pages and one component in the shell - no page was edited for it. Section 4 of the design note |
 | 2. A failed request says it failed | All 110 pages that fetch (247 places in 125 files, pages and the components they use). The camera wall and playback were the last two, done with the video states | A script over each page's syntax tree, then by hand where it could not be sure |
 | 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4) or nothing at all: 46 shaped placeholders in 27 files, and playback's day. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
 | 4. A changed filter keeps the last rows | Not yet | Phases 3-6 |
@@ -346,6 +347,33 @@ What the video states found (phase 4):
   "you have saved none". One line above the wall says which of the saved
   layouts, screen profiles and analytics choices could not be loaded; the
   wall itself is left as it is.
+
+What each page's own scene is (13 October 2026):
+
+- **The entrance.** As a page is entered its drawing makes itself in the
+  middle of the page area over the page's name, and clears; the page arrives
+  as it clears. About half a second, then 190 ms.
+- **The loading.** If the page is still fetching, the same drawing goes on,
+  small, at the top of the page area beside "Loading ..." in the page's own
+  words, until the first answers are in. It is read from the requests really
+  in flight that have no answer yet; a refresh is not loading.
+- **It never takes a click or a key**, and the first of either ends it. The
+  page beneath has them from its first frame.
+- **Six kinds of page are never covered** - man down, emergency alert, alarm
+  panels, the response desk, the action center, a drone patrol in flight -
+  and nor is a screen in full-screen focus. Their emblem plays at the top
+  while the page is in view.
+- **It can be switched off** in Settings ("Page animations"), per person, and
+  is not drawn at all with reduced motion.
+- Looked at in a browser in the real shell, dark and light: every drawing;
+  the entrance; the loading against a request that does not answer; a page
+  that is never covered; a scene cut short by a key. The times were read from
+  the style sheet's own animations: the page is out of sight until 520 ms
+  and at full strength between 670 and 840 ms, by its kind.
+- **Not done:** the scenes have not been watched at the frame rate of a real
+  screen - the browser used to look at them does not draw frames, so each was
+  looked at stopped at a moment, not in motion. The sign-in pages and the
+  client's portal are outside the shell and have no scene.
 
 Not done, and why:
 
