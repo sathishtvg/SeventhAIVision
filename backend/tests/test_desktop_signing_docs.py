@@ -195,7 +195,9 @@ def test_ci_runs_the_two_scripts_tests_and_the_record_says_what_was_and_was_not_
     assert "it takes a certificate issued to the business, which has not been bought" in said
     assert "because nobody trusts that certificate" in said
     assert "With no signing variable set the build is what it was" in said
-    assert "The desktop app was not rebuilt for this." in said and package["version"] == "1.0.7"
+    assert "The desktop app was not rebuilt for this." in said
+    # It was 1.0.7 then. It has been rebuilt since, for other work (the record says which), and only ever forwards.
+    assert tuple(int(n) for n in package["version"].split(".")) >= (1, 0, 7), package["version"]
     # Every existing file that was changed is named.
     for changed in ("frontend/src/pages/Login.tsx", "desktop/electron-builder.yml", "desktop/package.json",
                     ".github/workflows/ci.yml"):
