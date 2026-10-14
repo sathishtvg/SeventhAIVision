@@ -223,3 +223,31 @@ def test_the_last_phases_are_what_the_documents_say_and_the_matrix_is_there():
     for said in ("have been looked at stopped, not in motion", "Clickable cards that are not buttons cannot be reached by keyboard"):
         assert said in audit, said
 
+
+def test_the_windows_app_and_the_phone_are_what_the_documents_say():
+    audit, design = _flat(_read(AUDIT)), _flat(_read(DESIGN))
+    # The Windows app is the web in a shell: the build that carries this work is named, and its identity is the same.
+    desktop = json.loads(_read(REPO_ROOT / "desktop" / "package.json"))
+    assert tuple(int(n) for n in desktop["version"].split(".")) >= (1, 0, 8)
+    assert "**Desktop 1.0.8 has all of the above.**" in audit
+    assert "### Desktop 1.0.8" in _read(REPO_ROOT / "LATEST_ENTERPRISE_FEATURE_GAP_ANALYSIS.md")
+
+    # The phone: its screens' scenes, put round every screen by the navigators, with no library added for them.
+    assert "## 5. The phone (added 14 October 2026)" in _read(DESIGN)
+    assert "**Every screen of the phone has its own scene**" in audit
+    phone = REPO_ROOT / "mobile"
+    navigation = _read(phone / "src" / "navigation" / "index.tsx")
+    assert navigation.count("screenLayout={sceneLayout}") == 6
+    scene = _read(phone / "src" / "motion" / "ScreenScene.tsx")
+    assert 'pointerEvents="none"' in scene and "onTouchStart={over ? undefined : cut}" in scene
+    assert "useIsFetching({ predicate: firstFetch })" in scene and "useNativeDriver: true" in scene
+    store = _read(phone / "src" / "motion" / "motionStore.ts")
+    assert "isReduceMotionEnabled().catch(() => true)" in store, "a phone that cannot say is taken to want less motion"
+    package = json.loads(_read(phone / "package.json"))
+    used = set(package["dependencies"]) | set(package.get("devDependencies", {}))
+    assert not used & {"react-native-reanimated", "moti", "lottie-react-native", "react-native-svg"}
+    # What was not done on the phone is said.
+    for said in ("**On the phone, only the screens' own scenes were done**",
+                 "it has not been seen on a device or the emulator, only in tests"):
+        assert said in audit, said
+

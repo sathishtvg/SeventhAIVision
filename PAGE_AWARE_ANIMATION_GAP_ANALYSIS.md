@@ -14,6 +14,8 @@ The **web app** (`frontend/`), which is also what the Windows app shows: the
 desktop app is a copy of the web build, so it gains all of this at its next
 build and needs no work of its own. The **phone app** (`mobile/`) is a separate
 React Native code base with its own navigation and is not part of this brief.
+On 14 October 2026 the owner asked for the phone and the Windows app as well;
+what was done for each is at the end of section 9.
 
 ## 2. What is there already
 
@@ -242,7 +244,8 @@ The design that was agreed is in
   progress. A real progress bar needs a job with progress on the server side.
 - No route-level loading screen: there are no lazy routes to wait for.
 - The glass look (blur) stays; it is only kept away from video and long lists.
-- The phone app is not part of this.
+- The phone app is not part of this. (The owner added it on 14 October 2026:
+  section 9.)
 
 ## 8. Page groups
 
@@ -413,8 +416,41 @@ What is still not done, and why:
   by one.
 - **Charts and figures do not keep the last answer** when their range changes;
   each shows its placeholder. Only lists do.
-- **The phone app** is not part of this, and the **desktop app** has it at its
-  next build.
+- **On the phone, only the screens' own scenes were done** (below). Its
+  screens keep their own spinners, and by a search of the code 11 of its
+  57 screens never read an error at all, so a failed request there still
+  reads as an empty screen. That is the phone's counterpart of rule 2 and
+  was not part of what was asked for the phone.
+
+The Windows app and the phone (14 October 2026):
+
+- **Desktop 1.0.8 has all of the above.** It is the web build of this day
+  in the Windows shell; nothing in the shell was changed. It was installed
+  on the development PC over 1.0.7 - Windows refused the new unsigned
+  installer at first, as it did 1.0.7, and accepted it minutes later - and
+  the installed copy was checked for the scenes, the video states, the
+  kept rows and the words of the new states.
+- **Every screen of the phone has its own scene**, made with what the app
+  already had - React Native's own animation and the icon set it already
+  ships, no library added: the screen's emblem and name as it opens, for
+  half a second, then the emblem small at the top beside the screen's own
+  words while its first answers are fetched. 56 screens in the stacks and
+  three tabs; 54 emblems from the icons, each with one part that goes on
+  moving (a ring going out, a sweep, a swing, a hover, a pulse). The
+  navigators put it round every screen (`mobile/src/motion/`), so no screen
+  was edited for it.
+- **On the phone it is bounded as on the web, and more.** It takes no touch
+  and the first touch ends it. Eleven screens are never covered: the ones
+  where seconds matter (emergency, alarms, dispatch, the action center, a
+  patrol being scanned or run) and the ones that are a camera's picture. A
+  request waiting for a signal is not counted as loading, so a guard with no
+  signal is never left looking at "Loading". It is played once, when a
+  screen is opened, not when it is come back to. Nothing moves on a phone set
+  to remove animations, nor before the app knows whether it is, and Settings
+  has a switch, "Screen animations".
+- **Not done on the phone:** it has not been seen on a device or the
+  emulator, only in tests. The phone build made on 10 October does not have
+  it; it reaches a phone with the next build.
 
 Not done in the video states, and why:
 

@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { getSettings, upsertSetting, SETTING_KEYS, type SettingKey, type TenantSetting } from '@/api/settings'
 import { get2FAStatus, setup2FA, enable2FA, disable2FA } from '@/api/twofa'
 import { useBiometricStore } from '@/store/biometric'
+import { useMotionStore } from '@/motion/motionStore'
 import { Card } from '@/components/Card'
 import { colors, fontSize, spacing, radius } from '@/theme'
 
@@ -336,6 +337,40 @@ function BiometricSection() {
   )
 }
 
+/**
+ * Each screen's own entrance, for this person on this phone. Apart from the phone's own "remove animations"
+ * setting, which is always followed: somebody who moves between screens all shift may want them simply to appear.
+ */
+function ScreenAnimationsSection() {
+  const reduced = useMotionStore((s) => s.reduced)
+  const wanted = useMotionStore((s) => s.wanted)
+  const setWanted = useMotionStore((s) => s.setWanted)
+  const on = wanted === true && reduced === false
+  return (
+    <Card style={styles.settingCard}>
+      <View style={styles.bioRow}>
+        <Ionicons name="sparkles-outline" size={22} color={on ? colors.primary : colors.textSecondary} />
+        <View style={styles.bioInfo}>
+          <Text style={styles.settingLabel}>Screen animations</Text>
+          <Text style={styles.settingDesc}>
+            {reduced
+              ? 'Not played: this phone is set to remove animations.'
+              : 'Each screen shows its own emblem as it opens, and keeps it moving while the screen loads. A touch skips it.'}
+          </Text>
+        </View>
+        <Switch
+          value={on}
+          disabled={reduced !== false}
+          onValueChange={(value) => { void setWanted(value) }}
+          trackColor={{ false: colors.surface, true: colors.primaryMuted }}
+          thumbColor={on ? colors.primary : colors.textSecondary}
+          accessibilityLabel="Screen animations"
+        />
+      </View>
+    </Card>
+  )
+}
+
 export function SettingsScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -366,6 +401,9 @@ export function SettingsScreen() {
       <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Account Security</Text>
       <BiometricSection />
       <TwoFASection />
+
+      <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Display</Text>
+      <ScreenAnimationsSection />
     </ScrollView>
   )
 }
