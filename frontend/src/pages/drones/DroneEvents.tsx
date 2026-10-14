@@ -19,6 +19,7 @@ import { ConfidenceText, EventStatusChip, LicenceBanner, RiskChip } from '@/comp
 import { fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { DroneNav } from './DroneNav'
 import { ErrorState } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const STATUSES: EventStatus[] = ['NEW', 'ACKNOWLEDGED', 'INVESTIGATING', 'ESCALATED', 'RESOLVED', 'FALSE_POSITIVE']
 
@@ -40,6 +41,10 @@ export default function DroneEvents() {
     refetchInterval: 15_000,
   })
   const events = data?.items ?? []
+  // What the fifteen-second refresh brought that was not there before: marked for a few seconds, and said.
+  const fresh = useNewItems(events, (e) => e.id, {
+    scope: JSON.stringify([params, page, rows]), say: (n) => countOf(n, 'new drone event'),
+  })
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader title="Drone Events" subtitle="What the drones saw, how serious it is, and what was done about it" />
@@ -81,7 +86,8 @@ export default function DroneEvents() {
               </TableHead>
               <TableBody>
                 {events.map((e) => (
-                  <TableRow key={e.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/drone-events/${e.id}`)}>
+                  <TableRow key={e.id} hover {...newItemProps(fresh.has(String(e.id)), toneOf(e.risk_level))}
+                            sx={{ cursor: 'pointer' }} onClick={() => navigate(`/drone-events/${e.id}`)}>
                     <TableCell>{fmt(e.detected_at)}</TableCell>
                     <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{pretty(e.module_type)}</Typography>
                       {e.label && <Typography variant="caption" color="text.secondary">{e.label}</Typography>}

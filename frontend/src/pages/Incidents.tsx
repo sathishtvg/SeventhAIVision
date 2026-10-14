@@ -17,6 +17,7 @@ import { getUsers } from '@/api/users'
 import type { Incident, IncidentSeverity } from '@/types/api'
 import { MODULE_LABELS } from '@/api/licenses'
 import { ErrorState, TableErrorRow } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const STATUS_STEPS = ['open', 'dispatched', 'en_route', 'on_scene', 'contained', 'resolved'] as const
 const NEXT_STATUS: Record<string, string> = {
@@ -307,6 +308,12 @@ export default function Incidents() {
       ),
   })
 
+  // An incident that arrives while the list is open is marked in its severity's colour for a few seconds, and a
+  // screen reader is told how many.
+  const fresh = useNewItems(incidents?.items as { id: string }[] | undefined, (i) => i.id, {
+    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), say: (n) => countOf(n, 'new incident'),
+  })
+
   const { mutate: bulkResolve, isPending: bulkResolvePending } = useMutation({
     mutationFn: (ids: string[]) => bulkResolveIncidents(ids),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['incidents'] }); setSelectedIds(new Set()) },
@@ -413,7 +420,9 @@ export default function Incidents() {
                     </TableRow>
                   )
                 : incidents?.items?.map((incident: any) => (
-                    <TableRow key={incident.id} hover selected={selectedIds.has(incident.id)} sx={{ cursor: 'pointer' }} onClick={() => setSelected(incident)}>
+                    <TableRow key={incident.id} hover selected={selectedIds.has(incident.id)}
+                              {...newItemProps(fresh.has(String(incident.id)), toneOf(incident.severity))}
+                              sx={{ cursor: 'pointer' }} onClick={() => setSelected(incident)}>
                       <TableCell padding="checkbox" onClick={(e) => { e.stopPropagation(); toggleOne(incident.id) }}>
                         <Checkbox size="small" checked={selectedIds.has(incident.id)} onChange={() => {}} />
                       </TableCell>

@@ -20,6 +20,7 @@ import { DecisionStatusChip, RiskChip } from '@/components/intel/intelUi'
 import { SOURCE_LABEL, STATUS_LABEL, fmt, pretty, useIntelRealtime } from '@/components/intel/intelFormat'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
 import { ErrorState } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 export default function Situations() {
   const navigate = useNavigate()
@@ -42,6 +43,10 @@ export default function Situations() {
     refetchInterval: 15_000,
   })
   const situations = data?.items ?? []
+  // What the fifteen-second refresh brought that was not there before: marked for a few seconds, and said.
+  const fresh = useNewItems(situations, (s) => s.id, {
+    scope: JSON.stringify([params, page, rows]), say: (n) => countOf(n, 'new situation'),
+  })
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader title="Security Situations"
@@ -89,7 +94,8 @@ export default function Situations() {
               </TableHead>
               <TableBody>
                 {situations.map((s) => (
-                  <TableRow key={s.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/situations/${s.id}`)}>
+                  <TableRow key={s.id} hover {...newItemProps(fresh.has(String(s.id)), toneOf(s.risk_level))}
+                            sx={{ cursor: 'pointer' }} onClick={() => navigate(`/situations/${s.id}`)}>
                     <TableCell><RiskChip level={s.risk_level} score={s.risk_score} /></TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>{s.title}</Typography>

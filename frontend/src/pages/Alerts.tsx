@@ -49,6 +49,7 @@ import { getSites } from '@/api/sites'
 import type { AlertSeverity } from '@/types/api'
 import { MODULE_LABELS } from '@/api/licenses'
 import { ErrorState, TableErrorRow } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const STATUS_FILTERS = ['all', 'open', 'acknowledged', 'resolved', 'dismissed'] as const
 type StatusFilter = (typeof STATUS_FILTERS)[number]
@@ -252,6 +253,12 @@ export default function Alerts() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['alerts'] }); setSelectedIds(new Set()) },
   })
 
+  // An alert that arrives while the list is open (a live event makes the list fetch itself again) is marked in
+  // its severity's colour for a few seconds, and a screen reader is told how many.
+  const fresh = useNewItems(alerts?.items as { id: string }[] | undefined, (a) => a.id, {
+    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), say: (n) => countOf(n, 'new alert'),
+  })
+
   const allIds = alerts?.items?.map((a: any) => a.id) ?? []
   const allSelected = allIds.length > 0 && allIds.every((id: string) => selectedIds.has(id))
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(allIds))
@@ -354,7 +361,8 @@ export default function Alerts() {
                     </TableRow>
                   )
                 : alerts?.items?.map((alert: any) => (
-                    <TableRow key={alert.id} hover selected={selectedIds.has(alert.id)} sx={{ cursor: 'pointer' }}>
+                    <TableRow key={alert.id} hover selected={selectedIds.has(alert.id)}
+                              {...newItemProps(fresh.has(String(alert.id)), toneOf(alert.severity))} sx={{ cursor: 'pointer' }}>
                       <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                         <Checkbox size="small" checked={selectedIds.has(alert.id)} onChange={() => toggleOne(alert.id)} />
                       </TableCell>
