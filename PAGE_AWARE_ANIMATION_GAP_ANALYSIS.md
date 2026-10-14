@@ -279,7 +279,7 @@ themselves, so it cannot say more than is true.
 | 2. A failed request says it failed | All 110 pages that fetch (247 places in 125 files, pages and the components they use). The camera wall and playback were the last two, done with the video states | A script over each page's syntax tree, then by hand where it could not be sure |
 | 1. A placeholder shaped like the content | Every page that had a spinner in the middle of nothing (26 places), the word "Loading" (4) or nothing at all: 46 shaped placeholders in 27 files, and playback's day. The 86 pages that already drew a skeleton keep theirs, now with the wait before it shows | By the shape of what the page draws next, then by hand |
 | 4. A changed filter keeps the last rows | Not yet | Phases 3-6 |
-| What is new is marked and said | Not yet | Phases 4-5 |
+| What is new is marked and said | The four lists that fetch themselves again while they are open: alerts, incidents, drone events, situations. A row that arrives is tinted in its severity's colour for six seconds and a screen reader is told how many ("2 new alerts"); the rows a list first shows, and the first after a filter changes, are not new. The command centre, action center, man down and the response desk are not done | Phase 4, by hand |
 | Video states | The player (`HlsPlayer`) and the frame-by-frame live view (`LiveImage`): the wall's tiles and its full-screen view, the situation page's live view, the drone screens' player. The wall's alert is a steady frame | Phase 4, by hand, and looked at in a browser against streams that play, wait, fail and stop |
 | Patrol, drone, map, export states | Not yet | Phases 5-6 |
 

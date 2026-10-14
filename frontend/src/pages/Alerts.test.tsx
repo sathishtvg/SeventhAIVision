@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@/test/utils'
 import Alerts from '@/pages/Alerts'
 import { getAlerts, acknowledgeAlert } from '@/api/alerts'
 import { useAuthStore } from '@/store/auth'
+import { useAnnouncer } from '@/motion'
 import type { Alert } from '@/types/api'
 
 vi.mock('@/api/alerts', () => ({
@@ -115,5 +116,24 @@ describe('Alerts', () => {
     render(<Alerts />)
     await screen.findByText('Blocklist Hit')
     expect(screen.queryByRole('button', { name: /^acknowledge$/i })).not.toBeInTheDocument()
+  })
+
+  it('marks an alert that arrives while the list is open, in its severity, and says how many', async () => {
+    render(<Alerts />)
+    const first = (await screen.findByText('Blocklist Hit')).closest('tr')!
+    // The rows a list first shows are not new.
+    expect(first).not.toHaveClass('sav-new')
+
+    vi.mocked(getAlerts).mockResolvedValue({
+      items: [{ ...mockOpenAlert, id: 'a2', title: 'Intrusion at Gate 2', severity: 'high' }, mockOpenAlert], has_more: false,
+    })
+    // The list fetches itself again, as it does when a live event arrives.
+    window.dispatchEvent(new Event('visibilitychange'))
+
+    const arrived = (await screen.findByText('Intrusion at Gate 2')).closest('tr')!
+    await waitFor(() => expect(arrived).toHaveClass('sav-new'))
+    expect(arrived).toHaveAttribute('data-tone', 'high')
+    expect(screen.getByText('Blocklist Hit').closest('tr')).not.toHaveClass('sav-new')
+    expect(useAnnouncer.getState().text).toBe('1 new alert')
   })
 })
