@@ -56,6 +56,7 @@ from app.routers import (
     evidence,
     exports,
     gps,
+    fleet,
     handover,
     i18n,
     incident_responses,
@@ -474,6 +475,7 @@ app.include_router(scheduled_reports.router)
 app.include_router(ip_allowlist.router)
 app.include_router(iot.router)
 app.include_router(gps.router)
+app.include_router(fleet.router)
 app.include_router(i18n.router)
 app.include_router(contractors.router)
 app.include_router(parking.router)

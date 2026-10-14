@@ -5,20 +5,22 @@ from math import radians, sin, cos, sqrt, atan2
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
-from app.dependencies.tenant import get_db_with_tenant
+from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
+from app.dependencies.tenant import _client_ip, get_db_with_tenant
+from app.services import fleet_vehicles as fv
 
 router = APIRouter(prefix="/api/v1/gps", tags=["gps"])
 
-VALID_VEHICLE_TYPES = {
-    "patrol_car", "motorcycle", "van", "truck",
-    "golf_cart", "bicycle", "boat", "custom",
-}
+# One list of vehicle types, kept by the fleet's vehicle service.
+VALID_VEHICLE_TYPES = set(fv.VEHICLE_TYPES)
+#: What this older API lets a PUT change. The fleet API (/api/v1/fleet) changes the rest.
+_PUT_FIELDS = {"name", "plate_number", "vehicle_type", "make", "model", "color", "site_id", "assigned_driver_user_id"}
 
 MOVING_SPEED_KMH = 5.0      # speed above this = moving
 IDLE_TIMEOUT_MIN = 10       # minutes without position = offline
@@ -54,8 +56,13 @@ def _point_in_polygon(lat: float, lon: float, polygon: list) -> bool:
 async def gps_dashboard(
     site_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
+    params: dict = {"site_id": site_id} if site_id else {}
     site_filter = "AND v.site_id = :site_id" if site_id else ""
+    scope = site_scope_clause(allowed, "v.site_id", params)
+    if scope:
+        site_filter += f" AND {scope}"
     rows = await db.execute(text(f"""
         SELECT v.id, v.name, v.plate_number, v.vehicle_type, v.color,
                v.current_status, v.last_lat, v.last_lon, v.last_speed,
@@ -68,7 +75,7 @@ async def gps_dashboard(
         LEFT JOIN users u ON u.id = v.assigned_driver_user_id
         WHERE v.is_active = TRUE {site_filter}
         ORDER BY v.name
-    """), {"site_id": site_id} if site_id else {})
+    """), params)
     vehicles = [dict(r._mapping) for r in rows]
 
     total   = len(vehicles)
@@ -77,16 +84,18 @@ async def gps_dashboard(
     offline = sum(1 for v in vehicles if v["current_status"] == "offline")
 
     # recent geofence events (last 2 hours)
-    ev_rows = await db.execute(text("""
+    ev_params: dict = {}
+    ev_scope = site_scope_clause(allowed, "v.site_id", ev_params)
+    ev_rows = await db.execute(text(f"""
         SELECT ge.id, ge.event_type, ge.occurred_at, ge.speed,
                v.name AS vehicle_name, g.name AS geofence_name
         FROM geofence_events ge
         JOIN vehicles v  ON v.id  = ge.vehicle_id
         JOIN geofences g ON g.id = ge.geofence_id
-        WHERE ge.occurred_at >= now() - INTERVAL '2 hours'
+        WHERE ge.occurred_at >= now() - INTERVAL '2 hours' {('AND ' + ev_scope) if ev_scope else ''}
         ORDER BY ge.occurred_at DESC
         LIMIT 20
-    """))
+    """), ev_params)
     events = [dict(r._mapping) for r in ev_rows]
 
     return {
@@ -102,9 +111,13 @@ async def list_vehicles(
     site_id: Optional[str] = None,
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
     filters = "WHERE v.is_active = TRUE"
     params: dict = {}
+    scope = site_scope_clause(allowed, "v.site_id", params)
+    if scope:
+        filters += f" AND {scope}"
     if site_id:
         filters += " AND v.site_id = :site_id"
         params["site_id"] = site_id
@@ -126,8 +139,10 @@ async def list_vehicles(
 @router.post("/vehicles", dependencies=[Depends(require_permission("gps:write"))])
 async def create_vehicle(
     body: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
     name = (body.get("name") or "").strip()
     if not name:
@@ -135,29 +150,21 @@ async def create_vehicle(
     vtype = body.get("vehicle_type", "patrol_car")
     if vtype not in VALID_VEHICLE_TYPES:
         raise HTTPException(422, f"vehicle_type must be one of {sorted(VALID_VEHICLE_TYPES)}")
-
-    row = await db.execute(text("""
-        INSERT INTO vehicles (tenant_id, site_id, name, plate_number, vehicle_type,
-                              make, model, color, assigned_driver_user_id)
-        VALUES (:tid, :site_id, :name, :plate, :vtype, :make, :model, :color, :driver)
-        RETURNING *
-    """), {
-        "tid":    token.tenant_id,
-        "site_id": body.get("site_id"),
-        "name":   name,
-        "plate":  body.get("plate_number"),
-        "vtype":  vtype,
-        "make":   body.get("make"),
-        "model":  body.get("model"),
-        "color":  body.get("color"),
-        "driver": body.get("assigned_driver_user_id"),
-    })
+    # What this API always took, and nothing else: it ignored other keys, and still does.
+    given = {k: body[k] for k in _PUT_FIELDS if k in body}
+    row = await fv.create(db, {**given, "name": name, "vehicle_type": vtype}, tenant_id=str(token.tenant_id),
+                          user_id=str(token.user_id), allowed=allowed, plate_required=False, ip=_client_ip(request))
     await db.commit()
-    return dict(row.mappings().one())
+    return row
 
 
 @router.get("/vehicles/{vehicle_id}", dependencies=[Depends(require_permission("gps:read"))])
-async def get_vehicle(vehicle_id: UUID, db: AsyncSession = Depends(get_db_with_tenant)):
+async def get_vehicle(
+    vehicle_id: UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    await fv.visible_vehicle(db, str(vehicle_id), allowed)
     row = await db.execute(text("""
         SELECT v.*, s.name AS site_name, u.full_name AS driver_name
         FROM vehicles v
@@ -186,27 +193,37 @@ async def get_vehicle(vehicle_id: UUID, db: AsyncSession = Depends(get_db_with_t
 async def update_vehicle(
     vehicle_id: UUID,
     body: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
-    allowed = {"name", "plate_number", "vehicle_type", "make", "model",
-               "color", "site_id", "assigned_driver_user_id", "is_active"}
-    updates = {k: v for k, v in body.items() if k in allowed}
+    if "is_active" in body:
+        # Deactivating is archiving now: with a reason, by whoever may archive, and audited.
+        raise HTTPException(409, "Archive or restore the vehicle instead (POST /api/v1/fleet/vehicles/{id}/archive)")
+    updates = {k: v for k, v in body.items() if k in _PUT_FIELDS}
     if "vehicle_type" in updates and updates["vehicle_type"] not in VALID_VEHICLE_TYPES:
         raise HTTPException(400, f"vehicle_type must be one of {sorted(VALID_VEHICLE_TYPES)}")
     if not updates:
         raise HTTPException(400, "No valid fields to update")
-
-    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-    updates["id"] = str(vehicle_id)
-    await db.execute(text(f"UPDATE vehicles SET {set_clause}, updated_at = now() WHERE id = :id"), updates)
+    await fv.update(db, str(vehicle_id), updates, tenant_id=str(token.tenant_id), user_id=str(token.user_id),
+                    allowed=allowed, ip=_client_ip(request))
     await db.commit()
     return {"ok": True}
 
 
-@router.delete("/vehicles/{vehicle_id}", dependencies=[Depends(require_permission("gps:write"))])
-async def deactivate_vehicle(vehicle_id: UUID, db: AsyncSession = Depends(get_db_with_tenant)):
-    await db.execute(text("UPDATE vehicles SET is_active = FALSE, updated_at = now() WHERE id = :id"),
-                     {"id": str(vehicle_id)})
+@router.delete("/vehicles/{vehicle_id}", dependencies=[Depends(require_permission("fleet:vehicle:archive"))])
+async def deactivate_vehicle(
+    vehicle_id: UUID,
+    request: Request,
+    reason: str = Query("Archived through the GPS delete action", max_length=500),
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Archives the vehicle: nothing about it is deleted (see /api/v1/fleet/vehicles/{id}/archive)."""
+    await fv.archive(db, str(vehicle_id), reason, tenant_id=str(token.tenant_id), user_id=str(token.user_id),
+                     allowed=allowed, ip=_client_ip(request))
     await db.commit()
     return {"ok": True}
 
@@ -232,11 +249,9 @@ async def ingest_position(
     heading = body.get("heading")
     accuracy = body.get("accuracy")
 
-    # verify vehicle exists
-    v_row = await db.execute(text("SELECT * FROM vehicles WHERE id = :id AND is_active = TRUE"),
-                              {"id": str(vehicle_id)})
-    vehicle = v_row.mappings().first()
-    if not vehicle:
+    # verify vehicle exists, is not archived, and is at a site the sender may see
+    vehicle = await fv.visible_vehicle(db, str(vehicle_id), await get_allowed_site_ids(token, db))
+    if not vehicle["is_active"]:
         raise HTTPException(404, "Vehicle not found")
 
     # insert position
@@ -409,7 +424,9 @@ async def get_positions(
     hours: int = 8,
     limit: int = 500,
     db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
+    await fv.visible_vehicle(db, str(vehicle_id), allowed)
     rows = await db.execute(text("""
         SELECT lat, lon, speed, heading, recorded_at
         FROM vehicle_positions
@@ -426,7 +443,9 @@ async def get_journeys(
     vehicle_id: UUID,
     limit: int = 30,
     db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
+    await fv.visible_vehicle(db, str(vehicle_id), allowed)
     rows = await db.execute(text("""
         SELECT * FROM vehicle_journeys
         WHERE vehicle_id = :id
@@ -521,9 +540,13 @@ async def list_geofence_events(
     geofence_id: Optional[str] = None,
     hours: int = 24,
     db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
     filters = "WHERE ge.occurred_at >= now() - make_interval(hours => :hours)"
     params: dict = {"hours": hours}
+    scope = site_scope_clause(allowed, "v.site_id", params)
+    if scope:
+        filters += f" AND {scope}"
     if vehicle_id:
         filters += " AND ge.vehicle_id = :vid"
         params["vid"] = vehicle_id
