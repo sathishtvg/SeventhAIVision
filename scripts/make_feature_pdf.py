@@ -44,7 +44,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "14 October 2026"
-EDITION = "Edition 11"
+EDITION = "Edition 12"
 HEAD = "0158"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -109,6 +109,10 @@ EDITIONS = [
      "says so; a camera's tile says what it is doing; nothing is drawn as live that "
      "is not. No route and no table is added. <b>Corrects Known limits:</b> the "
      "sign-in page has fetched a newer console by itself since 10 October."],
+    ["Edition 12", "14 October 2026", "0158",
+     "The Windows app is 1.0.8 and carries all of the web console's new motion and "
+     "loading. Every screen of the phone has its own entrance and its own loading, "
+     "with the same bounds. No route and no table is added."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -299,7 +303,7 @@ story += [
     Spacer(1, 6),
     stat_strip([
         ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
-        ("6,437", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,451", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1704,7 +1708,7 @@ story += bullets([
     "and each held to the server by a test, but "
     "have not been run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.7 is built and carries every "
+    "<b>A code-signing certificate.</b> Desktop 1.0.8 is built and carries every "
     "screen of this edition. Its installer is not code-signed, so Windows warns "
     "before it runs - and where Smart App Control is on, may refuse a newly "
     "built installer for some minutes before it allows it.",
@@ -1731,10 +1735,11 @@ story.append(data_table(
          "reading, published briefings, and the work orders and case tasks given "
          "to them. Whoever manages privacy draws and deletes a camera's privacy "
          "zones. Offline outbox queues actions taken with "
-         "no signal and sends them when it returns."],
+         "no signal and sends them when it returns. Each screen has its own "
+         "entrance and loading."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.7, which installs over 1.0.6. It is a copy of the web "
+         "Version 1.0.8, which installs over 1.0.7. It is a copy of the web "
          "console taken when it is built: a fix to the web reaches it in the "
          "next build."],
     ],
@@ -1791,9 +1796,9 @@ story += bullets([
     "<b>Limits.</b> The motion has been checked stopped at a moment, not watched "
     "at a screen's frame rate. A frame-by-frame camera tile whose stream stops "
     "part-way keeps its last frame and says nothing: the browser reports nothing. "
-    "Cards that are clicked but are not buttons cannot yet be reached by keyboard. "
-    "The phone app is not part of this, and the desktop app has it at its next "
-    "build.",
+    "Cards that are clicked but are not buttons cannot yet be reached by keyboard.",
+    "<b>The Windows app</b> has all of this since 1.0.8, and every screen of "
+    "<b>the phone</b> its own entrance and loading.",
 ])
 
 story.append(Spacer(1, 10))
@@ -1904,21 +1909,20 @@ story += bullets([
     "<b>Payroll:</b> graduated first- and second-year PR CPF rates and the "
     "Additional Wage ceiling are not implemented; PWM rates are not shipped.",
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
-    "<b>The phone app</b> needs a new build and a device pass for what was added "
-    "after its SDK upgrade; <b>the desktop app</b> is not code-signed.",
+    "<b>The phone app</b> needs a pass on a device; <b>the desktop app</b> is not code-signed.",
     "<b>A signed-in browser tab left open keeps the web console it loaded</b> "
     "until it is reloaded. The sign-in page fetches a newer console by itself.",
     "<b>The Helm chart</b> has not been installed on a cluster.",
 ])
 
-story.append(Spacer(1, 14))
+story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
     "database migrations, 282 tables, 108 API modules serving 1,043 operations, 115 backend "
-    "services, 111 web routes and 57 phone screens, covered by 6,437 automated tests "
-    "(backend 4,047, repository inspection 1,348, web 694, phone 348). Capability counts "
+    "services, 111 web routes and 57 phone screens, covered by 6,451 automated tests "
+    "(backend 4,047, repository inspection 1,349, web 694, phone 361). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
