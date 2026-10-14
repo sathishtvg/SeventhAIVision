@@ -9,12 +9,13 @@
  */
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View,
 } from 'react-native'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { finishTask, getCase, listMyCases } from '@/api/cases'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { apiErrorText } from '@/lib/apiErrorText'
 import { myOpenTasks, noteNeeded, taskDue, type MyTask } from '@/lib/deskWork'
 import { colors, fontSize, radius, spacing } from '@/theme'
@@ -85,7 +86,7 @@ export function MyCaseTasksScreen() {
   const onRefresh = useCallback(async () => { setRefreshing(true); await again(); setRefreshing(false) }, [again])
   const waiting = mine.isLoading || details.some((d) => d.isLoading)
   const error = mine.error ?? details.find((d) => d.error)?.error
-  if (waiting) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (waiting) return <ListSkeleton />
   return (
     <View style={styles.root}>
       <FlatList
@@ -95,11 +96,15 @@ export function MyCaseTasksScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         renderItem={({ item }) => <Task item={item} onChanged={again} />}
-        ListEmptyComponent={
+        ListEmptyComponent={error ? (
+          // Nothing to show because a case could not be read: said, and can be asked again - not "nothing waiting".
+          <ErrorState title="Your case tasks could not be loaded" error={error} words={apiErrorText(error)} onRetry={again} />
+        ) : (
           <View style={styles.center}>
-            <Ionicons name={error ? 'alert-circle-outline' : 'checkmark-done-outline'} size={48} color={colors.textDisabled} />
-            <Text style={styles.empty}>{error ? apiErrorText(error) : 'No case task is waiting on you.'}</Text>
-          </View>}
+            <Ionicons name="checkmark-done-outline" size={48} color={colors.textDisabled} />
+            <Text style={styles.empty}>No case task is waiting on you.</Text>
+          </View>
+        )}
       />
     </View>
   )

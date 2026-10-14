@@ -4,7 +4,7 @@ import {
   RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import {
   getVisitors, getUpcomingVisitors, createVisitor,
@@ -14,6 +14,7 @@ import {
 import { Card } from '@/components/Card'
 import { VisitStanding } from '@/components/VisitorAuthCards'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 
 // Status values from the DB: pending | arrived | departed | cancelled | expired
 const STATUS_COLOR: Record<string, string> = {
@@ -135,8 +136,9 @@ function ListTab() {
   }
   const [form, setForm] = useState<VisitorCreate>(emptyForm)
 
-  const { data: visitorsPage, isLoading } = useQuery({
+  const { data: visitorsPage, isLoading, isLoadingError: visitorsPageFailed, error: visitorsPageError, refetch: refetchVisitorsPage, isPlaceholderData: visitorsPageRefreshing } = useQuery({
     queryKey: ['visitors', statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => getVisitors({ status: statusFilter, limit: 100, offset: 0 }),
   })
   const visitors = visitorsPage?.items ?? []
@@ -197,13 +199,14 @@ function ListTab() {
         </Pressable>
       </View>
 
-      {!isLoading && visitorsTotal > 0 && (
+      {!isLoading && !visitorsPageFailed && visitorsTotal > 0 && (
         <Text style={styles.totalCount}>{visitorsTotal} visitor{visitorsTotal !== 1 ? 's' : ''}</Text>
       )}
 
+      {visitorsPageRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : visitors.length === 0 ? (
+        <ListSkeleton />
+      ) : visitorsPageFailed ? <ErrorState error={visitorsPageError} onRetry={refetchVisitorsPage} /> : visitors.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="people-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No visitors</Text>
@@ -319,7 +322,7 @@ function UpcomingTab() {
   const qc = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: upcoming = [], isLoading } = useQuery({
+  const { data: upcoming = [], isLoading, isLoadingError: upcomingFailed, error: upcomingError, refetch: refetchUpcoming } = useQuery({
     queryKey: ['visitors-upcoming'],
     queryFn: () => getUpcomingVisitors(24),
   })
@@ -336,7 +339,8 @@ function UpcomingTab() {
     setRefreshing(false)
   }, [qc])
 
-  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (isLoading) return <ListSkeleton />
+  if (upcomingFailed) return <ErrorState error={upcomingError} onRetry={refetchUpcoming} />
 
   if (upcoming.length === 0) {
     return (

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, RefreshControl,
+  Alert, FlatList, RefreshControl,
   StyleSheet, Text, View, Pressable,
 } from 'react-native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import {
   type WorkPermit, type Delivery,
 } from '@/api/contractors'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const PERMIT_COLOR: Record<string, string> = {
@@ -97,12 +98,12 @@ export function ContractorsScreen() {
   const [tab, setTab] = useState<'permits' | 'deliveries'>('permits')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: permits = [], isLoading: loadingPermits } = useQuery({
+  const { data: permits = [], isLoading: loadingPermits, isLoadingError: permitsFailed, error: permitsError, refetch: refetchPermits } = useQuery({
     queryKey: ['work-permits'],
     queryFn: () => getWorkPermits({ limit: 50 }),
   })
 
-  const { data: deliveries = [], isLoading: loadingDeliveries } = useQuery({
+  const { data: deliveries = [], isLoading: loadingDeliveries, isLoadingError: deliveriesFailed, error: deliveriesError, refetch: refetchDeliveries } = useQuery({
     queryKey: ['deliveries'],
     queryFn: () => getDeliveries({ limit: 50 }),
     enabled: tab === 'deliveries',
@@ -121,6 +122,10 @@ export function ContractorsScreen() {
   }, [qc])
 
   const isLoading = tab === 'permits' ? loadingPermits : loadingDeliveries
+  // The tab on screen says so when its own list could not be fetched - never "nothing here" for a failure.
+  const failed = tab === 'permits'
+    ? { now: permitsFailed, error: permitsError, retry: refetchPermits }
+    : { now: deliveriesFailed, error: deliveriesError, retry: refetchDeliveries }
   const data = (tab === 'permits' ? permits : deliveries) as any[]
 
   return (
@@ -136,8 +141,8 @@ export function ContractorsScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : data.length === 0 ? (
+        <ListSkeleton />
+      ) : failed.now ? <ErrorState error={failed.error} onRetry={failed.retry} /> : data.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="construct-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No {tab}</Text>

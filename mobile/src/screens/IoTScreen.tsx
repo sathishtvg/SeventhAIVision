@@ -17,7 +17,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,6 +27,7 @@ import {
   type IoTSensor, type SensorStatus,
 } from '@/api/iot'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const STATUS_COLOR: Record<SensorStatus, string> = {
@@ -114,11 +115,11 @@ export function IoTScreen() {
   const [openSensor, setOpenSensor] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: dashboard, isLoading } = useQuery({
+  const { data: dashboard, isLoading, isLoadingError: dashFailed, error: dashError, refetch: refetchDash } = useQuery({
     queryKey: ['iot-dashboard'],
     queryFn: () => getIoTDashboard(),
   })
-  const { data: alerts = [], isLoading: loadingAlerts } = useQuery({
+  const { data: alerts = [], isLoading: loadingAlerts, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts } = useQuery({
     queryKey: ['iot-alerts'],
     queryFn: () => getIoTAlerts({ status: 'open', limit: 50 }),
     enabled: tab === 'alerts',
@@ -161,7 +162,12 @@ export function IoTScreen() {
       </View>
 
       {(tab === 'sensors' ? isLoading : loadingAlerts) ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+        <ListSkeleton />
+      ) : (tab === 'sensors' ? dashFailed : alertsFailed) ? (
+        // The tab on screen says so when its own list could not be fetched.
+        tab === 'sensors'
+          ? <ErrorState error={dashError} onRetry={refetchDash} />
+          : <ErrorState error={alertsError} onRetry={refetchAlerts} />
       ) : tab === 'sensors' ? (
         <FlatList
           data={sensors}

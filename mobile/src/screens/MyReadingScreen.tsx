@@ -8,20 +8,23 @@
  * for their manager, with what it says to consider.
  */
 import React, { useCallback, useState } from 'react'
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ionicons } from '@expo/vector-icons'
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { READING_DAYS, getMyReading } from '@/api/workforce'
 import { apiErrorText } from '@/lib/apiErrorText'
 import { Card } from '@/components/Card'
 import { periodLabel, readingLines } from '@/lib/myReading'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { DetailSkeleton, ErrorState, RefreshingLine } from '@/components/states'
 
 export function MyReadingScreen() {
   const qc = useQueryClient()
   const [days, setDays] = useState<number>(28)
   const [refreshing, setRefreshing] = useState(false)
-  const { data, isLoading, error } = useQuery({ queryKey: ['my-reading', days], queryFn: () => getMyReading(days) })
+  // Another period keeps the last reading on screen, under a line, until that period's arrives.
+  const { data, isLoading, error, refetch, isPlaceholderData: readingRefreshing } = useQuery({
+    queryKey: ['my-reading', days], queryFn: () => getMyReading(days), placeholderData: keepPreviousData,
+  })
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
     await qc.invalidateQueries({ queryKey: ['my-reading'] })
@@ -38,12 +41,11 @@ export function MyReadingScreen() {
             <Text style={[styles.chipText, d === days && styles.chipTextOn]}>{periodLabel(d)}</Text>
           </Pressable>))}
       </View>
-      {isLoading && <ActivityIndicator color={colors.primary} style={styles.wait} />}
-      {!!error && (
-        <View style={styles.center}>
-          <Ionicons name="alert-circle-outline" size={40} color={colors.textDisabled} />
-          <Text style={styles.empty}>{apiErrorText(error)}</Text>
-        </View>)}
+      {readingRefreshing && <RefreshingLine />}
+      {isLoading && <DetailSkeleton />}
+      {!!error && !data && (
+        <ErrorState title="Your reading could not be loaded" error={error} words={apiErrorText(error)} onRetry={refetch} />
+      )}
       {data && (
         <>
           <Card style={styles.note}>
@@ -88,8 +90,6 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.textSecondary, fontSize: fontSize.sm },
   chipTextOn: { color: colors.background, fontWeight: '700' },
-  wait: { marginTop: spacing.xl },
-  center: { alignItems: 'center', padding: spacing.xl, gap: spacing.sm },
   empty: { color: colors.textSecondary, fontSize: fontSize.md, textAlign: 'center' },
   note: { borderColor: colors.info, borderWidth: 1 },
   noteText: { color: colors.text, fontSize: fontSize.sm },

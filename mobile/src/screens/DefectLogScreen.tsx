@@ -12,10 +12,10 @@
  */
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView,
+  Alert, FlatList, Modal, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 
 import {
@@ -24,6 +24,7 @@ import {
 } from '@/api/guardhouse'
 import { getSites } from '@/api/sites'
 import { Card } from '@/components/Card'
+import { ListSkeleton, RefreshingLine } from '@/components/states'
 import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -76,8 +77,11 @@ export function DefectLogScreen() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: defects = [], isLoading, isError, refetch } = useQuery({
+  const { data: defects = [], isLoading, isError, refetch, isPlaceholderData: defectsRefreshing } = useQuery({
     queryKey: ['defects', activeOnly],
+    // Changing between "still open" and "everything" keeps the last list on screen, under a line that says
+    // it is being refreshed, until the other arrives - the screen does not empty and refill.
+    placeholderData: keepPreviousData,
     queryFn: () => listDefects({ active_only: activeOnly }),
   })
 
@@ -113,7 +117,7 @@ export function DefectLogScreen() {
   }
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (
@@ -157,6 +161,7 @@ export function DefectLogScreen() {
         ))}
       </View>
 
+      {defectsRefreshing && <RefreshingLine />}
       <FlatList
         data={defects}
         keyExtractor={(d) => d.id}

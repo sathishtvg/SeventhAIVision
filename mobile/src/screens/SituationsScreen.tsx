@@ -7,7 +7,7 @@
  * by what people decided.
  */
 import React, { useCallback, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -17,6 +17,8 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import { useWebSocket, type RealtimeEvent } from '@/hooks/useWebSocket'
 import { STATUS_LABEL, isIntelRealtime, riskText, sourcesText } from '@/lib/situations'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton, NewMark } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 
 function SituationRow({ item, onOpen }: { item: MySituation; onOpen: (id: string) => void }) {
   return (
@@ -69,11 +71,14 @@ export function SituationsScreen() {
   const navigation = useNavigation<any>()
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: situations = [], isLoading, error } = useQuery({
+  const { data: situations = [], isLoading, error, isLoadingError: situationsFailed, refetch: refetchSituations } = useQuery({
     queryKey: ['my-situations'],
     queryFn: getMySituations,
     refetchInterval: 30_000,
   })
+  // What arrives while the list is open (a live event, or the refresh every few seconds) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(situations, (s) => s.id, { say: (n) => countOf(n, 'new situation') })
 
   const handleEvent = useCallback((e: RealtimeEvent) => {
     if (isIntelRealtime(e)) qc.invalidateQueries({ queryKey: ['my-situations'] })
@@ -86,7 +91,8 @@ export function SituationsScreen() {
     setRefreshing(false)
   }, [qc])
 
-  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (isLoading) return <ListSkeleton />
+  if (situationsFailed) return <ErrorState error={error} onRetry={refetchSituations} />
 
   return (
     <View style={styles.root}>
@@ -96,7 +102,9 @@ export function SituationsScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         renderItem={({ item }) => (
-          <SituationRow item={item} onOpen={(id) => navigation.navigate('SituationDetail', { situationId: id })} />
+          <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.risk_level)}>
+            <SituationRow item={item} onOpen={(id) => navigation.navigate('SituationDetail', { situationId: id })} />
+          </NewMark>
         )}
         ListEmptyComponent={
           <View style={styles.center}>

@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, FlatList, RefreshControl,
+  FlatList, RefreshControl,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getPlateWatchlist, getFaceWatchlist } from '@/api/watchlist'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, spacing, radius } from '@/theme'
 
 type Tab = 'plates' | 'faces'
@@ -48,6 +49,8 @@ export function WatchlistsScreen() {
   const facesQuery  = useQuery({ queryKey: ['face-watchlist'],  queryFn: getFaceWatchlist })
 
   const isLoading  = tab === 'plates' ? platesQuery.isLoading  : facesQuery.isLoading
+  // The list on screen says so when it could not be fetched - not "no plate entries".
+  const shownQuery = tab === 'plates' ? platesQuery : facesQuery
   const onRefresh  = () => qc.invalidateQueries({ queryKey: [tab === 'plates' ? 'plate-watchlist' : 'face-watchlist'] })
 
   return (
@@ -55,9 +58,9 @@ export function WatchlistsScreen() {
       <TabBar active={tab} onChange={setTab} />
 
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ListSkeleton />
+      ) : shownQuery.isLoadingError ? (
+        <ErrorState error={shownQuery.error} onRetry={shownQuery.refetch} />
       ) : tab === 'plates' ? (
         <FlatList
           data={platesQuery.data ?? []}

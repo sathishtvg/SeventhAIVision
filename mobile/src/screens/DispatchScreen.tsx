@@ -11,6 +11,8 @@ import { getLiveAttendance } from '@/api/attendance'
 import { dispatchNotes, dispatchable, guardLine } from '@/lib/dispatchGuards'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton, NewMark } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 
 function SeverityDot({ severity }: { severity: string }) {
   const color =
@@ -73,10 +75,13 @@ export function DispatchScreen() {
   const [form, setForm] = useState({ eta: '', notes: '' })
   const [guardId, setGuardId] = useState<string | null>(null)
 
-  const { data: incidents = [], isLoading } = useQuery({
+  const { data: incidents = [], isLoading, isLoadingError: incidentsFailed, error: incidentsError, refetch: refetchIncidents } = useQuery({
     queryKey: ['incidents-open'],
     queryFn: () => getIncidents('open'),
   })
+  // What arrives while the list is open (a live event, or the refresh every few seconds) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(incidents, (i) => i.id, { say: (n) => countOf(n, 'new incident to dispatch', 'new incidents to dispatch') })
 
   // Who can be sent: the guards on duty now, asked for when the sheet opens.
   // A dispatch names a guard; this screen used to send none, and the server
@@ -120,10 +125,8 @@ export function DispatchScreen() {
   return (
     <View style={styles.root}>
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : incidents.length === 0 ? (
+        <ListSkeleton />
+      ) : incidentsFailed ? <ErrorState error={incidentsError} onRetry={refetchIncidents} /> : incidents.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.success} />
           <Text style={styles.emptyText}>No open incidents</Text>
@@ -133,11 +136,13 @@ export function DispatchScreen() {
           data={incidents}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <IncidentRow
-              item={item}
-              onDispatch={setTarget}
-              onArrived={(i) => arrivedMutation.mutate(i.id)}
-            />
+            <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.severity)}>
+              <IncidentRow
+                item={item}
+                onDispatch={setTarget}
+                onArrived={(i) => arrivedMutation.mutate(i.id)}
+              />
+            </NewMark>
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
           contentContainerStyle={styles.list}

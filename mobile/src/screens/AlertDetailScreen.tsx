@@ -13,6 +13,7 @@ import { canSee } from '@/lib/access'
 import { listed } from '@/lib/listed'
 import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
+import { DetailSkeleton, ErrorState, isNotFound } from '@/components/states'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { colors, fontSize, spacing } from '@/theme'
@@ -39,7 +40,7 @@ export function AlertDetailScreen() {
   // was not among the newest fifty opened as "Alert not found" — on a busy
   // site, nearly all of them. Under the 'alerts' key so that acknowledging or
   // marking it, which refresh that key, refresh this too.
-  const { data: fetched, isLoading: fetching } = useQuery({
+  const { data: fetched, isLoading: fetching, isLoadingError: alertFailed, error: alertError, refetch: refetchAlert } = useQuery({
     queryKey: ['alerts', 'one', params.alertId],
     queryFn: () => getAlert(params.alertId),
   })
@@ -97,11 +98,13 @@ export function AlertDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <DetailSkeleton />
     )
   }
+
+  // Not here, and not fetched because the request failed: that is said, and can be asked again - it is not
+  // "not found". When the server answered that it is not there, it is.
+  if (!alert && alertFailed && !isNotFound(alertError)) return <ErrorState error={alertError} onRetry={refetchAlert} />
 
   if (!alert) {
     return (

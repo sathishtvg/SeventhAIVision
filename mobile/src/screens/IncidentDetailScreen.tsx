@@ -21,6 +21,7 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { IncidentsStackParamList } from '@/navigation'
+import { DetailSkeleton, ErrorState, isNotFound } from '@/components/states'
 
 type RoutePropType = RouteProp<IncidentsStackParamList, 'IncidentDetail'>
 type NavProp = NativeStackNavigationProp<IncidentsStackParamList>
@@ -54,7 +55,7 @@ export function IncidentDetailScreen() {
   // Asked for by its id, not looked for in the first page of the list — see
   // AlertDetailScreen. Under the 'incidents' key so that a change of status,
   // which refreshes that key, refreshes this too.
-  const { data: fetched, isLoading: fetching } = useQuery({
+  const { data: fetched, isLoading: fetching, isLoadingError: incidentFailed, error: incidentError, refetch: refetchIncident } = useQuery({
     queryKey: ['incidents', 'one', params.incidentId],
     queryFn: () => getIncident(params.incidentId),
   })
@@ -69,7 +70,7 @@ export function IncidentDetailScreen() {
   })
   const liveStream = streams.find((s: Stream) => s.status === 'online') ?? streams[0]
 
-  const { data: notes = [], isLoading: loadingNotes } = useQuery({
+  const { data: notes = [], isLoading: loadingNotes, isLoadingError: notesFailed, error: notesError, refetch: refetchNotes } = useQuery({
     queryKey: ['incident-notes', params.incidentId],
     queryFn: () => getIncidentNotes(params.incidentId),
     enabled: !!incident,
@@ -120,11 +121,13 @@ export function IncidentDetailScreen() {
 
   if (loadingInc) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <DetailSkeleton />
     )
   }
+
+  // Not here, and not fetched because the request failed: that is said, and can be asked again. When the server
+  // answered that it is not there, it is "not found".
+  if (!incident && incidentFailed && !isNotFound(incidentError)) return <ErrorState error={incidentError} onRetry={refetchIncident} />
 
   if (!incident) {
     return (
@@ -229,7 +232,7 @@ export function IncidentDetailScreen() {
         <Text style={styles.sectionTitle}>Notes</Text>
         {loadingNotes ? (
           <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.md }} />
-        ) : notes.length === 0 ? (
+        ) : notesFailed ? <ErrorState error={notesError} onRetry={refetchNotes} /> : notes.length === 0 ? (
           <Card>
             <Text style={styles.emptyText}>No notes yet</Text>
           </Card>

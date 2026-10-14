@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  FlatList, Pressable, RefreshControl,
   StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { getSites, type Site } from '@/api/sites'
 import { getCameras, type Camera } from '@/api/cameras'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { CamerasStackParamList } from '@/navigation'
 
@@ -110,13 +111,13 @@ export function SitesScreen() {
   const nav = useNavigation<NavProp>()
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: sites = [], isLoading: loadSites } = useQuery({
+  const { data: sites = [], isLoading: loadSites, isLoadingError: sitesFailed, error: sitesError, refetch: refetchSites } = useQuery({
     queryKey: ['sites'],
     queryFn: getSites,
     refetchInterval: 120_000,
   })
 
-  const { data: cameras = [], isLoading: loadCams } = useQuery({
+  const { data: cameras = [], isLoading: loadCams, isLoadingError: camsFailed, error: camsError, refetch: refetchCams } = useQuery({
     queryKey: ['cameras'],
     queryFn: () => getCameras(),
     refetchInterval: 60_000,
@@ -137,10 +138,12 @@ export function SitesScreen() {
 
   if (loadSites || loadCams) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
+      <ListSkeleton />
     )
+  }
+  // Either list failing leaves the sites unknown, and the screen says so - not "no sites".
+  if (sitesFailed || camsFailed) {
+    return <ErrorState error={sitesError ?? camsError} onRetry={() => { void refetchSites(); void refetchCams() }} />
   }
 
   if (sites.length === 0) {

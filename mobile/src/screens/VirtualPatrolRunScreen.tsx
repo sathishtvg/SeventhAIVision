@@ -20,7 +20,7 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text,
+  Image, Pressable, ScrollView, StyleSheet, Text,
   TextInput, View, Alert as RNAlert,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -35,6 +35,7 @@ import {
 import type { PatrolStackParamList } from '@/navigation'
 import { useAuthStore } from '@/store/auth'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { DetailSkeleton, ErrorState, SuccessTick, useBriefWord } from '@/components/states'
 
 type ScreenRoute = RouteProp<PatrolStackParamList, 'VirtualPatrolRun'>
 
@@ -157,13 +158,16 @@ export function VirtualPatrolRunScreen() {
 
   const [answers, setAnswers] = useState<AnswerMap>({})
   const [notes, setNotes] = useState('')
+  // "Snapshot saved", for a few seconds, when the server says it has the frame. A camera that could not be reached
+  // says why instead, as before.
+  const [saved, saySaved] = useBriefWord()
 
   const { data: session } = useQuery({
     queryKey: ['virtual-patrol', sessionId],
     queryFn: () => getPatrolSession(sessionId),
   })
 
-  const { data: current, isLoading, refetch } = useQuery({
+  const { data: current, isLoading, refetch, isLoadingError: currentFailed, error: currentError } = useQuery({
     queryKey: ['virtual-patrol-current', sessionId],
     queryFn: () => getCurrentCamera(sessionId),
   })
@@ -181,7 +185,10 @@ export function VirtualPatrolRunScreen() {
 
   const snapshotMut = useMutation({
     mutationFn: () => captureSnapshot(sessionId, current!.camera!.id),
-    onSuccess: () => { void refetch() },
+    onSuccess: (result) => {
+      if (result.ok) saySaved('Snapshot saved')
+      void refetch()
+    },
     onError: () => RNAlert.alert('Error', 'Could not reach the server to take a snapshot.'),
   })
 
@@ -251,8 +258,9 @@ export function VirtualPatrolRunScreen() {
   const missing = useMemo(() => unansweredRequired(questions, answers), [questions, answers])
 
   if (isLoading) {
-    return <View style={styles.centre}><ActivityIndicator color={colors.primary} /></View>
+    return <DetailSkeleton />
   }
+  if (currentFailed) return <ErrorState error={currentError} onRetry={refetch} />
 
   const camera = current?.camera ?? null
   const notStarted = session?.status === 'SCHEDULED'
@@ -336,6 +344,11 @@ export function VirtualPatrolRunScreen() {
           {snapshotMut.isPending ? 'Capturing…' : camera.snapshot_path ? 'Retake Snapshot' : 'Take Snapshot'}
         </Text>
       </Pressable>
+      {saved && (
+        <View style={styles.saved}>
+          <SuccessTick show label={saved} />
+        </View>
+      )}
 
       {questions.map((q) => (
         <QuestionField
@@ -409,6 +422,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   snapshot: { width: '100%', height: 220 },
+  saved: { marginTop: spacing.sm },
   snapshotEmpty: { alignItems: 'center', gap: spacing.xs, padding: spacing.lg },
   snapshotError: { color: colors.warning, fontSize: fontSize.sm, textAlign: 'center' },
   question: { marginTop: spacing.md },

@@ -15,6 +15,7 @@ import { DateField, fromISODate } from '@/components/DateField'
 import { AttachmentField, type PickedFile } from '@/components/AttachmentField'
 import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { StatusBadge } from '@/components/StatusBadge'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -27,11 +28,11 @@ function pointsColor(total: number) {
 }
 
 function ViolationsTab() {
-  const { data: summary = [], isLoading: loadSummary } = useQuery({
+  const { data: summary = [], isLoading: loadSummary, isLoadingError: summaryFailed, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['my-violations-summary'],
     queryFn: () => getMyViolationsSummary(),
   })
-  const { data: violations = [], isLoading: loadList } = useQuery({
+  const { data: violations = [], isLoading: loadList, isLoadingError: listFailed, error: listError, refetch: refetchList } = useQuery({
     queryKey: ['my-violations'],
     queryFn: getMyViolations,
   })
@@ -39,7 +40,11 @@ function ViolationsTab() {
   const totalPoints = summary[0]?.total_points ?? 0
 
   if (loadSummary || loadList) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
+  }
+  // A record that could not be fetched says so - not a clean record.
+  if (summaryFailed || listFailed) {
+    return <ErrorState error={summaryError ?? listError} onRetry={() => { void refetchSummary(); void refetchList() }} />
   }
 
   return (
@@ -210,11 +215,11 @@ function RequestLeaveModal({ visible, onClose }: { visible: boolean; onClose: ()
 export function LeaveTab() {
   const qc = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
-  const { data: balances = [], isLoading: loadBal } = useQuery({
+  const { data: balances = [], isLoading: loadBal, isLoadingError: balFailed, error: balError, refetch: refetchBal } = useQuery({
     queryKey: ['my-leave-balances'],
     queryFn: getMyLeaveBalances,
   })
-  const { data: requests = [], isLoading: loadReq } = useQuery({
+  const { data: requests = [], isLoading: loadReq, isLoadingError: reqFailed, error: reqError, refetch: refetchReq } = useQuery({
     queryKey: ['my-leave-requests'],
     queryFn: getMyLeaveRequests,
   })
@@ -228,7 +233,11 @@ export function LeaveTab() {
   })
 
   if (loadBal || loadReq) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
+  }
+  // Leave that could not be fetched says so - not "no leave".
+  if (balFailed || reqFailed) {
+    return <ErrorState error={balError ?? reqError} onRetry={() => { void refetchBal(); void refetchReq() }} />
   }
 
   return (

@@ -8,13 +8,15 @@
  */
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { getDroneEvents, type DroneEvent } from '@/api/drones'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton, NewMark, RefreshingLine } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { useWebSocket, type RealtimeEvent } from '@/hooks/useWebSocket'
 import { confidenceLabel, eventTitle, isDroneRealtime, pretty } from '@/lib/droneEvents'
@@ -61,11 +63,18 @@ export function DroneEventsScreen() {
   const [filter, setFilter] = useState<Filter>('open')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: events = [], isLoading, error } = useQuery({
+  const {
+    data: events = [], isLoading, isLoadingError: eventsFailed, error, refetch: refetchEvents,
+    isPlaceholderData: eventsRefreshing,
+  } = useQuery({
     queryKey: ['drone-events', filter],
+    placeholderData: keepPreviousData,
     queryFn: () => getDroneEvents({ openOnly: filter === 'open' }),
     refetchInterval: 30_000,
   })
+  // What arrives while the list is open (a live event, or the refresh every few seconds) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(events, (e) => e.id, { scope: filter, settled: !eventsRefreshing, say: (n) => countOf(n, 'new drone event') })
 
   const handleEvent = useCallback((e: RealtimeEvent) => {
     if (isDroneRealtime(e)) qc.invalidateQueries({ queryKey: ['drone-events'] })
@@ -89,13 +98,13 @@ export function DroneEventsScreen() {
           </Pressable>
         ))}
       </View>
+      {eventsRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : error ? (
-        <View style={styles.center}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textDisabled} />
-          <Text style={styles.emptyText}>Drone events could not be loaded.</Text>
-        </View>
+        <ListSkeleton />
+      ) : eventsFailed ? (
+        // Failed with nothing to show: said, and can be asked again. A refresh that fails over events already on
+        // screen leaves them there - they are still the last that were known.
+        <ErrorState title="Drone events could not be loaded" error={error} onRetry={refetchEvents} />
       ) : events.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="checkmark-circle-outline" size={48} color={colors.textDisabled} />
@@ -106,7 +115,9 @@ export function DroneEventsScreen() {
           data={events}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <EventRow item={item} onOpen={(eventId) => navigation.navigate('DroneEventDetail', { eventId })} />
+            <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.risk_level)}>
+              <EventRow item={item} onOpen={(eventId) => navigation.navigate('DroneEventDetail', { eventId })} />
+            </NewMark>
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
           contentContainerStyle={styles.list}

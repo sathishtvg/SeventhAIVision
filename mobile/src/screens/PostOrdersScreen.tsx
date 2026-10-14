@@ -9,7 +9,7 @@
  */
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, Modal, Pressable,
+  Alert, FlatList, Modal, Pressable,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { acknowledgePostOrder, listPostOrders, type PostOrder } from '@/api/postOrders'
 import { Card } from '@/components/Card'
+import { ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 export function PostOrdersScreen() {
@@ -38,7 +39,7 @@ export function PostOrdersScreen() {
   })
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (

@@ -246,8 +246,21 @@ def test_the_windows_app_and_the_phone_are_what_the_documents_say():
     package = json.loads(_read(phone / "package.json"))
     used = set(package["dependencies"]) | set(package.get("devDependencies", {}))
     assert not used & {"react-native-reanimated", "moti", "lottie-react-native", "react-native-svg"}
+    # The rest of the phone, asked for the same day: the web's loading rules, with the phone's own copies of its
+    # states, kept to by a test that reads every screen.
+    assert "**The phone keeps the web's loading rules too.**" in audit
+    assert "the phone keeps the web's rules as well" in design
+    states = phone / "src" / "components" / "states"
+    for part in ("ErrorState.tsx", "Skeleton.tsx", "Live.tsx", "Animated.tsx", "liveHtml.ts", "errorText.ts"):
+        assert (states / part).is_file(), part
+    rules = _read(phone / "__tests__" / "phoneLoadingRules.test.ts")
+    for rule in ("rule 1:", "rule 2:", "rule 4:", "rule 5:"):
+        assert rule in rules, rule
+    # A camera's view looks only at whether the picture is there, and asks for its own address and no other.
+    live = _read(states / "liveHtml.ts")
+    assert "naturalWidth" in live and not re.search(r"fetch\(|XMLHttpRequest|getImageData", live)
     # What was not done on the phone is said.
-    for said in ("**On the phone, only the screens' own scenes were done**",
-                 "it has not been seen on a device or the emulator, only in tests"):
+    for said in ("it has not been seen on a device or the emulator, only in tests",
+                 "The phone build made on 14 October has the scenes and not the rules above"):
         assert said in audit, said
 

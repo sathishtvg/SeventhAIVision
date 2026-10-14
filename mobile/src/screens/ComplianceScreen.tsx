@@ -14,7 +14,7 @@
  */
 import { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -24,6 +24,7 @@ import {
   type TourOccurrence, type TourSchedule,
 } from '@/api/compliance'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 /** The server's occurrence statuses. */
@@ -97,16 +98,16 @@ export function ComplianceScreen() {
   const [tab, setTab] = useState<'today' | 'tours' | 'schedules'>('today')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: dash, isLoading: loadingDash } = useQuery({
+  const { data: dash, isLoading: loadingDash, isLoadingError: dashFailed, error: dashError, refetch: refetchDash } = useQuery({
     queryKey: ['compliance', 'dashboard'],
     queryFn: getComplianceDashboard,
   })
-  const { data: occurrences = [], isLoading: loadingOcc } = useQuery({
+  const { data: occurrences = [], isLoading: loadingOcc, isLoadingError: occFailed, error: occError, refetch: refetchOcc } = useQuery({
     queryKey: ['compliance', 'occurrences'],
     queryFn: () => getTourOccurrences({ limit: 50 }),
     enabled: tab === 'tours',
   })
-  const { data: schedules = [], isLoading: loadingSched } = useQuery({
+  const { data: schedules = [], isLoading: loadingSched, isLoadingError: schedFailed, error: schedError, refetch: refetchSched } = useQuery({
     queryKey: ['compliance', 'schedules'],
     queryFn: () => getTourSchedules(),
     enabled: tab === 'schedules',
@@ -119,6 +120,12 @@ export function ComplianceScreen() {
   }, [qc])
 
   const loading = tab === 'today' ? loadingDash : tab === 'tours' ? loadingOcc : loadingSched
+  // The tab on screen says so when its own list could not be fetched - never "nothing here" for a failure.
+  const failed = tab === 'today'
+    ? { now: dashFailed, error: dashError, retry: refetchDash }
+    : tab === 'tours'
+      ? { now: occFailed, error: occError, retry: refetchOcc }
+      : { now: schedFailed, error: schedError, retry: refetchSched }
 
   const stats = dash ? [
     { label: 'Due today', value: dash.tours_today, color: colors.text },
@@ -146,7 +153,9 @@ export function ComplianceScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+        <ListSkeleton />
+      ) : failed.now ? (
+        <ErrorState error={failed.error} onRetry={failed.retry} />
       ) : tab === 'today' ? (
         <FlatList
           data={dash?.recent_missed ?? []}

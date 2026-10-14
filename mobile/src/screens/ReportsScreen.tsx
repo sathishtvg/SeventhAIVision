@@ -9,6 +9,7 @@ import { getSites, type Site } from '@/api/sites'
 import { getReportUrl } from '@/api/reports'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState } from '@/components/states'
 
 interface ReportType {
   key: string
@@ -40,7 +41,7 @@ export function ReportsScreen() {
   const [siteId, setSiteId]   = useState<string>('')
   const [loading, setLoading] = useState(false)
 
-  const { data: sites = [] } = useQuery({
+  const { data: sites = [], isLoadingError: sitesFailed, error: sitesError, refetch: refetchSites } = useQuery({
     queryKey: ['sites'],
     queryFn: getSites,
   })
@@ -85,7 +86,11 @@ export function ReportsScreen() {
         Reports open as PDF in your browser. Make sure you're connected to the backend server.
       </Text>
 
-      {/* Site selector */}
+      {/* Site selector. Without the sites a report can still be made for all of them; that they could not be
+          read is said, so the missing filter is not taken for an organisation with one site. */}
+      {sitesFailed && (
+        <ErrorState compact title="Sites could not be loaded" error={sitesError} onRetry={refetchSites} />
+      )}
       {sites.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Filter by Site (optional)</Text>

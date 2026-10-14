@@ -416,11 +416,6 @@ What is still not done, and why:
   by one.
 - **Charts and figures do not keep the last answer** when their range changes;
   each shows its placeholder. Only lists do.
-- **On the phone, only the screens' own scenes were done** (below). Its
-  screens keep their own spinners, and by a search of the code 11 of its
-  57 screens never read an error at all, so a failed request there still
-  reads as an empty screen. That is the phone's counterpart of rule 2 and
-  was not part of what was asked for the phone.
 
 The Windows app and the phone (14 October 2026):
 
@@ -448,9 +443,49 @@ The Windows app and the phone (14 October 2026):
   screen is opened, not when it is come back to. Nothing moves on a phone set
   to remove animations, nor before the app knows whether it is, and Settings
   has a switch, "Screen animations".
+- **The phone keeps the web's loading rules too.** The owner then asked for
+  the rest of the phone ("do the remaining mobile screens too", "the mobile
+  app animation too"), and the same day its screens were brought to the
+  rules of section 6, with phone copies of the web's states
+  (`mobile/src/components/states/`, `mobile/src/motion/useNewItems.ts`), in
+  the web's words and again with no library added:
+  - *Failed.* Every one of the 53 screens that fetch says when it failed and
+    can ask again: 43 with the shared failed state, nine with the words and
+    button they already had, and the leave screen's counts, which sit above
+    a list that says so itself. Before, 11 screens never read an error at
+    all and a failed request read as an empty screen. A record the server
+    answers is not there (a 404) still says "not found", and is not offered
+    again.
+  - *Loading.* The spinners alone in the middle of a screen became
+    placeholders shaped like what is coming - a list, a record, a page of
+    figures - 54 of them on 50 screens. The one left fills a screen while the
+    phone itself is asked about the camera, not while data is fetched.
+  - *Kept rows.* Eleven lists keep their rows, under a moving line, while
+    another filter, tab, site or period is fetched.
+  - *New rows.* Eight lists mark what arrives while they are open in its
+    colour for six seconds and tell a screen reader how many: alerts,
+    incidents, situations, drone events, the action center, dispatch,
+    emergency broadcasts and the dashboard's live feed. The first rows a
+    list shows, and rows kept from another filter, are never marked.
+  - *Camera views.* The live wall's tiles, one camera's live view and the
+    zone-drawing view say "Connecting" until there is a frame and "No
+    picture" when there could not be one, with "Try again". They look only
+    at whether the picture is there; the picture is the server's masked one
+    as before.
+  - *Done.* "Checkpoint recorded" when the server has recorded a verified
+    scan, and "Snapshot saved" when it says it has the frame - never for a
+    scan queued offline, and nothing waits for either.
+  - *The dashboard.* Its four figures count up to the server's (a screen
+    reader is given the figure itself) and its cards take turns.
+
+  All of it is still on a phone set to remove animations. A test reads
+  every screen's source for these rules, so a screen added later cannot
+  quietly go back (`mobile/__tests__/phoneLoadingRules.test.ts`).
 - **Not done on the phone:** it has not been seen on a device or the
-  emulator, only in tests. The phone build made on 10 October does not have
-  it; it reaches a phone with the next build.
+  emulator, only in tests. The phone build made on 14 October has the
+  scenes and not the rules above; they reach a phone with the next build.
+  As on the web, a frame-by-frame view whose stream stops part-way keeps
+  its last frame and says nothing.
 
 Not done in the video states, and why:
 

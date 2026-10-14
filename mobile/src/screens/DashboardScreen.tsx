@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView,
+  FlatList, Pressable, RefreshControl, ScrollView,
   StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,6 +19,8 @@ import { ShiftCheckInCard } from '@/components/ShiftCheckInCard'
 import { VirtualPatrolCard } from '@/components/VirtualPatrolCard'
 import { useAuthStore } from '@/store/auth'
 import { colors, fontSize, spacing, radius, severity as severityColors } from '@/theme'
+import { AnimatedNumber, ErrorState, FadeInView, NewMark, StatsSkeleton } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 
 const GUARD_ROLE_ID = 5
 
@@ -79,19 +81,26 @@ interface KpiProps {
   value: number | string
   color?: string
   onPress?: () => void
+  /** Its turn as the overview is first shown. */
+  index?: number
 }
 
-function KpiCard({ icon, label, value, color, onPress }: KpiProps) {
+function KpiCard({ icon, label, value, color, onPress, index = 0 }: KpiProps) {
   const accentColor = color ?? colors.primary
   return (
     <Pressable style={styles.kpiPressable} onPress={onPress} disabled={!onPress}>
+      <FadeInView index={index}>
       <Card style={styles.kpiCard}>
         <View style={[styles.kpiIconBg, { backgroundColor: accentColor + '28', borderColor: accentColor + '60' }]}>
           <Ionicons name={icon} size={20} color={accentColor} />
         </View>
-        <Text style={styles.kpiValue}>{value}</Text>
+        {/* The server's figure, counted up to as it is first shown; a screen reader is given the figure itself. */}
+        {typeof value === 'number'
+          ? <AnimatedNumber value={value} style={styles.kpiValue} />
+          : <Text style={styles.kpiValue}>{value}</Text>}
         <Text style={styles.kpiLabel}>{label}</Text>
       </Card>
+      </FadeInView>
     </Pressable>
   )
 }
@@ -110,9 +119,12 @@ export function DashboardScreen() {
   const navigation = useNavigation<any>()
   const roleId = useAuthStore((s) => s.user?.roleId)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
+  // Every event in the feed arrived while the screen was open: each is marked for a few seconds in its colour,
+  // and a screen reader is told how many.
+  const freshEvents = useNewItems(liveEvents, (e) => e.id + e.ts, { say: (n) => countOf(n, 'new live event') })
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: summary, isLoading } = useQuery({
+  const { data: summary, isLoading, isLoadingError: summaryFailed, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: getSummary,
     refetchInterval: 30_000,
@@ -173,11 +185,10 @@ export function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
+      <StatsSkeleton />
     )
   }
+  if (summaryFailed) return <ErrorState error={summaryError} onRetry={refetchSummary} />
 
   return (
     <ScrollView
@@ -228,13 +239,13 @@ export function DashboardScreen() {
       </View>
 
       <View style={styles.kpiGrid}>
-        <KpiCard icon="alert-circle" label="Open Alerts"     value={summary?.open_alerts ?? 0}    color={colors.error}
+        <KpiCard icon="alert-circle" label="Open Alerts"     value={summary?.open_alerts ?? 0}    color={colors.error} index={0}
           onPress={() => navigation.navigate('Alerts')} />
-        <KpiCard icon="warning"      label="Open Incidents"  value={summary?.open_incidents ?? 0} color={colors.warning}
+        <KpiCard icon="warning"      label="Open Incidents"  value={summary?.open_incidents ?? 0} color={colors.warning} index={1}
           onPress={() => navigation.navigate('Incidents')} />
-        <KpiCard icon="videocam"     label="Cameras Online"  value={summary?.active_cameras ?? 0} color={colors.success}
+        <KpiCard icon="videocam"     label="Cameras Online"  value={summary?.active_cameras ?? 0} color={colors.success} index={2}
           onPress={() => navigation.navigate('Cameras')} />
-        <KpiCard icon="scan"         label="Detections Today" value={summary?.detections_today ?? 0} color={colors.primary}
+        <KpiCard icon="scan"         label="Detections Today" value={summary?.detections_today ?? 0} color={colors.primary} index={3}
           onPress={() => navigation.navigate('More', { screen: 'Detections', pop: true })} />
       </View>
 
@@ -265,6 +276,7 @@ export function DashboardScreen() {
               ? () => navigation.navigate('Cameras')
               : undefined
             return (
+              <NewMark isNew={freshEvents.has(item.id + item.ts)} tone={toneOf(item.severity)}>
               <Pressable onPress={onPress} disabled={!onPress}>
                 <Card style={styles.eventCard}>
                   <View style={styles.eventRow}>
@@ -290,6 +302,7 @@ export function DashboardScreen() {
                   </View>
                 </Card>
               </Pressable>
+              </NewMark>
             )
           }}
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}

@@ -11,6 +11,7 @@ import { useBiometricStore } from '@/store/biometric'
 import { useMotionStore } from '@/motion/motionStore'
 import { Card } from '@/components/Card'
 import { colors, fontSize, spacing, radius } from '@/theme'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 const SETTING_META: Record<SettingKey, { label: string; description: string; unit: string; min: number; max: number }> = {
   'lpr.confidence_threshold': {
@@ -118,12 +119,12 @@ function TwoFASection() {
   const [totpCode, setTotpCode] = useState('')
   const [showSetup, setShowSetup] = useState(false)
 
-  const { data: statusData, isLoading: statusLoading } = useQuery({
+  const { data: statusData, isLoading: statusLoading, isLoadingError: statusDataFailed, error: statusDataError, refetch: refetchStatusData } = useQuery({
     queryKey: ['2fa-status'],
     queryFn: get2FAStatus,
   })
 
-  const { data: setupData, isLoading: setupLoading, refetch: fetchSetup } = useQuery({
+  const { data: setupData, isLoading: setupLoading, refetch: fetchSetup, isLoadingError: setupDataFailed, error: setupDataError } = useQuery({
     queryKey: ['2fa-setup'],
     queryFn: setup2FA,
     enabled: false,
@@ -184,6 +185,7 @@ function TwoFASection() {
       </Card>
     )
   }
+  if (statusDataFailed) return <ErrorState error={statusDataError} onRetry={refetchStatusData} />
 
   const is2FAEnabled = statusData?.enabled ?? false
 
@@ -213,6 +215,11 @@ function TwoFASection() {
             ? <ActivityIndicator size="small" color="#fff" />
             : <Text style={styles.saveBtnText}>Enable 2FA</Text>}
         </TouchableOpacity>
+      )}
+
+      {/* The setup was asked for and could not be read: said, and can be asked again - the button has gone by then. */}
+      {!is2FAEnabled && showSetup && !setupData && setupDataFailed && (
+        <ErrorState compact title="Two-factor setup could not be started" error={setupDataError} onRetry={fetchSetup} />
       )}
 
       {!is2FAEnabled && showSetup && setupData && (
@@ -372,18 +379,17 @@ function ScreenAnimationsSection() {
 }
 
 export function SettingsScreen() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['settings'],
     queryFn: getSettings,
   })
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <DetailSkeleton />
     )
   }
+  if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
 
   const valueMap = Object.fromEntries((data ?? []).map((s: TenantSetting) => [s.setting_key, s.setting_value]))
 

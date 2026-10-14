@@ -16,6 +16,7 @@ import { MASKED_CAMERAS_KEY } from '@/hooks/useMaskedCameras'
 import { apiErrorText } from '@/lib/apiErrorText'
 import { WHAT_A_ZONE_DOES, managesPrivacy } from '@/lib/privacyZoneWords'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { PICTURE_WATCH_SCRIPT, VideoLoadingState, pictureNews } from '@/components/states'
 
 type Props = { route: { params: { cameraId: string; streamId: string; cameraName: string; kind?: 'privacy' } } }
 
@@ -81,6 +82,13 @@ export function ZoneDrawScreen({ route }: Props) {
     ])
   }
 
+  // Whether the picture has its first frame, or could not have one - told by the page (`PICTURE_WATCH_SCRIPT`),
+  // so a view that has not connected is not taken for a dark room. "Try again" loads the page afresh, which opens
+  // a new connection to the same masked picture.
+  const [picture, setPicture] = useState<'connecting' | 'playing' | 'failed'>('connecting')
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => { setPicture('connecting'); setAttempt((n) => n + 1) }
+
   const liveUrl = accessToken
     ? `${(apiClient.defaults.baseURL ?? 'http://10.0.2.2:8000').replace(/\/$/, '')}/api/v1/cameras/${cameraId}/streams/${streamId}/live?token=${accessToken}`
     : null
@@ -96,7 +104,8 @@ export function ZoneDrawScreen({ route }: Props) {
   </style>
 </head>
 <body>
-  <img src="${liveUrl}" />
+  <img id="live" src="${liveUrl}" />
+  ${PICTURE_WATCH_SCRIPT}
 </body>
 </html>` : null
 
@@ -108,14 +117,12 @@ export function ZoneDrawScreen({ route }: Props) {
       <View style={styles.videoWrap}>
         {html ? (
           <WebView
+            key={attempt}
             source={{ html }}
             style={styles.webview}
             startInLoadingState
-            renderLoading={() => (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator color={colors.primary} size="large" />
-              </View>
-            )}
+            renderLoading={() => <VideoLoadingState state="connecting" />}
+            onMessage={(e) => { const news = pictureNews(e.nativeEvent.data); if (news) setPicture(news) }}
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
             originWhitelist={['*']}
@@ -134,6 +141,10 @@ export function ZoneDrawScreen({ route }: Props) {
           onClose={() => setClosed(true)}
           color={kind === 'privacy' ? PRIVACY_DRAWING_COLOUR : undefined}
         />
+        {/* Over the drawing: while it connects the points can still be placed through it; "Try again" is reachable. */}
+        {!!html && picture !== 'playing' && (
+          <VideoLoadingState state={picture} onRetry={picture === 'failed' ? retry : undefined} />
+        )}
       </View>
 
       <View style={styles.toolbar}>
@@ -234,7 +245,6 @@ const styles = StyleSheet.create({
   root:            { flex: 1, backgroundColor: colors.background },
   videoWrap:       { flex: 1, backgroundColor: '#000', position: 'relative' },
   webview:         { flex: 1, backgroundColor: '#000' },
-  loadingOverlay:  { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
   center:          { flex: 1, alignItems: 'center', justifyContent: 'center' },
   toolbar:         { padding: spacing.md, gap: spacing.sm },
   hintText:        { color: colors.textSecondary, fontSize: fontSize.sm },

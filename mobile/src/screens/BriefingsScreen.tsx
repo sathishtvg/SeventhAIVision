@@ -8,7 +8,7 @@
  * The phone reads; drafting and publishing are done at a desk.
  */
 import React, { useCallback, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getBriefing, listPublishedBriefings, type BriefingSummary } from '@/api/briefings'
@@ -16,20 +16,24 @@ import { Card } from '@/components/Card'
 import { apiErrorText } from '@/lib/apiErrorText'
 import { AS_AT_LABEL, briefingStanding, briefingWhere } from '@/lib/deskWork'
 import { colors, fontSize, spacing } from '@/theme'
+import { DetailSkeleton, ErrorState, ListSkeleton } from '@/components/states'
 
 const dayOf = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 
 function OneBriefing({ id, onBack }: { id: string; onBack: () => void }) {
-  const { data, isLoading, error } = useQuery({ queryKey: ['briefing', id], queryFn: () => getBriefing(id) })
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['briefing', id], queryFn: () => getBriefing(id) })
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}>
         <Ionicons name="chevron-back" size={18} color={colors.primary} />
         <Text style={styles.backText}>All briefings</Text>
       </Pressable>
-      {isLoading && <ActivityIndicator color={colors.primary} />}
-      {!!error && <Text style={styles.empty}>{apiErrorText(error)}</Text>}
+      {isLoading && <DetailSkeleton />}
+      {/* Failed with nothing to show: said in the briefing's own words, and can be asked again. */}
+      {!!error && !data && (
+        <ErrorState title="This briefing could not be loaded" error={error} words={apiErrorText(error)} onRetry={refetch} compact />
+      )}
       {data && (
         <>
           <Text style={styles.heading}>{dayOf(data.briefing_date)} · {briefingWhere(data)}</Text>
@@ -73,14 +77,15 @@ export function BriefingsScreen() {
   const qc = useQueryClient()
   const [openId, setOpenId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const { data = [], isLoading, error } = useQuery({ queryKey: ['briefings'], queryFn: listPublishedBriefings })
+  const { data = [], isLoading, error, isLoadingError: dataFailed, refetch: refetchData } = useQuery({ queryKey: ['briefings'], queryFn: listPublishedBriefings })
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
     await qc.invalidateQueries({ queryKey: ['briefings'] })
     setRefreshing(false)
   }, [qc])
   if (openId) return <OneBriefing id={openId} onBack={() => setOpenId(null)} />
-  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (isLoading) return <ListSkeleton />
+  if (dataFailed) return <ErrorState error={error} onRetry={refetchData} />
   return (
     <View style={styles.root}>
       <FlatList

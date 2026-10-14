@@ -197,11 +197,20 @@ web's: no touch is taken and the first one ends it; screens where seconds
 matter and camera pictures are never covered; nothing moves on a phone set to
 remove animations; a switch in Settings. One more, for the phone: a request
 waiting for a signal is not loading, so a guard out of signal is not shown
-"Loading". The rest of this design - the failed state, kept rows, new rows -
-was not asked for the phone and is not done there.
+"Loading".
+
+The owner then asked for the rest of the phone, the same day, and the phone
+keeps the web's rules as well, with its own copies of the web's states in the
+web's words: every screen that fetches says when it failed and can ask again
+("not found" stays "not found"); a placeholder shaped like the content in
+place of a lone spinner; kept rows under a moving line when a filter changes;
+what arrives marked for six seconds; a camera's view that says "Connecting"
+and "No picture"; a tick only once the server has said a checkpoint or a
+snapshot is recorded; the dashboard's figures counting up. A test reads every
+screen's source for these rules.
 
 ## Not in this work
 
 Lazy routes; a progress bar for exports (the server reports no progress); the
-phone app beyond its screens' scenes (section 5); any change to who may see or
-do what.
+phone's charts keeping their last answer, as the web's do not either; any
+change to who may see or do what.
