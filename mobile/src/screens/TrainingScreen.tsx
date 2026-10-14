@@ -9,7 +9,7 @@
  */
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, Modal, Pressable,
+  Alert, FlatList, Modal, Pressable,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,6 +20,7 @@ import {
   type SubmitResult, type TrainingAttempt, type TrainingAttemptQuestion, type TrainingCourse,
 } from '@/api/training'
 import { Card } from '@/components/Card'
+import { ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 interface QuizState {
@@ -111,7 +112,7 @@ export function TrainingScreen() {
   }
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     // Distinct from the empty state on purpose: "no courses" and "we couldn't

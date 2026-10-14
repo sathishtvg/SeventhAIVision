@@ -12,7 +12,7 @@
  */
 import React, { useMemo, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Linking, Pressable, RefreshControl,
+  FlatList, Linking, Pressable, RefreshControl,
   StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { getLiveAttendance, type LiveAttendanceShift } from '@/api/attendance'
 import { Card } from '@/components/Card'
+import { ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const STATUS_META: Record<
@@ -99,7 +100,7 @@ export function AttendanceScreen() {
   const noShowCount = shifts.filter((s) => isOverdue(s)).length
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (

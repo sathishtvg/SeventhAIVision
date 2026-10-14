@@ -8,7 +8,7 @@
  */
 import React from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View,
+  FlatList, Pressable, StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
@@ -17,6 +17,7 @@ import { getHeldByUser, type HeldByUser } from '@/api/guardhouse'
 import { Card } from '@/components/Card'
 import { useAuthStore } from '@/store/auth'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 function fmtDate(ts: string) {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -37,14 +38,15 @@ type Row =
 export function MyKitScreen() {
   const userId = useAuthStore((s) => s.user?.id)
 
-  const { data: held, isLoading, isError, refetch } = useQuery({
+  const { data: held, isLoading, isError, refetch, isLoadingError: heldFailed, error: heldError } = useQuery({
     queryKey: ['my-kit', userId],
     queryFn: () => getHeldByUser(userId!),
     enabled: Boolean(userId),
   })
 
+  if (heldFailed) return <ErrorState error={heldError} onRetry={refetch} />
   if (isLoading || !userId) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <DetailSkeleton />
   }
   if (isError || !held) {
     return (

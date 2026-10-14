@@ -16,6 +16,7 @@ import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
 import { useShiftCheckIn } from '@/hooks/useShiftCheckIn'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
 
@@ -33,7 +34,7 @@ export function ShiftScreen() {
   const [handoverResult, setHandoverResult] = useState<any | null>(null)
   const [briefingShiftId, setBriefingShiftId] = useState<string | null>(null)
 
-  const { data: shifts = [], isLoading } = useQuery({
+  const { data: shifts = [], isLoading, isLoadingError: shiftsFailed, error: shiftsError, refetch: refetchShifts } = useQuery({
     queryKey: ['my-shifts'],
     queryFn: () => getShifts(),
   })
@@ -43,7 +44,7 @@ export function ShiftScreen() {
     queryFn: () => getRoutes(),
   })
 
-  const { data: briefing, isLoading: briefingLoading } = useQuery({
+  const { data: briefing, isLoading: briefingLoading, isLoadingError: briefingFailed, error: briefingError, refetch: refetchBriefing } = useQuery({
     queryKey: ['shift-briefing', briefingShiftId],
     queryFn: () => getShiftBriefing(briefingShiftId!),
     enabled: briefingShiftId !== null,
@@ -76,11 +77,10 @@ export function ShiftScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ListSkeleton />
     )
   }
+  if (shiftsFailed) return <ErrorState error={shiftsError} onRetry={refetchShifts} />
 
   return (
     <View style={styles.root}>
@@ -100,7 +100,7 @@ export function ShiftScreen() {
                 <ActivityIndicator color={colors.primary} />
                 <Text style={styles.briefingLoadText}>Loading briefing…</Text>
               </View>
-            ) : briefing ? (
+            ) : briefingFailed ? <ErrorState error={briefingError} onRetry={refetchBriefing} /> : briefing ? (
               <ScrollView showsVerticalScrollIndicator={false}>
                 {/* Summary chips */}
                 <View style={styles.chipRow}>

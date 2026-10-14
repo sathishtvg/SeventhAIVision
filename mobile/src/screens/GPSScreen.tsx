@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react'
 import {
-  ActivityIndicator, FlatList, RefreshControl,
+  FlatList, RefreshControl,
   StyleSheet, Text, View, Pressable, ScrollView,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getGpsDashboard, getVehicles, type GpsVehicle } from '@/api/gps'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 
 const STATUS_COLOR: Record<string, string> = {
   moving:  colors.success,
@@ -67,8 +68,9 @@ export function GPSScreen() {
     queryFn: () => getGpsDashboard(),
   })
 
-  const { data: vehicles = [], isLoading } = useQuery({
+  const { data: vehicles = [], isLoading, isLoadingError: vehiclesFailed, error: vehiclesError, refetch: refetchVehicles, isPlaceholderData: vehiclesRefreshing } = useQuery({
     queryKey: ['gps-vehicles', filter],
+    placeholderData: keepPreviousData,
     queryFn: () => getVehicles({ status: filter }),
   })
 
@@ -117,9 +119,10 @@ export function GPSScreen() {
         ))}
       </ScrollView>
 
+      {vehiclesRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : vehicles.length === 0 ? (
+        <ListSkeleton />
+      ) : vehiclesFailed ? <ErrorState error={vehiclesError} onRetry={refetchVehicles} /> : vehicles.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="car-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No vehicles</Text>

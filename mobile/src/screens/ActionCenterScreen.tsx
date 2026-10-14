@@ -14,7 +14,7 @@
  */
 import React from 'react'
 import {
-  ActivityIndicator, FlatList, Linking, Pressable, RefreshControl,
+  FlatList, Linking, Pressable, RefreshControl,
   StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
@@ -23,6 +23,8 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { getMyDuties, type ActionCategory, type ActionItem } from '@/api/actionCenter'
 import { Card } from '@/components/Card'
+import { ListSkeleton, NewMark } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const CATEGORY_ICON: Record<ActionCategory, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -83,9 +85,12 @@ export function ActionCenterScreen() {
 
   const items: ActionItem[] = data?.items ?? []
   const summary = data?.summary
+  // What arrives while the list is open (a live event, or the refresh every half minute) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(items, (i) => i.id, { say: (n) => countOf(n, 'new action') })
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (
@@ -138,6 +143,7 @@ export function ActionCenterScreen() {
         const dest = destination(item.category)
         const colour = severityColour(item.severity)
         return (
+          <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.severity)}>
           <Pressable
             onPress={() => { if (dest) nav.navigate(dest[0], dest[1]) }}
             disabled={!dest}
@@ -172,6 +178,7 @@ export function ActionCenterScreen() {
               </View>
             </Card>
           </Pressable>
+          </NewMark>
         )
       }}
     />

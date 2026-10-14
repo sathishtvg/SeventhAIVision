@@ -1,5 +1,5 @@
-import React, { useLayoutEffect, useMemo } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import React, { useLayoutEffect, useMemo, useState } from 'react'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -8,6 +8,7 @@ import { apiClient } from '@/api/client'
 import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { MASKED_LABEL, managesPrivacy } from '@/lib/privacyZoneWords'
 import { colors, fontSize, spacing } from '@/theme'
+import { PICTURE_WATCH_SCRIPT, VideoLoadingState, pictureNews } from '@/components/states'
 
 type LiveParams = { cameraId: string; streamId: string; cameraName: string }
 type Props = { route: { params: LiveParams } }
@@ -29,6 +30,12 @@ export function CameraLiveScreen({ route }: Props) {
   // The picture is the server's masked one whatever this says. It is asked so
   // that a black block in it is labelled as meant, and not taken for a fault.
   const masked = useMaskedCameras().has(cameraId)
+  // Whether the picture has its first frame, or could not have one - told by the page (`PICTURE_WATCH_SCRIPT`),
+  // so a view that has not connected is not taken for a dark room. "Try again" loads the page afresh, which opens
+  // a new connection to the same masked picture.
+  const [picture, setPicture] = useState<'connecting' | 'playing' | 'failed'>('connecting')
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => { setPicture('connecting'); setAttempt((n) => n + 1) }
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -75,15 +82,11 @@ export function CameraLiveScreen({ route }: Props) {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
     img { width: 100%; height: 100vh; object-fit: contain; display: block; }
-    .error { color: #ccc; font-family: sans-serif; text-align: center; padding: 24px; line-height: 1.6; }
-    .error strong { color: #fff; display: block; margin-bottom: 8px; font-size: 16px; }
   </style>
 </head>
 <body>
-  <img
-    src="${liveUrl}"
-    onerror="this.style.display='none'; document.body.innerHTML='<div class=error><strong>Stream Unavailable</strong>Check camera connection and ensure the server is reachable.</div>'"
-  />
+  <img id="live" src="${liveUrl}" />
+  ${PICTURE_WATCH_SCRIPT}
 </body>
 </html>`
 
@@ -98,21 +101,25 @@ export function CameraLiveScreen({ route }: Props) {
   return (
     <View style={styles.root}>
       <WebView
+        key={attempt}
         source={{ html }}
         style={styles.webview}
         startInLoadingState
-        renderLoading={() => (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator color={colors.primary} size="large" />
-            <Text style={styles.loadingText}>Connecting to stream…</Text>
-          </View>
-        )}
+        renderLoading={() => <VideoLoadingState state="connecting" />}
+        onMessage={(e) => { const news = pictureNews(e.nativeEvent.data); if (news) setPicture(news) }}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={['*']}
         mixedContentMode="always"
         javaScriptEnabled={true}
       />
+      {picture !== 'playing' && (
+        <VideoLoadingState
+          state={picture}
+          detail={picture === 'failed' ? "Check the camera's connection and that the server can be reached." : undefined}
+          onRetry={picture === 'failed' ? retry : undefined}
+        />
+      )}
       {masked && (
         <View style={styles.maskedLabel} pointerEvents="none">
           <Ionicons name="eye-off-outline" size={12} color="#fff" />
@@ -131,21 +138,6 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
     backgroundColor: '#000',
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-    gap: 12,
-  },
-  loadingText: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
   },
   center: {
     flex: 1,

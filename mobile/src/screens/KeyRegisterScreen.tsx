@@ -13,7 +13,7 @@
  */
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView,
+  Alert, FlatList, Modal, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -24,6 +24,7 @@ import {
   type OutstandingKey, type SiteKey,
 } from '@/api/guardhouse'
 import { Card } from '@/components/Card'
+import { ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 function outFor(hours: number) {
@@ -86,7 +87,7 @@ export function KeyRegisterScreen() {
     ])
 
   if (isLoading || loadingOut) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (

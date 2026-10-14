@@ -7,7 +7,7 @@
  */
 import { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getMyPatrols, type MyPatrol } from '@/api/virtualPatrol'
 import type { PatrolStackParamList } from '@/navigation'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
 
@@ -64,7 +65,7 @@ export function VirtualPatrolScreen() {
   const nav = useNavigation<NavProp>()
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: patrols = [], isLoading, refetch } = useQuery({
+  const { data: patrols = [], isLoading, refetch, isLoadingError: patrolsFailed, error: patrolsError } = useQuery({
     queryKey: ['my-virtual-patrols'],
     queryFn: getMyPatrols,
   })
@@ -77,11 +78,10 @@ export function VirtualPatrolScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centre}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ListSkeleton />
     )
   }
+  if (patrolsFailed) return <ErrorState error={patrolsError} onRetry={refetch} />
 
   return (
     <FlatList

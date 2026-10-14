@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react'
 import {
-  ActivityIndicator, FlatList, RefreshControl,
+  FlatList, RefreshControl,
   StyleSheet, Text, View, Pressable,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getBwcDashboard, getBodyCameras, getBwcRecordings, type BodyCamera } from '@/api/bwc'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -76,12 +77,12 @@ export function BWCScreen() {
     queryFn: getBwcDashboard,
   })
 
-  const { data: cameras = [], isLoading: loadingCameras } = useQuery({
+  const { data: cameras = [], isLoading: loadingCameras, isLoadingError: camerasFailed, error: camerasError, refetch: refetchCameras } = useQuery({
     queryKey: ['bwc-cameras'],
     queryFn: () => getBodyCameras(),
   })
 
-  const { data: recordings = [], isLoading: loadingRecs } = useQuery({
+  const { data: recordings = [], isLoading: loadingRecs, isLoadingError: recsFailed, error: recsError, refetch: refetchRecs } = useQuery({
     queryKey: ['bwc-recordings'],
     queryFn: () => getBwcRecordings({ limit: 50 }),
     enabled: tab === 'recordings',
@@ -123,7 +124,12 @@ export function BWCScreen() {
       </View>
 
       {(tab === 'cameras' ? loadingCameras : loadingRecs) ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+        <ListSkeleton />
+      ) : (tab === 'cameras' ? camerasFailed : recsFailed) ? (
+        // The tab on screen says so when its own list could not be fetched.
+        tab === 'cameras'
+          ? <ErrorState error={camerasError} onRetry={refetchCameras} />
+          : <ErrorState error={recsError} onRetry={refetchRecs} />
       ) : tab === 'cameras' ? (
         cameras.length === 0 ? (
           <View style={styles.center}>

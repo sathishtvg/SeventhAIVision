@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View,
+  FlatList, Modal, Pressable, StyleSheet, Text, View,
 } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useQuery } from '@tanstack/react-query'
@@ -12,6 +12,8 @@ import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { MASKED_LABEL } from '@/lib/privacyZoneWords'
+import { useMotionStore } from '@/motion/motionStore'
+import { ErrorState, TILE_STATE_HTML, TILE_WATCH_SCRIPT, VideoLoadingState, tileStateCss } from '@/components/states'
 import { loadLiveWallCameras, saveLiveWallCameras, type LiveWallEntry } from '@/lib/liveWallStorage'
 
 const MAX_TILES = 4
@@ -24,8 +26,12 @@ export function LiveWallScreen() {
   // zone is named as one, so that a black block in its tile is read as meant.
   const masked = useMaskedCameras()
 
-  const { data: cameras = [] } = useQuery({ queryKey: ['cameras'], queryFn: () => getCameras() })
-  const { data: streams = [] } = useQuery({ queryKey: ['streams'], queryFn: () => getStreams() })
+  const { data: cameras = [], isLoadingError: camerasFailed, error: camerasError, refetch: refetchCameras } = useQuery({
+    queryKey: ['cameras'], queryFn: () => getCameras(),
+  })
+  const { data: streams = [], isLoadingError: streamsFailed, error: streamsError, refetch: refetchStreams } = useQuery({
+    queryKey: ['streams'], queryFn: () => getStreams(),
+  })
 
   useEffect(() => {
     loadLiveWallCameras().then(setEntries)
@@ -58,6 +64,9 @@ export function LiveWallScreen() {
     saveLiveWallCameras(next)
   }
 
+  // A phone set to remove animations: the small ring in a tile that is connecting does not turn.
+  const still = useMotionStore((s) => s.reduced !== false)
+
   const html = useMemo(() => {
     if (!entries || entries.length === 0 || !accessToken) return null
     const base = (apiClient.defaults.baseURL ?? 'http://10.0.2.2:8000').replace(/\/$/, '')
@@ -66,7 +75,8 @@ export function LiveWallScreen() {
       const url = `${base}/api/v1/cameras/${e.cameraId}/streams/${e.streamId}/live?token=${accessToken}`
       return `
         <div class="tile">
-          <img src="${url}" onerror="this.style.display='none'" />
+          <img src="${url}" />
+          ${TILE_STATE_HTML}
           <div class="label">${e.cameraName.replace(/</g, '&lt;')}${masked.has(e.cameraId) ? ` · ${MASKED_LABEL}` : ''}</div>
         </div>`
     }).join('')
@@ -92,14 +102,16 @@ export function LiveWallScreen() {
       background: rgba(0,0,0,0.55); color: #fff; font-family: sans-serif;
       font-size: 11px; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    ${tileStateCss(still)}
   </style>
 </head>
 <body>
   <div class="grid">${tiles}</div>
+  ${TILE_WATCH_SCRIPT}
 </body>
 </html>`
     // Rebuilt when the cameras that have a zone change, not each time that is read again.
-  }, [entries, accessToken, masked.key])
+  }, [entries, accessToken, masked.key, still])
 
   return (
     <View style={styles.root}>
@@ -119,11 +131,7 @@ export function LiveWallScreen() {
               source={{ html }}
               style={styles.webview}
               startInLoadingState
-              renderLoading={() => (
-                <View style={styles.loadingOverlay}>
-                  <ActivityIndicator color={colors.primary} size="large" />
-                </View>
-              )}
+              renderLoading={() => <VideoLoadingState state="connecting" />}
               allowsInlineMediaPlayback
               mediaPlaybackRequiresUserAction={false}
               originWhitelist={['*']}
@@ -131,8 +139,9 @@ export function LiveWallScreen() {
               javaScriptEnabled
             />
           ) : (
+            // No session to ask for the pictures with: said, as the one-camera view says it - not a wait for nothing.
             <View style={styles.center}>
-              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.emptyText}>Authentication required. Please log in again.</Text>
             </View>
           )}
           <Pressable style={styles.fab} onPress={() => setPickerOpen(true)}>
@@ -153,6 +162,14 @@ export function LiveWallScreen() {
           <FlatList
             data={watchable}
             keyExtractor={(item) => item.id}
+            // The cameras to choose from could not be read: said, and can be asked again - not an empty choice.
+            ListEmptyComponent={camerasFailed || streamsFailed ? (
+              <ErrorState
+                title="The cameras could not be loaded"
+                error={camerasFailed ? camerasError : streamsError}
+                onRetry={() => { if (camerasFailed) void refetchCameras(); if (streamsFailed) void refetchStreams() }}
+              />
+            ) : null}
             contentContainerStyle={styles.modalList}
             renderItem={({ item }) => {
               const selected = (entries ?? []).some((e) => e.cameraId === item.id)
@@ -187,7 +204,6 @@ const styles = StyleSheet.create({
   emptyText:       { color: colors.textSecondary, fontSize: fontSize.md },
   addBtn:          { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginTop: spacing.sm },
   addBtnText:      { color: '#fff', fontWeight: '700', fontSize: fontSize.sm },
-  loadingOverlay:  { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
   fab:             { position: 'absolute', right: spacing.md, bottom: spacing.md, width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 4 },
   modalRoot:       { flex: 1, backgroundColor: colors.background },
   modalHeader:     { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },

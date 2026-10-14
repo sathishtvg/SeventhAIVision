@@ -1,13 +1,14 @@
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  FlatList, Pressable, RefreshControl,
   StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getLogs, type NotificationLog } from '@/api/notifications'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 
 const STATUS_COLOR: Record<string, string> = {
   sent:    colors.success,
@@ -55,8 +56,9 @@ export function NotificationsHistoryScreen() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['notification-logs', statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => getLogs({ status_filter: statusFilter, limit: 100 }),
   })
 
@@ -90,11 +92,10 @@ export function NotificationsHistoryScreen() {
         ))}
       </View>
 
+      {dataRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : data.length === 0 ? (
+        <ListSkeleton />
+      ) : dataFailed ? <ErrorState error={dataError} onRetry={refetchData} /> : data.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="notifications-off-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No notification logs</Text>

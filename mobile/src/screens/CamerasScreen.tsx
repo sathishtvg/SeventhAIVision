@@ -1,9 +1,9 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  FlatList, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import type { RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { getCameras, getStreams, type Camera, type Stream } from '@/api/cameras'
 import { getSites, type Site } from '@/api/sites'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 import { StatusBadge } from '@/components/StatusBadge'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { CamerasStackParamList } from '@/navigation'
@@ -104,13 +105,18 @@ export function CamerasScreen() {
   // Pass site_id to backend when a real site is selected
   const backendSiteId = activeSiteId === '__none__' ? undefined : activeSiteId
 
-  const { data: cameras = [], isLoading: loadCam } = useQuery({
+  const {
+    data: cameras = [], isLoading: loadCam, isLoadingError: camFailed, error: camError, refetch: refetchCam,
+    isPlaceholderData: camRefreshing,
+  } = useQuery({
     queryKey: ['cameras', activeSiteId],
+    // Choosing another site keeps the last cameras on screen, under a line, until that site's arrive.
+    placeholderData: keepPreviousData,
     queryFn: () => getCameras(backendSiteId ? { site_id: backendSiteId } : undefined),
     refetchInterval: 60_000,
   })
 
-  const { data: streams = [], isLoading: loadStr } = useQuery({
+  const { data: streams = [], isLoading: loadStr, isLoadingError: strFailed, error: strError, refetch: refetchStr } = useQuery({
     queryKey: ['streams'],
     queryFn: () => getStreams(),
     refetchInterval: 30_000,
@@ -148,6 +154,9 @@ export function CamerasScreen() {
   }, [cameras, activeSiteId])
 
   const isLoading = loadCam || loadStr
+  // Either list failing leaves the cameras unknown, and the screen says so - not "no cameras".
+  const failed = camFailed || strFailed
+  const retryBoth = () => { void refetchCam(); void refetchStr() }
 
   return (
     <View style={styles.root}>
@@ -188,10 +197,11 @@ export function CamerasScreen() {
         </View>
       )}
 
+      {camRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ListSkeleton />
+      ) : failed ? (
+        <ErrorState error={camError ?? strError} onRetry={retryBoth} />
       ) : displayedCameras.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="videocam-off-outline" size={48} color={colors.textDisabled} />

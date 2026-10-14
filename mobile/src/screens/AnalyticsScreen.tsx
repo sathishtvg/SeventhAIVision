@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, RefreshControl, ScrollView,
+  RefreshControl, ScrollView,
   StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,6 +9,7 @@ import { getSummary } from '@/api/dashboard'
 import { getAlertsBySeverity, getAlertsByModule, getTopCameras, type TopCamera } from '@/api/analytics'
 import { Card } from '@/components/Card'
 import { colors, fontSize, spacing } from '@/theme'
+import { ErrorState, StatsSkeleton } from '@/components/states'
 
 // Inline mini bar chart (no external dep)
 function BarChart({
@@ -86,7 +87,7 @@ export function AnalyticsScreen() {
   const qc = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: summary, isLoading: sumLoading } = useQuery({
+  const { data: summary, isLoading: sumLoading, isLoadingError: summaryFailed, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['analytics-summary'],
     queryFn: getSummary,
     refetchInterval: 60_000,
@@ -123,11 +124,10 @@ export function AnalyticsScreen() {
 
   if (sumLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
+      <StatsSkeleton />
     )
   }
+  if (summaryFailed) return <ErrorState error={summaryError} onRetry={refetchSummary} />
 
   return (
     <ScrollView

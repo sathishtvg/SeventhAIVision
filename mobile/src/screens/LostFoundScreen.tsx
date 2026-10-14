@@ -13,10 +13,10 @@
  */
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView,
+  Alert, FlatList, Modal, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 
 import {
@@ -24,6 +24,7 @@ import {
   LOST_FOUND_CATEGORIES, type LostFoundItem,
 } from '@/api/guardhouse'
 import { Card } from '@/components/Card'
+import { ListSkeleton, RefreshingLine } from '@/components/states'
 import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -61,8 +62,10 @@ export function LostFoundScreen() {
   const [claimContact, setClaimContact] = useState('')
   const [claimIdLast4, setClaimIdLast4] = useState('')
 
-  const { data: items = [], isLoading, isError, refetch } = useQuery({
+  const { data: items = [], isLoading, isError, refetch, isPlaceholderData: itemsRefreshing } = useQuery({
     queryKey: ['lost-found', tab],
+    // A change of tab keeps the last list on screen, under a line, until the other arrives.
+    placeholderData: keepPreviousData,
     queryFn: () => listLostFound(tab ? { status_filter: tab } : {}),
   })
 
@@ -107,7 +110,7 @@ export function LostFoundScreen() {
   })
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (
@@ -146,6 +149,7 @@ export function LostFoundScreen() {
         ))}
       </View>
 
+      {itemsRefreshing && <RefreshingLine />}
       <FlatList
         data={items}
         keyExtractor={(i) => i.id}

@@ -14,7 +14,7 @@
  */
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView,
+  Alert, FlatList, Modal, Pressable, ScrollView,
   StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -25,6 +25,7 @@ import {
   updateHandoverChecks,
 } from '@/api/guardhouse'
 import { Card } from '@/components/Card'
+import { DetailSkeleton, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const STATUS_COLOUR: Record<string, string> = {
@@ -106,7 +107,7 @@ export function HandoverScreen() {
   }
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (
@@ -179,7 +180,7 @@ export function HandoverScreen() {
           </View>
 
           {!detail ? (
-            <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+            <DetailSkeleton />
           ) : (
             <>
               <ScrollView contentContainerStyle={styles.body}>

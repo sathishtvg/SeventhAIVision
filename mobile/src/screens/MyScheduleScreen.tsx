@@ -11,7 +11,7 @@
  */
 import React, { useMemo } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { getMyShifts, type Shift } from '@/api/patrols'
 import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
+import { ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 function dayLabel(iso: string): string {
@@ -74,7 +75,7 @@ export function MyScheduleScreen() {
     return <View style={styles.center}><Text style={styles.muted}>Not signed in.</Text></View>
   }
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <ListSkeleton />
   }
   if (isError) {
     return (

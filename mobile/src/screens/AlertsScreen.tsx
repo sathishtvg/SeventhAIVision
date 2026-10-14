@@ -1,9 +1,9 @@
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  FlatList, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -15,6 +15,8 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { useWebSocket, RealtimeEvent } from '@/hooks/useWebSocket'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { AlertsStackParamList } from '@/navigation'
+import { ErrorState, ListSkeleton, NewMark, RefreshingLine } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 
 type NavProp = NativeStackNavigationProp<AlertsStackParamList>
 
@@ -81,9 +83,15 @@ export function AlertsScreen() {
     queryFn: getSites,
   })
 
-  const { data: alerts = [], isLoading } = useQuery({
+  const { data: alerts = [], isLoading, isLoadingError: alertsFailed, error: alertsError, refetch: refetchAlerts, isPlaceholderData: alertsRefreshing } = useQuery({
     queryKey: ['alerts', statusFilter, siteFilter, moduleFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => getAlerts(statusFilter === 'all' ? undefined : statusFilter, siteFilter, moduleFilter),
+  })
+  // What arrives while the list is open (a live event, or the refresh every few seconds) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(alerts, (a) => a.id, {
+    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), settled: !alertsRefreshing, say: (n) => countOf(n, 'new alert'),
   })
 
   const handleEvent = useCallback((e: RealtimeEvent) => {
@@ -178,11 +186,10 @@ export function AlertsScreen() {
         ))}
       </ScrollView>
 
+      {alertsRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : alerts.length === 0 ? (
+        <ListSkeleton />
+      ) : alertsFailed ? <ErrorState error={alertsError} onRetry={refetchAlerts} /> : alerts.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="checkmark-circle-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No {statusFilter !== 'all' ? statusFilter : ''} alerts</Text>
@@ -191,7 +198,9 @@ export function AlertsScreen() {
         <FlatList
           data={alerts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <AlertRow item={item} />}
+          renderItem={({ item }) => (
+            <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.severity)}><AlertRow item={item} /></NewMark>
+          )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
           contentContainerStyle={styles.list}
           refreshControl={

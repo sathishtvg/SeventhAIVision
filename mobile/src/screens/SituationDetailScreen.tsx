@@ -24,6 +24,7 @@ import {
   type AuthorityAction, type ObservationKind, type Position, type ReasonCode,
 } from '@/api/securityIntelligence'
 import { Card } from '@/components/Card'
+import { DetailSkeleton, ErrorState, isNotFound } from '@/components/states'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { useWebSocket, type RealtimeEvent } from '@/hooks/useWebSocket'
 import { canSee } from '@/lib/access'
@@ -69,7 +70,7 @@ export function SituationDetailScreen({ route }: Props) {
   const [clientRef, setClientRef] = useState(newClientRef)
   const [seen, setSeen] = useState('')
 
-  const { data: situation, isLoading, error } = useQuery({
+  const { data: situation, isLoading, error, refetch } = useQuery({
     queryKey: ['situation', situationId], queryFn: () => getSituation(situationId) })
   const { data: mine = [] } = useQuery({ queryKey: ['my-situations'], queryFn: getMySituations })
   const { data: recs } = useQuery({
@@ -127,7 +128,12 @@ export function SituationDetailScreen({ route }: Props) {
     onError: (e) => RNAlert.alert('Could not record that', intelApiError(e)),
   })
 
-  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (isLoading) return <DetailSkeleton />
+  // Not read because the request failed: said in the module's own words, and can be asked again. When the server
+  // answered that it is not there, it is "not found".
+  if (!situation && error && !isNotFound(error)) {
+    return <ErrorState title="This situation could not be loaded" error={error} words={intelApiError(error)} onRetry={refetch} />
+  }
   if (error || !situation) {
     return (
       <View style={styles.center}>

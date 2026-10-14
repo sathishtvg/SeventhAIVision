@@ -12,6 +12,7 @@ import { enqueueRequest, isNetworkError } from '@/offline/outbox'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, severity as sevColors, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 type RouteType = RouteProp<PatrolStackParamList, 'OccurrenceBook'>
 
@@ -210,18 +211,17 @@ export function OccurrenceBookScreen() {
   const shiftId = route.params?.shiftId
   const [addOpen, setAddOpen] = useState(false)
 
-  const { data: entries = [], isLoading, refetch } = useQuery({
+  const { data: entries = [], isLoading, refetch, isLoadingError: entriesFailed, error: entriesError } = useQuery({
     queryKey: ['dob-entries', shiftId],
     queryFn: () => getDOBEntries({ shift_id: shiftId, limit: 100 }),
   })
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <DetailSkeleton />
     )
   }
+  if (entriesFailed) return <ErrorState error={entriesError} onRetry={refetch} />
 
   return (
     <View style={styles.root}>

@@ -13,6 +13,7 @@ import { enqueueRequest, isNetworkError } from '@/offline/outbox'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
+import { DetailSkeleton, ErrorState, SuccessTick, useBriefWord } from '@/components/states'
 
 type RoutePropType = RouteProp<PatrolStackParamList, 'PatrolScan'>
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
@@ -28,8 +29,11 @@ export function PatrolScanScreen() {
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set())
   const [lastScanResult, setLastScanResult] = useState<{ verified: boolean; checkpoint: string } | null>(null)
   const scanCooldown = useRef(false)
+  // "Recorded", for a few seconds, once the server has recorded a verified scan. A scan queued offline, or one the
+  // server recorded as unverified, is not shown with a tick - the scan's own result says what it is.
+  const [recorded, sayRecorded] = useBriefWord()
 
-  const { data: route, isLoading } = useQuery({
+  const { data: route, isLoading, isLoadingError: routeFailed, error: routeError, refetch: refetchRoute } = useQuery({
     queryKey: ['patrol-route', params.routeId],
     queryFn: () => getRouteDetail(params.routeId),
   })
@@ -58,6 +62,7 @@ export function PatrolScanScreen() {
       setScannedIds((prev) => new Set([...prev, vars.checkpointId]))
       const cp = route?.checkpoints.find((c: PatrolCheckpoint) => c.id === vars.checkpointId)
       setLastScanResult({ verified: data.verified, checkpoint: cp?.name ?? 'Checkpoint' })
+      if (data.verified) sayRecorded(`${cp?.name ?? 'Checkpoint'} recorded`)
     },
     onError: (err, vars) => {
       // Offline (Gap 88): queue the scan with its ORIGINAL time; the outbox
@@ -109,11 +114,10 @@ export function PatrolScanScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <DetailSkeleton />
     )
   }
+  if (routeFailed) return <ErrorState error={routeError} onRetry={refetchRoute} />
 
   const checkpoints = route?.checkpoints ?? []
   const allScanned = checkpoints.every((c: PatrolCheckpoint) => scannedIds.has(c.id))
@@ -127,6 +131,11 @@ export function PatrolScanScreen() {
           {scannedIds.size} / {checkpoints.length} checkpoints
         </Text>
       </View>
+      {recorded && (
+        <View style={styles.recorded}>
+          <SuccessTick show label={recorded} />
+        </View>
+      )}
 
       {/* QR Camera view */}
       {scanning && sessionId && (
@@ -247,6 +256,7 @@ export function PatrolScanScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  recorded: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     padding: spacing.md, backgroundColor: colors.surface,

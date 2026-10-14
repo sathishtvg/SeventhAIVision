@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Image, Modal, RefreshControl,
+  FlatList, Image, Modal, RefreshControl,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -8,12 +8,13 @@ import { Ionicons } from '@expo/vector-icons'
 import { getEvidence, evidenceFileUrl, getEvidenceFileHeaders } from '@/api/evidence'
 import { Card } from '@/components/Card'
 import { colors, fontSize, spacing, radius } from '@/theme'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 export function EvidenceScreen() {
   const qc = useQueryClient()
   const [preview, setPreview] = useState<string | null>(null)
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['evidence'],
     queryFn: () => getEvidence({ limit: 40 }),
   })
@@ -23,10 +24,8 @@ export function EvidenceScreen() {
   return (
     <View style={styles.root}>
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : (
+        <ListSkeleton />
+      ) : dataFailed ? <ErrorState error={dataError} onRetry={refetchData} /> : (
         <FlatList
           data={data ?? []}
           keyExtractor={(item) => item.id}

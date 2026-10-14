@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  FlatList, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import {
   type Detection, type LprEvent, type FaceEvent, type IntrusionEvent,
 } from '@/api/detections'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const TABS = [
@@ -153,6 +154,8 @@ export function DetectionsScreen() {
   const intrQuery  = useQuery({ queryKey: ['intr-events'],    queryFn: () => getIntrusionEvents({ limit: 50 }), enabled: activeTab === 'intrusion' })
 
   const loading = allQuery.isLoading || lprQuery.isLoading || faceQuery.isLoading || intrQuery.isLoading
+  // The tab on screen says so when its own list could not be fetched - not "no detections".
+  const shownQuery = activeTab === 'all' ? allQuery : activeTab === 'lpr' ? lprQuery : activeTab === 'face' ? faceQuery : intrQuery
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -186,9 +189,9 @@ export function DetectionsScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ListSkeleton />
+      ) : shownQuery.isLoadingError ? (
+        <ErrorState error={shownQuery.error} onRetry={shownQuery.refetch} />
       ) : (
         <>
           {activeTab === 'all' && (

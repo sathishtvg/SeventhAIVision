@@ -31,6 +31,7 @@ import {
 } from '@/lib/droneEvents'
 import { useAuthStore } from '@/store/auth'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { DetailSkeleton, ErrorState } from '@/components/states'
 
 type Props = { route: { params: { eventId: string } } }
 
@@ -114,7 +115,7 @@ export function DroneEventDetailScreen({ route }: Props) {
   const { data: card } = useQuery({
     queryKey: ['drone-event-card', eventId], queryFn: () => getDroneEventCard(eventId),
   })
-  const { data: guards = [], isLoading: loadingGuards } = useQuery({
+  const { data: guards = [], isLoading: loadingGuards, isLoadingError: guardsFailed, error: guardsError, refetch: refetchGuards } = useQuery({
     queryKey: ['drone-event-guards', eventId], queryFn: () => getDroneEventGuards(eventId),
     enabled: asking === 'dispatch',
   })
@@ -160,7 +161,7 @@ export function DroneEventDetailScreen({ route }: Props) {
   })
 
   if (isLoading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    return <DetailSkeleton />
   }
   if (error || !event) {
     return (
@@ -330,6 +331,7 @@ export function DroneEventDetailScreen({ route }: Props) {
                   <Text style={styles.muted}>The closest free guard on shift at this site</Text>
                 </Pressable>
                 {loadingGuards && <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.sm }} />}
+                {guardsFailed && <ErrorState error={guardsError} onRetry={refetchGuards} />}
                 {guards.map((g) => (
                   <Pressable key={g.user_id} style={[styles.guardRow, guardId === g.user_id && styles.guardRowActive]}
                              onPress={() => setGuardId(g.user_id)}>
@@ -337,7 +339,7 @@ export function DroneEventDetailScreen({ route }: Props) {
                     <Text style={styles.muted}>{guardLine(g)}</Text>
                   </Pressable>
                 ))}
-                {!loadingGuards && guards.length === 0 && (
+                {!loadingGuards && !guardsFailed && guards.length === 0 && (
                   <Text style={styles.muted}>No guard is on shift at this site right now.</Text>
                 )}
               </ScrollView>

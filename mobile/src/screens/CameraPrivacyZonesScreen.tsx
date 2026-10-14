@@ -10,7 +10,7 @@
  * the Draw Zone screen with Privacy chosen.
  */
 import React, { useCallback, useLayoutEffect, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -20,6 +20,7 @@ import { MASKED_CAMERAS_KEY } from '@/hooks/useMaskedCameras'
 import { apiErrorText } from '@/lib/apiErrorText'
 import { WHAT_A_ZONE_DOES, WHAT_DELETING_DOES, drawnLine } from '@/lib/privacyZoneWords'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 type Props = { route: { params: { cameraId: string; streamId: string; cameraName: string } } }
 
@@ -28,7 +29,7 @@ export function CameraPrivacyZonesScreen({ route }: Props) {
   const navigation = useNavigation<any>()
   const qc = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
-  const { data: zones = [], isLoading, error } = useQuery({
+  const { data: zones = [], isLoading, error, isLoadingError: zonesFailed, refetch: refetchZones } = useQuery({
     queryKey: ['privacy-zones', cameraId], queryFn: () => listCameraPrivacyZones(cameraId) })
 
   useLayoutEffect(() => {
@@ -52,7 +53,8 @@ export function CameraPrivacyZonesScreen({ route }: Props) {
       { text: 'Delete the zone', style: 'destructive', onPress: () => remove.mutate(zone.id) },
     ])
 
-  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (isLoading) return <ListSkeleton />
+  if (zonesFailed) return <ErrorState error={error} onRetry={refetchZones} />
   return (
     <View style={styles.root}>
       <FlatList

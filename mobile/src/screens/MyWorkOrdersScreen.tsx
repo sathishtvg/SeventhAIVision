@@ -8,7 +8,7 @@
  */
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View,
+  FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View,
 } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
@@ -17,6 +17,7 @@ import { Card } from '@/components/Card'
 import { apiErrorText } from '@/lib/apiErrorText'
 import { ORDER_STATE_LABEL, inOrder, orderDue, orderWhere } from '@/lib/deskWork'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 function Order({ item, onChanged }: { item: WorkOrder; onChanged: () => Promise<unknown> }) {
   const [finishing, setFinishing] = useState(false)
@@ -76,10 +77,11 @@ function Order({ item, onChanged }: { item: WorkOrder; onChanged: () => Promise<
 export function MyWorkOrdersScreen() {
   const qc = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
-  const { data = [], isLoading, error } = useQuery({ queryKey: ['my-work-orders'], queryFn: listMyOrders })
+  const { data = [], isLoading, error, isLoadingError: dataFailed, refetch: refetchData } = useQuery({ queryKey: ['my-work-orders'], queryFn: listMyOrders })
   const again = useCallback(() => qc.invalidateQueries({ queryKey: ['my-work-orders'] }), [qc])
   const onRefresh = useCallback(async () => { setRefreshing(true); await again(); setRefreshing(false) }, [again])
-  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+  if (isLoading) return <ListSkeleton />
+  if (dataFailed) return <ErrorState error={error} onRetry={refetchData} />
   return (
     <View style={styles.root}>
       <FlatList

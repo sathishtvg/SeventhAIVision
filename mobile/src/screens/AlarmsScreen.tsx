@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, RefreshControl,
+  Alert, FlatList, RefreshControl,
   ScrollView, StyleSheet, Text, View, Pressable,
 } from 'react-native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import {
   type AlarmPanel, type AlarmEvent,
 } from '@/api/alarms'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const ARM_COLOR: Record<string, string> = {
@@ -86,12 +87,12 @@ export function AlarmsScreen() {
   const [tab, setTab] = useState<'panels' | 'events'>('panels')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: panels = [], isLoading: loadingPanels } = useQuery({
+  const { data: panels = [], isLoading: loadingPanels, isLoadingError: panelsFailed, error: panelsError, refetch: refetchPanels } = useQuery({
     queryKey: ['alarm-panels'],
     queryFn: () => getAlarmPanels(),
   })
 
-  const { data: events = [], isLoading: loadingEvents } = useQuery({
+  const { data: events = [], isLoading: loadingEvents, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
     queryKey: ['alarm-events'],
     queryFn: () => getAlarmEvents({ limit: 50 }),
   })
@@ -115,6 +116,10 @@ export function AlarmsScreen() {
   }, [qc])
 
   const isLoading = tab === 'panels' ? loadingPanels : loadingEvents
+  // The tab on screen says so when its own list could not be fetched - never "nothing here" for a failure.
+  const failed = tab === 'panels'
+    ? { now: panelsFailed, error: panelsError, retry: refetchPanels }
+    : { now: eventsFailed, error: eventsError, retry: refetchEvents }
   const data = (tab === 'panels' ? panels : events) as any[]
 
   return (
@@ -128,8 +133,8 @@ export function AlarmsScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : data.length === 0 ? (
+        <ListSkeleton />
+      ) : failed.now ? <ErrorState error={failed.error} onRetry={failed.retry} /> : data.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="shield-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No {tab}</Text>

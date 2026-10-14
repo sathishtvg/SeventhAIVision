@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react'
 import {
-  ActivityIndicator, Alert, FlatList, RefreshControl,
+  Alert, FlatList, RefreshControl,
   StyleSheet, Text, View, Pressable,
 } from 'react-native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { getDoors, getAccessEvents, type Door, type AccessEvent } from '@/api/access_control'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton } from '@/components/states'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const EVENT_COLOR: Record<string, string> = {
@@ -77,12 +78,12 @@ export function AccessControlScreen() {
   const [tab, setTab] = useState<'doors' | 'events'>('doors')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: doors = [], isLoading: loadingDoors } = useQuery({
+  const { data: doors = [], isLoading: loadingDoors, isLoadingError: doorsFailed, error: doorsError, refetch: refetchDoors } = useQuery({
     queryKey: ['access-doors'],
     queryFn: () => getDoors(),
   })
 
-  const { data: events = [], isLoading: loadingEvents } = useQuery({
+  const { data: events = [], isLoading: loadingEvents, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
     queryKey: ['access-events'],
     queryFn: () => getAccessEvents({ limit: 50 }),
     enabled: tab === 'events',
@@ -95,6 +96,10 @@ export function AccessControlScreen() {
   }, [qc])
 
   const isLoading = tab === 'doors' ? loadingDoors : loadingEvents
+  // The tab on screen says so when its own list could not be fetched - never "nothing here" for a failure.
+  const failed = tab === 'doors'
+    ? { now: doorsFailed, error: doorsError, retry: refetchDoors }
+    : { now: eventsFailed, error: eventsError, retry: refetchEvents }
   const data = (tab === 'doors' ? doors : events) as any[]
 
   return (
@@ -110,8 +115,8 @@ export function AccessControlScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : data.length === 0 ? (
+        <ListSkeleton />
+      ) : failed.now ? <ErrorState error={failed.error} onRetry={failed.retry} /> : data.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="lock-closed-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No {tab}</Text>

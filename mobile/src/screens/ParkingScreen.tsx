@@ -3,7 +3,7 @@ import {
   ActivityIndicator, FlatList, RefreshControl,
   StyleSheet, Text, View, Pressable, ScrollView,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import {
   getCarParks, getParkingSessions, occupancyPct,
@@ -11,6 +11,7 @@ import {
 } from '@/api/parking'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
+import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 
 const SESSION_COLOR: Record<string, string> = {
   active:    colors.success,
@@ -92,13 +93,14 @@ export function ParkingScreen() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>('active')
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: carParks = [], isLoading: loadingParks } = useQuery({
+  const { data: carParks = [], isLoading: loadingParks, isLoadingError: carParksFailed, error: carParksError, refetch: refetchCarParks } = useQuery({
     queryKey: ['car-parks'],
     queryFn: getCarParks,
   })
 
-  const { data: sessions = [], isLoading: loadingSessions } = useQuery({
+  const { data: sessions = [], isLoading: loadingSessions, isLoadingError: sessionsFailed, error: sessionsError, refetch: refetchSessions, isPlaceholderData: sessionsRefreshing } = useQuery({
     queryKey: ['parking-sessions', selectedPark, statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => getParkingSessions({ car_park_id: selectedPark, status: statusFilter, limit: 50 }),
   })
 
@@ -119,7 +121,7 @@ export function ParkingScreen() {
       {/* Car park selector */}
       {loadingParks ? (
         <ActivityIndicator color={colors.primary} style={{ margin: spacing.md }} />
-      ) : (
+      ) : carParksFailed ? <ErrorState error={carParksError} onRetry={refetchCarParks} /> : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.parkScroll} contentContainerStyle={styles.parkContent}>
           {carParks.map((cp: CarPark) => (
             <CarParkCard
@@ -145,9 +147,10 @@ export function ParkingScreen() {
         ))}
       </ScrollView>
 
+      {sessionsRefreshing && <RefreshingLine />}
       {loadingSessions ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      ) : sessions.length === 0 ? (
+        <ListSkeleton />
+      ) : sessionsFailed ? <ErrorState error={sessionsError} onRetry={refetchSessions} /> : sessions.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="car-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No sessions</Text>

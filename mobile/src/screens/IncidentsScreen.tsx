@@ -1,9 +1,9 @@
 import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  FlatList, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
@@ -14,6 +14,8 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { IncidentsStackParamList } from '@/navigation'
+import { ErrorState, ListSkeleton, NewMark, RefreshingLine } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 
 type NavProp = NativeStackNavigationProp<IncidentsStackParamList>
 
@@ -83,9 +85,15 @@ export function IncidentsScreen() {
     queryFn: getSites,
   })
 
-  const { data: incidents = [], isLoading } = useQuery({
+  const { data: incidents = [], isLoading, isLoadingError: incidentsFailed, error: incidentsError, refetch: refetchIncidents, isPlaceholderData: incidentsRefreshing } = useQuery({
     queryKey: ['incidents', statusFilter, siteFilter, moduleFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => getIncidents(statusFilter === 'all' ? undefined : statusFilter, siteFilter, moduleFilter),
+  })
+  // What arrives while the list is open (a live event, or the refresh every few seconds) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(incidents, (i) => i.id, {
+    scope: JSON.stringify([statusFilter, siteFilter, moduleFilter]), settled: !incidentsRefreshing, say: (n) => countOf(n, 'new incident'),
   })
 
   const onRefresh = useCallback(async () => {
@@ -165,11 +173,10 @@ export function IncidentsScreen() {
         ))}
       </ScrollView>
 
+      {incidentsRefreshing && <RefreshingLine />}
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : incidents.length === 0 ? (
+        <ListSkeleton />
+      ) : incidentsFailed ? <ErrorState error={incidentsError} onRetry={refetchIncidents} /> : incidents.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.textDisabled} />
           <Text style={styles.emptyText}>No {statusFilter !== 'all' ? statusFilter : ''} incidents</Text>
@@ -178,7 +185,9 @@ export function IncidentsScreen() {
         <FlatList
           data={incidents}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <IncidentRow item={item} />}
+          renderItem={({ item }) => (
+            <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.severity)}><IncidentRow item={item} /></NewMark>
+          )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
           contentContainerStyle={styles.list}
           refreshControl={

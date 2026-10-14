@@ -1,5 +1,5 @@
 import React from 'react'
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -8,6 +8,7 @@ import { getRoutes } from '@/api/patrols'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
+import { ErrorState, ListSkeleton } from '@/components/states'
 
 type RoutePropType = RouteProp<PatrolStackParamList, 'PatrolSelect'>
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
@@ -16,18 +17,17 @@ export function PatrolSelectScreen() {
   const { params } = useRoute<RoutePropType>()
   const navigation = useNavigation<NavProp>()
 
-  const { data: routes = [], isLoading } = useQuery({
+  const { data: routes = [], isLoading, isLoadingError: routesFailed, error: routesError, refetch: refetchRoutes } = useQuery({
     queryKey: ['patrol-routes'],
     queryFn: () => getRoutes(),
   })
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ListSkeleton />
     )
   }
+  if (routesFailed) return <ErrorState error={routesError} onRetry={refetchRoutes} />
 
   return (
     <FlatList

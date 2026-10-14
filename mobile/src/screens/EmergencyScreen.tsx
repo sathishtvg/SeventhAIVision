@@ -10,6 +10,8 @@ import {
   type MyBroadcast, type EmergencyBroadcast,
 } from '@/api/emergency'
 import { Card } from '@/components/Card'
+import { ErrorState, ListSkeleton, NewMark } from '@/components/states'
+import { countOf, toneOf, useNewItems } from '@/motion/useNewItems'
 import { useAuthStore } from '@/store/auth'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
@@ -187,13 +189,13 @@ export function EmergencyScreen() {
   // check would wrongly exclude Manager despite being senior to Operator/Guard.
   const canSend = user && [1, 2, 3, 8].includes(user.roleId)
 
-  const { data: myAlerts = [], isLoading: loadingMy } = useQuery({
+  const { data: myAlerts = [], isLoading: loadingMy, isLoadingError: myFailed, error: myError, refetch: refetchMy } = useQuery({
     queryKey: ['broadcasts-my'],
     queryFn: () => getMyBroadcasts(),
     enabled: tab === 'alerts',
   })
 
-  const { data: allBroadcasts = [], isLoading: loadingAll } = useQuery({
+  const { data: allBroadcasts = [], isLoading: loadingAll, isLoadingError: allFailed, error: allError, refetch: refetchAll } = useQuery({
     queryKey: ['broadcasts-all'],
     queryFn: () => listBroadcasts({ limit: 50 }),
     enabled: tab === 'all',
@@ -212,6 +214,13 @@ export function EmergencyScreen() {
   }, [qc])
 
   const isLoading = tab === 'alerts' ? loadingMy : tab === 'all' ? loadingAll : false
+  // A broadcast list that could not be fetched says so: "no broadcasts received" would be read as all clear.
+  const failed = tab === 'alerts'
+    ? { now: myFailed, error: myError, retry: refetchMy }
+    : { now: tab === 'all' && allFailed, error: allError, retry: refetchAll }
+  // What arrives while the list is open (a live event, or the refresh every few seconds) is marked for a few
+  // seconds in its colour, and a screen reader is told how many. The first rows shown are never new.
+  const fresh = useNewItems(myAlerts, (a) => a.id, { say: (n) => countOf(n, 'new emergency broadcast') })
 
   const unreadCount = myAlerts.filter((b: MyBroadcast) => !b.acknowledged_at).length
 
@@ -241,7 +250,9 @@ export function EmergencyScreen() {
       {tab === 'send' ? (
         <SendForm />
       ) : isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.error} /></View>
+        <ListSkeleton />
+      ) : failed.now ? (
+        <ErrorState error={failed.error} onRetry={failed.retry} />
       ) : tab === 'alerts' ? (
         myAlerts.length === 0 ? (
           <View style={styles.center}>
@@ -253,7 +264,9 @@ export function EmergencyScreen() {
             data={myAlerts}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <MyAlertRow item={item} onAck={(id) => ackMutation.mutate(id)} />
+              <NewMark isNew={fresh.has(String(item.id))} tone={toneOf(item.severity)}>
+                <MyAlertRow item={item} onAck={(id) => ackMutation.mutate(id)} />
+              </NewMark>
             )}
             ItemSeparatorComponent={() => <View style={{ height: spacing.xs }} />}
             contentContainerStyle={styles.list}
