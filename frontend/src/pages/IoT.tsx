@@ -66,7 +66,7 @@ function SensorCard({ sensor, onViewChart }: { sensor: IoTSensor; onViewChart: (
         borderRadius: 2,
         background: `linear-gradient(135deg, ${st.color}0d 0%, transparent 100%)`,
         cursor: 'pointer',
-        transition: 'all 0.2s',
+        transition: 'box-shadow 0.2s, transform 0.2s',
         '&:hover': { boxShadow: `0 4px 20px ${st.color}30`, transform: 'translateY(-1px)' },
       }}
       onClick={() => onViewChart(sensor)}

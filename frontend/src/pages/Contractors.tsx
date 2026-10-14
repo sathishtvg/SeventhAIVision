@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   MenuItem, Select, FormControl, InputLabel, Tooltip, CircularProgress,
 } from '@mui/material'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import BlockIcon from '@mui/icons-material/Block'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
@@ -25,7 +25,7 @@ import {
 import type { Contractor, Delivery } from '@/api/contractors'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableBlockSkeleton } from '@/components/states'
+import { ErrorState, TableBlockSkeleton, RefreshingLine } from '@/components/states'
 
 // ── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -356,8 +356,9 @@ function WorkPermitsTab() {
   const [statusFilter, setStatusFilter] = useState('')
   const qc = useQueryClient()
 
-  const { data: _permData, isLoading, isLoadingError: _permDataFailed, error: _permDataError, refetch: refetch_permData } = useQuery({
+  const { data: _permData, isLoading, isLoadingError: _permDataFailed, error: _permDataError, refetch: refetch_permData, isPlaceholderData: _permDataRefreshing } = useQuery({
     queryKey: ['work-permits', statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listWorkPermits(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 30000,
   })
@@ -406,6 +407,7 @@ function WorkPermitsTab() {
         </Button>
       </Box>
 
+      {_permDataRefreshing && <RefreshingLine />}
       {isLoading ? (
         <TableBlockSkeleton />
       ) : _permDataFailed ? <ErrorState compact error={_permDataError} onRetry={refetch_permData} /> : (
@@ -505,8 +507,9 @@ function DeliveriesTab() {
   const [collectTarget, setCollectTarget] = useState<Delivery | null>(null)
   const qc = useQueryClient()
 
-  const { data: deliveries = [], isLoading, isLoadingError: deliveriesFailed, error: deliveriesError, refetch: refetchDeliveries } = useQuery({
+  const { data: deliveries = [], isLoading, isLoadingError: deliveriesFailed, error: deliveriesError, refetch: refetchDeliveries, isPlaceholderData: deliveriesRefreshing } = useQuery({
     queryKey: ['deliveries', statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listDeliveries(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 30000,
   })
@@ -541,6 +544,7 @@ function DeliveriesTab() {
         </Button>
       </Box>
 
+      {deliveriesRefreshing && <RefreshingLine />}
       {isLoading ? (
         <TableBlockSkeleton />
       ) : deliveriesFailed ? <ErrorState compact error={deliveriesError} onRetry={refetchDeliveries} /> : (

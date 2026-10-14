@@ -20,7 +20,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import EditIcon from '@mui/icons-material/Edit'
 import HistoryIcon from '@mui/icons-material/History'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   createKey, getOutstandingKeys, issueKey, listKeyTransactions, listKeys,
@@ -31,7 +31,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 
@@ -461,8 +461,9 @@ export function KeyRegisterPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: keys = [], isLoading, isLoadingError: keysFailed, error: keysError, refetch: refetchKeys } = useQuery({
+  const { data: keys = [], isLoading, isLoadingError: keysFailed, error: keysError, refetch: refetchKeys, isPlaceholderData: keysRefreshing } = useQuery({
     queryKey: ['keys', siteFilter, tab],
+    placeholderData: keepPreviousData,
     queryFn: () => listKeys({
       site_id: siteFilter || undefined,
       include_inactive: tab === 1,
@@ -528,6 +529,7 @@ export function KeyRegisterPage() {
           <Tab label="Including retired" sx={{ minHeight: 34, fontSize: '0.78rem' }} />
         </Tabs>
 
+        {keysRefreshing && <RefreshingLine />}
         {isLoading ? (
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
             {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}

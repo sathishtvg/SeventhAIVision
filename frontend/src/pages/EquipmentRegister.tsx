@@ -22,7 +22,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import CheckroomIcon from '@mui/icons-material/Checkroom'
 import PersonSearchIcon from '@mui/icons-material/PersonSearch'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   createEquipment, getHeldByUser, getOutstandingEquipment, issueEquipment,
@@ -37,7 +37,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const CAN_MANAGE = new Set([1, 2, 3, 8])
 const CAN_ISSUE = new Set([1, 2, 3, 4, 8])
@@ -652,8 +652,9 @@ export function EquipmentRegisterPage() {
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
-  const { data: items = [], isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems } = useQuery({
+  const { data: items = [], isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems, isPlaceholderData: itemsRefreshing } = useQuery({
     queryKey: ['equipment', siteFilter, categoryFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listEquipment({
       site_id: siteFilter || undefined,
       category: categoryFilter || undefined,
@@ -745,6 +746,7 @@ export function EquipmentRegisterPage() {
               </GlassCard>
             )}
 
+            {itemsRefreshing && <RefreshingLine />}
             {isLoading ? (
               <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
                 {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}

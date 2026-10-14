@@ -23,7 +23,6 @@ import {
   Tooltip,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
-import { BrandLoader } from '@/components/common/BrandLoader'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import { openInNewWindow } from '@/lib/popoutWindow'
@@ -37,7 +36,7 @@ import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { usePermission } from '@/hooks/usePermission'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState } from '@/components/states'
+import { ErrorState, TableBlockSkeleton } from '@/components/states'
 
 const SEVERITY_COLOR: Record<string, 'error' | 'warning' | 'success' | 'default'> = {
   critical: 'error', high: 'error', medium: 'warning', low: 'success', info: 'default',
@@ -124,7 +123,7 @@ function ShiftsTab() {
     },
   })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <TableBlockSkeleton />
   if (shiftsFailed) return <ErrorState error={shiftsError} onRetry={refetchShifts} />
 
   return (
@@ -291,7 +290,7 @@ function ShiftsTab() {
 function PatrolRoutesTab() {
   const { data: routes = [], isLoading, isLoadingError: routesFailed, error: routesError, refetch: refetchRoutes } = useQuery({ queryKey: ['patrol_routes'], queryFn: () => getRoutes() })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <TableBlockSkeleton />
   if (routesFailed) return <ErrorState error={routesError} onRetry={refetchRoutes} />
 
   return (
@@ -346,7 +345,7 @@ function DOBTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['dob'] }); setOpen(false); setForm({ entry_type: 'general', body: '', severity: '' }) },
   })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <TableBlockSkeleton />
   if (entriesFailed) return <ErrorState error={entriesError} onRetry={refetchEntries} />
 
   return (
@@ -460,7 +459,7 @@ function VisitorsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['visitor_logs'] }); setOpenCheckin(false) },
   })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <TableBlockSkeleton />
   if (visitorsFailed) return <ErrorState error={visitorsError} onRetry={refetchVisitors} />
 
   return (

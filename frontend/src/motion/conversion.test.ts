@@ -82,3 +82,39 @@ describe('every page says so when a request fails', () => {
     }
   })
 })
+
+describe('a changed filter keeps the rows that were there', () => {
+  // Rule 4. A list whose key is made of the page's own filters keeps its last answer on screen while the new one
+  // is fetched, and says so.
+  const kept = everything.flatMap((file) => [...file.text.matchAll(/isPlaceholderData: (\w+)/g)].map(([, name]) => ({ file, name })))
+
+  it('says that the rows on screen are the last list’s, wherever they are kept', () => {
+    expect(kept.length).toBeGreaterThanOrEqual(45)
+    for (const { file, name } of kept) {
+      const said = file.text.includes(`{${name} && <TableRefreshingRow />}`) || file.text.includes(`{${name} && <RefreshingLine />}`)
+      expect([file.name, name, said]).toEqual([file.name, name, true])
+    }
+  })
+
+  it('does not call the kept rows, or the first rows of the new list, new', () => {
+    const both = everything.filter((file) => /\buseNewItems\(/.test(file.text) && /isPlaceholderData: /.test(file.text))
+    expect(both.length).toBeGreaterThanOrEqual(6)
+    for (const file of both) expect([file.name, /settled: !\w+Refreshing\d*/.test(file.text)]).toEqual([file.name, true])
+  })
+
+  it('never keeps one record under another’s name, nor a list that can be switched off', () => {
+    let checked = 0
+    for (const file of everything) {
+      // Every list that says it is being refreshed: the binding and the options of one request, read together.
+      for (const [whole] of file.text.matchAll(/const \{[^}]*isPlaceholderData: \w+[^}]*\} = useQuery\(\{[^}]*\}/g)) {
+        checked += 1
+        const key = /queryKey: \[([^\]]*)\]/.exec(whole)?.[1] ?? ''
+        // A record's id from the address bar is never part of a kept key.
+        const params = [...file.text.matchAll(/const \{ ([^}]+) \} = useParams/g)].flatMap(([, names]) => names.split(',').map((n) => n.trim().split(':')[0].trim()))
+        expect([file.name, key, params.some((name) => new RegExp(`\\b${name}\\b`).test(key))]).toEqual([file.name, key, false])
+        expect([file.name, key, /\benabled:/.test(whole)]).toEqual([file.name, key, false])
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(39)
+  })
+})

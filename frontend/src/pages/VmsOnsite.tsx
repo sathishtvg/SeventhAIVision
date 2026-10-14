@@ -7,7 +7,7 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
 import TimerOffIcon from '@mui/icons-material/TimerOff'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { PageHeader } from '@/components/common/PageHeader'
 import {
@@ -28,7 +28,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import { getSites } from '@/api/sites'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { useTenantTimeZone, formatDateTimeIn, formatTimeIn, timeZoneLabel } from '@/lib/tenantTime'
-import { TableErrorRow } from '@/components/states'
+import { TableErrorRow, TableRefreshingRow } from '@/components/states'
 
 /** Human-readable time on site. Minutes alone stop being readable somewhere
  * around the two-hour mark, which is exactly the range an overstaying vehicle
@@ -89,8 +89,9 @@ export default function VmsOnsite() {
     [sites],
   )
 
-  const { data, isLoading, isFetching, refetch, isLoadingError: dataFailed, error: dataError } = useQuery({
+  const { data, isLoading, isFetching, refetch, isLoadingError: dataFailed, error: dataError, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['vms-onsite', siteId, overstayedOnly, visitType],
+    placeholderData: keepPreviousData,
     queryFn: () => listOnsiteVehicles(siteId || undefined, overstayedOnly, visitType || undefined),
     refetchInterval: 30_000,
   })
@@ -248,6 +249,7 @@ export default function VmsOnsite() {
                   ))}
                 </TableRow>
               ))}
+            {dataRefreshing && <TableRefreshingRow />}
             {dataFailed && <TableErrorRow error={dataError} onRetry={refetch} />}
             {!isLoading && !dataFailed && rows.length === 0 && (
               <TableRow>

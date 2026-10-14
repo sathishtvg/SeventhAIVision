@@ -28,13 +28,12 @@ import {
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
-import { BrandLoader } from '@/components/common/BrandLoader'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
 import RouteIcon from '@mui/icons-material/Route'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   getComplianceDashboard,
   listSchedules,
@@ -48,7 +47,7 @@ import {
 } from '@/api/compliance'
 import { apiClient } from '@/api/client'
 import { PageHeader } from '@/components/common/PageHeader'
-import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
+import { CardGridSkeleton, ErrorState, KpiSkeleton, TableBlockSkeleton, RefreshingLine } from '@/components/states'
 
 // Assignable tour guards — Supervisor/Operator/Security Guard only. A raw
 // `role_id >= 4` range check would also sweep in Viewer(6), Client(7), and
@@ -228,7 +227,7 @@ function DashboardTab() {
     refetchInterval: 60_000,
   })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <Stack spacing={3}><KpiSkeleton count={4} /><TableBlockSkeleton /></Stack>
   if (error || !data) return <Alert severity="error">Failed to load compliance dashboard.</Alert>
 
   const completedToday = data.completed_today ?? 0
@@ -425,8 +424,9 @@ function OccurrencesTab() {
   const [selectedOcc, setSelectedOcc] = useState<TourOccurrence | null>(null)
   const [resolveNotes, setResolveNotes] = useState('')
 
-  const { data: occurrences = [], isLoading, isLoadingError: occurrencesFailed, error: occurrencesError, refetch: refetchOccurrences } = useQuery({
+  const { data: occurrences = [], isLoading, isLoadingError: occurrencesFailed, error: occurrencesError, refetch: refetchOccurrences, isPlaceholderData: occurrencesRefreshing } = useQuery({
     queryKey: ['tour-occurrences', dateFrom, dateTo, statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listOccurrences({
       date_from: dateFrom,
       date_to: dateTo,
@@ -472,6 +472,7 @@ function OccurrencesTab() {
           onChange={e => setDateTo(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
       </Stack>
 
+      {occurrencesRefreshing && <RefreshingLine />}
       {isLoading
         ? <TableBlockSkeleton />
         : occurrencesFailed ? <ErrorState compact error={occurrencesError} onRetry={refetchOccurrences} /> : occurrences.length === 0

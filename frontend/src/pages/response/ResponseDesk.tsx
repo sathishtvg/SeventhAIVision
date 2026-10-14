@@ -13,7 +13,7 @@ import {
   Alert, Box, Button, Chip, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -23,7 +23,8 @@ import { getDesk } from '@/api/incidentResponses'
 import type { DeskItem, DeskView } from '@/api/incidentResponses'
 import { ClockChips, RecommendDialog, ResponseDetailDialog, StandDownDialog } from '@/components/response/ResponseDialogs'
 import { NEEDS_LABEL, STATE_COLOUR, STATE_LABEL, overBecause, since } from '@/components/response/responseFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 /** How often the desk asks again. The clocks on it are the server's, not the browser's. */
 const REFRESH_MS = 15_000
@@ -50,14 +51,19 @@ export default function ResponseDesk() {
   const [standing, setStanding] = useState<DeskItem | null>(null)
   const [reading, setReading] = useState<DeskItem | null>(null)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
-  const { data, isLoading, error, refetch: refetchData } = useQuery({
-    queryKey: ['response-desk', siteId, view], queryFn: () => getDesk({ site_id: siteId || undefined, view }),
+  const { data, isLoading, error, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
+    queryKey: ['response-desk', siteId, view],
+    placeholderData: keepPreviousData, queryFn: () => getDesk({ site_id: siteId || undefined, view }),
     refetchInterval: REFRESH_MS,
   })
   const again = () => Promise.all([
     qc.invalidateQueries({ queryKey: ['response-desk'] }), qc.invalidateQueries({ queryKey: ['response-detail'] }),
     qc.invalidateQueries({ queryKey: ['incidents'] })])
   const items = data?.items ?? []
+  // What reaches the desk while it is open is marked in its severity's colour, and said.
+  const fresh = useNewItems(items, (i) => i.id, {
+    scope: JSON.stringify([siteId, view]), settled: !dataRefreshing, say: (n) => countOf(n, 'new item on the desk', 'new items on the desk'),
+  })
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader title="Response Desk"
@@ -90,6 +96,7 @@ export default function ResponseDesk() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {!!error && <ErrorState compact error={error} onRetry={refetchData} />}
         {isLoading ? <Skeleton height={220} /> : !items.length && !error ? (
           <Alert severity="info">
@@ -110,7 +117,7 @@ export default function ResponseDesk() {
                 {items.map((i) => {
                   const over = !i.response ? overBecause(i.last_response) : null
                   return (
-                    <TableRow key={i.id} data-testid="desk-row" hover>
+                    <TableRow key={i.id} data-testid="desk-row" hover {...newItemProps(fresh.has(String(i.id)), toneOf(i.severity))}>
                       <TableCell sx={{ maxWidth: 320 }}>
                         <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>{i.title}</Typography>

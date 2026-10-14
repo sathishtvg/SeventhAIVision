@@ -27,7 +27,7 @@ import PlaceIcon from '@mui/icons-material/Place'
 import PhonelinkEraseIcon from '@mui/icons-material/PhonelinkErase'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlined'
 import SettingsIcon from '@mui/icons-material/Settings'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   acknowledgeManDown, getManDownSettings, listManDown, resolveManDown,
@@ -40,7 +40,8 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
+import { countOf, newItemProps, useNewItems } from '@/motion'
 
 const CAN_MANAGE = new Set([1, 2, 3, 4, 8])
 
@@ -381,8 +382,9 @@ export function ManDownPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
+  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents, isPlaceholderData: eventsRefreshing } = useQuery({
     queryKey: ['man-down', siteFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listManDown({ site_id: siteFilter || undefined }),
     // Deliberately aggressive. Every other list here refetches lazily; thirty
     // seconds of staleness on this one is thirty seconds nobody is moving.
@@ -395,6 +397,10 @@ export function ManDownPage() {
   })
 
   const live = events.filter((e) => LIVE.has(e.status))
+  // An event that arrives while the page is open is framed in red at once, and said. Nothing waits for it.
+  const fresh = useNewItems(live, (e) => e.id, {
+    scope: siteFilter, settled: !eventsRefreshing, say: (n) => countOf(n, 'new man-down event'),
+  })
   const history = events.filter((e) => !LIVE.has(e.status))
 
   const siteOptions = useMemo(
@@ -423,6 +429,7 @@ export function ManDownPage() {
           </Alert>
         )}
 
+        {eventsRefreshing && <RefreshingLine />}
         {isLoading ? (
           <Stack spacing={1.5}>
             {[0, 1].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}
@@ -432,10 +439,12 @@ export function ManDownPage() {
             {live.length > 0 && (
               <Stack spacing={1.5} sx={{ mb: 2.5 }}>
                 {live.map((row) => (
-                  <LiveEvent
-                    key={row.id} row={row} canManage={canManage}
-                    onResolve={() => setResolving(row)}
-                  />
+                  <Box key={row.id} {...newItemProps(fresh.has(String(row.id)), 'critical', 'card')} sx={{ borderRadius: '16px' }}>
+                    <LiveEvent
+                      row={row} canManage={canManage}
+                      onResolve={() => setResolving(row)}
+                    />
+                  </Box>
                 ))}
               </Stack>
             )}

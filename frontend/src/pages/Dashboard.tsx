@@ -344,7 +344,7 @@ function ActiveRecordingsPanel({ siteFilter }: { siteFilter: string }) {
         <Stack spacing={0.5}>
           {recordings.map((r: any) => (
             <Box key={r.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 1.5s infinite' }} />
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'error.main' }} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="caption" noWrap sx={{ fontWeight: 500 }}>{r.camera_name ?? r.camera_id}</Typography>
                 {r.site_name && (

@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   Tooltip, CircularProgress, LinearProgress, Alert, MenuItem,
 } from '@mui/material'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import BatteryAlertIcon from '@mui/icons-material/BatteryAlert'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
@@ -24,7 +24,7 @@ import {
 import type { BodyCamera, BWCRecording } from '@/api/bwc'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PageHeader } from '@/components/common/PageHeader'
-import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
+import { CardGridSkeleton, ErrorState, TableBlockSkeleton, RefreshingLine } from '@/components/states'
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -261,7 +261,7 @@ function CamerasTab() {
                   </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     {cam.is_recording && (
-                      <FiberManualRecordIcon sx={{ color: '#FF4560', fontSize: 14, animation: 'pulse 1s infinite' }} />
+                      <FiberManualRecordIcon sx={{ color: '#FF4560', fontSize: 14 }} />
                     )}
                     <CameraStatusChip status={cam.status} />
                   </Box>
@@ -398,8 +398,9 @@ function RecordingsTab() {
   const [linkTarget, setLinkTarget] = useState<BWCRecording | null>(null)
   const qc = useQueryClient()
 
-  const { data: _recData, isLoading, isLoadingError: _recDataFailed, error: _recDataError, refetch: refetch_recData } = useQuery({
+  const { data: _recData, isLoading, isLoadingError: _recDataFailed, error: _recDataError, refetch: refetch_recData, isPlaceholderData: _recDataRefreshing } = useQuery({
     queryKey: ['bwc-recordings', statusFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listRecordings(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 15000,
   })
@@ -438,6 +439,7 @@ function RecordingsTab() {
   return (
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
+      {_recDataRefreshing && <RefreshingLine />}
       {isLoading ? (
         <TableBlockSkeleton />
       ) : _recDataFailed ? <ErrorState compact error={_recDataError} onRetry={refetch_recData} /> : (

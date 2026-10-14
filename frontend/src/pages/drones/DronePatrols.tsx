@@ -9,7 +9,7 @@ import {
   TablePagination, TableRow, Tabs, TextField, Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -22,7 +22,7 @@ import { fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { formatDistance } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
 import { DeliveriesPanel, RecipientsPanel, SummaryPanel } from './DroneReportPanels'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const STATUSES: SessionStatus[] = ['ACTIVE', 'RETURNING', 'PAUSED', 'EVENT_DETECTED', 'COMPLETED', 'FAILED',
                                    'ABORTED', 'CANCELLED', 'BLOCKED', 'MISSED', 'SCHEDULED']
@@ -82,8 +82,9 @@ function Flights() {
                     from: dayStart(from), to: dayEnd(to) }
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const { data: drones } = useQuery({ queryKey: ['drones', 'all'], queryFn: () => listDrones() })
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['drone-patrols', filters, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listSessions({ ...filters, limit: rows, offset: page * rows }),
     refetchInterval: 20_000,
   })
@@ -169,6 +170,7 @@ function Flights() {
       </Grid>
 
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !sessions.length ? (
           <Alert severity="info">No flights match.</Alert>
         ) : (

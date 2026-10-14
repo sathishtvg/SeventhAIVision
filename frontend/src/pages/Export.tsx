@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { exportAlerts, exportIncidents, exportDetections, exportAuditLogs } from '@/api/exports'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SuccessTick, errorText } from '@/components/states'
 
 const SEVERITIES = ['', 'info', 'low', 'medium', 'high', 'critical']
 const ALERT_STATUSES = ['', 'open', 'acknowledged', 'resolved', 'dismissed']
@@ -59,14 +60,20 @@ function ExportCard({
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Said only once the file has really been handed to the browser. There is no percentage: the server reports
+  // none, and one made up here would be a guess.
+  const [ready, setReady] = useState(false)
 
   const handleExport = async () => {
     setLoading(true)
     setError(null)
+    setReady(false)
     try {
       await onExport()
+      setReady(true)
     } catch (err) {
-      setError(String(err))
+      // Which kind of failure it was, in the words every other screen uses.
+      setError(errorText(err))
     } finally {
       setLoading(false)
     }
@@ -85,6 +92,7 @@ function ExportCard({
         </Box>
 
         {error && <MuiAlert severity="error" sx={{ py: 0 }}>{error}</MuiAlert>}
+        <SuccessTick show={ready && !loading} label="Export ready: the file was handed to your browser" />
 
         <Button
           variant="outlined"

@@ -37,7 +37,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import GroupIcon from '@mui/icons-material/Group'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   acknowledgePostOrder, createPostOrder, deactivatePostOrder, getPostOrder,
   getPostOrderAcks, listPostOrders, updatePostOrder,
@@ -48,7 +48,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
-import { ErrorState, ListSkeleton } from '@/components/states'
+import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 
 const CATEGORY_COLORS: Record<string, 'default' | 'error' | 'primary' | 'warning' | 'info' | 'success'> = {
   general: 'default', emergency: 'error', access: 'primary',
@@ -212,8 +212,9 @@ export function PostOrdersPage() {
   const [acksId, setAcksId] = useState<string | null>(null)
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
-  const { data: orders = [], isLoading, isLoadingError: ordersFailed, error: ordersError, refetch: refetchOrders } = useQuery({
+  const { data: orders = [], isLoading, isLoadingError: ordersFailed, error: ordersError, refetch: refetchOrders, isPlaceholderData: ordersRefreshing } = useQuery({
     queryKey: ['post-orders', siteFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listPostOrders(siteFilter || undefined),
   })
 
@@ -256,6 +257,7 @@ export function PostOrdersPage() {
 
       <GlassCard>
         <List>
+          {ordersRefreshing && <RefreshingLine />}
           {isLoading ? (
             <ListItem><ListSkeleton rows={4} height={48} /></ListItem>
           ) : ordersFailed ? (

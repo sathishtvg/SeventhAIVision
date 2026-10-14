@@ -101,7 +101,7 @@ function AiModulesPanel({ tenant }: { tenant: Tenant }) {
                   border: '1px solid',
                   borderColor: isEnabled ? 'success.dark' : 'rgba(255,255,255,0.08)',
                   bgcolor: isEnabled ? 'rgba(0,227,150,0.05)' : 'rgba(255,255,255,0.02)',
-                  transition: 'all 0.2s',
+                  transition: 'background-color 0.2s, border-color 0.2s',
                 }}
               >
                 <Box>
@@ -209,7 +209,7 @@ function PlatformProductsPanel({ tenant }: { tenant: Tenant }) {
                   bgcolor: product.is_licensed
                     ? 'rgba(108,99,255,0.05)'
                     : 'rgba(255,255,255,0.02)',
-                  transition: 'all 0.2s',
+                  transition: 'background-color 0.2s, border-color 0.2s',
                 }}
               >
                 {/* Product header */}

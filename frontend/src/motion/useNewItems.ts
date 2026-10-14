@@ -95,8 +95,12 @@ export type NewItemTone = 'critical' | 'high' | 'medium' | 'low' | 'info' | 'suc
  * without any movement; it is the screen reader's announcement, not this, that
  * a person who cannot see it relies on.
  */
-export function newItemProps(isNew: boolean, tone: NewItemTone = 'info'): { className?: string; 'data-tone'?: NewItemTone } {
-  return isNew ? { className: 'sav-new', 'data-tone': tone } : {}
+export function newItemProps(
+  isNew: boolean, tone: NewItemTone = 'info', shape?: 'card',
+): { className?: string; 'data-tone'?: NewItemTone; 'data-shape'?: 'card' } {
+  if (!isNew) return {}
+  // A card has its own surface: a tint behind it would not be seen, so it is given a frame in its colour.
+  return shape ? { className: 'sav-new', 'data-tone': tone, 'data-shape': shape } : { className: 'sav-new', 'data-tone': tone }
 }
 
 /** The tone for the words the server uses for severity and priority. Anything it does not know is `info`. */

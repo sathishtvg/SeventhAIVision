@@ -33,7 +33,7 @@ import {
   COLUMNS, DEVICE_COLOUR, DEVICE_LABEL, DEVICE_ORDER, PATROL_KINDS, PATROL_LABEL, PERIODS, STATE_COLOUR, STATE_LABEL,
   briefingFor, briefingLine, cell, fmt, fmtDay, lasting, patrolLine, periodLabel,
 } from '@/components/board/boardFormat'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 type Part = 'board' | 'sites' | 'briefings' | 'reports'
@@ -324,8 +324,9 @@ function BriefingsTab() {
   const [open, setOpen] = useState<string | null>(null)
   const [drafting, setDrafting] = useState<{ siteId: string; day: string } | true | null>(null)
   const [aside, setAside] = useState(false)
-  const { data, isLoading, error, refetch: refetchData3 } = useQuery({
-    queryKey: ['briefings', aside], queryFn: () => listBriefings(aside ? { state: 'DISCARDED' } : {}),
+  const { data, isLoading, error, refetch: refetchData3, isPlaceholderData: dataRefreshing } = useQuery({
+    queryKey: ['briefings', aside],
+    placeholderData: keepPreviousData, queryFn: () => listBriefings(aside ? { state: 'DISCARDED' } : {}),
   })
   const sites = useQuery({ queryKey: ['board-sites', '', 1], queryFn: () => getBoardSites({ days: 1 }) })
   const again = () => qc.invalidateQueries({ queryKey: ['briefings'] })
@@ -344,6 +345,7 @@ function BriefingsTab() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDrafting(true)}>Draft a briefing</Button>)}
         </Stack>
       </GlassCard>
+      {dataRefreshing && <RefreshingLine />}
       {!!error && <ErrorState compact error={error} onRetry={refetchData3} sx={{ mb: 2 }} />}
       {isLoading && <Skeleton height={200} />}
       {data && !data.items.length && (

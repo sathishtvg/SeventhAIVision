@@ -23,7 +23,7 @@ import HandshakeIcon from '@mui/icons-material/Handshake'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import EditIcon from '@mui/icons-material/Edit'
 import SearchIcon from '@mui/icons-material/Search'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 
 import {
   disposeLostFoundItem, fetchLostFoundPhoto, getLostFoundSummary, listLostFound,
@@ -35,7 +35,7 @@ import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterRail } from '@/components/common/FilterRail'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 const CAN_DISPOSE = new Set([1, 2, 3, 8])
 
@@ -474,8 +474,9 @@ export function LostFoundPage() {
 
   const { data: sites = [] } = useQuery({ queryKey: ['sites'], queryFn: () => getSites() })
 
-  const { data: items = [], isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems } = useQuery({
+  const { data: items = [], isLoading, isLoadingError: itemsFailed, error: itemsError, refetch: refetchItems, isPlaceholderData: itemsRefreshing } = useQuery({
     queryKey: ['lost-found', siteFilter, statusFilter, categoryFilter, search],
+    placeholderData: keepPreviousData,
     queryFn: () => listLostFound({
       site_id: siteFilter || undefined,
       status_filter: statusFilter || undefined,
@@ -531,6 +532,7 @@ export function LostFoundPage() {
           )}
         </Stack>
 
+        {itemsRefreshing && <RefreshingLine />}
         {isLoading ? (
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))' }}>
             {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={150} />)}

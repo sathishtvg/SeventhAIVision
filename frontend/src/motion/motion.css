@@ -184,6 +184,19 @@
   .sav-waits { opacity: 0; }
 }
 
+/* ── A picture is not seen until it is there ──────────────────────────────────
+   A thumbnail or a snapshot marked `sav-img` (fadeImage.ts) is kept out of sight until the browser has it,
+   and fades in. One that could not be fetched is shown as the browser shows it, not hidden. */
+.sav-img { transition: opacity var(--d-standard) var(--ease-out); }
+.sav-img:not([data-loaded]) { opacity: 0; }
+
+/* A position that is fresh: the marker of a vehicle that is moving and was heard from lately. Only that. */
+@keyframes sav-live-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent); }
+  70%  { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
 /* ── What has just arrived ─────────────────────────────────────────────────────
    A row or a card that came in after its list was first shown (useNewItems)
    carries `sav-new` for --d-new: a tint, and a bar at its leading edge, in the
@@ -205,14 +218,27 @@
 
 tr.sav-new > td,
 tr.sav-new > th,
-:not(tr).sav-new {
+:not(tr):not([data-shape='card']).sav-new {
   background-color: color-mix(in srgb, var(--sav-new) 14%, transparent);
   animation: sav-new-fade var(--d-new) linear forwards;
 }
 tr.sav-new > td:first-child,
 tr.sav-new > th:first-child,
-:not(tr).sav-new {
+:not(tr):not([data-shape='card']).sav-new {
   box-shadow: inset 3px 0 0 var(--sav-new);
+}
+/* A card that has just arrived keeps its own surface and is given a frame in its colour. The frame is drawn
+   over the card and inside its own edge, with the card's own corners, so nothing that scrolls can cut it off
+   and nothing the card animates for itself is disturbed. (The card must not be positioned in another way.) */
+.sav-new[data-shape='card'] { position: relative; }
+.sav-new[data-shape='card']::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--sav-new);
+  animation: sav-new-frame var(--d-new) linear forwards;
+}
+@keyframes sav-new-frame {
+  75%       { opacity: 1; }
+  90%, 100% { opacity: 0; }
 }
 @keyframes sav-new-fade {
   75%       { background-color: color-mix(in srgb, var(--sav-new) 14%, transparent); }
@@ -268,9 +294,11 @@ tr.sav-new > th:first-child,
 /* The mark on what has just arrived stays put, and is not faded away. */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .sav-new,
+  :root:not([data-motion='full']) .sav-new[data-shape='card']::after,
   :root:not([data-motion='full']) tr.sav-new > td,
   :root:not([data-motion='full']) tr.sav-new > th { animation-name: none !important; }
 }
 :root[data-motion='reduced'] .sav-new,
+:root[data-motion='reduced'] .sav-new[data-shape='card']::after,
 :root[data-motion='reduced'] tr.sav-new > td,
 :root[data-motion='reduced'] tr.sav-new > th { animation-name: none !important; }

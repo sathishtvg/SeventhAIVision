@@ -9,7 +9,7 @@ import {
   Alert, Box, Chip, FormControlLabel, MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
   TableHead, TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -19,7 +19,7 @@ import type { SituationFilters } from '@/api/securityIntelligence'
 import { DecisionStatusChip, RiskChip } from '@/components/intel/intelUi'
 import { SOURCE_LABEL, STATUS_LABEL, fmt, pretty, useIntelRealtime } from '@/components/intel/intelFormat'
 import { IntelNav, IntelStatusBanner } from './IntelNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 export default function Situations() {
@@ -37,15 +37,16 @@ export default function Situations() {
     site_id: siteId || undefined, risk_level: risk || undefined, decision_status: stands || undefined,
     open: openOnly && !stands ? true : undefined, sort,
   }
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['intel-situations', params, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listSituations({ ...params, limit: rows, offset: page * rows }),
     refetchInterval: 15_000,
   })
   const situations = data?.items ?? []
   // What the fifteen-second refresh brought that was not there before: marked for a few seconds, and said.
   const fresh = useNewItems(situations, (s) => s.id, {
-    scope: JSON.stringify([params, page, rows]), say: (n) => countOf(n, 'new situation'),
+    scope: JSON.stringify([params, page, rows]), settled: !dataRefreshing, say: (n) => countOf(n, 'new situation'),
   })
   return (
     <Box sx={{ p: 3 }}>
@@ -80,6 +81,7 @@ export default function Situations() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !situations.length ? (
           <Alert severity="info">{openOnly && !stands ? 'No open situations.' : 'No situations match.'}</Alert>
         ) : (

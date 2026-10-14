@@ -39,7 +39,8 @@ import { RISK_COLOR, droneIcon, fmt, pretty, useDroneRealtime } from '@/componen
 import { RouteEditor, ZoneLayer } from '@/components/drones/MapEditors'
 import { formatDistance } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, StaleBadge } from '@/components/states'
+import { freshAt, useNow } from '@/motion'
 
 const WP_COLOR: Record<string, 'default' | 'success' | 'primary' | 'warning' | 'error'> = {
   PENDING: 'default', REACHED: 'primary', OBSERVED: 'success', SKIPPED: 'warning', FAILED: 'error',
@@ -171,7 +172,10 @@ function EventMarkers({ events, onOpen, until }: { events: Ev[]; onOpen: (id: st
   )
 }
 
-function Telemetry({ p }: { p: TrackPoint | null }) {
+/** A drone in flight reports every second or two. One not heard from for this long is not where the map has it. */
+const TELEMETRY_STALE_MS = 20_000
+
+function Telemetry({ p, live = false }: { p: TrackPoint | null; live?: boolean }) {
   if (!p) return <Typography variant="body2" color="text.secondary">No telemetry yet.</Typography>
   const cell = (label: string, value: ReactNode) => (
     <Grid size={{ xs: 6 }}><Typography variant="caption" color="text.secondary">{label}</Typography>
@@ -179,6 +183,9 @@ function Telemetry({ p }: { p: TrackPoint | null }) {
   )
   return (
     <Grid container spacing={1}>
+      {/* In flight, whether these readings are current is said in words: figures that have stopped changing
+          look exactly like figures that are steady. A replay is not live and says nothing. */}
+      {live && <Grid size={{ xs: 12 }}><StaleBadge at={p.recorded_at} staleAfterMs={TELEMETRY_STALE_MS} /></Grid>}
       <Grid size={{ xs: 12 }}><Typography variant="caption" color="text.secondary">Battery</Typography>
         <BatteryBar pct={p.battery_pct} /></Grid>
       {cell('Altitude', p.altitude_m != null ? `${Math.round(p.altitude_m)} m` : '—')}
@@ -322,6 +329,9 @@ function Controls({ session }: { session: Session }) {
 function LiveView({ session, points, now, events }: { session: Session; points: TrackPoint[]; now: TrackPoint | null
                                                        events: Ev[] }) {
   const navigate = useNavigate()
+  // The drone is drawn at full strength only while it is being heard from; a position that has gone stale is
+  // where it was, and is drawn faint.
+  const heard = freshAt(now?.recorded_at, TELEMETRY_STALE_MS, useNow())
   const path = points.map((p) => [p.latitude, p.longitude] as [number, number])
   if (now && (!points.length || now !== points[points.length - 1])) path.push([now.latitude, now.longitude])
   const fit = useMemo(() => (session.waypoints ?? []).map((w) => [w.latitude, w.longitude] as [number, number]),
@@ -342,7 +352,7 @@ function LiveView({ session, points, now, events }: { session: Session; points: 
             <PlanLayers session={session} />
             {path.length > 1 && <Polyline positions={path} pathOptions={{ color: '#00d4ff', weight: 4 }} />}
             <EventMarkers events={events} onOpen={(eid) => navigate(`/drone-events/${eid}`)} />
-            {now && <Marker position={[now.latitude, now.longitude]} icon={droneIcon(now.heading_deg)} />}
+            {now && <Marker position={[now.latitude, now.longitude]} icon={droneIcon(now.heading_deg)} opacity={heard ? 1 : 0.45} />}
             <FitTo points={fit.length ? fit : path.slice(-1)} />
           </DroneMap>
         </GlassCard>
@@ -354,7 +364,7 @@ function LiveView({ session, points, now, events }: { session: Session; points: 
         </GlassCard>
         <GlassCard sx={{ p: 2, mb: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Telemetry</Typography>
-          <Telemetry p={now} />
+          <Telemetry p={now} live />
         </GlassCard>
         <GlassCard sx={{ p: 2, mb: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Events ({events.length})</Typography>

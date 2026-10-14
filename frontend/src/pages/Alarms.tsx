@@ -28,7 +28,6 @@ import {
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
-import { BrandLoader } from '@/components/common/BrandLoader'
 import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
@@ -37,7 +36,7 @@ import ErrorIcon from '@mui/icons-material/Error'
 import SecurityIcon from '@mui/icons-material/Security'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import VpnKeyIcon from '@mui/icons-material/VpnKey'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   getAlarmDashboard,
   listEvents,
@@ -53,7 +52,7 @@ import {
   type AlarmZone,
 } from '@/api/alarms'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableBlockSkeleton } from '@/components/states'
+import { ErrorState, TableBlockSkeleton, RefreshingLine } from '@/components/states'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +321,7 @@ function PanelDetail({ panelId, onBack }: { panelId: string; onBack: () => void 
     onSuccess: (res) => setRotatedKey(res.api_key),
   })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <TableBlockSkeleton />
   if (dataFailed) return <ErrorState error={dataError} onRetry={refetchData} />
   if (!data) return <Alert severity="error">Failed to load panel.</Alert>
 
@@ -495,7 +494,7 @@ function DashboardTab({ onSelectPanel }: { onSelectPanel: (id: string) => void }
     refetchInterval: 30_000,
   })
 
-  if (isLoading) return <BrandLoader variant="full" />
+  if (isLoading) return <TableBlockSkeleton />
   if (error || !data) return <Alert severity="error">Failed to load alarm dashboard.</Alert>
 
   const ps = data.panel_summary
@@ -585,8 +584,9 @@ function EventsTab() {
   const [severityFilter, setSeverityFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
 
-  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents } = useQuery({
+  const { data: events = [], isLoading, isLoadingError: eventsFailed, error: eventsError, refetch: refetchEvents, isPlaceholderData: eventsRefreshing } = useQuery({
     queryKey: ['alarm-events', severityFilter, typeFilter],
+    placeholderData: keepPreviousData,
     queryFn: () => listEvents({
       severity: severityFilter || undefined,
       event_type: typeFilter || undefined,
@@ -620,6 +620,7 @@ function EventsTab() {
           placeholder="e.g. zone_alarm" />
       </Stack>
 
+      {eventsRefreshing && <RefreshingLine />}
       {isLoading
         ? <TableBlockSkeleton />
         : eventsFailed ? <ErrorState compact error={eventsError} onRetry={refetchEvents} /> : (

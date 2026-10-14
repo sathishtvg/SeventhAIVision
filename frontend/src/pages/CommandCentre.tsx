@@ -29,6 +29,7 @@ import { openInNewWindow } from '@/lib/popoutWindow'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import type { SiteStatus, RecentAlert, GuardStatus } from '@/api/commandCentre'
 import { CardGridSkeleton, ErrorState, KpiSkeleton } from '@/components/states'
+import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -249,6 +250,8 @@ function SiteCard({ site, onClick }: { site: SiteStatus; onClick: () => void }) 
 }
 
 function AlertFeed({ alerts, onSelect }: { alerts: RecentAlert[]; onSelect: (alert: RecentAlert) => void }) {
+  // An alert that joins the feed while it is open is framed in its severity's colour, and said.
+  const fresh = useNewItems(alerts, (a) => a.id, { say: (n) => countOf(n, 'new alert') })
   return (
     <Paper sx={{ p: 1.5, height: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Typography variant="caption" sx={{ fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'text.secondary', fontSize: '0.63rem' }}>
@@ -262,6 +265,7 @@ function AlertFeed({ alerts, onSelect }: { alerts: RecentAlert[]; onSelect: (ale
         ) : alerts.map((a) => (
           <Box
             key={a.id}
+            {...newItemProps(fresh.has(String(a.id)), toneOf(a.severity), 'card')}
             onClick={() => onSelect(a)}
             sx={{
               p: 1,

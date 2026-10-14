@@ -9,7 +9,7 @@ import {
   TableHead, TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -19,7 +19,7 @@ import { listInvestigations } from '@/api/investigations'
 import { OpenDialog } from '@/components/investigations/InvestigationDialogs'
 import { fmt } from '@/components/investigations/investigationFormat'
 import { InvestigationNav } from './InvestigationNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 
 export default function Investigations() {
   const navigate = useNavigate()
@@ -33,8 +33,9 @@ export default function Investigations() {
   const [opening, setOpening] = useState(false)
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const words = q.trim().length >= 2 ? q.trim() : undefined
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['investigations', status, siteId, mine, words, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listInvestigations({
       status: status || undefined, site_id: siteId || undefined, mine: mine || undefined, q: words, limit: rows,
       offset: page * rows }),
@@ -68,6 +69,7 @@ export default function Investigations() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !files.length ? (
           <Alert severity="info">{status === 'OPEN' && !siteId && !mine && !words
             ? 'No investigation is open.' : 'No investigations match.'}</Alert>

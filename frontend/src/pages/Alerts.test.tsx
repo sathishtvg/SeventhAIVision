@@ -136,4 +136,24 @@ describe('Alerts', () => {
     expect(screen.getByText('Blocklist Hit').closest('tr')).not.toHaveClass('sav-new')
     expect(useAnnouncer.getState().text).toBe('1 new alert')
   })
+
+  it('keeps the rows that were there while a changed filter is fetched, and does not call the new list new', async () => {
+    render(<Alerts />)
+    await screen.findByText('Blocklist Hit')
+    let answer: (value: unknown) => void = () => {}
+    vi.mocked(getAlerts).mockReturnValueOnce(new Promise((resolve) => { answer = resolve }) as never)
+    fireEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    fireEvent.click(screen.getByText('Acknowledged'))
+
+    // The last list is still there, behind a line that says this one is being fetched.
+    await waitFor(() => expect(document.querySelector('tr.sav-refreshing')).not.toBeNull())
+    expect(screen.getByText('Blocklist Hit')).toBeInTheDocument()
+
+    answer({ items: [{ ...mockOpenAlert, id: 'a9', title: 'Tailgating', status: 'acknowledged' }], has_more: false })
+    const row = (await screen.findByText('Tailgating')).closest('tr')!
+    expect(document.querySelector('tr.sav-refreshing')).toBeNull()
+    expect(screen.queryByText('Blocklist Hit')).not.toBeInTheDocument()
+    // The first rows of a different list are not new.
+    expect(row).not.toHaveClass('sav-new')
+  })
 })

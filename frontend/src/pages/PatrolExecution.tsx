@@ -35,7 +35,8 @@ import {
   completeCamera, completePatrol, getSession, snapshotImageUrl,
 } from '@/api/virtualPatrol'
 import type { SessionQuestion } from '@/api/virtualPatrol'
-import { ErrorState } from '@/components/states'
+import { ErrorState, SuccessTick } from '@/components/states'
+import { fadeImageProps } from '@/motion'
 
 type AnswerMap = Record<string, unknown>
 
@@ -120,6 +121,9 @@ function CameraStep({ sessionId, onAdvance }: { sessionId: string; onAdvance: ()
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [snapError, setSnapError] = useState<string | null>(null)
+  // The camera whose snapshot the server has just confirmed. The tick is for that camera and no other, and it
+  // is all it is: it does not complete the camera, answer a question or move the patrol on.
+  const [snapped, setSnapped] = useState<string | null>(null)
 
   const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
     queryKey: ['vp-current-camera', sessionId],
@@ -142,6 +146,7 @@ function CameraStep({ sessionId, onAdvance }: { sessionId: string; onAdvance: ()
     mutationFn: () => captureSnapshot(sessionId, camera!.id),
     onSuccess: (r) => {
       setSnapError(r.ok ? null : (r.error ?? 'The capture failed.'))
+      setSnapped(r.ok && camera ? camera.id : null)
       invalidate()
     },
   })
@@ -198,7 +203,7 @@ function CameraStep({ sessionId, onAdvance }: { sessionId: string; onAdvance: ()
       }}>
         {imgUrl ? (
           <>
-            <Box component="img" src={imgUrl} alt={`Snapshot of ${camera.camera_name}`}
+            <Box component="img" {...fadeImageProps} src={imgUrl} alt={`Snapshot of ${camera.camera_name}`}
                  sx={{ width: '100%', maxHeight: 380, objectFit: 'contain',
                        borderRadius: 1, display: 'block' }} />
             <Typography variant="caption" color="text.secondary">
@@ -206,6 +211,9 @@ function CameraStep({ sessionId, onAdvance }: { sessionId: string; onAdvance: ()
                 ? new Date(camera.snapshot_taken_at).toLocaleTimeString()
                 : 'just now'}
             </Typography>
+            <Box sx={{ mt: 0.75 }}>
+              <SuccessTick show={snapped === camera.id && !snap.isPending} label="Snapshot saved" />
+            </Box>
           </>
         ) : (
           <Stack spacing={1} sx={{ alignItems: 'flex-start', py: 3 }}>

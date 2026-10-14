@@ -8,7 +8,7 @@ import {
   Alert, Box, Chip, FormControlLabel, MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
   TableHead, TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -18,7 +18,7 @@ import type { EventStatus } from '@/api/drones'
 import { ConfidenceText, EventStatusChip, LicenceBanner, RiskChip } from '@/components/drones/droneUi'
 import { fmt, pretty, useDroneRealtime } from '@/components/drones/droneFormat'
 import { DroneNav } from './DroneNav'
-import { ErrorState } from '@/components/states'
+import { ErrorState, RefreshingLine } from '@/components/states'
 import { countOf, newItemProps, toneOf, useNewItems } from '@/motion'
 
 const STATUSES: EventStatus[] = ['NEW', 'ACKNOWLEDGED', 'INVESTIGATING', 'ESCALATED', 'RESOLVED', 'FALSE_POSITIVE']
@@ -35,15 +35,16 @@ export default function DroneEvents() {
   const { data: sites } = useQuery({ queryKey: ['sites'], queryFn: () => getSites(true) })
   const params = { site_id: siteId || undefined, risk_level: risk || undefined, status: status || undefined,
                    open_only: openOnly && !status }
-  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData } = useQuery({
+  const { data, isLoading, isLoadingError: dataFailed, error: dataError, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['drone-events', params, page, rows],
+    placeholderData: keepPreviousData,
     queryFn: () => listEvents({ ...params, limit: rows, offset: page * rows }),
     refetchInterval: 15_000,
   })
   const events = data?.items ?? []
   // What the fifteen-second refresh brought that was not there before: marked for a few seconds, and said.
   const fresh = useNewItems(events, (e) => e.id, {
-    scope: JSON.stringify([params, page, rows]), say: (n) => countOf(n, 'new drone event'),
+    scope: JSON.stringify([params, page, rows]), settled: !dataRefreshing, say: (n) => countOf(n, 'new drone event'),
   })
   return (
     <Box sx={{ p: 3 }}>
@@ -72,6 +73,7 @@ export default function DroneEvents() {
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
+        {dataRefreshing && <RefreshingLine />}
         {isLoading ? <Skeleton height={240} /> : dataFailed ? <ErrorState compact error={dataError} onRetry={refetchData} /> : !events.length ? (
           <Alert severity="info">{openOnly && !status ? 'No open drone events.' : 'No events match.'}</Alert>
         ) : (

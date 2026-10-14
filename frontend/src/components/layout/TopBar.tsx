@@ -468,7 +468,7 @@ export function TopBar({ title }: Props) {
               background: `rgba(${wsRgb},0.08)`,
               border: `1px solid rgba(${wsRgb},0.22)`,
               cursor: 'default',
-              transition: 'all 0.3s ease',
+              transition: 'background-color 0.3s ease, border-color 0.3s ease',
             }}
           >
             <Box sx={{ position: 'relative', width: 7, height: 7, flexShrink: 0 }}>
