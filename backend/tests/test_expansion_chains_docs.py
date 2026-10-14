@@ -43,8 +43,10 @@ def test_every_phase_is_built_and_the_document_it_names_exists():
                      "SECURITY_CASE_MANAGEMENT.md", "ENTERPRISE_SECURITY_HARDENING.md"):
         assert (REPO_ROOT / document).exists(), document
     # Each migration of the expansion follows the one before it, with none missing.
-    versions = sorted(p.name[:4] for p in (REPO_ROOT / "backend" / "alembic" / "versions").glob("01[45]*.py") if p.name[:4] >= "0143")
-    # 0143 to 0156 are the fourteen phases; 0157 and 0158 are the owner's decisions that followed.
+    versions = sorted(p.name[:4] for p in (REPO_ROOT / "backend" / "alembic" / "versions").glob("01[45]*.py")
+                      if "0143" <= p.name[:4] <= "0158")
+    # 0143 to 0156 are the fourteen phases; 0157 and 0158 are the owner's decisions that followed. What comes
+    # after 0158 is later work (0159 onward: the GPS fleet upgrade), not part of the expansion.
     assert versions == [f"{n:04d}" for n in range(143, 159)]
     migrations = sorted(int(m) for m in set(re.findall(r"migrations? `(0\d{3})`", " ".join(state for _, _, state, _ in rows))))
     assert migrations[0] == 143 and migrations[-1] == 156
