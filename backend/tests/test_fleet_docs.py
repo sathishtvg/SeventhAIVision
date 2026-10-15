@@ -11,11 +11,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
+from tests._repo import REPO_ROOT, requires_repo_tree
 
-pytestmark = pytest.mark.repo_tree
+# The documents, Compose and the web are not in the api image: these run where the working tree is.
+pytestmark = requires_repo_tree
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = REPO_ROOT
 DOC = ROOT / "docs" / "FLEET_GPS_PROVIDERS.md"
 DESIGN = ROOT / "docs" / "plans" / "2026-10-14-gps-fleet-tracking-design.md"
 COMPOSE = ROOT / "docker" / "docker-compose.yml"
