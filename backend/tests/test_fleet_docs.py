@@ -77,8 +77,17 @@ def test_what_is_not_done_is_said():
     doc = _flat(_read(DOC))
     for said in ("Only Traccar. No commercial provider's API is connected.",
                  "The Seventh AI phone app does not report its own position as a tracker",
-                 "Those are phases 3 to 5 of the design."):
+                 "Those are phases 4 and 5 of the design."):
         assert said in doc, said
     design = _flat(_read(DESIGN))
     assert "**Why an administrator could not delete a vehicle:**" in design
     assert "A geofence never opens a barrier, admits anybody or confirms who is driving" in design
+
+
+def test_the_map_document_says_where_tiles_come_from_and_that_positions_are_never_on_the_live_connection():
+    doc = _flat(_read(DOC))
+    for said in ("VITE_MAP_TILE_URL", "usage policy does not allow heavy use", "None is chosen or paid for here.",
+                 "tells the screens only which vehicles moved, never where", "GET /api/v1/fleet/map?ids="):
+        assert said in doc, said
+    service = _read(ROOT / "backend" / "app" / "services" / "fleet_tracking.py")
+    assert '"payload": {"vehicle_ids": vehicle_ids},' in service

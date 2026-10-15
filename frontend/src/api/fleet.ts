@@ -283,3 +283,32 @@ export const TRACKING_COLOUR: Record<TrackingStatus, 'success' | 'warning' | 'de
 export const TRACKING_LABEL: Record<TrackingStatus, string> = {
   online: 'Online', stale: 'Stale', offline: 'Offline', not_configured: 'Not configured',
 }
+
+// ── the live map (phase 3) ──────────────────────────────────────────────────
+
+/** A vehicle on the live map. `last_lat`/`last_lon` are only there when a fix is. */
+export interface MapVehicle {
+  id: string
+  name: string
+  plate_number: string | null
+  vehicle_type: string
+  type_label: string
+  site_id: string | null
+  site_name: string | null
+  driver_name: string | null
+  service_status: ServiceStatus
+  tracking_status: TrackingStatus
+  status_label: string
+  motion: 'moving' | 'idle' | 'offline' | null
+  last_lat: number | null
+  last_lon: number | null
+  last_fix_at: string | null
+  last_speed: number | string | null
+  last_heading: number | null
+  last_accuracy: number | string | null
+}
+export interface FleetMapAnswer { items: MapVehicle[]; limits: FleetLimits; at: string }
+
+/** Every vehicle the person may see, or - after the live connection says some moved - just those. */
+export const getFleetMap = (ids?: string[]): Promise<FleetMapAnswer> =>
+  apiClient.get(`${BASE}/map`, { params: ids?.length ? { ids: ids.join(',') } : undefined }).then((r) => r.data)

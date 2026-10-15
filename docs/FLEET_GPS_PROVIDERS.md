@@ -99,6 +99,30 @@ Each organisation can change the two limits (Fleet → Providers, "When a
 vehicle counts as stale or offline"). A once-a-minute job records each change
 once. A vehicle is never shown as live without a recent fix.
 
+## The live map
+
+Fleet → Live map (`/gps/map`) shows each vehicle that has reported at its last
+fix: Online solid, Stale faint, Offline a hollow ring at its last known place
+with its age. A vehicle that has never reported is listed and not drawn. The
+status is worked out against the clock on the screen too, so a vehicle that
+stops reporting goes faint without anything being fetched.
+
+The live connection tells the screens only which vehicles moved, never where:
+it reaches everybody in the organisation, and somebody limited to sites must
+not learn another site's vehicle's position from it. The screen then asks for
+those vehicles through its own site-limited request (`GET /api/v1/fleet/map?ids=`),
+at most every two seconds; with the connection down it asks for everything
+every 30 seconds.
+
+**Map tiles.** The map uses the platform's tile setting, the same as every other
+map: `VITE_MAP_TILE_URL` and `VITE_MAP_TILE_ATTRIBUTION` when the web app is
+built. Left unset it uses OpenStreetMap's public tile server, which is fine for
+development and demonstrations, but whose usage policy does not allow heavy use
+such as a fleet map open all day in a control room. For production set a tile
+service of your own: a paid one with a free allowance (MapTiler, Stadia Maps,
+Thunderforest and others, each with its own key, limits and attribution) or a
+tile server inside your own network. None is chosen or paid for here.
+
 ## Secrets
 
 - The forwarding secret, a connection's token or password, and the platform's
@@ -116,7 +140,7 @@ once. A vehicle is never shown as live without a recent fix.
 - Only Traccar. No commercial provider's API is connected.
 - The Seventh AI phone app does not report its own position as a tracker;
   for a phone, use Traccar Client.
-- Positions are not yet shown on a live map, journeys are not worked out from
-  them, and geofences do not use them. Those are phases 3 to 5 of the design.
+- Journeys are not yet worked out from the positions, and geofences do not use
+  them. Those are phases 4 and 5 of the design.
 - Traccar's own screen and API are reachable from the server only; to manage
   it from elsewhere, put it behind the platform's TLS proxy first.

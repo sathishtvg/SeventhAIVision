@@ -20,7 +20,7 @@ export type PageKind = 'operational' | 'dashboard' | 'detail' | 'table'
 
 const OPERATIONAL = [
   '/live', '/playback', '/recordings', '/command-centre', '/action-center', '/my-patrols', '/response-desk',
-  '/operations-board', '/map', '/security-map', '/gps', '/vms-onsite', '/man-down', '/emergency', '/bwc', '/alarms',
+  '/operations-board', '/map', '/security-map', '/gps', '/gps/map', '/vms-onsite', '/man-down', '/emergency', '/bwc', '/alarms',
 ]
 
 const DASHBOARDS = [

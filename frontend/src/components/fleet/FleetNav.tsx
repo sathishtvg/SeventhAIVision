@@ -8,6 +8,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 const PAGES = [
   { path: '/gps', label: 'Dashboard' },
+  { path: '/gps/map', label: 'Live map' },
   { path: '/gps/vehicles', label: 'Vehicles' },
   { path: '/gps/groups', label: 'Groups' },
   { path: '/gps/fields', label: 'Custom fields' },

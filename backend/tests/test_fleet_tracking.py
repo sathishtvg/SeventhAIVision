@@ -369,3 +369,43 @@ async def test_who_may_link_devices_test_them_and_set_the_limits():
         assert (await _device(c, w, a["id"], f"IMEI-{uuid.uuid4().hex[:8]}")).status_code == 200
     assert [r["detail"]["tracking_enabled"] for r in await _audit(w, "fleet.device.changed")] == [True]
     assert (await _audit(w, "fleet.settings.changed"))[0]["detail"] == {"online_minutes": 3, "offline_minutes": 20}
+
+
+# ─── H. The live map ─────────────────────────────────────────────────────────
+
+async def test_the_map_keeps_to_the_persons_sites_and_says_nothing_of_a_place_without_a_fix(forwarding):
+    w = await _world(licensed=False)
+    async with _client() as c:
+        a, b, idle = await _vehicle(c, w, "MAP A"), await _vehicle(c, w, "MAP B", site="site_b"), await _vehicle(c, w, "MAP C")
+        for v in (a, b):
+            device = f"IMEI-{uuid.uuid4().hex[:10]}"
+            await _device(c, w, v["id"], device)
+            await c.post(f"{BASE}/ingest/traccar", json=said(device, ago=timedelta(seconds=15)), headers=forwarding)
+        everything = {x["plate_number"]: x for x in (await c.get(f"{BASE}/map", headers=w["h"][ADMIN])).json()["items"]}
+        assert set(everything) == {"MAP A", "MAP B", "MAP C"}
+        assert (everything["MAP A"]["tracking_status"], everything["MAP A"]["last_lat"]) == ("online", 1.3521)
+        assert everything["MAP A"]["motion"] == "moving" and float(everything["MAP A"]["last_speed"]) == 18.52
+        assert (everything["MAP C"]["tracking_status"], everything["MAP C"]["last_lat"], everything["MAP C"]["motion"]) == (
+            "not_configured", None, None)
+        mine = (await c.get(f"{BASE}/map", headers=w["h"][SUPERVISOR])).json()["items"]
+        assert {x["plate_number"] for x in mine} == {"MAP A", "MAP C"}, "a supervisor of site A sees site A"
+        just = (await c.get(f"{BASE}/map", headers=w["h"][ADMIN], params={"ids": f"{a['id']},{idle['id']}"})).json()["items"]
+        assert {x["id"] for x in just} == {a["id"], idle["id"]}
+        assert (await c.get(f"{BASE}/map", headers=w["h"][SUPERVISOR], params={"ids": b["id"]})).json()["items"] == []
+        assert (await c.get(f"{BASE}/map", headers=w["h"][ADMIN], params={"ids": "not-a-vehicle"})).status_code == 422
+        assert (await c.get(f"{BASE}/map", headers=w["h"][GUARD])).status_code == 200
+
+
+async def test_the_live_connection_says_which_vehicles_moved_and_never_where():
+    sent = []
+
+    class Redis:
+        async def publish(self, channel, message):
+            sent.append((channel, message))
+
+    await ft.publish(Redis(), "t-1", ["v-1", "v-2"])
+    channel, message = sent[0]
+    assert channel == "tenant_events:t-1"
+    body = __import__("json").loads(message)
+    assert body["event_type"] == "fleet_moved" and body["payload"] == {"vehicle_ids": ["v-1", "v-2"]}
+    assert not any(word in message for word in ("lat", "lon", "speed", "heading"))

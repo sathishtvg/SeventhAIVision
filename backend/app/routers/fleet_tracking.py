@@ -42,7 +42,7 @@ from app.core.config import settings
 from app.core.crypto import decrypt_secret, encrypt_secret
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
-from app.dependencies.sites import get_allowed_site_ids
+from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant, get_raw_db
 from app.routers.operations_board import held_by
 from app.services import fleet_tracking as ft
@@ -135,6 +135,60 @@ async def ingest_connection(connection_id: uuid.UUID, request: Request, db: Asyn
     if conn is None or not conn["is_active"] or not hmac.compare_digest(_hash(given), conn["forward_secret_hash"]):
         raise HTTPException(401, "Not a forwarding this server accepts")
     return await _take(db, request, source_key(str(connection_id)), str(conn["tenant_id"]))
+
+
+# ── the live map ──────────────────────────────────────────────────────────────
+
+MOST_ON_MAP = 2000
+
+
+@router.get("/map", dependencies=_READ)
+async def fleet_map(
+    ids: str | None = None,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Every vehicle the person may see that is not archived, with its tracking status worked out now and its last
+    known place where it has one. `ids` (comma-separated) asks for just those - what a screen fetches when the live
+    connection says they moved, so the live connection never carries a position."""
+    params: dict = {**(await ft.limits(db)), "most": MOST_ON_MAP}
+    where = ["v.archived_at IS NULL"]
+    scope = site_scope_clause(allowed, "v.site_id", params)
+    if scope:
+        where.append(scope)
+    if ids:
+        try:
+            wanted = [str(uuid.UUID(i.strip())) for i in ids.split(",") if i.strip()]
+        except ValueError:
+            raise HTTPException(422, "ids is a comma-separated list of vehicle ids") from None
+        if len(wanted) > 200:
+            raise HTTPException(422, "ids holds at most 200 vehicles")
+        where.append("v.id = ANY(CAST(:ids AS uuid[]))")
+        params["ids"] = wanted
+    rows = (await db.execute(text(f"""
+        SELECT v.id, v.name, v.plate_number, v.vehicle_type, v.site_id, s.name AS site_name,
+               coalesce(d.full_name, v.driver_name) AS driver_name, v.service_status,
+               {ft.status_sql('v')} AS tracking_status, v.current_status AS motion,
+               CASE WHEN v.last_fix_at IS NOT NULL THEN v.last_lat END AS last_lat,
+               CASE WHEN v.last_fix_at IS NOT NULL THEN v.last_lon END AS last_lon,
+               v.last_fix_at, v.last_speed, v.last_heading, v.last_accuracy
+          FROM vehicles v
+          LEFT JOIN sites s ON s.id = v.site_id
+          LEFT JOIN users d ON d.id = v.assigned_driver_user_id
+         WHERE {' AND '.join(where)}
+         ORDER BY v.plate_key NULLS LAST, v.name
+         LIMIT :most
+    """), params)).mappings().all()
+    items = []
+    for r in rows:
+        item = {**dict(r), "type_label": fv.TYPE_LABEL.get(r["vehicle_type"], r["vehicle_type"]),
+                "status_label": ft.STATUS_LABEL[r["tracking_status"]]}
+        # Moving or stopped is only said of a vehicle that is being heard from.
+        if r["tracking_status"] != "online":
+            item["motion"] = None
+        items.append(item)
+    return {"items": items, "limits": {k: params[k] for k in ("online_minutes", "offline_minutes")},
+            "at": datetime.now(timezone.utc)}
 
 
 # ── a vehicle's device ────────────────────────────────────────────────────────
