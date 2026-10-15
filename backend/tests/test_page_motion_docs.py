@@ -180,7 +180,9 @@ def test_the_last_phases_are_what_the_documents_say_and_the_matrix_is_there():
     matrix = _read(REPO_ROOT / "PAGE_AWARE_ANIMATION_MATRIX.md")
     assert "Written by `frontend/src/motion/matrix.test.ts` from the pages themselves" in matrix
     rows = [line for line in matrix.splitlines() if line.startswith("| `")]
-    assert len(rows) == 116, len(rows)
+    # One row for each file under the pages folder - however many pages are added later (the fleet's came on 15 October).
+    page_files = [p for p in (SRC / "pages").rglob("*.tsx") if ".test." not in p.name]
+    assert len(rows) == len(page_files) >= 116, (len(rows), len(page_files))
     missing = [line.split("|")[1].strip() for line in rows if "| NO |" in line or "| NONE |" in line]
     assert missing == ["`intel/IntelNav.tsx`"], missing
     assert "`PAGE_AWARE_ANIMATION_MATRIX.md`" in audit and "`PAGE_AWARE_ANIMATION_MATRIX.md`" in design
@@ -189,7 +191,7 @@ def test_the_last_phases_are_what_the_documents_say_and_the_matrix_is_there():
     assert "another record's rows must never stand under this one's name" in audit
     pages = {p.relative_to(SRC / "pages").as_posix(): _read(p) for p in (SRC / "pages").rglob("*.tsx") if ".test." not in p.name}
     kept = [name for name, text in pages.items() if "isPlaceholderData: " in text]
-    assert len(kept) == 41, len(kept)
+    assert len(kept) >= 41, len(kept)
     for name in kept:
         assert "RefreshingRow />}" in pages[name] or "RefreshingLine />}" in pages[name], name
     # One record is never kept: a day of one camera's recordings, an investigation, a patrol in flight.
