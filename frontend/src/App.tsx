@@ -72,6 +72,10 @@ import AlertRules from '@/pages/AlertRules'
 import DeviceProtocols from '@/pages/DeviceProtocols'
 import IoTPage from '@/pages/IoT'
 import GPSPage from '@/pages/GPS'
+import FleetVehicles from '@/pages/fleet/FleetVehicles'
+import FleetVehicle from '@/pages/fleet/FleetVehicle'
+import FleetGroups from '@/pages/fleet/FleetGroups'
+import FleetFields from '@/pages/fleet/FleetFields'
 import ContractorsPage from '@/pages/Contractors'
 import ParkingPage from '@/pages/Parking'
 import BWCPage from '@/pages/BWC'
@@ -185,6 +189,10 @@ export default function App() {
         <Route path="device-protocols" element={<DeviceProtocols />} />
         <Route path="iot" element={<IoTPage />} />
         <Route path="gps" element={<GPSPage />} />
+        <Route path="gps/vehicles" element={<FleetVehicles />} />
+        <Route path="gps/vehicles/:id" element={<FleetVehicle />} />
+        <Route path="gps/groups" element={<FleetGroups />} />
+        <Route path="gps/fields" element={<FleetFields />} />
         <Route path="contractors" element={<ContractorsPage />} />
         <Route path="parking" element={<ParkingPage />} />
         <Route path="bwc" element={<BWCPage />} />

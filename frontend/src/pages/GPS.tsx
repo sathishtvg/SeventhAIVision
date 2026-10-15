@@ -11,8 +11,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  MenuItem,
   Tab,
   Tabs,
   Table,
@@ -22,7 +20,6 @@ import {
   TableRow,
   Tooltip,
   IconButton,
-  Alert,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
@@ -30,12 +27,15 @@ import AddIcon from '@mui/icons-material/Add'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import RouteIcon from '@mui/icons-material/Route'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getGPSDashboard, createVehicle, listGeofenceEvents, getVehicleJourneys, VEHICLE_TYPES,
+  getGPSDashboard, listGeofenceEvents, getVehicleJourneys, VEHICLE_TYPES,
 } from '@/api/gps'
 import type { Vehicle } from '@/api/gps'
 import { PageHeader } from '@/components/common/PageHeader'
+import { FleetNav } from '@/components/fleet/FleetNav'
+import { VehicleFormDialog } from '@/components/fleet/VehicleFormDialog'
+import { getFleetOptions } from '@/api/fleet'
 import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
 import { freshAt, useNow } from '@/motion'
 
@@ -283,48 +283,6 @@ function JourneyDialog({ vehicle, onClose }: { vehicle: Vehicle; onClose: () => 
   )
 }
 
-// ── add vehicle dialog ────────────────────────────────────────────────────────
-function AddVehicleDialog({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient()
-  const [form, setForm] = useState({ name: '', vehicle_type: 'patrol_car', plate_number: '', make: '', model: '', color: '' })
-  const mut = useMutation({
-    mutationFn: createVehicle,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['gps-dashboard'] }); onClose() },
-  })
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth
-      slotProps={{ paper: { sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } } }}>
-      <DialogTitle>Add Vehicle</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ mt: 1 }}>
-          <TextField label="Vehicle Name *" size="small" value={form.name} onChange={e => set('name', e.target.value)} />
-          <TextField label="Vehicle Type" select size="small" value={form.vehicle_type} onChange={e => set('vehicle_type', e.target.value)}>
-            {VEHICLE_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.icon} {t.label}</MenuItem>)}
-          </TextField>
-          <TextField label="Plate Number" size="small" value={form.plate_number} onChange={e => set('plate_number', e.target.value)} />
-          <Stack direction="row" spacing={1}>
-            <TextField label="Make" size="small" fullWidth value={form.make} onChange={e => set('make', e.target.value)} />
-            <TextField label="Model" size="small" fullWidth value={form.model} onChange={e => set('model', e.target.value)} />
-          </Stack>
-          <TextField label="Color" size="small" value={form.color} onChange={e => set('color', e.target.value)} />
-          {mut.isError && <Alert severity="error">Failed to create vehicle</Alert>}
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" disabled={!form.name || mut.isPending}
-          onClick={() => mut.mutate({ name: form.name, vehicle_type: form.vehicle_type,
-            plate_number: form.plate_number || undefined, make: form.make || undefined,
-            model: form.model || undefined, color: form.color || undefined })}>
-          {mut.isPending ? 'Creating…' : 'Create'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function GPSPage() {
   const [tab, setTab] = useState(0)
@@ -332,6 +290,7 @@ export default function GPSPage() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
 
   const qc = useQueryClient()
+  const { data: fleetOptions } = useQuery({ queryKey: ['fleet-options'], queryFn: getFleetOptions })
 
   const { data: dashboard, isLoading, isLoadingError: dashboardFailed, error: dashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ['gps-dashboard'],
@@ -359,6 +318,7 @@ export default function GPSPage() {
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader pageKey="gps" />
+      <FleetNav />
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
@@ -370,9 +330,12 @@ export default function GPSPage() {
               <RefreshIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} size="small" onClick={() => setAddOpen(true)}>
-            Add Vehicle
-          </Button>
+          {/* Registered with the whole vehicle record now, by whoever may: the server checks it again. */}
+          {fleetOptions?.may.edit && (
+            <Button variant="contained" startIcon={<AddIcon />} size="small" onClick={() => setAddOpen(true)}>
+              Add Vehicle
+            </Button>
+          )}
         </Stack>
       </Stack>
 
@@ -499,7 +462,10 @@ export default function GPSPage() {
         </>
       )}
 
-      {addOpen && <AddVehicleDialog onClose={() => setAddOpen(false)} />}
+      {addOpen && (
+        <VehicleFormDialog onClose={() => setAddOpen(false)}
+                           onSaved={() => { setAddOpen(false); qc.invalidateQueries({ queryKey: ['gps-dashboard'] }) }} />
+      )}
       {selectedVehicle && <JourneyDialog vehicle={selectedVehicle} onClose={() => setSelectedVehicle(null)} />}
     </Box>
   )

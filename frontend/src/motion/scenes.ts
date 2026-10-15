@@ -123,6 +123,9 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/iot': scene('broadcast', 'Smart Facilities', 'Loading sensors'),
   '/bwc': scene('camera', 'Body Cameras', 'Loading body cameras'),
   '/gps': scene('radar', 'GPS Fleet', 'Finding the vehicles'),
+  '/gps/vehicles': scene('ledger', 'Fleet Vehicles', 'Loading the vehicles'),
+  '/gps/groups': scene('ledger', 'Vehicle Groups', 'Loading the groups'),
+  '/gps/fields': scene('sliders', 'Vehicle Fields', 'Loading the fields'),
   '/assets-maintenance': scene('ledger', 'Assets & Maintenance', 'Loading assets'),
 
   // Visitors
@@ -167,6 +170,7 @@ export const PAGE_SCENES: Record<string, PageScene> = {
 /** One record, by its id. */
 const RECORD_SCENES: [RegExp, PageScene][] = [
   [/^\/situations\/[^/]+$/, scene('shield', 'Situation', 'Loading the situation')],
+  [/^\/gps\/vehicles\/[^/]+$/, scene('ledger', 'Vehicle', 'Loading the vehicle')],
   [/^\/investigations\/[^/]+$/, scene('casefile', 'Investigation', 'Opening the investigation')],
   [/^\/evidence-packages\/[^/]+$/, scene('casefile', 'Evidence Package', 'Opening the package')],
   [/^\/drone-missions\/[^/]+$/, scene('route', 'Mission', 'Loading the mission')],
