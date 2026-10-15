@@ -7,10 +7,10 @@ it fails when this file and the code disagree. To write it again after a page ch
 `yes` it has it. `-` it does not apply (a page that fetches nothing has no failed state; a page with no
 filtered list keeps no rows). `NO` it applies and is not there.
 
-- 123 files under `src/pages`; 114 are a page with an address of their own, the rest are parts of one.
-- 111 pages inside the shell have a scene of their own; 0 have none.
-- 116 fetch; 115 say so when a request failed; 1 do not.
-- 116 have a placeholder; 42 keep a list's rows while a changed filter is fetched; 8 mark what arrives.
+- 124 files under `src/pages`; 115 are a page with an address of their own, the rest are parts of one.
+- 112 pages inside the shell have a scene of their own; 0 have none.
+- 117 fetch; 116 say so when a request failed; 1 do not.
+- 117 have a placeholder; 42 keep a list's rows while a changed filter is fetched; 8 mark what arrives.
 
 | Page | Address | Scene | Arrives as | Says when a request failed | Placeholder | Lists that keep their rows | Marks what arrives | Its own states |
 |---|---|---|---|---|---|---|---|---|
@@ -61,6 +61,7 @@ filtered list keeps no rows). `NO` it applies and is not there.
 | `evidencePackages/EvidencePackages.tsx` | /evidence-packages | casefile | table | yes | yes | 1 | - | - |
 | `Export.tsx` | /export | report | table | - | - | - | - | confirms when done |
 | `fleet/FleetFields.tsx` | /gps/fields | sliders | table | yes | yes | - | - | progress as reported |
+| `fleet/FleetGeofences.tsx` | /gps/geofences | radar | table | yes | yes | - | - | progress as reported |
 | `fleet/FleetGroups.tsx` | /gps/groups | ledger | table | yes | yes | - | - | progress as reported |
 | `fleet/FleetHistory.tsx` | /gps/history | route | table | yes | yes | - | - | progress as reported |
 | `fleet/FleetLiveMap.tsx` | /gps/map | radar | operational | yes | yes | - | - | - |

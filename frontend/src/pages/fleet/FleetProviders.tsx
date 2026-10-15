@@ -10,8 +10,8 @@
  */
 import { useState } from 'react'
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem, Switch, Table,
+  TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import KeyIcon from '@mui/icons-material/KeyOutlined'
@@ -25,8 +25,8 @@ import Stack from '@/components/common/Stack'
 import { FleetNav } from '@/components/fleet/FleetNav'
 import { EmptyState, ErrorState, SaveStatus, TableEmptyRow, TableErrorRow } from '@/components/states'
 import {
-  createProvider, getFleetLimits, getFleetOptions, getFleetRetention, listProviders, replaceForwardSecret, retireProvider,
-  setFleetLimits, setFleetRetention, testProvider, type FleetLimits, type RetentionKind,
+  createProvider, getFleetLimits, getFleetOptions, getFleetRetention, getStopAlerts, listProviders, replaceForwardSecret, retireProvider,
+  setFleetLimits, setFleetRetention, setStopAlerts, testProvider, type FleetLimits, type RetentionKind, type Severity, type StopAlerts,
 } from '@/api/fleet'
 
 const COLS = 5
@@ -40,6 +40,7 @@ export default function FleetProviders() {
       <FleetNav />
       <Box sx={{ display: 'grid', gap: 2 }}>
         <Limits mayChange={!!options?.may.manage_limits} />
+        <StopAlertsCard mayChange={!!options?.may.manage_limits} />
         <Retention />
         {options && !mayDevices && (
           <Alert severity="info">Providers are set up by whoever manages the fleet's devices (Admin or Manager).</Alert>
@@ -218,6 +219,56 @@ function ConnectDialog({ onClose, onMade }: { onClose: () => void; onMade: (m: {
         <Button variant="contained" disabled={!ready || make.isPending} onClick={() => make.mutate()}>Connect</Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+const STOP_WORDS = {
+  offline: { label: 'When a vehicle stops reporting (offline)', hint: 'Raised once, when the vehicle counts as offline' },
+  stale: { label: 'When a vehicle has not reported for a while (stale)', hint: 'Raised once, when the vehicle counts as stale' },
+} as const
+
+/** The alerts raised when a tracked vehicle in service stops reporting: once an episode, with a note on the alert
+ *  when it reports again. Offline is on until switched off; stale is off until switched on. */
+function StopAlertsCard({ mayChange }: { mayChange: boolean }) {
+  const qc = useQueryClient()
+  const { data, isLoading, isLoadingError: stopAlertsFailed, error: stopAlertsError, refetch } = useQuery({
+    queryKey: ['fleet-stop-alerts'], queryFn: getStopAlerts,
+  })
+  const [draft, setDraft] = useState<StopAlerts | null>(null)
+  const shown = draft ?? data
+  const save = useMutation({
+    mutationFn: () => setStopAlerts(shown!),
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ['fleet-stop-alerts'] }) },
+  })
+  const set = (key: keyof StopAlerts, change: Partial<StopAlerts[keyof StopAlerts]>) =>
+    setDraft({ ...(shown as StopAlerts), [key]: { ...(shown as StopAlerts)[key], ...change } })
+  return (
+    <GlassCard sx={{ p: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>Alerts when a vehicle in service stops reporting</Typography>
+      {isLoading ? null : stopAlertsFailed || !shown ? (
+        <ErrorState compact title="The alert settings could not be loaded" error={stopAlertsError} onRetry={refetch} />
+      ) : (
+        <Box sx={{ display: 'grid', gap: 1 }}>
+          {(['offline', 'stale'] as const).map((key) => (
+            <Stack key={key} direction="row" sx={{ gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControlLabel sx={{ minWidth: 320 }} label={STOP_WORDS[key].label} disabled={!mayChange}
+                                control={<Switch checked={shown[key].on} onChange={(e) => set(key, { on: e.target.checked })} />} />
+              <TextField select size="small" label="Severity" value={shown[key].severity} disabled={!mayChange || !shown[key].on}
+                         sx={{ width: 130 }} onChange={(e) => set(key, { severity: e.target.value as Severity })}>
+                {(['low', 'medium', 'high', 'critical'] as const).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+              </TextField>
+              <Typography variant="caption" color="text.secondary">{STOP_WORDS[key].hint}; a note is added when it reports again.</Typography>
+            </Stack>
+          ))}
+          {mayChange && (
+            <Stack direction="row" sx={{ gap: 2, alignItems: 'center' }}>
+              <Button variant="contained" disabled={!draft || save.isPending} onClick={() => save.mutate()}>Save</Button>
+              <SaveStatus state={save.isPending ? 'saving' : save.isError ? 'failed' : save.isSuccess && !draft ? 'saved' : 'idle'} error={save.error} />
+            </Stack>
+          )}
+        </Box>
+      )}
+    </GlassCard>
   )
 }
 
