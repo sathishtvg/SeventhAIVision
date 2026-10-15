@@ -28,10 +28,11 @@ import { VehicleFormDialog } from '@/components/fleet/VehicleFormDialog'
 import { ArchiveVehicleDialog } from '@/components/fleet/ArchiveVehicleDialog'
 import { SaveStatus, TableEmptyRow, TableErrorRow, TableRefreshingRow } from '@/components/states'
 import {
-  getFleetOptions, listFleetVehicles, restoreFleetVehicle, type FleetVehicle, type VehicleQuery,
+  TRACKING_COLOUR, TRACKING_LABEL, getFleetOptions, listFleetVehicles, restoreFleetVehicle, type FleetVehicle, type TrackingStatus,
+  type VehicleQuery,
 } from '@/api/fleet'
 
-const COLS = 7
+const COLS = 8
 const SORTABLE: { key: string; label: string }[] = [
   { key: 'plate_number', label: 'Registration' },
   { key: 'name', label: 'Name' },
@@ -51,6 +52,7 @@ export default function FleetVehicles() {
   const [siteId, setSiteId] = useState('')
   const [vehicleType, setVehicleType] = useState('')
   const [service, setService] = useState('')
+  const [tracking, setTracking] = useState('')
   const [archived, setArchived] = useState<'active' | 'archived' | 'all'>('active')
   const [sort, setSort] = useState('plate_number')
   const [order, setOrder] = useState<'asc' | 'desc'>('asc')
@@ -67,13 +69,14 @@ export default function FleetVehicles() {
 
   const params: VehicleQuery = {
     q: q || undefined, site_id: siteId || undefined, vehicle_type: vehicleType || undefined,
-    service_status: service || undefined, archived, sort, order, limit: perPage, offset: page * perPage,
+    service_status: service || undefined, tracking: (tracking || undefined) as TrackingStatus | undefined, archived, sort, order,
+    limit: perPage, offset: page * perPage,
   }
   const {
     data, isLoading, isLoadingError: vehiclesFailed, error: vehiclesError, refetch: refetchVehicles,
     isPlaceholderData: vehiclesRefreshing,
   } = useQuery({
-    queryKey: ['fleet-vehicles', q, siteId, vehicleType, service, archived, sort, order, page, perPage],
+    queryKey: ['fleet-vehicles', q, siteId, vehicleType, service, tracking, archived, sort, order, page, perPage],
     queryFn: () => listFleetVehicles(params),
     // A changed filter, sort or page keeps the last rows on screen, under a line, until the new ones arrive.
     placeholderData: keepPreviousData,
@@ -116,6 +119,10 @@ export default function FleetVehicles() {
             <MenuItem value="">Any service status</MenuItem>
             {options?.service_statuses.map((s) => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}
           </TextField>
+          <TextField select size="small" label="Tracking" value={tracking} onChange={filter(setTracking)} sx={{ minWidth: 160 }} slotProps={shrunk}>
+            <MenuItem value="">Any tracking status</MenuItem>
+            {(Object.keys(TRACKING_LABEL) as TrackingStatus[]).map((t) => <MenuItem key={t} value={t}>{TRACKING_LABEL[t]}</MenuItem>)}
+          </TextField>
           <TextField select size="small" label="Showing" value={archived} sx={{ minWidth: 170 }}
                      onChange={(e) => { setArchived(e.target.value as typeof archived); setPage(0) }}>
             <MenuItem value="active">Vehicles in use</MenuItem>
@@ -142,6 +149,7 @@ export default function FleetVehicles() {
                   </TableCell>
                 ))}
                 <TableCell>Driver</TableCell>
+                <TableCell>Tracking</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -152,7 +160,7 @@ export default function FleetVehicles() {
               ) : vehiclesFailed ? (
                 <TableErrorRow cols={COLS} title="The vehicles could not be loaded" error={vehiclesError} onRetry={refetchVehicles} />
               ) : !data?.items.length ? (
-                <TableEmptyRow cols={COLS} title={q || siteId || vehicleType || service ? 'No vehicle matches' : archived === 'archived' ? 'No archived vehicles' : 'No vehicles yet'}
+                <TableEmptyRow cols={COLS} title={q || siteId || vehicleType || service || tracking ? 'No vehicle matches' : archived === 'archived' ? 'No archived vehicles' : 'No vehicles yet'}
                                hint={archived === 'active' && !q && may?.edit ? 'Register the first one with the button above.' : undefined} />
               ) : data.items.map((v) => (
                 <TableRow key={v.id} hover sx={{ opacity: v.archived ? 0.7 : 1 }}>
@@ -169,6 +177,9 @@ export default function FleetVehicles() {
                   <TableCell>{v.site_name ?? <Typography variant="caption" color="text.secondary">No site</Typography>}</TableCell>
                   <TableCell><Chip size="small" variant="outlined" color={SERVICE_COLOUR[v.service_status]} label={v.service_label} /></TableCell>
                   <TableCell>{v.driver_name ?? '—'}</TableCell>
+                  <TableCell>
+                    {v.tracking_status && <Chip size="small" color={TRACKING_COLOUR[v.tracking_status]} label={v.tracking_label ?? TRACKING_LABEL[v.tracking_status]} />}
+                  </TableCell>
                   <TableCell align="right">
                     {!v.archived && may?.edit && (
                       <Tooltip title="Change"><IconButton size="small" aria-label={`Change ${v.plate_number ?? v.name}`}

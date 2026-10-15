@@ -5,22 +5,24 @@ import {
 } from 'react-native'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { getGpsDashboard, getVehicles, type GpsVehicle } from '@/api/gps'
+import { TRACKING_LABEL, countByTracking, getVehicles, type GpsVehicle, type TrackingStatus } from '@/api/gps'
 import { Card } from '@/components/Card'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 
-const STATUS_COLOR: Record<string, string> = {
-  moving:  colors.success,
-  idle:    colors.warning,
-  offline: colors.textDisabled,
+// Whether the vehicle is being heard from: worked out by the server from its last fix, never from a guess.
+const STATUS_COLOR: Record<TrackingStatus, string> = {
+  online:         colors.success,
+  stale:          colors.warning,
+  offline:        colors.textDisabled,
+  not_configured: colors.info,
 }
 
-function StatusPill({ status }: { status: string }) {
+function StatusPill({ status }: { status: TrackingStatus }) {
   const color = STATUS_COLOR[status] ?? colors.textDisabled
   return (
     <View style={[styles.pill, { backgroundColor: color + '28', borderColor: color }]}>
-      <Text style={[styles.pillText, { color }]}>{status}</Text>
+      <Text style={[styles.pillText, { color }]}>{TRACKING_LABEL[status] ?? status}</Text>
     </View>
   )
 }
@@ -37,21 +39,22 @@ function VehicleRow({ item }: { item: GpsVehicle }) {
           {item.plate_number && <Text style={styles.sub}>{item.plate_number}</Text>}
           {item.driver_name && <Text style={styles.sub}>Driver: {item.driver_name}</Text>}
         </View>
-        <StatusPill status={item.status} />
+        <StatusPill status={item.tracking_status ?? 'not_configured'} />
       </View>
-      {(item.last_lat != null && item.last_lon != null) && (
+      {(item.last_lat != null && item.last_lon != null && item.last_fix_at) && (
         <View style={styles.metaRow}>
           <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
           <Text style={styles.metaText}>
+            {item.tracking_status === 'online' ? '' : 'Last known: '}
             {item.last_lat.toFixed(5)}, {item.last_lon.toFixed(5)}
-            {item.last_speed_kmh != null ? `  ·  ${Math.round(item.last_speed_kmh)} km/h` : ''}
+            {item.tracking_status === 'online' && item.last_speed != null ? `  ·  ${Math.round(Number(item.last_speed))} km/h` : ''}
           </Text>
         </View>
       )}
-      {item.last_seen_at && (
+      {item.last_fix_at && (
         <View style={styles.metaRow}>
           <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaText}>{new Date(item.last_seen_at).toLocaleString()}</Text>
+          <Text style={styles.metaText}>Last fix {new Date(item.last_fix_at).toLocaleString()}</Text>
         </View>
       )}
     </Card>
@@ -60,19 +63,18 @@ function VehicleRow({ item }: { item: GpsVehicle }) {
 
 export function GPSScreen() {
   const qc = useQueryClient()
-  const [filter, setFilter] = useState<string | undefined>(undefined)
+  const [filter, setFilter] = useState<TrackingStatus | undefined>(undefined)
   const [refreshing, setRefreshing] = useState(false)
 
-  const { data: dashboard } = useQuery({
-    queryKey: ['gps-dashboard'],
-    queryFn: () => getGpsDashboard(),
-  })
-
-  const { data: vehicles = [], isLoading, isLoadingError: vehiclesFailed, error: vehiclesError, refetch: refetchVehicles, isPlaceholderData: vehiclesRefreshing } = useQuery({
-    queryKey: ['gps-vehicles', filter],
+  // One list, filtered here: the counts above and the rows below are the same answer.
+  const { data: everything = [], isLoading, isLoadingError: vehiclesFailed, error: vehiclesError, refetch: refetchVehicles, isPlaceholderData: vehiclesRefreshing } = useQuery({
+    queryKey: ['gps-vehicles'],
     placeholderData: keepPreviousData,
-    queryFn: () => getVehicles({ status: filter }),
+    queryFn: () => getVehicles(),
+    refetchInterval: 30_000,
   })
+  const counts = countByTracking(everything)
+  const vehicles = filter ? everything.filter((v) => (v.tracking_status ?? 'not_configured') === filter) : everything
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -80,23 +82,24 @@ export function GPSScreen() {
     setRefreshing(false)
   }, [qc])
 
-  const FILTERS = [
+  const FILTERS: { label: string; value: TrackingStatus | undefined }[] = [
     { label: 'All', value: undefined },
-    { label: 'Moving', value: 'moving' },
-    { label: 'Idle', value: 'idle' },
+    { label: 'Online', value: 'online' },
+    { label: 'Stale', value: 'stale' },
     { label: 'Offline', value: 'offline' },
+    { label: 'Not configured', value: 'not_configured' },
   ]
 
   return (
     <View style={styles.root}>
       {/* KPI strip */}
-      {dashboard && (
+      {everything.length > 0 && (
         <View style={styles.kpiRow}>
           {[
-            { label: 'Total', value: dashboard.total, color: colors.text },
-            { label: 'Moving', value: dashboard.moving, color: colors.success },
-            { label: 'Idle', value: dashboard.idle, color: colors.warning },
-            { label: 'Offline', value: dashboard.offline, color: colors.textDisabled },
+            { label: 'Total', value: everything.length, color: colors.text },
+            { label: 'Online', value: counts.online, color: colors.success },
+            { label: 'Stale', value: counts.stale, color: colors.warning },
+            { label: 'Offline', value: counts.offline, color: colors.textDisabled },
           ].map((k) => (
             <Card key={k.label} style={styles.kpiCard}>
               <Text style={[styles.kpiValue, { color: k.color }]}>{k.value}</Text>
@@ -113,6 +116,8 @@ export function GPSScreen() {
             key={String(f.value)}
             style={[styles.chip, filter === f.value && styles.chipActive]}
             onPress={() => setFilter(f.value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: filter === f.value }}
           >
             <Text style={[styles.chipText, filter === f.value && styles.chipTextActive]}>{f.label}</Text>
           </Pressable>
@@ -125,7 +130,7 @@ export function GPSScreen() {
       ) : vehiclesFailed ? <ErrorState error={vehiclesError} onRetry={refetchVehicles} /> : vehicles.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="car-outline" size={48} color={colors.textDisabled} />
-          <Text style={styles.emptyText}>No vehicles</Text>
+          <Text style={styles.emptyText}>{filter ? `No vehicle is ${TRACKING_LABEL[filter].toLowerCase()}` : 'No vehicles'}</Text>
         </View>
       ) : (
         <FlatList

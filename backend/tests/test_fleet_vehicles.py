@@ -127,7 +127,7 @@ async def test_a_vehicle_is_registered_found_and_changed_with_an_audit_line():
                               json={"plate_number": "SKZ-9"})).status_code == 409
         detail = (await c.get(f"{BASE}/vehicles/{v['id']}", headers=w["h"][VIEWER])).json()
         assert detail["driver_display"] == "K. Tan" and detail["may"] == {
-            "edit": False, "archive": False, "manage_fields": False}
+            "edit": False, "archive": False, "manage_fields": False, "manage_devices": False, "manage_limits": False}
     created = await _audit(w, "fleet.vehicle.created")
     changed = await _audit(w, "fleet.vehicle.changed")
     assert len(created) == 2 and changed[0]["detail"] == {"changed": ["color", "service_status"]}
@@ -165,7 +165,8 @@ async def test_an_administrator_archives_a_vehicle_with_a_reason_and_can_restore
         assert (await c.post(f"{BASE}/vehicles/{uuid.uuid4()}/archive", headers=w["h"][ADMIN],
                              json={"reason": "Nothing"})).status_code == 404
     archived_line = (await _audit(w, "fleet.vehicle.archived"))[0]
-    assert archived_line["detail"] == {"plate_number": "SBA 1 A", "reason": "Sold at auction"}
+    # It had no device to release (phase 2 records which device archiving released).
+    assert archived_line["detail"] == {"plate_number": "SBA 1 A", "reason": "Sold at auction", "device_released": None}
     assert str(archived_line["user_id"]) == str(w["users"][ADMIN])
 
 
@@ -349,4 +350,4 @@ async def test_who_may_read_change_archive_and_define():
             assert (await c.get(f"{BASE}/vehicles", headers=h)).status_code == 403
         assert (await c.get(f"{BASE}/vehicles")).status_code == 401
         mine = (await c.get(f"{BASE}/vehicles", headers=w["h"][MANAGER])).json()["may"]
-        assert mine == {"edit": True, "archive": True, "manage_fields": True}
+        assert mine == {"edit": True, "archive": True, "manage_fields": True, "manage_devices": True, "manage_limits": True}

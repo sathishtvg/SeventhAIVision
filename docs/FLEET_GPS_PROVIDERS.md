@@ -1,0 +1,146 @@
+# GPS fleet tracking: providers and setup
+
+How a fleet vehicle's positions reach Seventh AI Vision, what has to be set up,
+and what is and is not done. The design is
+`docs/plans/2026-10-14-gps-fleet-tracking-design.md`.
+
+## How a position arrives
+
+```
+tracker or phone app ──► Traccar ──(JSON, X-Fleet-Secret)──► POST /api/v1/fleet/ingest/traccar ──► the vehicle
+```
+
+- **Traccar** (open source, https://www.traccar.org) receives the trackers'
+  own protocols - more than 200 of them - and forwards every position to
+  Seventh AI as JSON, with a secret header and retries if the server is
+  briefly unreachable.
+- The position carries the **device ID** (Traccar's `uniqueId`: a tracker's
+  IMEI, or the ID the phone app shows). That ID decides which vehicle, and
+  which organisation, the position belongs to. A device ID is one vehicle's on
+  the whole platform. A position from a device nobody has linked is counted
+  and not stored.
+- The **device's own fix time** is kept, not the time the server heard of it.
+  Speed arrives in knots and is kept in km/h. One position is kept per
+  vehicle and fix time; a late, older one is stored in its place and does not
+  move the vehicle back.
+- Refused, with the reason counted on the vehicle's GPS device page: no
+  device ID, coordinates out of range, exactly 0,0, no fix time, a fix more
+  than five minutes in the future, a fix Traccar marks as not valid, a
+  position sent twice, tracking switched off, an archived vehicle.
+
+Checked on 15 October 2026 with Traccar 6.16.0: a vehicle given a device on
+its GPS device page, the device registered in Traccar by Seventh AI, one
+position sent the way the Traccar Client phone app sends it, and the vehicle
+read back Online at that place and time.
+
+## Supported providers
+
+| Provider | How it reports | What Seventh AI needs |
+|---|---|---|
+| The platform's Traccar (`traccar` service in the Docker stack) | forwards every position to `/api/v1/fleet/ingest/traccar` | `TRACCAR_FORWARD_SECRET`; for registering devices and testing them, `TRACCAR_URL` and a token or user and password |
+| An organisation's own Traccar (Fleet → Providers) | forwards to `/api/v1/fleet/ingest/traccar/<connection id>` with the connection's own secret | its address, and a token or user and password, kept encrypted |
+
+Adding another provider means writing one module with the five steps in
+`backend/app/services/fleet_providers/__init__.py` (test, device,
+register_device, parse_forward, fetch_range) and naming it there. None exists
+yet beyond Traccar.
+
+## Setting up the platform's Traccar
+
+1. Choose a long random forwarding secret and put it in `.env` as
+   `TRACCAR_FORWARD_SECRET`. The same value goes to the API and, through
+   Compose, to Traccar's `FORWARD_HEADER`. Set `TRACCAR_DB_PASSWORD` too.
+2. Start it - it is not one of the core services, so on a small machine run it
+   only when vehicles are tracked:
+
+   ```
+   docker compose --profile fleet up -d --no-deps traccar-db traccar
+   ```
+
+   `traccar-db` makes Traccar's own database (`traccar`) in the platform's
+   Postgres once. Traccar's heap is capped at 256 MB (the container at 640 MB).
+3. Open Traccar's own screen on the server itself, http://127.0.0.1:8082, and
+   make its administrator: on an empty Traccar the first account made is the
+   administrator. Keep that password in your password manager.
+4. So that Seventh AI can register devices in Traccar and test them, give the
+   API a Traccar sign-in: `TRACCAR_URL=http://traccar:8082` and either
+   `TRACCAR_API_TOKEN` (made in Traccar under the account's settings) or
+   `TRACCAR_API_USER` and `TRACCAR_API_PASSWORD`. Without them, devices are
+   added in Traccar's own screen and only linked in Seventh AI.
+5. Restart the API so it reads the new settings.
+
+Then, for each vehicle, on its **GPS device** tab: type the device ID, switch
+tracking on, and tick "Register it in Traccar".
+
+## Testing with a phone (no tracker needed)
+
+1. Install **Traccar Client** (Android or iPhone) on a phone.
+2. In it, set the server address to `http://<this server's address>:5055`
+   and note the device ID it shows.
+3. Give that ID to a test vehicle on its GPS device tab, with tracking on.
+4. Start the app's service. The vehicle turns Online when the first position
+   arrives.
+
+The phone must reach port 5055 on the server: on Windows, the firewall has to
+allow it. That setting is the server owner's to change.
+
+## When a vehicle is Online, Stale or Offline
+
+Worked out from the time of the last fix whenever it is read:
+
+| Status | When |
+|---|---|
+| Not configured | tracking is off, or no device is linked |
+| Online | the last fix is newer than 5 minutes |
+| Stale | older than that, newer than 30 minutes |
+| Offline | older than that, or nothing has ever arrived |
+
+Each organisation can change the two limits (Fleet → Providers, "When a
+vehicle counts as stale or offline"). A once-a-minute job records each change
+once. A vehicle is never shown as live without a recent fix.
+
+## The live map
+
+Fleet → Live map (`/gps/map`) shows each vehicle that has reported at its last
+fix: Online solid, Stale faint, Offline a hollow ring at its last known place
+with its age. A vehicle that has never reported is listed and not drawn. The
+status is worked out against the clock on the screen too, so a vehicle that
+stops reporting goes faint without anything being fetched.
+
+The live connection tells the screens only which vehicles moved, never where:
+it reaches everybody in the organisation, and somebody limited to sites must
+not learn another site's vehicle's position from it. The screen then asks for
+those vehicles through its own site-limited request (`GET /api/v1/fleet/map?ids=`),
+at most every two seconds; with the connection down it asks for everything
+every 30 seconds.
+
+**Map tiles.** The map uses the platform's tile setting, the same as every other
+map: `VITE_MAP_TILE_URL` and `VITE_MAP_TILE_ATTRIBUTION` when the web app is
+built. Left unset it uses OpenStreetMap's public tile server, which is fine for
+development and demonstrations, but whose usage policy does not allow heavy use
+such as a fleet map open all day in a control room. For production set a tile
+service of your own: a paid one with a free allowance (MapTiler, Stadia Maps,
+Thunderforest and others, each with its own key, limits and attribution) or a
+tile server inside your own network. None is chosen or paid for here.
+
+## Secrets
+
+- The forwarding secret, a connection's token or password, and the platform's
+  Traccar sign-in are never sent to a browser, written in a log, or kept in the
+  browser. A connection's password or token is encrypted with the platform's
+  key; its forwarding secret is kept only as a hash and shown once, when it is
+  made or replaced.
+- The device register is read and written only through four database
+  functions; the application's own database role cannot read it.
+- A provider's address may not be this server itself or a cloud metadata
+  address.
+
+## Not done yet
+
+- Only Traccar. No commercial provider's API is connected.
+- The Seventh AI phone app does not report its own position as a tracker;
+  for a phone, use Traccar Client.
+- Journeys are not yet worked out from the positions, and geofences do not use
+  them. Those are phases 4 and 5 of the design.
+- Traccar's own screen and API are reachable from the server only; to manage
+  it from elsewhere, put it behind the platform's TLS proxy first.

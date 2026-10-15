@@ -324,15 +324,20 @@ async def archive(db: AsyncSession, vehicle_id: str, reason: str | None, *, tena
     reason = (reason or "").strip()
     if not 3 <= len(reason) <= 500:
         raise HTTPException(422, "Say why the vehicle is archived (3 to 500 characters)")
+    # Its device is released, so the tracker can go to another vehicle; what it reported stays.
+    await db.execute(text("SELECT fleet_device_release(CAST(:i AS uuid))"), {"i": vehicle_id})
     row = (await db.execute(text("""
         UPDATE vehicles
            SET archived_at = now(), archived_by_user_id = CAST(:u AS uuid), archive_reason = :reason,
-               is_active = FALSE, updated_at = now()
+               is_active = FALSE, updated_at = now(),
+               tracking_enabled = FALSE, device_identifier = NULL, tracking_source = NULL,
+               provider_connection_id = NULL, tracking_status = 'not_configured', tracking_status_at = now()
          WHERE id = CAST(:i AS uuid) RETURNING *
     """), {"i": vehicle_id, "u": user_id, "reason": reason})).mappings().one()
     await write_audit_log(db, tenant_id=tenant_id, user_id=user_id, action="fleet.vehicle.archived",
                           resource_type="vehicle", resource_id=vehicle_id, ip_address=ip,
-                          detail={"plate_number": row["plate_number"], "reason": reason})
+                          detail={"plate_number": row["plate_number"], "reason": reason,
+                                  "device_released": current["device_identifier"]})
     return dict(row)
 
 

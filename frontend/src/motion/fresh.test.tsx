@@ -39,12 +39,19 @@ describe('whether something is still live', () => {
 
   it('is what the map and the drone screen go by', () => {
     const gps = text('../pages/GPS.tsx')
-    // A vehicle pulses only while it is moving AND still being heard from; one that is not is drawn faint and says so.
-    expect(gps).toContain("animation: v.current_status === 'moving' && heard ? 'sav-live-pulse 1.5s infinite' : 'none',")
-    expect(gps).toContain('const heard = freshAt(v.last_position_at, POSITION_STALE_MS, now)')
-    expect(gps).toContain('opacity: heard ? 1 : 0.5,')
-    expect(gps).toContain('Not live: the last position it sent')
+    // Since 15 October 2026 the GPS page draws the fleet on a street map (the fleet upgrade, phase 3), which goes by
+    // the clock: a vehicle is Online only while its last fix is recent, faint once Stale, a hollow ring at its last
+    // known place once Offline - and not drawn at all without a fix.
+    expect(gps).toContain('<FleetMap vehicles={fleet} limits={limits}')
+    expect(gps).toContain('statusNow(v, limits, now)')
     expect(gps).not.toContain("'pulse 1.5s infinite'")
+    const fleet = text('../components/fleet/fleetMapFormat.ts')
+    expect(fleet).toContain('const minutes = (now - new Date(v.last_fix_at).getTime()) / 60_000')
+    expect(fleet).toContain('stale: { color: AMBER, fillColor: AMBER, fillOpacity: 0.45, opacity: 0.55 },')
+    expect(fleet).toContain("offline: { color: GREY, fillColor: GREY, fillOpacity: 0, opacity: 0.8, dashArray: '3 3' },")
+    const map = text('../components/fleet/FleetMap.tsx')
+    expect(map).toContain('const status = statusNow(v, limits, now)')
+    expect(map).toContain("status === 'stale' ? 'Stale' : 'Last known'")
 
     const drone = text('../pages/drones/DronePatrol.tsx')
     expect(drone).toContain('{live && <Grid size={{ xs: 12 }}><StaleBadge at={p.recorded_at} staleAfterMs={TELEMETRY_STALE_MS} /></Grid>}')

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
@@ -32,6 +33,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
 from app.routers.operations_board import held_by
+from app.services import fleet_tracking as ft
 from app.services import fleet_vehicles as fv
 from app.services.audit import write_audit_log
 
@@ -41,7 +43,8 @@ _READ = [Depends(require_permission("gps:read"))]
 _WRITE = [Depends(require_permission("gps:write"))]
 _ARCHIVE = [Depends(require_permission("fleet:vehicle:archive"))]
 _FIELDS = [Depends(require_permission("fleet:fields:manage"))]
-HELD = ("gps:read", "gps:write", "fleet:vehicle:archive", "fleet:fields:manage")
+HELD = ("gps:read", "gps:write", "fleet:vehicle:archive", "fleet:fields:manage", "fleet:device:manage",
+        "fleet:alerts:manage")
 
 SORTS = {
     "name": "v.name", "plate_number": "v.plate_key", "vehicle_type": "v.vehicle_type", "site_name": "s.name",
@@ -56,7 +59,8 @@ def _like(q: str) -> str:
 
 def _may(held: frozenset[str]) -> dict:
     return {"edit": "gps:write" in held, "archive": "fleet:vehicle:archive" in held,
-            "manage_fields": "fleet:fields:manage" in held}
+            "manage_fields": "fleet:fields:manage" in held, "manage_devices": "fleet:device:manage" in held,
+            "manage_limits": "fleet:alerts:manage" in held}
 
 
 def _out(row) -> dict:
@@ -64,6 +68,8 @@ def _out(row) -> dict:
     v["type_label"] = fv.TYPE_LABEL.get(v.get("vehicle_type"), v.get("vehicle_type"))
     v["service_label"] = fv.SERVICE_LABEL.get(v.get("service_status"), v.get("service_status"))
     v["archived"] = v.get("archived_at") is not None
+    if "tracking_status" in v:
+        v["tracking_label"] = ft.STATUS_LABEL.get(v["tracking_status"], v["tracking_status"])
     return v
 
 
@@ -76,6 +82,7 @@ async def list_vehicles(
     vehicle_type: str | None = Query(None),
     service_status: str | None = Query(None),
     group_id: uuid.UUID | None = Query(None),
+    tracking: Literal["online", "stale", "offline", "not_configured"] | None = Query(None),
     archived: Literal["active", "archived", "all"] = Query("active"),
     sort: str = Query("name"),
     order: Literal["asc", "desc"] = Query("asc"),
@@ -93,7 +100,7 @@ async def list_vehicles(
     if service_status is not None and service_status not in fv.SERVICE_STATUSES:
         raise HTTPException(422, f"service_status is one of {', '.join(fv.SERVICE_STATUSES)}")
     limit, offset = clamp(limit, offset)
-    params: dict = {"limit": limit, "offset": offset}
+    params: dict = {"limit": limit, "offset": offset, **(await ft.limits(db))}
     where: list[str] = []
     scope = site_scope_clause(allowed, "v.site_id", params)
     if scope:
@@ -120,11 +127,15 @@ async def list_vehicles(
         where.append("EXISTS (SELECT 1 FROM fleet_vehicle_group_members m "
                      "WHERE m.vehicle_id = v.id AND m.group_id = CAST(:grp AS uuid))")
         params["grp"] = str(group_id)
+    if tracking:
+        where.append(f"{ft.status_sql('v')} = :tracking")
+        params["tracking"] = tracking
     rows = (await db.execute(text(f"""
         SELECT v.id, v.name, v.plate_number, v.vehicle_type, v.make, v.model, v.color, v.site_id,
                s.name AS site_name, v.department, v.service_status, v.assigned_driver_user_id,
                coalesce(d.full_name, v.driver_name) AS driver_name, v.current_status, v.last_position_at,
                v.archived_at, v.archive_reason, v.created_at, v.updated_at,
+               v.tracking_enabled, v.device_identifier, v.last_fix_at, {ft.status_sql('v')} AS tracking_status,
                count(*) OVER () AS total
           FROM vehicles v
           LEFT JOIN sites s ON s.id = v.site_id
@@ -177,7 +188,8 @@ async def get_vehicle(
          WHERE m.vehicle_id = CAST(:i AS uuid) AND g.is_active ORDER BY g.name
     """), {"i": str(vehicle_id)})).mappings().all()
     held = await held_by(db, token.role_id, HELD)
-    return {**_out(row), "groups": [dict(g) for g in groups], "fields": await fv.field_definitions(db),
+    status = ft.status_of_row(row, await ft.limits(db), datetime.now(timezone.utc))
+    return {**_out({**row, "tracking_status": status}), "groups": [dict(g) for g in groups], "fields": await fv.field_definitions(db),
             "may": _may(held), "archived_note": fv.ARCHIVED_NOTE}
 
 

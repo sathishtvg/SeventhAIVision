@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   Box,
   Typography,
@@ -35,12 +35,13 @@ import type { Vehicle } from '@/api/gps'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FleetNav } from '@/components/fleet/FleetNav'
 import { VehicleFormDialog } from '@/components/fleet/VehicleFormDialog'
-import { getFleetOptions } from '@/api/fleet'
+import { getFleetOptions, TRACKING_LABEL, type TrackingStatus } from '@/api/fleet'
+import { FleetMap } from '@/components/fleet/FleetMap'
+import { useFleetLive } from '@/components/fleet/useFleetLive'
+import { statusNow } from '@/components/fleet/fleetMapFormat'
 import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
-import { freshAt, useNow } from '@/motion'
-
-/** A tracker reports every few seconds to a minute. A position older than this is where the vehicle was. */
-const POSITION_STALE_MS = 120_000
+import { useNow } from '@/motion'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
 
 // ── status helpers ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
@@ -62,104 +63,6 @@ function relativeTime(ts: string | null): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return `${Math.floor(diff / 86400)}d ago`
-}
-
-// ── Simple map placeholder (Leaflet not installed) ─────────────────────────
-function VehicleMapView({ vehicles }: { vehicles: Vehicle[] }) {
-  const now = useNow()
-  const active = vehicles.filter(v => v.last_lat !== null && v.last_lon !== null)
-  if (active.length === 0) {
-    return (
-      <Box sx={{ height: 380, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)' }}>
-        <Stack alignItems="center" spacing={1}>
-          <MyLocationIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.4 }} />
-          <Typography variant="body2" color="text.secondary">No vehicles with active GPS position</Typography>
-        </Stack>
-      </Box>
-    )
-  }
-
-  // Find bounding box
-  const lats = active.map(v => v.last_lat as number)
-  const lons = active.map(v => v.last_lon as number)
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons)
-  const latRange = (maxLat - minLat) || 0.01
-  const lonRange = (maxLon - minLon) || 0.01
-
-  const toX = (lon: number) => ((lon - minLon) / lonRange) * 90 + 5
-  const toY = (lat: number) => (1 - (lat - minLat) / latRange) * 90 + 5
-
-  return (
-    <Box sx={{ height: 380, bgcolor: 'rgba(10,20,40,0.8)', borderRadius: 2,
-      border: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
-      {/* Grid lines */}
-      {[20, 40, 60, 80].map(p => (
-        <React.Fragment key={p}>
-          <Box sx={{ position: 'absolute', left: `${p}%`, top: 0, bottom: 0,
-            borderLeft: '1px solid rgba(255,255,255,0.05)' }} />
-          <Box sx={{ position: 'absolute', top: `${p}%`, left: 0, right: 0,
-            borderTop: '1px solid rgba(255,255,255,0.05)' }} />
-        </React.Fragment>
-      ))}
-      {active.map(v => {
-        // "Moving" is the last thing the tracker said. It is drawn as moving - pulsing - only while the tracker
-        // is still being heard from; after that the marker is faint and says so.
-        const heard = freshAt(v.last_position_at, POSITION_STALE_MS, now)
-        return (
-        <Tooltip key={v.id} title={
-          <Box>
-            <Typography variant="caption" sx={{ fontWeight: 700 }}>{v.name}</Typography>
-            {v.plate_number && <Typography variant="caption" sx={{ display: "block" }}>{v.plate_number}</Typography>}
-            <Typography variant="caption" sx={{ display: "block" }}>
-              {v.last_speed !== null ? `${v.last_speed} km/h` : 'Speed unknown'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              {v.last_lat?.toFixed(5)}, {v.last_lon?.toFixed(5)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              {relativeTime(v.last_position_at)}
-            </Typography>
-            {!heard && (
-              <Typography variant="caption" sx={{ display: 'block', fontWeight: 700 }}>Not live: the last position it sent</Typography>
-            )}
-          </Box>
-        } arrow>
-          <Box sx={{
-            position: 'absolute',
-            left: `${toX(v.last_lon as number)}%`,
-            top: `${toY(v.last_lat as number)}%`,
-            transform: 'translate(-50%, -50%)',
-            cursor: 'pointer',
-            zIndex: 10,
-            opacity: heard ? 1 : 0.5,
-          }}>
-            <Box sx={{
-              width: 14, height: 14, borderRadius: '50%',
-              bgcolor: STATUS_COLOR[v.current_status],
-              border: '2px solid rgba(255,255,255,0.6)',
-              boxShadow: `0 0 8px ${STATUS_COLOR[v.current_status]}`,
-              color: STATUS_COLOR['moving'],
-              animation: v.current_status === 'moving' && heard ? 'sav-live-pulse 1.5s infinite' : 'none',
-            }} />
-            <Typography variant="caption" sx={{
-              position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-              whiteSpace: 'nowrap', fontSize: '0.6rem', color: 'rgba(255,255,255,0.8)',
-              bgcolor: 'rgba(0,0,0,0.6)', px: 0.5, borderRadius: 0.5,
-            }}>
-              {v.name}
-            </Typography>
-          </Box>
-        </Tooltip>
-        )
-      })}
-      <Typography variant="caption" sx={{ position: 'absolute', bottom: 8, right: 12,
-        color: 'rgba(255,255,255,0.3)', fontSize: '0.6rem' }}>
-        Relative position map • {active.length} vehicles
-      </Typography>
-    </Box>
-  )
 }
 
 // ── vehicle card ──────────────────────────────────────────────────────────────
@@ -290,6 +193,7 @@ export default function GPSPage() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
 
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { data: fleetOptions } = useQuery({ queryKey: ['fleet-options'], queryFn: getFleetOptions })
 
   const { data: dashboard, isLoading, isLoadingError: dashboardFailed, error: dashboardError, refetch: refetchDashboard } = useQuery({
@@ -304,15 +208,21 @@ export default function GPSPage() {
     refetchInterval: 30_000,
   })
 
-  const summary = dashboard?.summary ?? { total: 0, moving: 0, idle: 0, offline: 0 }
   const vehicles = dashboard?.vehicles ?? []
   const recentEvents = dashboard?.recent_events ?? []
 
+  // The fleet as the live map has it: the counts are tracking statuses, worked out against the clock from each
+  // vehicle's last fix - a vehicle is counted Online only while it is being heard from.
+  const live = useFleetLive()
+  const now = useNow(10_000)
+  const limits = live.data?.limits ?? { online_minutes: 5, offline_minutes: 30 }
+  const fleet = live.data?.items ?? []
+  const count = (s: TrackingStatus) => fleet.filter((v) => statusNow(v, limits, now) === s).length
   const KPI = [
-    { label: 'Total Vehicles', value: summary.total, color: '#6C63FF' },
-    { label: 'Moving', value: summary.moving, color: '#00E396' },
-    { label: 'Idle', value: summary.idle, color: '#FF9800' },
-    { label: 'Offline', value: summary.offline, color: '#9E9E9E' },
+    { label: 'Total Vehicles', value: fleet.length, color: '#6C63FF' },
+    { label: TRACKING_LABEL.online, value: count('online'), color: '#00E396' },
+    { label: TRACKING_LABEL.stale, value: count('stale'), color: '#FF9800' },
+    { label: TRACKING_LABEL.offline, value: count('offline'), color: '#9E9E9E' },
   ]
 
   return (
@@ -362,8 +272,10 @@ export default function GPSPage() {
               <Paper sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)' }}>
                 <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, mb: 1 }}>
                   <MyLocationIcon fontSize="small" /> Live Positions
+                  <Button component={RouterLink} to="/gps/map" size="small" sx={{ ml: 'auto' }}>Open the live map</Button>
                 </Typography>
-                <VehicleMapView vehicles={vehicles} />
+                <FleetMap vehicles={fleet} limits={limits} height={380} labels={false}
+                          onSelect={(id) => navigate(`/gps/map?focus=${id}`)} />
               </Paper>
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>

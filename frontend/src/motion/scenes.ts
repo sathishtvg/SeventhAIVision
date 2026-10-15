@@ -123,9 +123,11 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/iot': scene('broadcast', 'Smart Facilities', 'Loading sensors'),
   '/bwc': scene('camera', 'Body Cameras', 'Loading body cameras'),
   '/gps': scene('radar', 'GPS Fleet', 'Finding the vehicles'),
+  '/gps/map': scene('radar', 'Live Fleet Map', 'Finding where each vehicle is'),
   '/gps/vehicles': scene('ledger', 'Fleet Vehicles', 'Loading the vehicles'),
   '/gps/groups': scene('ledger', 'Vehicle Groups', 'Loading the groups'),
   '/gps/fields': scene('sliders', 'Vehicle Fields', 'Loading the fields'),
+  '/gps/providers': scene('broadcast', 'GPS Providers', 'Loading the providers'),
   '/assets-maintenance': scene('ledger', 'Assets & Maintenance', 'Loading assets'),
 
   // Visitors

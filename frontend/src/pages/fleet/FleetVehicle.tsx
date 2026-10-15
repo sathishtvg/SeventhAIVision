@@ -22,6 +22,7 @@ import Stack from '@/components/common/Stack'
 import { FleetNav } from '@/components/fleet/FleetNav'
 import { ArchiveVehicleDialog } from '@/components/fleet/ArchiveVehicleDialog'
 import { VehicleFormDialog } from '@/components/fleet/VehicleFormDialog'
+import { DeviceTab } from '@/components/fleet/DeviceTab'
 import { EmptyState, ErrorState, SaveStatus, TableEmptyRow, TableErrorRow } from '@/components/states'
 import { SkeletonRows } from '@/components/common/SkeletonRows'
 import {
@@ -34,7 +35,7 @@ export default function FleetVehicle() {
   const { id = '' } = useParams()
   const [search, setSearch] = useSearchParams()
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'details' | 'groups' | 'history'>('details')
+  const [tab, setTab] = useState<'details' | 'device' | 'groups' | 'history'>('details')
   const [archiving, setArchiving] = useState(false)
   const editing = search.get('edit') === '1'
   const setEditing = (on: boolean) => setSearch(on ? { edit: '1' } : {}, { replace: true })
@@ -79,10 +80,12 @@ export default function FleetVehicle() {
       )}
       <Tabs value={tab} onChange={(_, t) => setTab(t)} sx={{ mb: 2 }} aria-label="About this vehicle" variant="scrollable" allowScrollButtonsMobile>
         <Tab value="details" label="Details" />
+        <Tab value="device" label="GPS device" />
         <Tab value="groups" label={`Groups (${vehicle.groups.length})`} />
         <Tab value="history" label="History of changes" />
       </Tabs>
       {tab === 'details' && <Details vehicle={vehicle} />}
+      {tab === 'device' && <DeviceTab vehicleId={vehicle.id} archived={vehicle.archived} />}
       {tab === 'groups' && (
         <GlassCard sx={{ p: 2 }}>
           {vehicle.groups.length === 0 ? (

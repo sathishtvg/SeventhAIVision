@@ -202,7 +202,9 @@ def test_the_last_phases_are_what_the_documents_say_and_the_matrix_is_there():
     assert '"Moving" was the last thing a tracker said, for ever.' in audit
     now = _read(SRC / "motion" / "useNow.ts")
     assert "setInterval(() => setNow(Date.now()), everyMs)" in now
-    assert "freshAt(v.last_position_at, POSITION_STALE_MS, now)" in pages["GPS.tsx"]
+    # The GPS page's fleet goes by the clock too: since 15 October 2026 through the fleet map's statusNow.
+    assert "statusNow(v, limits, now)" in pages["GPS.tsx"]
+    assert "(now - new Date(v.last_fix_at).getTime()) / 60_000" in _read(SRC / "components" / "fleet" / "fleetMapFormat.ts")
     assert "freshAt(now?.recorded_at, TELEMETRY_STALE_MS, useNow())" in pages["drones/DronePatrol.tsx"]
 
     # The tick on a patrol is the server's word and nothing more.
