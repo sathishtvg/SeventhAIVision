@@ -126,6 +126,7 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/gps/vehicles': scene('ledger', 'Fleet Vehicles', 'Loading the vehicles'),
   '/gps/groups': scene('ledger', 'Vehicle Groups', 'Loading the groups'),
   '/gps/fields': scene('sliders', 'Vehicle Fields', 'Loading the fields'),
+  '/gps/providers': scene('broadcast', 'GPS Providers', 'Loading the providers'),
   '/assets-maintenance': scene('ledger', 'Assets & Maintenance', 'Loading assets'),
 
   // Visitors

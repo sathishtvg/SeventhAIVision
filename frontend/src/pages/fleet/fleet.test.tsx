@@ -4,10 +4,11 @@ import { ThemeProvider } from '@mui/material'
 import { render, screen, fireEvent, waitFor, within } from '@/test/utils'
 import { theme } from '@/theme/glassmorphism'
 import * as api from '@/api/fleet'
-import type { FleetOptions, FleetVehicle, FleetVehicleDetail, VehicleList } from '@/api/fleet'
+import type { DeviceState, FleetOptions, FleetVehicle, FleetVehicleDetail, VehicleList } from '@/api/fleet'
 import FleetVehicles from './FleetVehicles'
 import FleetVehiclePage from './FleetVehicle'
 import FleetFields from './FleetFields'
+import FleetProviders from './FleetProviders'
 
 // PageHeader reads the tenant's page names from the settings.
 vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), upsertSetting: vi.fn().mockResolvedValue({}) }))
@@ -18,8 +19,8 @@ vi.mock('@/api/fleet', async (orig) => {
 })
 
 const mocked = vi.mocked(api)
-const ALL = { edit: true, archive: true, manage_fields: true }
-const NONE = { edit: false, archive: false, manage_fields: false }
+const ALL = { edit: true, archive: true, manage_fields: true, manage_devices: true, manage_limits: true }
+const NONE = { edit: false, archive: false, manage_fields: false, manage_devices: false, manage_limits: false }
 
 const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle => ({
   id: 'v1', name: 'Patrol 3', plate_number: 'SBA 1234 K', vehicle_type: 'patrol_car', type_label: 'Patrol car', make: 'Toyota',
@@ -173,5 +174,89 @@ describe('custom fields', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add the field' }))
     await waitFor(() => expect(mocked.createVehicleField).toHaveBeenCalledWith(expect.objectContaining({
       field_key: 'fuel_card_no', field_type: 'text', label: 'Fuel card no.' })))
+  })
+})
+
+describe('tracking', () => {
+  const state = (over: Partial<DeviceState> = {}): DeviceState => ({
+    vehicle_id: 'v1', archived: false, tracking_enabled: true, tracking_source: 'traccar', device_identifier: 'IMEI1',
+    device_assigned_at: '2026-10-15T02:00:00Z', provider: { id: null, name: "The platform's Traccar" }, status: 'offline',
+    status_label: 'Offline', limits: { online_minutes: 5, offline_minutes: 30 }, last_fix_at: null, last_received_at: null,
+    last_lat: null, last_lon: null, last_speed: null, last_heading: null, last_accuracy: null, last_ignition: null,
+    last_satellites: null, motion: null, rejects: [], status_changes: [], builtin_available: true, may_manage: true, ...over,
+  })
+  const detail = (): FleetVehicleDetail => ({
+    ...vehicle(), driver_display: null, driver_user_name: null, archived_by_name: null, groups: [], fields: [], may: ALL,
+    archived_note: 'x',
+  })
+
+  it('says a device that has never reported is offline, and never calls it live', async () => {
+    mocked.getFleetVehicle.mockResolvedValue(detail())
+    mocked.getVehicleDevice.mockResolvedValue(state())
+    mocked.listProviders.mockResolvedValue({ items: [], builtin: { available: true, forwarding: true, forward_path: '/x' } })
+    show(<FleetVehiclePage />, '/gps/vehicles/v1', '/gps/vehicles/:id')
+    fireEvent.click(await screen.findByRole('tab', { name: 'GPS device' }))
+    expect(await screen.findByText('No position has arrived from this device yet')).toBeInTheDocument()
+    expect(screen.getAllByText('Offline').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Online')).not.toBeInTheDocument()
+  })
+
+  it('shows the last fix and what was refused, and links a device with what was chosen', async () => {
+    mocked.getFleetVehicle.mockResolvedValue(detail())
+    mocked.getVehicleDevice.mockResolvedValue(state({
+      status: 'online', status_label: 'Online', last_fix_at: new Date(Date.now() - 60_000).toISOString(),
+      last_received_at: new Date().toISOString(), last_lat: 1.3644, last_lon: 103.9915, last_speed: 37.04, last_heading: 45,
+      last_accuracy: 6, motion: 'moving',
+      rejects: [{ reason: 'zero_position', label: 'Position 0,0 (no GPS fix)', times: 3, first_at: '2026-10-15T02:00:00Z', last_at: '2026-10-15T03:00:00Z' }],
+    }))
+    mocked.listProviders.mockResolvedValue({ items: [], builtin: { available: true, forwarding: true, forward_path: '/x' } })
+    mocked.setVehicleDevice.mockResolvedValue({ ok: true, registered: { ok: true, message: 'The device was registered in Traccar' } })
+    show(<FleetVehiclePage />, '/gps/vehicles/v1', '/gps/vehicles/:id')
+    fireEvent.click(await screen.findByRole('tab', { name: 'GPS device' }))
+    expect(await screen.findByText('1.36440, 103.99150')).toBeInTheDocument()
+    expect(screen.getByText('37 km/h, heading 45°')).toBeInTheDocument()
+    expect(screen.getByText('Moving')).toBeInTheDocument()
+    expect(screen.getByText('Position 0,0 (no GPS fix)')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Device ID'), { target: { value: 'IMEI2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(mocked.setVehicleDevice).toHaveBeenCalledWith('v1', {
+      device_identifier: 'IMEI2', provider_connection_id: null, tracking_enabled: true, register_with_provider: true }))
+    expect(await screen.findByText('The device was registered in Traccar')).toBeInTheDocument()
+  })
+
+  it('shows a connection’s forwarding secret once, as Traccar settings to copy', async () => {
+    mocked.listProviders.mockResolvedValue({ items: [], builtin: { available: false, forwarding: false, forward_path: '/api/v1/fleet/ingest/traccar' } })
+    mocked.getFleetLimits.mockResolvedValue({ online_minutes: 5, offline_minutes: 30 })
+    mocked.createProvider.mockResolvedValue({
+      id: 'p1', provider: 'traccar', name: 'Ours', base_url: 'https://traccar.example.test', auth_kind: 'token', username: null,
+      is_active: true, last_test_at: null, last_test_ok: null, last_test_message: null,
+      forward_path: '/api/v1/fleet/ingest/traccar/p1', created_at: '', forward_secret: 'S3CRET-once', forward_secret_note: '',
+    })
+    show(<FleetProviders />, '/gps/providers', '/gps/providers')
+    expect(await screen.findByText('Not set up on this server')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Connect a Traccar' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Ours' } })
+    fireEvent.change(within(dialog).getByLabelText(/^Address/), { target: { value: 'https://traccar.example.test' } })
+    fireEvent.change(within(dialog).getByLabelText(/^Token/), { target: { value: 'tok' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Connect' }))
+    const shown = await screen.findByText(/forward.header = X-Fleet-Secret: S3CRET-once/)
+    expect(shown).toBeInTheDocument()
+    expect(screen.getByText(/This secret is shown once/)).toBeInTheDocument()
+  })
+
+  it('lets only whoever may set the limits change them', async () => {
+    mocked.getFleetOptions.mockResolvedValue({ ...OPTIONS, may: NONE })
+    mocked.getFleetLimits.mockResolvedValue({ online_minutes: 5, offline_minutes: 30 })
+    show(<FleetProviders />, '/gps/providers', '/gps/providers')
+    expect(await screen.findByLabelText(/Online for/)).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Providers are set up by whoever manages/)).toBeInTheDocument()
+  })
+
+  it('shows each vehicle’s tracking status on the list', async () => {
+    mocked.listFleetVehicles.mockResolvedValue(list([vehicle({ tracking_status: 'stale', tracking_label: 'Stale' })]))
+    show(<FleetVehicles />)
+    expect(await screen.findByText('Stale')).toBeInTheDocument()
   })
 })

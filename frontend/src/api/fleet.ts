@@ -11,7 +11,10 @@ export type ServiceStatus = 'in_service' | 'maintenance' | 'out_of_service'
 export type FieldType = 'text' | 'number' | 'date' | 'select' | 'boolean'
 export type CustomValue = string | number | boolean
 
-export interface FleetMay { edit: boolean; archive: boolean; manage_fields: boolean }
+export interface FleetMay {
+  edit: boolean; archive: boolean; manage_fields: boolean; manage_devices: boolean; manage_limits: boolean
+}
+export type TrackingStatus = 'online' | 'stale' | 'offline' | 'not_configured'
 
 export interface FleetVehicle {
   id: string
@@ -35,6 +38,11 @@ export interface FleetVehicle {
   custom_fields?: Record<string, CustomValue>
   current_status: string
   last_position_at: string | null
+  tracking_enabled?: boolean
+  device_identifier?: string | null
+  last_fix_at?: string | null
+  tracking_status?: TrackingStatus
+  tracking_label?: string
   archived: boolean
   archived_at: string | null
   archive_reason: string | null
@@ -113,6 +121,7 @@ export interface VehicleQuery {
   vehicle_type?: string
   service_status?: string
   group_id?: string
+  tracking?: TrackingStatus
   archived?: 'active' | 'archived' | 'all'
   sort?: string
   order?: 'asc' | 'desc'
@@ -187,4 +196,90 @@ export const HISTORY_WORDS: Record<string, string> = {
 /** "Fuel card no." becomes `fuel_card_no`: the key a new field is offered, which the person may change before saving. */
 export function fieldKeyOf(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^[^a-z]+/, '').slice(0, 50)
+}
+
+// ── tracking (phase 2) ──────────────────────────────────────────────────────
+
+export interface DeviceState {
+  vehicle_id: string
+  archived: boolean
+  tracking_enabled: boolean
+  tracking_source: string | null
+  device_identifier: string | null
+  device_assigned_at: string | null
+  provider: { id: string | null; name: string; is_active?: boolean } | null
+  status: TrackingStatus
+  status_label: string
+  limits: FleetLimits
+  last_fix_at: string | null
+  last_received_at: string | null
+  last_lat: number | null
+  last_lon: number | null
+  last_speed: number | null
+  last_heading: number | null
+  last_accuracy: number | null
+  last_ignition: boolean | null
+  last_satellites: number | null
+  motion: string | null
+  rejects: { reason: string; label: string; times: number; first_at: string; last_at: string }[]
+  status_changes: { from_status: TrackingStatus; to_status: TrackingStatus; changed_at: string }[]
+  builtin_available: boolean
+  may_manage: boolean
+}
+export interface FleetLimits { online_minutes: number; offline_minutes: number }
+export interface DeviceInput {
+  tracking_enabled?: boolean
+  device_identifier?: string | null
+  provider_connection_id?: string | null
+  register_with_provider?: boolean
+}
+export interface ProviderConnection {
+  id: string
+  provider: 'traccar'
+  name: string
+  base_url: string
+  auth_kind: 'token' | 'basic'
+  username: string | null
+  is_active: boolean
+  last_test_at: string | null
+  last_test_ok: boolean | null
+  last_test_message: string | null
+  forward_path: string
+  created_at: string
+}
+export interface ProviderList {
+  items: ProviderConnection[]
+  builtin: { available: boolean; forwarding: boolean; forward_path: string }
+}
+
+export const getVehicleDevice = (id: string): Promise<DeviceState> =>
+  apiClient.get(`${BASE}/vehicles/${id}/device`).then((r) => r.data)
+export const setVehicleDevice = (id: string, body: DeviceInput): Promise<{ ok: boolean; registered: { ok: boolean; message: string } | null }> =>
+  apiClient.put(`${BASE}/vehicles/${id}/device`, body).then((r) => r.data)
+export const removeVehicleDevice = (id: string): Promise<{ ok: boolean }> =>
+  apiClient.delete(`${BASE}/vehicles/${id}/device`).then((r) => r.data)
+export const testVehicleDevice = (id: string): Promise<{ provider: { ok: boolean; message: string; last_update?: string | null }; last_received_at: string | null }> =>
+  apiClient.post(`${BASE}/vehicles/${id}/device/test`).then((r) => r.data)
+
+export const listProviders = (): Promise<ProviderList> => apiClient.get(`${BASE}/providers`).then((r) => r.data)
+export const createProvider = (body: { name: string; base_url: string; auth_kind: 'token' | 'basic'; username?: string | null; secret: string }):
+  Promise<ProviderConnection & { forward_secret: string; forward_secret_note: string }> =>
+  apiClient.post(`${BASE}/providers`, body).then((r) => r.data)
+export const changeProvider = (id: string, body: Partial<{ name: string; base_url: string; auth_kind: 'token' | 'basic'; username: string | null; secret: string }>): Promise<ProviderConnection> =>
+  apiClient.patch(`${BASE}/providers/${id}`, body).then((r) => r.data)
+export const testProvider = (id: string): Promise<{ ok: boolean; message: string }> =>
+  apiClient.post(`${BASE}/providers/${id}/test`).then((r) => r.data)
+export const retireProvider = (id: string): Promise<{ ok: boolean }> =>
+  apiClient.post(`${BASE}/providers/${id}/retire`).then((r) => r.data)
+export const replaceForwardSecret = (id: string): Promise<{ forward_secret: string; forward_path: string }> =>
+  apiClient.post(`${BASE}/providers/${id}/forward-secret`).then((r) => r.data)
+
+export const getFleetLimits = (): Promise<FleetLimits> => apiClient.get(`${BASE}/settings`).then((r) => r.data)
+export const setFleetLimits = (body: FleetLimits): Promise<FleetLimits> => apiClient.put(`${BASE}/settings`, body).then((r) => r.data)
+
+export const TRACKING_COLOUR: Record<TrackingStatus, 'success' | 'warning' | 'default' | 'info'> = {
+  online: 'success', stale: 'warning', offline: 'default', not_configured: 'info',
+}
+export const TRACKING_LABEL: Record<TrackingStatus, string> = {
+  online: 'Online', stale: 'Stale', offline: 'Offline', not_configured: 'Not configured',
 }

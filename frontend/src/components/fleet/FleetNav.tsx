@@ -11,6 +11,7 @@ const PAGES = [
   { path: '/gps/vehicles', label: 'Vehicles' },
   { path: '/gps/groups', label: 'Groups' },
   { path: '/gps/fields', label: 'Custom fields' },
+  { path: '/gps/providers', label: 'Providers' },
 ] as const
 
 export function FleetNav() {
