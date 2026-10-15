@@ -45,6 +45,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant, get_raw_db
 from app.routers.operations_board import held_by
+from app.services import fleet_alerts
 from app.services import fleet_tracking as ft
 from app.services import fleet_vehicles as fv
 from app.services.audit import write_audit_log
@@ -108,10 +109,10 @@ async def _take(db: AsyncSession, request: Request, key: str, owner_tenant: str 
     await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": tenant_id})
     result = await ft.accept(db, tenant_id, vehicle_id, pos, source="traccar")
     await db.commit()
-    if result.get("moved"):
-        redis = getattr(request.app.state, "redis", None)
-        if redis is not None:
-            await ft.publish(redis, tenant_id, [vehicle_id])
+    redis = getattr(request.app.state, "redis", None)
+    if result.get("moved") and redis is not None:
+        await ft.publish(redis, tenant_id, [vehicle_id])
+    await fleet_alerts.announce(redis, tenant_id, result.get("raised", []))
     return {k: v for k, v in result.items() if k in ("accepted", "reason", "latest", "status")}
 
 

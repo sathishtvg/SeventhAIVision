@@ -69,7 +69,7 @@ KINDS: tuple[Kind, ...] = (
          None, "x.recorded_at < :cutoff", "vehicle_positions"),
     Kind("ARCHIVED_VEHICLES", "retention.archived_vehicles_days", "Archived fleet vehicles",
          ("vehicles", "vehicle_positions", "vehicle_journeys", "geofence_events", "fleet_status_changes",
-          "fleet_position_rejects", "fleet_vehicle_group_members"),
+          "fleet_position_rejects", "fleet_vehicle_group_members", "fleet_geofence_state"),
          "when it was archived",
          "The vehicle with its positions, journeys, geofence events, status history and group memberships. "
          "The alerts and incidents about it are not touched",

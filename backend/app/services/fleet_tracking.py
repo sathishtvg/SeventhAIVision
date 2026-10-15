@@ -33,6 +33,7 @@ from typing import Any, Mapping
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services import fleet_alerts, fleet_geofences
 from app.services.fleet_providers import ParsedPosition
 
 logger = logging.getLogger(__name__)
@@ -188,8 +189,15 @@ async def accept(db: AsyncSession, tenant_id: str, vehicle_id: str, pos: ParsedP
            "motion": "moving" if moving else "idle", "v": vehicle_id})
     status = status_of(tracking_enabled=True, has_device=bool(v["device_identifier"]), last_fix_at=pos.fix_at,
                        now=at, **(await limits(db)))
-    await record_status(db, tenant_id, v, status, at)
-    return {"accepted": True, "latest": True, "moved": True, "status": status}
+    raised: list = []
+    if await record_status(db, tenant_id, v, status, at) and status == "online":
+        # Reporting again: a note on the episode's alerts. Stale and offline are raised by the minute pass only.
+        raised += await fleet_alerts.status_changed(db, tenant_id, v, v["tracking_status"], status, at)
+    if pos.valid is not False:
+        raised += await fleet_geofences.evaluate(db, tenant_id, v, fleet_geofences.Fix(
+            pos.fix_at, pos.lat, pos.lon, pos.accuracy, pos.speed_kmh))
+    # `raised` is announced by the caller once this is committed.
+    return {"accepted": True, "latest": True, "moved": True, "status": status, "raised": raised}
 
 
 async def sweep(session_factory, redis=None, now: datetime | None = None) -> dict:
@@ -204,15 +212,21 @@ async def sweep(session_factory, redis=None, now: datetime | None = None) -> dic
             async with session_factory() as db:
                 await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": tenant_id})
                 bounds = await limits(db)
+                chosen = await fleet_alerts.settings_of(db)
                 rows = (await db.execute(text("""
-                    SELECT id, tracking_enabled, device_identifier, last_fix_at, tracking_status
+                    SELECT id, name, plate_number, site_id, service_status, tracking_enabled, device_identifier,
+                           last_fix_at, tracking_status
                       FROM vehicles
                      WHERE archived_at IS NULL AND (tracking_enabled OR tracking_status <> 'not_configured')
                 """))).mappings().all()
-                moved = []
+                moved, raised = [], []
                 for v in rows:
-                    if await record_status(db, tenant_id, v, status_of_row(v, bounds, at), at):
+                    to_status = status_of_row(v, bounds, at)
+                    if await record_status(db, tenant_id, v, to_status, at):
                         moved.append(str(v["id"]))
+                        raised += await fleet_alerts.status_changed(db, tenant_id, v, v["tracking_status"], to_status,
+                                                                    at, chosen)
+                raised += await fleet_geofences.minute(db, tenant_id, at)
                 await db.commit()
         except Exception:
             logger.exception("fleet status: could not look at tenant %s", tenant_id)
@@ -220,6 +234,7 @@ async def sweep(session_factory, redis=None, now: datetime | None = None) -> dic
         changed += len(moved)
         if moved and redis is not None:
             await publish(redis, tenant_id, moved, "fleet_status_changed")
+        await fleet_alerts.announce(redis, tenant_id, raised)
     return {"changed": changed}
 
 

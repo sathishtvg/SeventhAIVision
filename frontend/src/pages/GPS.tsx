@@ -34,6 +34,7 @@ import { getFleetOptions, TRACKING_LABEL, type TrackingStatus } from '@/api/flee
 import { FleetMap } from '@/components/fleet/FleetMap'
 import { useFleetLive } from '@/components/fleet/useFleetLive'
 import { statusNow } from '@/components/fleet/fleetMapFormat'
+import { eventWords } from '@/components/fleet/geofenceFormat'
 import { CardGridSkeleton, ErrorState } from '@/components/states'
 import { useNow } from '@/motion'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
@@ -220,7 +221,7 @@ export default function GPSPage() {
                       borderLeft: `3px solid ${ev.event_type === 'entry' ? '#00E396' : ev.event_type === 'exit' ? '#FF4560' : '#FF9800'}` }}>
                       <Typography variant="caption" sx={{ fontWeight: 700 }}>{ev.vehicle_name}</Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        {ev.event_type === 'entry' ? 'Entered' : ev.event_type === 'exit' ? 'Exited' : 'Speed violation in'} {ev.geofence_name}
+                        {eventWords(ev)} {ev.geofence_name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">{relativeTime(ev.occurred_at)}</Typography>
                     </Box>
@@ -281,7 +282,7 @@ export default function GPSPage() {
                         <TableCell>{ev.vehicle_name}</TableCell>
                         <TableCell>{ev.plate_number ?? '—'}</TableCell>
                         <TableCell>
-                          <Chip label={ev.event_type} size="small" sx={{
+                          <Chip label={eventWords(ev)} size="small" sx={{
                             bgcolor: (ev.event_type === 'entry' ? '#00E396' : ev.event_type === 'exit' ? '#FF4560' : '#FF9800') + '22',
                             color: ev.event_type === 'entry' ? '#00E396' : ev.event_type === 'exit' ? '#FF4560' : '#FF9800',
                             fontWeight: 700, fontSize: '0.7rem',

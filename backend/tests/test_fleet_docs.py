@@ -78,8 +78,8 @@ def test_what_is_not_done_is_said():
     doc = _flat(_read(DOC))
     for said in ("Only Traccar. No commercial provider's API is connected.",
                  "The Seventh AI phone app does not report its own position as a tracker",
-                 "Geofences do not use the positions yet. That is phase 5 of the design.",
-                 "No screen reads them: Journeys are worked out from the positions instead."):
+                 "without the protection against a wobbling fix",
+                 "No screen reads those journeys, and no tracker set up here sends through it"):
         assert said in doc, said
     design = _flat(_read(DESIGN))
     assert "**Why an administrator could not delete a vehicle:**" in design
@@ -119,3 +119,36 @@ def test_the_retention_the_document_describes_is_the_one_the_code_keeps():
     for said in ("Setting a period removes nothing at once: the scheduler removes once a day.",
                  "is kept whatever its age", "The alerts and incidents themselves are not touched."):
         assert said in doc, said
+
+
+def test_the_geofence_rules_the_document_gives_are_the_ones_the_code_uses():
+    from app.services import fleet_alerts as fa
+    from app.services import fleet_geofences as fg
+    doc = _flat(_read(DOC))
+    assert (fg.LEAST_RADIUS_M, fg.MOST_RADIUS_M, fg.LEAST_POINTS, fg.MOST_POINTS) == (25.0, 50_000.0, 3, 200)
+    assert (fg.LEAST_MARGIN_M, fg.HOLD.total_seconds(), fg.AGAIN_AFTER.total_seconds(), fg.SILENT.total_seconds(),
+            fg.OVER_FIXES) == (15.0, 30, 120, 900, 2)
+    for said in ("a circle of 25 m to 50 km, a polygon of 3 to 200 corners", "at least 15 m",
+                 "when 30 seconds pass with no fix saying otherwise", "not raised again within 2 minutes",
+                 "more than 15 minutes across a change", "over the limit at two fixes running",
+                 "raises nothing", "A position sent late never changes the side."):
+        assert said in doc, said
+    for code in (*fg.ALERT_CODE.values(), "gps.offline", "gps.stale"):
+        assert f"`{code}`" in doc, code
+    assert fa.DEFAULTS[fa.OFFLINE_KEY]["on"] and not fa.DEFAULTS[fa.STALE_KEY]["on"]
+    assert "(on until switched off)" in doc and "if switched on" in doc
+    assert fa.PUSHED_ANYWAY == ("high", "critical") and "when the alert is below high" in doc
+    assert "**A geofence never opens a barrier, admits anybody or confirms who is driving.**" in doc
+
+
+def test_the_evidence_the_document_describes_is_what_the_code_looks_for_and_never_confirmed():
+    from app.services import fleet_evidence as fe
+    doc = _flat(_read(DOC))
+    assert (fe.DEFAULT_WINDOW_S, fe.LEAST_WINDOW_S, fe.MOST_WINDOW_S) == (120, 30, 900)
+    assert "within two minutes either side of it (30 seconds to 15 minutes" in doc
+    for code, _label in fe.SECTIONS.values():
+        assert f"(needs `{code}`)" in doc, code
+    assert list(fe.MATCH_WORDS.values()) == ["Plate matches", "Near in time only"]
+    assert "**Plate matches**" in doc and "**Near in time only**" in doc
+    assert "Nothing is ever called confirmed" in doc
+    assert "confirmed" not in " ".join(fe.MATCH_WORDS.values()).lower()

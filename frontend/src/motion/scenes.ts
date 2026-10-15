@@ -125,6 +125,7 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/gps': scene('radar', 'GPS Fleet', 'Finding the vehicles'),
   '/gps/map': scene('radar', 'Live Fleet Map', 'Finding where each vehicle is'),
   '/gps/history': scene('route', 'Journey History', 'Working out the journeys'),
+  '/gps/geofences': scene('radar', 'Geofences', 'Drawing the geofences'),
   '/gps/vehicles': scene('ledger', 'Fleet Vehicles', 'Loading the vehicles'),
   '/gps/groups': scene('ledger', 'Vehicle Groups', 'Loading the groups'),
   '/gps/fields': scene('sliders', 'Vehicle Fields', 'Loading the fields'),

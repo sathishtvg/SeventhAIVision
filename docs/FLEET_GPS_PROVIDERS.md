@@ -154,6 +154,79 @@ Every export is a line in the audit log (`fleet.history.exported`) with the
 range and the number of rows. Reading journeys needs `fleet:history:read`, and
 somebody limited to sites sees only those sites' vehicles.
 
+## Geofences and alerts
+
+Fleet → Geofences (`/gps/geofences`) draws the places the vehicles are watched
+against: a circle of 25 m to 50 km, a polygon of 3 to 200 corners whose edges
+do not cross, or a site's own boundary as it is set on the site. A geofence
+belongs to the organisation or to one of its sites, and applies to the vehicle
+groups it names, or else to every vehicle of its site.
+
+**A fix that wobbles on the line changes nothing.** Each vehicle's side of each
+geofence is kept. A fix counts for a side only when it is past the boundary by
+at least 15 m, or by the accuracy the device reported when that is worse. The
+side changes when a second fix agrees, or when 30 seconds pass with no fix
+saying otherwise; the change is dated at the first fix on the new side. A
+position sent late never changes the side. When nothing was heard for more
+than 15 minutes across a change, it is recorded as having happened between the
+last fix on the old side and the first on the new. The first fix after a
+geofence is drawn says which side a vehicle is on and raises nothing.
+
+**Rules**, one of each kind per geofence, each with its severity and the people
+or roles told: enters, leaves, inside longer than N minutes, outside longer than
+N minutes, faster than N km/h inside. Every entry and exit is recorded; an alert
+is raised only where a rule asks, and the same alert for the same vehicle and
+geofence is not raised again within 2 minutes. Overspeed uses the speed the
+device reported, over the limit at two fixes running, once an episode. A stay
+is counted up to the last fix heard, by the minute job, once a stay.
+
+**Alerts go to the platform's one alert queue** (module GPS), to be
+acknowledged, assigned, noted, made an incident or dismissed there. The codes
+the older position endpoint raised are kept (`gps.entry`, `gps.exit`,
+`gps.speed_violation`); `gps.dwell_inside`, `gps.dwell_outside`, `gps.offline`
+and `gps.stale` are new. The organisation's notification rules apply to them as
+to any alert, and a high or critical one is pushed to the phones as every high
+alert is. A rule's own people and roles are pushed to as well when the alert is
+below high, but only those who may read vehicles and whose sites include the
+vehicle's.
+
+**When a vehicle stops reporting**: a tracked vehicle in service raises one
+alert when it counts as offline (on until switched off) and, if switched on,
+one when it counts as stale. When it reports again a note saying so is added to
+those alerts; they are not closed for anybody. Set under Fleet → Providers by
+whoever may set the limits.
+
+Changing a geofence's shape, site or groups, or switching it off, makes every
+vehicle's next fix say again which side it is on, without an alert. A geofence
+is archived with a reason, never deleted; its events stay readable. Somebody
+limited to sites draws and changes their own sites' geofences only, and sees
+their sites' vehicles' events only.
+
+**A geofence never opens a barrier, admits anybody or confirms who is
+driving.** It records where a vehicle's tracker said the vehicle was and
+raises an alert for a person to look at.
+
+## What else was recorded around an entry or exit
+
+Beside each geofence event on Fleet → Geofences, **What else was recorded**
+shows what the geofence's site recorded within two minutes either side of it
+(30 seconds to 15 minutes, set there by whoever may set the fleet's alerts),
+worked out when it is opened:
+
+- plate reads at the site's cameras (needs `detection:read`),
+- barrier commands at the site's barriers (needs `barrier:read`),
+- door events at the site's doors (needs `access:read`),
+- incidents at the site that were open at the time (needs `incident:read`).
+
+A plate read or barrier command whose plate is the vehicle's, compared letters
+and digits only, says **Plate matches**; anything else says **Near in time
+only**. Each says how long before or after the event it was, and a plate read
+how sure the camera was. Nothing is ever called confirmed: a plate that matches
+is a plate that matches, not the vehicle, and not who was driving. A section
+somebody may not read says so; an empty one says none was found. A geofence of
+the whole organisation has no site cameras, barriers or doors, and says so.
+Somebody limited to sites sees this only for their sites.
+
 ## How long positions are kept
 
 Positions are kept until the organisation sets a period, under Fleet →
@@ -191,10 +264,11 @@ statement with the others.
 - Only Traccar. No commercial provider's API is connected.
 - The Seventh AI phone app does not report its own position as a tracker;
   for a phone, use Traccar Client.
-- Geofences do not use the positions yet. That is phase 5 of the design.
 - The older position endpoint (`POST /api/v1/gps/vehicles/{id}/positions`,
   signed in as a user) still writes its own rows to `vehicle_journeys` by its
-  old speed rule. No screen reads them: Journeys are worked out from the
-  positions instead.
+  old speed rule, and checks geofences its old way: against the position
+  before only, without the protection against a wobbling fix. No screen
+  reads those journeys, and no tracker set up here sends through it;
+  positions from Traccar go through everything described above.
 - Traccar's own screen and API are reachable from the server only; to manage
   it from elsewhere, put it behind the platform's TLS proxy first.

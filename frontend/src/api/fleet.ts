@@ -371,3 +371,138 @@ export const getFleetRetention = (): Promise<FleetRetention> => apiClient.get(`$
 /** Set or take away a period. A period that already has older records answers 409 with how many, to be said back. */
 export const setFleetRetention = (kind: string, days: number | null, alreadyOlder?: number) =>
   apiClient.put(`${BASE}/retention/${kind}`, { days, already_older: alreadyOlder ?? null }).then((r) => r.data)
+
+// ── geofences (phase 5) ──────────────────────────────────────────────────────
+// A geofence is a circle or a polygon, of the organisation or one of its sites, applying to chosen vehicle groups
+// or else to every vehicle of its site. Its rules say what is alerted. It never opens a barrier, admits anybody
+// or confirms who is driving: it records where a tracker said a vehicle was, for a person to look at.
+
+export type GeofenceKind = 'entry' | 'exit' | 'dwell_inside' | 'dwell_outside' | 'overspeed'
+export type Severity = 'low' | 'medium' | 'high' | 'critical'
+export interface LatLon { lat: number; lon: number }
+
+export interface GeofenceRule {
+  kind: GeofenceKind
+  minutes: number | null
+  speed_kmh: number | null
+  severity: Severity
+  user_ids: string[]
+  role_ids: number[]
+  is_active: boolean
+}
+export interface Geofence {
+  id: string
+  name: string
+  description: string | null
+  site_id: string | null
+  site_name: string | null
+  shape: 'circle' | 'polygon'
+  center: LatLon | null
+  radius_m: number | null
+  polygon: LatLon[]
+  is_active: boolean
+  archived: boolean
+  archived_at: string | null
+  archive_reason: string | null
+  groups: { id: string; name: string; site_id: string | null }[]
+  rules: GeofenceRule[]
+  inside_now: number
+  may_change?: boolean
+  created_at: string
+  updated_at: string
+}
+export interface GeofenceList { items: Geofence[]; may: { manage: boolean; manage_alerts: boolean; organisation_wide: boolean } }
+export interface GeofenceOptions {
+  sites: { id: string; name: string; latitude: number | null; longitude: number | null; has_boundary: boolean }[]
+  groups: { id: string; name: string; site_id: string | null }[]
+  people: { id: string; full_name: string; role_id: number; role_name: string }[]
+  roles: { id: number; name: string }[]
+  kinds: { value: GeofenceKind; label: string }[]
+  severities: Severity[]
+  limits: { least_radius_m: number; most_radius_m: number; least_points: number; most_points: number }
+}
+export interface RuleInput {
+  kind: GeofenceKind; minutes?: number | null; speed_kmh?: number | null; severity: Severity
+  user_ids: string[]; role_ids: number[]; is_active?: boolean
+}
+export interface GeofenceInput {
+  name?: string
+  description?: string | null
+  site_id?: string | null
+  from_site?: boolean
+  shape?: { kind: 'circle'; center: LatLon; radius_m: number } | { kind: 'polygon'; points: LatLon[] }
+  group_ids?: string[]
+  rules?: RuleInput[]
+  is_active?: boolean
+}
+export interface GeofenceEvent {
+  id: string
+  event_type: 'entry' | 'exit' | 'dwell_inside' | 'dwell_outside' | 'speed_violation' | string
+  occurred_at: string
+  lat: number | null
+  lon: number | null
+  speed: number | null
+  accuracy: number | null
+  between_start: string | null
+  between_end: string | null
+  alert_id: string | null
+  alert_status: string | null
+  alert_severity: Severity | null
+  vehicle_id: string
+  vehicle_name: string
+  plate_number: string | null
+  geofence_id: string
+  geofence_name: string
+}
+export interface StopAlert { on: boolean; severity: Severity }
+export interface StopAlerts { offline: StopAlert; stale: StopAlert }
+
+export const listGeofences = (archived = false): Promise<GeofenceList> =>
+  apiClient.get(`${BASE}/geofences`, { params: { archived } }).then((r) => r.data)
+export const getGeofenceOptions = (): Promise<GeofenceOptions> => apiClient.get(`${BASE}/geofences/options`).then((r) => r.data)
+export const createGeofence = (body: GeofenceInput): Promise<Geofence> => apiClient.post(`${BASE}/geofences`, body).then((r) => r.data)
+export const changeGeofence = (id: string, body: GeofenceInput): Promise<Geofence> =>
+  apiClient.patch(`${BASE}/geofences/${id}`, body).then((r) => r.data)
+export const archiveGeofence = (id: string, reason: string): Promise<Geofence> =>
+  apiClient.post(`${BASE}/geofences/${id}/archive`, { reason }).then((r) => r.data)
+export const listFleetGeofenceEvents = (params: { geofence_id?: string; vehicle_id?: string; hours?: number } = {}):
+  Promise<{ items: GeofenceEvent[] }> => apiClient.get(`${BASE}/geofence-events`, { params }).then((r) => r.data)
+export const getStopAlerts = (): Promise<StopAlerts> => apiClient.get(`${BASE}/alert-settings`).then((r) => r.data)
+export const setStopAlerts = (body: StopAlerts): Promise<StopAlerts> => apiClient.put(`${BASE}/alert-settings`, body).then((r) => r.data)
+
+// ── evidence around a geofence event (phase 6) ───────────────────────────────
+// Plate reads, barrier commands, door events and incidents at the geofence's site, either side of the event.
+// "Plate matches" or "near in time only" - never confirmed: a plate that matches is not who was driving.
+
+export type EvidenceMatch = 'plate_matches' | 'near_in_time_only'
+export interface EvidenceItem {
+  at: string
+  gap_s: number
+  place?: string
+  match?: EvidenceMatch
+  plate_number?: string | null
+  confidence?: number | null
+  direction?: string | null
+  command?: string; source?: string; decision?: string | null; succeeded?: boolean | null
+  event_type?: string; denial_reason?: string | null
+  id?: string; title?: string; status?: string; severity?: string
+}
+export interface EvidenceSection { label: string; allowed: boolean; items: EvidenceItem[]; said: string | null }
+export interface EventEvidence {
+  event: { id: string; event_type: string; occurred_at: string; between_start: string | null; between_end: string | null
+           vehicle_name: string; plate_number: string | null; geofence_name: string; site_id: string | null; site_name: string | null }
+  window_s: number
+  site_id: string | null
+  site_name: string | null
+  plate_number: string | null
+  match_words: Record<EvidenceMatch, string>
+  said?: string
+  sections: Partial<Record<'plate_reads' | 'barrier_commands' | 'door_events' | 'incidents', EvidenceSection>>
+}
+export interface EvidenceSettings { window_s: number; least_s: number; most_s: number }
+
+export const getEventEvidence = (eventId: string): Promise<EventEvidence> =>
+  apiClient.get(`${BASE}/geofence-events/${eventId}/evidence`).then((r) => r.data)
+export const getEvidenceSettings = (): Promise<EvidenceSettings> => apiClient.get(`${BASE}/evidence-settings`).then((r) => r.data)
+export const setEvidenceSettings = (windowS: number): Promise<EvidenceSettings> =>
+  apiClient.put(`${BASE}/evidence-settings`, { window_s: windowS }).then((r) => r.data)

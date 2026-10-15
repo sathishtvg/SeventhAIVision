@@ -64,7 +64,7 @@ export interface GeofenceEvent {
   plate_number: string | null
   geofence_id: string
   geofence_name: string
-  event_type: 'entry' | 'exit' | 'speed_violation'
+  event_type: 'entry' | 'exit' | 'speed_violation' | 'dwell_inside' | 'dwell_outside'
   lat: number | null
   lon: number | null
   speed: number | null

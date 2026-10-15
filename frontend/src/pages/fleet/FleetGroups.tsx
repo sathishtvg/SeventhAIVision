@@ -1,7 +1,7 @@
 /**
  * Groups of fleet vehicles: the patrol cars of one site, the vans of a
- * contract. A geofence will be able to apply to a group (a later phase of the
- * fleet work).
+ * contract. A geofence can apply to chosen groups instead of to every vehicle
+ * of its site.
  *
  * A group that belongs to a site takes only that site's vehicles. Somebody
  * limited to sites sees their sites' groups only. A group is retired, never
