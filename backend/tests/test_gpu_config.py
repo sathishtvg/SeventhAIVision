@@ -176,6 +176,20 @@ class TestGpuComposeFile:
                 f"{worker}: shm_size '{shm}' should be at least 1g for GPU workloads"
             )
 
+    def test_gpu_compose_builds_every_worker_from_the_gpu_dockerfile(self):
+        """DEVICE=cuda on the CPU image's torch falls back to the CPU: each worker must build the GPU image,
+        under a name of its own so the CPU images are not overwritten."""
+        services = _load_yaml(GPU_COMPOSE)["services"]
+        names = set()
+        for worker in ALL_WORKER_SERVICES:
+            build = services[worker].get("build") or {}
+            assert build.get("dockerfile") == "docker/ai-worker-gpu.Dockerfile", worker
+            assert build.get("context") == "..", worker
+            image = services[worker].get("image", "")
+            assert image.endswith("-gpu:local") and worker.removeprefix("ai-worker-") in image, worker
+            names.add(image)
+        assert len(names) == len(ALL_WORKER_SERVICES)
+
     def test_gpu_compose_worker_count_matches_expected(self):
         data = _load_yaml(GPU_COMPOSE)
         services = data.get("services", {})

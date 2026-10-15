@@ -13,12 +13,19 @@
 # For multi-GPU hosts, change count or use "all" to share across workers.
 # Shared memory (shm_size) is increased to 2 GB for CUDA tensor operations.
 #
+# Each worker is built from docker/ai-worker-gpu.Dockerfile (CUDA torch, onnxruntime-gpu,
+# paddlepaddle-gpu) under its own image name, ending -gpu, so the CPU images built from
+# docker-compose.yml alone are left as they are. Without this the workers kept the CPU
+# image, and DEVICE=cuda on a CPU-only torch fell back to the CPU.
+#
 # Workers automatically detect CUDA via resolve_device() in device.py when
 # DEVICE=cuda is set; CPU fallback applies when the env var is absent or "cpu".
 
 services:
 
   ai-worker-lpr:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-lpr-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -31,6 +38,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-face:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-face-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -43,6 +52,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-intrusion:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-intrusion-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -55,6 +66,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-ppe:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-ppe-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -67,6 +80,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-crowd:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-crowd-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -79,6 +94,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-fire-smoke:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-fire-smoke-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -91,6 +108,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-weapon:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-weapon-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -103,6 +122,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-behavior:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-behavior-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -115,6 +136,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-tampering:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-tampering-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -127,6 +150,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-abandoned:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-abandoned-gpu:local
     environment:
       DEVICE: cuda
     deploy:
@@ -139,6 +164,8 @@ services:
     shm_size: '2gb'
 
   ai-worker-fall:
+    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
+    image: seventh-ai-vision/ai-worker-fall-gpu:local
     environment:
       DEVICE: cuda
     deploy:

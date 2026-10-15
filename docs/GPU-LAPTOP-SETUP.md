@@ -93,14 +93,14 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up 
 The overlay sets `DEVICE: cuda`, reserves one GPU per worker and raises
 `shm_size` to 2 GB for CUDA tensor operations. It covers all twelve workers.
 
-**Two things this overlay does not do.** It sets `DEVICE: cuda` but never
-swaps in the GPU image — every `ai-worker-*` service still builds from
-`ai-worker.Dockerfile`, whose installed wheels are `torch==2.13.0+cpu`,
-CPU `onnxruntime` and CPU `paddlepaddle`. Forcing `cuda` onto a CPU-only
-torch build does not work. `ai-worker-gpu.Dockerfile` installs all three GPU
-builds correctly (torch cu121, `onnxruntime-gpu`, `paddlepaddle-gpu`), so the
-overlay needs an `image:`/`build:` override per worker before any of this
-runs on the GPU. And it puts `tampering` and `abandoned` on CUDA even though
+**Since 15 October 2026 the overlay builds the GPU image.** Until then it set
+`DEVICE: cuda` but every `ai-worker-*` service still built from
+`ai-worker.Dockerfile` (CPU torch, `onnxruntime` and `paddlepaddle`), so the
+workers fell back to the CPU. Each worker now builds from
+`ai-worker-gpu.Dockerfile` (torch cu121, `onnxruntime-gpu`, `paddlepaddle-gpu`)
+under its own image name ending `-gpu:local`, leaving the CPU images alone.
+That image has not yet been built on a GPU machine: its first build may need
+fixing. The overlay still puts `tampering` and `abandoned` on CUDA although
 both are pure OpenCV by design — a wasted CUDA context each.
 
 **Watch VRAM, not scheduling.** `count: 1` is fine on a single-GPU host —
