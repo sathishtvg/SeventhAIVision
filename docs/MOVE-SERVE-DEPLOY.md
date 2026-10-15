@@ -9,6 +9,7 @@ Three parts:
 - **Part B** - run a laptop as the server for an office or a site, so browsers,
   the desktop app, phones and trackers on the same network use it.
 - **Part C** - which platform to deploy on, from demos to paying customers.
+- **Part D** - the AWS demo server, step by step, with the scripts in `scripts/aws/`.
 
 It replaces sections 1, 4 and 5 of `docs/GPU-LAPTOP-SETUP.md`, which was written
 at migration `0086` and moved only the database. That guide's traps (section 6)
@@ -484,3 +485,103 @@ Kubernetes service (EKS, AKS or GKE) would also mean:
 
 Worth it when there are enough customers that running one server each costs
 more than building that.
+
+
+---
+
+## Part D - The AWS demo server, step by step
+
+Prepared on 15 October 2026 and **not yet run against AWS**: the two scripts
+below are checked for syntax and nothing more. Expect the first run to need a
+fix or two.
+
+- `scripts/aws/aws-demo.sh` runs on your laptop, in Git Bash, from the
+  repository folder. It makes, starts, stops and removes the machine.
+- `scripts/aws/server-setup.sh` runs on the machine. `aws-demo.sh setup` sends
+  it there and runs it.
+
+### D1. Which machine
+
+| Mode | Machine | What it shows | What it costs |
+|---|---|---|---|
+| `free` (the default) | m7i-flex.large: 2 processors, 8 GB, no GPU | Everything except the AI analytics: the console, rosters, attendance, visitors, fleet, alerts, the cameras' live view | It is on AWS's free-plan list. While the account stays on the Free plan, it is paid from the sign-up credit, not your card. The 40 GB disk and the internet address are counted too |
+| `gpu` | g4dn.xlarge: NVIDIA T4 | Everything, with two AI modules (intrusion, face) to start | About US$0.74 an hour while running. Not on the free list; AWS may ask for the paid plan |
+
+For `gpu`, put `SEVENTH_MODE=gpu` in front of each command, for example
+`SEVENTH_MODE=gpu scripts/aws/aws-demo.sh create --yes`.
+
+On the free machine, continuous recording of the demo cameras is switched off
+after the demo data is loaded. Recording three cameras is what overloaded an
+8 GB laptop on 8 October 2026; a 2-processor machine has less to spare.
+
+### D2. What only the account's owner does (about 15 minutes)
+
+1. Create the AWS account at aws.amazon.com and choose the **Free plan**.
+2. Turn on two-factor sign-in for the account's root user.
+3. Billing, then *Budgets*: a budget of US$1 with an e-mail alert, so any spending
+   at all is told to you.
+4. IAM: create a user for deployment, with the policies **AmazonEC2FullAccess**
+   and **ServiceQuotasFullAccess**, and an access key for the command line.
+5. In Git Bash (the AWS tool is installed on the development laptop):
+
+```bash
+aws configure
+```
+
+Type the access key and its secret when asked, region `ap-southeast-1`,
+output `json`. They stay on your laptop, in `C:\Users\<you>\.aws`.
+
+### D3. Make it, set it up, use it
+
+```bash
+scripts/aws/aws-demo.sh create --yes
+```
+
+Makes a login key (saved to `C:\Users\<you>\seventh-aws\`, the only way into
+the machine: keep it), a firewall open to your laptop's internet address only,
+and the machine. It starts running.
+
+```bash
+scripts/aws/aws-demo.sh setup
+```
+
+Installs Docker, fetches the code from GitHub, makes the application's
+secrets on the machine (they never leave it), builds and starts everything,
+and loads the demo organisation with a new password. The first run takes a
+while. At the end the demo accounts and their password are saved to
+`C:\Users\<you>\seventh-aws\demo-accounts.txt`, and the address is printed:
+open `https://<address>` and accept the certificate warning once.
+
+```bash
+scripts/aws/aws-demo.sh down
+```
+
+Stops the machine after the demo. Before the next one:
+
+```bash
+scripts/aws/aws-demo.sh up
+```
+
+It starts the machine, moves the firewall to wherever your laptop is now, and
+prints the address. The address changes each time it starts.
+
+Also: `today` and `live` (the demo story, D4), `status`, `ssh` (a terminal on
+the machine), `password` (fetch the demo accounts file again), `destroy --yes`
+(remove the machine and its disk for good).
+
+### D4. Good to know
+
+- **Only your laptop can reach it.** The firewall lets in one internet address,
+  your laptop's at the last `create` or `up`. A prospect watches your screen;
+  they cannot open it from their own device.
+- **The demo password in the repository is not used.** The repository is
+  public, and so is the password written in `backend/scripts/seed_demo.py`. The
+  server's demo accounts get one made on the server.
+- **Today's story goes stale.** On the morning of a demo run
+  `scripts/aws/aws-demo.sh today` (today's shifts, visits and incidents), and
+  five minutes before you start `scripts/aws/aws-demo.sh live` (an incident to
+  dispatch and a situation to decide), as `docs/DEMO-SCRIPT.md` describes for
+  the laptop. They use the server's own demo password.
+- **The Free plan ends** after six months or when the credit is used up. Before
+  then, decide whether to move to the paid plan, and check in the billing
+  console what happens to the machine and its data if you do not.
