@@ -51,6 +51,17 @@ class Settings(BaseSettings):
     # so this falls back to a same-origin-relative link if unset.
     FRONTEND_URL: str = ""
 
+    # The platform's own Traccar (docker compose --profile fleet), which every organisation's
+    # vehicles may report through. Empty: there is none, and its forwarding address answers 503.
+    # TRACCAR_FORWARD_SECRET is what Traccar sends in X-Fleet-Secret with each position
+    # (its FORWARD_HEADER); TRACCAR_URL, and a token or a user and password, let this server ask
+    # Traccar about a device and register one. None of them is ever sent to a browser.
+    TRACCAR_FORWARD_SECRET: str = ""
+    TRACCAR_URL: str = ""
+    TRACCAR_API_TOKEN: str = ""
+    TRACCAR_API_USER: str = ""
+    TRACCAR_API_PASSWORD: str = ""
+
     # SMTP (email notifications)
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 587

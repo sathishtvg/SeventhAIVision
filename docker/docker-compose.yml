@@ -102,6 +102,14 @@ services:
       # job uses. Same variable, same fallback, as on those two services.
       AUDIT_RETENTION_YEARS: "${AUDIT_RETENTION_YEARS:-7}"
       DRONE_TELEMETRY_RETENTION_DAYS: "${DRONE_TELEMETRY_RETENTION_DAYS:-365}"
+      # The platform's Traccar (the traccar service below, profile fleet). Empty: there is none, and its
+      # forwarding address answers 503. TRACCAR_FORWARD_SECRET must be the same here and in Traccar's
+      # FORWARD_HEADER. docs/FLEET_GPS_PROVIDERS.md.
+      TRACCAR_FORWARD_SECRET: "${TRACCAR_FORWARD_SECRET:-}"
+      TRACCAR_URL: "${TRACCAR_URL:-}"
+      TRACCAR_API_TOKEN: "${TRACCAR_API_TOKEN:-}"
+      TRACCAR_API_USER: "${TRACCAR_API_USER:-}"
+      TRACCAR_API_PASSWORD: "${TRACCAR_API_PASSWORD:-}"
       APP_VERSION: "${APP_VERSION:-0.1.0}"
       GIT_SHA: "${GIT_SHA:-dev}"
       BUILD_DATE: "${BUILD_DATE:-dev}"
@@ -439,6 +447,46 @@ services:
       DRONE_EDGE_HEALTH_SECONDS: "${DRONE_EDGE_HEALTH_SECONDS:-15}"
     volumes:
       - drone_edge_data:/data/drone-edge
+    restart: unless-stopped
+
+  # The platform's GPS server, Traccar (docs/FLEET_GPS_PROVIDERS.md). Opt-in, like the drone edge, and not one
+  # of the core services - on a small machine start it only when vehicles are being tracked:
+  #   docker compose --profile fleet up -d --no-deps traccar-db traccar
+  # Trackers (and the Traccar Client phone app, port 5055) report to it; it forwards every position to the API
+  # with TRACCAR_FORWARD_SECRET. Its own screens are on this machine only (127.0.0.1:8082).
+  traccar-db:
+    profiles: ["fleet"]
+    build: { context: .., dockerfile: docker/postgres.Dockerfile }
+    entrypoint: ["sh", "/init/init-db.sh"]
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-change_me_dev_only}"
+      TRACCAR_DB_PASSWORD: "${TRACCAR_DB_PASSWORD:-change_me_dev_only}"
+    volumes:
+      - ./traccar:/init:ro
+    restart: "no"
+
+  traccar:
+    profiles: ["fleet"]
+    image: traccar/traccar:6.16.0-alpine
+    depends_on:
+      traccar-db: { condition: service_completed_successfully }
+    # The image's entrypoint is java; a small heap, so it lives beside the core services on a 7.7 GB machine.
+    command: ["-Xmx256m", "-jar", "tracker-server.jar", "conf/traccar.xml"]
+    mem_limit: 640m
+    environment:
+      CONFIG_USE_ENVIRONMENT_VARIABLES: "true"
+      DATABASE_DRIVER: org.postgresql.Driver
+      DATABASE_URL: "jdbc:postgresql://postgres:5432/traccar"
+      DATABASE_USER: traccar
+      DATABASE_PASSWORD: "${TRACCAR_DB_PASSWORD:-change_me_dev_only}"
+      FORWARD_TYPE: json
+      FORWARD_URL: "${TRACCAR_FORWARD_URL:-http://api:8000/api/v1/fleet/ingest/traccar}"
+      FORWARD_HEADER: "X-Fleet-Secret: ${TRACCAR_FORWARD_SECRET:-}"
+      FORWARD_RETRY_ENABLE: "true"
+    ports:
+      - "5055:5055"            # OsmAnd: the Traccar Client phone app, and trackers that speak it
+      - "127.0.0.1:8082:8082"  # Traccar's own screens and API: this machine only
     restart: unless-stopped
 
   frontend:

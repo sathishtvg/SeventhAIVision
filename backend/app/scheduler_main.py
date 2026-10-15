@@ -1620,6 +1620,16 @@ async def main() -> None:
                     logger.exception("device health and maintenance pass failed")
                 last_device_health = now
 
+            # Fleet tracking: every iteration. A tracked vehicle the clock has made stale or offline is recorded
+            # as such, once, and the screens are told which vehicles changed (not where they are).
+            try:
+                from app.services import fleet_tracking
+                counts = await fleet_tracking.sweep(AsyncSessionLocal, redis)
+                if counts["changed"]:
+                    logger.info("fleet status: %s", counts)
+            except Exception:
+                logger.exception("fleet status pass failed")
+
             # Guard response: every iteration. A guard who has just been sent
             # is told, and a clock that has run out is recorded and told to
             # somebody. It reassigns and re-dispatches nothing. Each tenant
