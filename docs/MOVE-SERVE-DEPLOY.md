@@ -257,28 +257,17 @@ that look like real faults:
 MSYS_NO_PATHCONV=1 docker exec -e ALEMBIC_DATABASE_URL="$(docker exec docker-api-1 printenv ALEMBIC_DATABASE_URL)_test" docker-api-1 sh -c "cd /app/backend && alembic upgrade head"
 ```
 
-**AI workers on the GPU.** `docker/docker-compose.gpu.yml` sets `DEVICE: cuda`
-and reserves the GPU, but still builds each worker from the CPU image, so on
-its own it does not put anything on the GPU. Until that file is changed, add a
-file of your own, `docker/docker-compose.gpu-images.yml` (do not commit it),
-with one entry per worker you want:
+**AI workers on the GPU.** `docker/docker-compose.gpu.yml` reserves the GPU,
+sets `DEVICE: cuda`, and builds each worker from `docker/ai-worker-gpu.Dockerfile`
+under its own name ending `-gpu:local`, so the CPU images are left alone. Build
+and start the workers you want, one or two at first:
 
-```yaml
-services:
-  ai-worker-face:
-    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
-    image: docker-ai-worker-face-gpu
-  ai-worker-intrusion:
-    build: { context: .., dockerfile: docker/ai-worker-gpu.Dockerfile }
-    image: docker-ai-worker-intrusion-gpu
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml build ai-worker-face
 ```
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml -f docker/docker-compose.gpu-images.yml build ai-worker-face
-```
-
-```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml -f docker/docker-compose.gpu-images.yml up -d --no-deps mediamtx ai-worker-face
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d --no-deps mediamtx ai-worker-face
 ```
 
 Check it really is on the GPU; a worker falls back to the CPU without saying
