@@ -43,9 +43,9 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "14 October 2026"
-EDITION = "Edition 13"
-HEAD = "0158"
+GENERATED = "15 October 2026"
+EDITION = "Edition 14"
+HEAD = "0162"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -118,6 +118,12 @@ EDITIONS = [
      "says when it failed and can try again; what arrives is marked; a camera's "
      "view says what it is doing; a tick only once the server has said so. No "
      "route and no table is added."],
+    ["Edition 14", "15 October 2026", "0162",
+     "Adds module 30, fleet tracking and geofences: vehicles archived and never "
+     "deleted, trackers through Traccar, online and offline from the last fix, the "
+     "live map, journeys played back, geofences a wobbling fix does not trip, and "
+     "what else the site recorded around an entry or exit, never called confirmed. "
+     "The vendor's console becomes module 31."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -302,13 +308,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("282", "DATABASE TABLES"), ("1,043", "API OPERATIONS"), ("108", "API MODULES"),
-        ("111", "WEB ROUTES"), ("57", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("293", "DATABASE TABLES"), ("1,092", "API OPERATIONS"), ("113", "API MODULES"),
+        ("119", "WEB ROUTES"), ("57", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("209", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("158", "MIGRATIONS"),
-        ("6,451", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("216", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("162", "MIGRATIONS"),
+        ("6,597", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -360,9 +366,9 @@ story += [Spacer(1, 8), KeepTogether([
     "<b>At a glance</b> — one page for the person who signs.",
     "<b>Part 1, modules 01 to 13</b> — the platform as the first edition described "
     "it, brought up to date.",
-    "<b>Part 2, modules 14 to 30</b> — what has been added since: patrols from a "
-    "screen and from the air, security intelligence, and the enterprise expansion — "
-    "from investigation to cases.",
+    "<b>Part 2, modules 14 to 31</b> — what has been added since: patrols from a "
+    "screen and from the air, security intelligence, the enterprise expansion — "
+    "from investigation to cases — and the fleet.",
     "<b>Where AI is used, and where a person decides</b> — every place a model or a "
     "rule does work, what it is trusted with, and what stays a person's. "
     "<b>AI capabilities added or upgraded later are recorded here.</b>",
@@ -428,10 +434,10 @@ story.append(data_table(
     widths=[46 * mm, 48 * mm, 76 * mm]))
 story += [
     Spacer(1, 8),
-    Paragraph("The platform in thirty lines", S["h2"]),
+    Paragraph("The platform in thirty-one lines", S["h2"]),
 ]
 story += bullets([
-    "<b>Identity and access</b> — 8 roles, 209 permissions, SSO, 2FA, audit log, "
+    "<b>Identity and access</b> — 8 roles, 216 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
     "playback, privacy zones painted out of the picture, NVR.",
@@ -479,6 +485,8 @@ story += bullets([
     "names, closed by two.",
     "<b>Data retention</b> — every retention period in one statement, and where a "
     "person appears in the records.",
+    "<b>Fleet</b> — vehicles, Traccar trackers, journeys played back, and geofences "
+    "a wobbling fix does not trip.",
     "<b>Platform console</b> — the vendor's own: customers, pricing, invoicing, "
     "errors, support sessions.",
 ])
@@ -514,12 +522,12 @@ story += module(
         "only, and the application's database role cannot empty a table.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 209 permission codes.",
+        "per tenant, across 216 permission codes.",
         "<b>Site scope.</b> A user can be held to particular sites; every list, "
         "search and record honours it.",
         "<b>The platform operator is not a customer's administrator.</b> Super "
         "Admin runs the platform from a tenant of its own and holds none of a "
-        "customer's day-to-day permissions (module 30).",
+        "customer's day-to-day permissions (module 31).",
         "<b>Single sign-on and SCIM</b> for automated user provisioning and "
         "de-provisioning from the customer's own directory.",
         "<b>Two-factor authentication (TOTP)</b> — required, not optional, for "
@@ -697,7 +705,8 @@ story += module(
         "there is a record of who read what. Versioned, approved procedures are "
         "module 22.",
         "<b>Violations</b> raised against a guard, with review.",
-        "<b>GPS tracking</b> and geofence entry/exit events.",
+        "<b>GPS tracking</b> and geofence entry/exit events. The fleet's vehicles, "
+        "trackers, journeys and geofences are module 30.",
         "<b>SOS panic button</b> — writes a critical occurrence entry, raises an "
         "incident, and pushes a real-time alert to every supervisor watching.",
         "<b>Body-worn cameras</b> — assignment, recordings and events.",
@@ -834,7 +843,7 @@ story += module(
         "<b>Client portal</b> — the customer signs in and sees their own sites, "
         "incidents and invoices, and nothing else.",
         "<b>What the vendor charges the agency</b> — plans, module prices, "
-        "subscriptions and the vendor's own invoices — is module 30.",
+        "subscriptions and the vendor's own invoices — is module 31.",
     ])
 
 story += module(
@@ -1467,7 +1476,50 @@ story += module(
     tag="ADDED SINCE EDITION 5 · MIGRATION 0156")
 
 story += module(
-    "30", "Platform operations — the vendor's console",
+    "30", "Fleet tracking and geofences",
+    "The organisation's vehicles, where their trackers say they are, the journeys "
+    "they made, and what is alerted when they come and go.",
+    [
+        "<b>Vehicles</b> — registered, changed and archived with a reason, never "
+        "deleted, and restored; the plate unique in the organisation, compared "
+        "letters and digits only; department, driver, service status, custom "
+        "fields and groups. Somebody limited to sites sees their sites' vehicles. "
+        "Every change is in the audit log.",
+        "<b>Trackers through Traccar.</b> The platform's own Traccar runs in the "
+        "Docker stack when switched on, or an organisation connects its own. "
+        "Positions are forwarded with a secret, kept once at the device's own fix "
+        "time, and what is refused is counted with its reason. Tested with the "
+        "Traccar Client phone app.",
+        "<b>Online, stale, offline</b> from the age of the last fix (5 and 30 "
+        "minutes unless the organisation sets its own), recorded once a change. The "
+        "live map draws each vehicle at its last fix; the live connection says "
+        "which vehicles moved, never where.",
+        "<b>Journeys and playback</b> worked out when asked: trips, stops and "
+        "silences over up to seven days, inaccurate fixes and impossible jumps "
+        "left out and counted, played back fix by fix; exports are audited. "
+        "Positions and archived vehicles are kept until the organisation sets a "
+        "period.",
+        "<b>Geofences</b> — circles, polygons or a site's boundary, for a site's "
+        "vehicles or chosen groups. A fix wobbling on the line changes nothing: "
+        "it must be 15 m past it, or its own accuracy, and held for a second fix "
+        "or 30 seconds. Rules for entering, leaving, staying and speed, each with "
+        "its severity and the people told, raise alerts in the one alert queue; a "
+        "vehicle in service that stops reporting raises one alert an episode.",
+        "<b>What else the site recorded</b> around an entry or exit — plate reads, "
+        "barrier commands, door events and open incidents, each to whoever may "
+        "read it — said to be \"plate matches\" or \"near in time only\".",
+        "<i>By design:</i> a geofence never opens a barrier, admits anybody or "
+        "confirms who is driving, and nothing is called confirmed: a plate that "
+        "matches is not who was at the wheel. <i>Documented limitations:</i> only "
+        "Traccar, and no hardware tracker has been tried yet; the phone reads the "
+        "fleet's status and draws no map; the older position endpoint checks "
+        "geofences its old way; the default map tiles are not for a map left open "
+        "all day.",
+    ],
+    tag="ADDED IN EDITION 14 · MIGRATIONS 0159 TO 0162")
+
+story += module(
+    "31", "Platform operations — the vendor's console",
     "Seventh AI sells this to security companies, so the vendor and the "
     "customer are different businesses and do not share a login, a permission "
     "set or a bill.",
@@ -1658,7 +1710,9 @@ story += [
         "holds that every step that mattered was a person's. Nothing is in "
         "progress, and nothing waits on a decision. Privacy zones, found to be "
         "recorded and not applied, were decided and built the same day "
-        "(module 02).", S["body"]),
+        "(module 02). The GPS fleet upgrade asked for on 14 October 2026 was six "
+        "phases, each merged after its tests passed, and all six are built "
+        "(module 30).", S["body"]),
     Paragraph("Decided by the owner on 9 October 2026, and carried out", S["h2"]),
     Paragraph(
         "Each of these was found while building and left as it was, because "
@@ -1731,7 +1785,7 @@ story.append(Spacer(1, 8))
 story.append(data_table(
     ["Application", "Platform", "Scale", "Notes"],
     [
-        ["Web console", "Browser (React)", "111 routes",
+        ["Web console", "Browser (React)", "119 routes",
          "The full platform. Every module, every administrative surface."],
         ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "57 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
@@ -1755,7 +1809,7 @@ story.append(Paragraph("How the web console moves, waits and fails", S["h1"]))
 story.append(rule(thickness=2))
 story.append(Spacer(1, 8))
 story.append(Paragraph(
-    "One set of rules for all 111 routes, kept in one place in the code, so the "
+    "One set of rules for all 119 routes, kept in one place in the code, so the "
     "same thing looks and reads the same wherever it happens. What each page has "
     "is listed page by page in <font face='Courier'>PAGE_AWARE_ANIMATION_MATRIX.md</font>, "
     "which is written from the pages and checked against them by a test.", S["body"]))
@@ -1924,10 +1978,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 158 "
-    "database migrations, 282 tables, 108 API modules serving 1,043 operations, 115 backend "
-    "services, 111 web routes and 57 phone screens, covered by 6,478 automated tests "
-    "(backend 4,047, repository inspection 1,349, web 694, phone 388). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 162 "
+    "database migrations, 293 tables, 113 API modules serving 1,092 operations, 122 backend "
+    "services, 119 web routes and 57 phone screens, covered by 6,597 automated tests "
+    "(backend 4,110, repository inspection 1,358, web 738, phone 391). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
