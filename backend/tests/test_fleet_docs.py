@@ -78,7 +78,8 @@ def test_what_is_not_done_is_said():
     doc = _flat(_read(DOC))
     for said in ("Only Traccar. No commercial provider's API is connected.",
                  "The Seventh AI phone app does not report its own position as a tracker",
-                 "Those are phases 4 and 5 of the design."):
+                 "Geofences do not use the positions yet. That is phase 5 of the design.",
+                 "No screen reads them: Journeys are worked out from the positions instead."):
         assert said in doc, said
     design = _flat(_read(DESIGN))
     assert "**Why an administrator could not delete a vehicle:**" in design
@@ -92,3 +93,29 @@ def test_the_map_document_says_where_tiles_come_from_and_that_positions_are_neve
         assert said in doc, said
     service = _read(ROOT / "backend" / "app" / "services" / "fleet_tracking.py")
     assert '"payload": {"vehicle_ids": vehicle_ids},' in service
+
+
+def test_the_journey_rules_the_document_gives_are_the_ones_the_code_uses():
+    from app.services import fleet_journeys as fj
+    doc = _flat(_read(DOC))
+    assert (fj.MOST_INACCURATE_M, fj.FASTEST_KMH, fj.STOP_MINUTES, fj.STOP_RADIUS_M) == (100.0, 250.0, 3.0, 50.0)
+    assert (fj.GAP_MINUTES, fj.MOST_DRAWN, fj.MOST_DAYS) == (15.0, 5000, 7)
+    for said in ("worse than 100 m accurate", "faster than 250 km/h", "three minutes or more within 50 m",
+                 "more than 15 minutes ends a trip", "at most 5,000 points", "at most seven days",
+                 "never at a place worked out between two", "fleet.history.exported"):
+        assert said in doc, said
+    speeds = _read(ROOT / "frontend" / "src" / "components" / "fleet" / "journeyFormat.ts")
+    assert "export const PLAY_SPEEDS = [1, 10, 60] as const" in speeds
+    assert "at 1, 10 or 60 times real speed" in doc
+
+
+def test_the_retention_the_document_describes_is_the_one_the_code_keeps():
+    from app.services import fleet_retention as fr
+    doc = _flat(_read(DOC))
+    assert fr.LEAST_DAYS == 30 and "each at least 30 days" in doc
+    assert [k.label for k in fr.KINDS] == ["Fleet vehicle positions", "Archived fleet vehicles"]
+    for k in fr.KINDS:
+        assert f"**{k.label}**, counted from" in doc, k.label
+    for said in ("Setting a period removes nothing at once: the scheduler removes once a day.",
+                 "is kept whatever its age", "The alerts and incidents themselves are not touched."):
+        assert said in doc, said

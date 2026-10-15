@@ -44,7 +44,7 @@ _WRITE = [Depends(require_permission("gps:write"))]
 _ARCHIVE = [Depends(require_permission("fleet:vehicle:archive"))]
 _FIELDS = [Depends(require_permission("fleet:fields:manage"))]
 HELD = ("gps:read", "gps:write", "fleet:vehicle:archive", "fleet:fields:manage", "fleet:device:manage",
-        "fleet:alerts:manage")
+        "fleet:alerts:manage", "fleet:history:read", "fleet:history:export")
 
 SORTS = {
     "name": "v.name", "plate_number": "v.plate_key", "vehicle_type": "v.vehicle_type", "site_name": "s.name",
@@ -60,7 +60,8 @@ def _like(q: str) -> str:
 def _may(held: frozenset[str]) -> dict:
     return {"edit": "gps:write" in held, "archive": "fleet:vehicle:archive" in held,
             "manage_fields": "fleet:fields:manage" in held, "manage_devices": "fleet:device:manage" in held,
-            "manage_limits": "fleet:alerts:manage" in held}
+            "manage_limits": "fleet:alerts:manage" in held, "read_history": "fleet:history:read" in held,
+            "export_history": "fleet:history:export" in held}
 
 
 def _out(row) -> dict:

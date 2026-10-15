@@ -127,7 +127,8 @@ async def test_a_vehicle_is_registered_found_and_changed_with_an_audit_line():
                               json={"plate_number": "SKZ-9"})).status_code == 409
         detail = (await c.get(f"{BASE}/vehicles/{v['id']}", headers=w["h"][VIEWER])).json()
         assert detail["driver_display"] == "K. Tan" and detail["may"] == {
-            "edit": False, "archive": False, "manage_fields": False, "manage_devices": False, "manage_limits": False}
+            "edit": False, "archive": False, "manage_fields": False, "manage_devices": False, "manage_limits": False,
+            "read_history": True, "export_history": False}
     created = await _audit(w, "fleet.vehicle.created")
     changed = await _audit(w, "fleet.vehicle.changed")
     assert len(created) == 2 and changed[0]["detail"] == {"changed": ["color", "service_status"]}
@@ -350,4 +351,5 @@ async def test_who_may_read_change_archive_and_define():
             assert (await c.get(f"{BASE}/vehicles", headers=h)).status_code == 403
         assert (await c.get(f"{BASE}/vehicles")).status_code == 401
         mine = (await c.get(f"{BASE}/vehicles", headers=w["h"][MANAGER])).json()["may"]
-        assert mine == {"edit": True, "archive": True, "manage_fields": True, "manage_devices": True, "manage_limits": True}
+        assert mine == {"edit": True, "archive": True, "manage_fields": True, "manage_devices": True, "manage_limits": True,
+                        "read_history": True, "export_history": True}
