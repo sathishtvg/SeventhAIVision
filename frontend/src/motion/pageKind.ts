@@ -29,7 +29,7 @@ const DASHBOARDS = [
 ]
 
 /** One record, by its id: `/situations/42`, `/platform/tenants/abc`. */
-const DETAIL = /^\/(situations|investigations|evidence-packages|drone-missions|drone-patrols|drone-events|platform\/tenants)\/[^/]+$/
+const DETAIL = /^\/(situations|investigations|evidence-packages|drone-missions|drone-patrols|drone-events|platform\/tenants|gps\/vehicles)\/[^/]+$/
 
 export function pageKindOf(pathname: string): PageKind {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
