@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.routers import data_governance as api
-from app.services import continuous_recording, drone_retention, drone_runner, evidence_hold, record_retention, recording_policy
+from app.services import continuous_recording, drone_retention, drone_runner, evidence_hold, fleet_retention, record_retention, recording_policy
 from app.services import retention_statement as statement
 from app.services import subject_records as subjects
 from tests.test_drone_api import ADMIN, GUARD, MANAGER, OPERATOR, SUPERVISOR, VIEWER, _client, _run, _sql, _world
@@ -182,7 +182,13 @@ def test_everything_a_job_deletes_is_in_the_statement():
         for table in re.findall(r"DELETE FROM (\w+)", path.read_text(encoding="utf-8")):
             deleted.setdefault(table, set()).add(path.name)
     stated = {table for p in statement.PERIODS for table in p.tables}
-    assert set(deleted) - stated == set(statement.RECOMPUTED), deleted
+    # The fleet's two periods (positions, archived vehicles) are in the statement under "fleet", and are removed
+    # only by services/fleet_retention.py.
+    fleet = {table for k in fleet_retention.KINDS for table in k.tables}
+    assert {t for t, by in deleted.items() if "fleet_retention.py" in by} <= fleet
+    assert all(deleted[t] == {"fleet_retention.py"} for t in set(deleted) & fleet), deleted
+    assert "fleet_retention.statement(" in (APP / "services" / "retention_statement.py").read_text(encoding="utf-8")
+    assert set(deleted) - stated - fleet == set(statement.RECOMPUTED), deleted
     assert stated - set(deleted) == {"audit_logs"}, "the audit log is moved out, not deleted"
     assert "DETACH PARTITION" in (APP / "scheduler_main.py").read_text(encoding="utf-8")
     # Each is removed by the service the statement names.
