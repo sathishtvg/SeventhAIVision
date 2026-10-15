@@ -13,6 +13,7 @@ export type CustomValue = string | number | boolean
 
 export interface FleetMay {
   edit: boolean; archive: boolean; manage_fields: boolean; manage_devices: boolean; manage_limits: boolean
+  read_history: boolean; export_history: boolean
 }
 export type TrackingStatus = 'online' | 'stale' | 'offline' | 'not_configured'
 
@@ -312,3 +313,61 @@ export interface FleetMapAnswer { items: MapVehicle[]; limits: FleetLimits; at: 
 /** Every vehicle the person may see, or - after the live connection says some moved - just those. */
 export const getFleetMap = (ids?: string[]): Promise<FleetMapAnswer> =>
   apiClient.get(`${BASE}/map`, { params: ids?.length ? { ids: ids.join(',') } : undefined }).then((r) => r.data)
+
+// ── journey history (phase 4) ───────────────────────────────────────────────
+
+export interface RoutePoint { at: string; lat: number; lon: number; speed: number | null }
+export interface JourneyTrip {
+  start: string; end: string; minutes: number; distance_km: number; max_speed: number | null; avg_kmh: number | null
+  from: { lat: number; lon: number }; to: { lat: number; lon: number }
+}
+export interface JourneyStop { start: string; end: string; minutes: number; lat: number; lon: number; ignition_off: boolean }
+export interface JourneyHistory {
+  vehicle: { id: string; name: string; plate_number: string | null }
+  start: string
+  end: string
+  enough: boolean
+  positions: number
+  left_out: { inaccurate: number; impossible_jump: number }
+  route: RoutePoint[]
+  route_thinned: boolean
+  trips: JourneyTrip[]
+  stops: JourneyStop[]
+  gaps: { start: string; end: string }[]
+  summary: { distance_km: number; driving_minutes: number; stopped_minutes: number }
+}
+export type JourneyExport = 'trips' | 'stops' | 'positions'
+
+/** Journeys and stops over a range (a week at most), worked out by the server from the stored positions. */
+export const getJourneyHistory = (id: string, start: string, end: string): Promise<JourneyHistory> =>
+  apiClient.get(`${BASE}/vehicles/${id}/journeys`, { params: { start, end } }).then((r) => r.data)
+
+/** The trips, stops or positions as a CSV file, handed to the browser to save. Every export is in the audit log. */
+export async function downloadJourneys(id: string, start: string, end: string, kind: JourneyExport, name: string): Promise<void> {
+  const response = await apiClient.get(`${BASE}/vehicles/${id}/journeys.csv`, { params: { start, end, kind }, responseType: 'blob' })
+  const href = URL.createObjectURL(response.data as Blob)
+  const anchor = document.createElement('a')
+  anchor.href = href
+  anchor.download = `${name}-${kind}.csv`
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(href)
+}
+
+export interface RetentionKind {
+  key: 'FLEET_POSITIONS' | 'ARCHIVED_VEHICLES'
+  label: string
+  days: number | null
+  set_at: string | null
+  counted_from: string
+  removes: string
+  kept_whatever: string | null
+  removed_by: string
+}
+export interface FleetRetention { kinds: RetentionKind[]; least_days: number; most_days: number; may_set: boolean }
+
+export const getFleetRetention = (): Promise<FleetRetention> => apiClient.get(`${BASE}/retention`).then((r) => r.data)
+/** Set or take away a period. A period that already has older records answers 409 with how many, to be said back. */
+export const setFleetRetention = (kind: string, days: number | null, alreadyOlder?: number) =>
+  apiClient.put(`${BASE}/retention/${kind}`, { days, already_older: alreadyOlder ?? null }).then((r) => r.data)

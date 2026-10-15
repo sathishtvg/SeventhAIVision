@@ -123,6 +123,57 @@ service of your own: a paid one with a free allowance (MapTiler, Stadia Maps,
 Thunderforest and others, each with its own key, limits and attribution) or a
 tile server inside your own network. None is chosen or paid for here.
 
+## Journeys and playback
+
+Fleet → Journeys (`/gps/history`), or Journeys on a vehicle's page, shows one
+vehicle over a range of at most seven days: its route, its trips and stops, the
+distance driven and the time spent driving and stopped. Nothing is stored for
+this: the trips and stops are worked out from the kept positions each time the
+page asks (`GET /api/v1/fleet/vehicles/{id}/journeys?start=&end=`), so a
+change to the rules below applies to the past as well.
+
+- A position the device itself reports as worse than 100 m accurate, or one
+  that would mean moving faster than 250 km/h from the one before, is left out,
+  and the page says how many were left out and why.
+- A stop is three minutes or more within 50 m, or the ignition off. A trip is
+  the driving between stops.
+- No position for more than 15 minutes ends a trip, and the page says so. The
+  distance across such a gap is not counted, because nobody knows the way the
+  vehicle went.
+- A long route is drawn with at most 5,000 points (the shape is kept); the
+  trips, stops and distance always use every kept position.
+
+**Playback** moves a marker along the route at 1, 10 or 60 times real
+speed. The marker jumps from fix to fix: it is always at a place the vehicle
+reported, never at a place worked out between two.
+
+**Export.** Whoever has `fleet:history:export` (Administrator and Manager
+to begin with) can download the trips, the stops or the kept positions as a
+CSV file (`GET /api/v1/fleet/vehicles/{id}/journeys.csv?kind=trips|stops|positions`).
+Every export is a line in the audit log (`fleet.history.exported`) with the
+range and the number of rows. Reading journeys needs `fleet:history:read`, and
+somebody limited to sites sees only those sites' vehicles.
+
+## How long positions are kept
+
+Positions are kept until the organisation sets a period, under Fleet →
+Providers. There are two periods, each at least 30 days:
+
+- **Fleet vehicle positions**, counted from the fix time. The journeys worked
+  out from them go with them; the vehicle stays.
+- **Archived fleet vehicles**, counted from when the vehicle was archived.
+  The vehicle goes with its positions, journeys, geofence events, status
+  history and group memberships. A vehicle that an open or acknowledged GPS
+  alert, or an incident from one that is not closed, refers to is kept
+  whatever its age. The alerts and incidents themselves are not touched.
+
+Setting a period removes nothing at once: the scheduler removes once a day.
+When records are already older than the period asked for, the first answer
+says how many, and the period is set only when it is asked for again. A period
+is set by somebody who may change the organisation's settings and is not held
+to particular sites. The fleet's periods appear in the organisation's retention
+statement with the others.
+
 ## Secrets
 
 - The forwarding secret, a connection's token or password, and the platform's
@@ -140,7 +191,10 @@ tile server inside your own network. None is chosen or paid for here.
 - Only Traccar. No commercial provider's API is connected.
 - The Seventh AI phone app does not report its own position as a tracker;
   for a phone, use Traccar Client.
-- Journeys are not yet worked out from the positions, and geofences do not use
-  them. Those are phases 4 and 5 of the design.
+- Geofences do not use the positions yet. That is phase 5 of the design.
+- The older position endpoint (`POST /api/v1/gps/vehicles/{id}/positions`,
+  signed in as a user) still writes its own rows to `vehicle_journeys` by its
+  old speed rule. No screen reads them: Journeys are worked out from the
+  positions instead.
 - Traccar's own screen and API are reachable from the server only; to manage
   it from elsewhere, put it behind the platform's TLS proxy first.

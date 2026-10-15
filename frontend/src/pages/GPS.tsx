@@ -7,10 +7,6 @@ import {
   Chip,
   Divider,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Tab,
   Tabs,
   Table,
@@ -26,10 +22,9 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import AddIcon from '@mui/icons-material/Add'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import RouteIcon from '@mui/icons-material/Route'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getGPSDashboard, listGeofenceEvents, getVehicleJourneys, VEHICLE_TYPES,
+  getGPSDashboard, listGeofenceEvents, VEHICLE_TYPES,
 } from '@/api/gps'
 import type { Vehicle } from '@/api/gps'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -39,7 +34,7 @@ import { getFleetOptions, TRACKING_LABEL, type TrackingStatus } from '@/api/flee
 import { FleetMap } from '@/components/fleet/FleetMap'
 import { useFleetLive } from '@/components/fleet/useFleetLive'
 import { statusNow } from '@/components/fleet/fleetMapFormat'
-import { CardGridSkeleton, ErrorState, TableBlockSkeleton } from '@/components/states'
+import { CardGridSkeleton, ErrorState } from '@/components/states'
 import { useNow } from '@/motion'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 
@@ -118,79 +113,10 @@ function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle; onClick: () => vo
   )
 }
 
-// ── journey log dialog ────────────────────────────────────────────────────────
-function JourneyDialog({ vehicle, onClose }: { vehicle: Vehicle; onClose: () => void }) {
-  const { data: journeys = [], isLoading, isLoadingError: journeysFailed, error: journeysError, refetch: refetchJourneys } = useQuery({
-    queryKey: ['journeys', vehicle.id],
-    queryFn: () => getVehicleJourneys(vehicle.id),
-  })
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth
-      slotProps={{ paper: { sx: { bgcolor: '#111827', border: '1px solid rgba(255,255,255,0.1)' } } }}>
-      <DialogTitle>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <RouteIcon />
-          <span>Journey Log — {vehicle.name}</span>
-        </Stack>
-      </DialogTitle>
-      <DialogContent>
-        {isLoading ? <TableBlockSkeleton rows={3} /> : journeysFailed ? <ErrorState compact error={journeysError} onRetry={refetchJourneys} /> : (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Start</TableCell>
-                <TableCell>End</TableCell>
-                <TableCell>Duration</TableCell>
-                <TableCell>Distance</TableCell>
-                <TableCell>Max Speed</TableCell>
-                <TableCell>Avg Speed</TableCell>
-                <TableCell>Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {journeys.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ color: 'text.secondary', py: 4 }}>
-                    No journeys recorded
-                  </TableCell>
-                </TableRow>
-              )}
-              {journeys.map(j => {
-                const dur = j.end_at
-                  ? Math.floor((new Date(j.end_at).getTime() - new Date(j.start_at).getTime()) / 60000)
-                  : null
-                return (
-                  <TableRow key={j.id} hover>
-                    <TableCell>{new Date(j.start_at).toLocaleString()}</TableCell>
-                    <TableCell>{j.end_at ? new Date(j.end_at).toLocaleString() : '—'}</TableCell>
-                    <TableCell>{dur !== null ? `${dur} min` : 'Active'}</TableCell>
-                    <TableCell>{Number(j.distance_km).toFixed(2)} km</TableCell>
-                    <TableCell>{j.max_speed ? `${j.max_speed} km/h` : '—'}</TableCell>
-                    <TableCell>{j.avg_speed ? `${j.avg_speed} km/h` : '—'}</TableCell>
-                    <TableCell>
-                      <Chip label={j.status} size="small"
-                        color={j.status === 'active' ? 'success' : 'default'} />
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function GPSPage() {
   const [tab, setTab] = useState(0)
   const [addOpen, setAddOpen] = useState(false)
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
 
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -321,7 +247,7 @@ export default function GPSPage() {
                   <Grid container spacing={2}>
                     {vehicles.map(v => (
                       <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={v.id}>
-                        <VehicleCard vehicle={v} onClick={() => setSelectedVehicle(v)} />
+                        <VehicleCard vehicle={v} onClick={() => navigate(`/gps/history?vehicle=${v.id}`)} />
                       </Grid>
                     ))}
                   </Grid>
@@ -378,7 +304,6 @@ export default function GPSPage() {
         <VehicleFormDialog onClose={() => setAddOpen(false)}
                            onSaved={() => { setAddOpen(false); qc.invalidateQueries({ queryKey: ['gps-dashboard'] }) }} />
       )}
-      {selectedVehicle && <JourneyDialog vehicle={selectedVehicle} onClose={() => setSelectedVehicle(null)} />}
     </Box>
   )
 }

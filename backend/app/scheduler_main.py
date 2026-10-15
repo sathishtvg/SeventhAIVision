@@ -1305,6 +1305,20 @@ async def run_once(redis: Redis | None = None) -> None:
             except Exception:
                 logger.exception("record retention failed (non-fatal, maintenance continues)")
 
+    # Fleet positions and archived fleet vehicles (services/fleet_retention.py): the organisation's own periods,
+    # nothing removed where none is set. On the superuser session, as above.
+    async with admin_session() as db:
+        if db is None:
+            logger.warning("fleet retention skipped: no POSTGRES_USER/PGPASSWORD")
+        else:
+            try:
+                from app.services import fleet_retention
+                kept = await fleet_retention.run(db)
+                if kept["removed"] or kept["failed"]:
+                    logger.info("fleet retention: %s", kept)
+            except Exception:
+                logger.exception("fleet retention failed (non-fatal, maintenance continues)")
+
     try:
         result = await run_database_backup()
         logger.info("run_database_backup: %s (%d bytes)", result["filename"], result["size_bytes"])

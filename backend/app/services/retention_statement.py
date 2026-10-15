@@ -249,8 +249,13 @@ async def read(db: AsyncSession, allowed: list[str] | None) -> dict:
         "removed_by": record_retention.REMOVED_BY, "taken_away": ALSO_TAKEN.get(k.key, {}),
     } for k in record_retention.KINDS]
 
+    # The fleet's two: positions and archived vehicles, each kept until the organisation sets a period.
+    from app.services import fleet_retention
+    fleet = fleet_retention.statement(await fleet_retention.periods(db))
+
     return {
         "read_at": datetime.now(timezone.utc),
+        "fleet": fleet,
         "periods": periods,
         "sites": sites,
         "optional": optional,

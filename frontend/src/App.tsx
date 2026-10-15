@@ -78,6 +78,7 @@ import FleetGroups from '@/pages/fleet/FleetGroups'
 import FleetFields from '@/pages/fleet/FleetFields'
 import FleetProviders from '@/pages/fleet/FleetProviders'
 import FleetLiveMap from '@/pages/fleet/FleetLiveMap'
+import FleetHistory from '@/pages/fleet/FleetHistory'
 import ContractorsPage from '@/pages/Contractors'
 import ParkingPage from '@/pages/Parking'
 import BWCPage from '@/pages/BWC'
@@ -192,6 +193,7 @@ export default function App() {
         <Route path="iot" element={<IoTPage />} />
         <Route path="gps" element={<GPSPage />} />
         <Route path="gps/map" element={<FleetLiveMap />} />
+        <Route path="gps/history" element={<FleetHistory />} />
         <Route path="gps/vehicles" element={<FleetVehicles />} />
         <Route path="gps/vehicles/:id" element={<FleetVehicle />} />
         <Route path="gps/groups" element={<FleetGroups />} />

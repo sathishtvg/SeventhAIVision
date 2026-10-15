@@ -63,6 +63,8 @@ export default function FleetVehicle() {
                   subtitle={[vehicle.name, vehicle.type_label, vehicle.site_name ?? 'No site'].join(' · ')} />
       <FleetNav />
       <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        {may.read_history && (
+          <Button variant="outlined" component={RouterLink} to={`/gps/history?vehicle=${vehicle.id}`}>Journeys</Button>)}
         {!vehicle.archived && may.edit && (
           <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setEditing(true)}>Change</Button>)}
         {!vehicle.archived && may.archive && (

@@ -25,8 +25,8 @@ import Stack from '@/components/common/Stack'
 import { FleetNav } from '@/components/fleet/FleetNav'
 import { EmptyState, ErrorState, SaveStatus, TableEmptyRow, TableErrorRow } from '@/components/states'
 import {
-  createProvider, getFleetLimits, getFleetOptions, listProviders, replaceForwardSecret, retireProvider, setFleetLimits, testProvider,
-  type FleetLimits,
+  createProvider, getFleetLimits, getFleetOptions, getFleetRetention, listProviders, replaceForwardSecret, retireProvider,
+  setFleetLimits, setFleetRetention, testProvider, type FleetLimits, type RetentionKind,
 } from '@/api/fleet'
 
 const COLS = 5
@@ -40,6 +40,7 @@ export default function FleetProviders() {
       <FleetNav />
       <Box sx={{ display: 'grid', gap: 2 }}>
         <Limits mayChange={!!options?.may.manage_limits} />
+        <Retention />
         {options && !mayDevices && (
           <Alert severity="info">Providers are set up by whoever manages the fleet's devices (Admin or Manager).</Alert>
         )}
@@ -217,5 +218,73 @@ function ConnectDialog({ onClose, onMade }: { onClose: () => void; onMade: (m: {
         <Button variant="contained" disabled={!ready || make.isPending} onClick={() => make.mutate()}>Connect</Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+/** How long positions and archived vehicles are kept: nothing is removed until a period is set, and setting one that
+ *  already has older records is asked twice - the server says how many first. */
+function Retention() {
+  const qc = useQueryClient()
+  const { data, isLoading, isLoadingError: retentionFailed, error: retentionError, refetch } = useQuery({
+    queryKey: ['fleet-retention'], queryFn: getFleetRetention,
+  })
+  if (isLoading) return null
+  if (retentionFailed || !data) {
+    return <ErrorState compact title="How long the fleet's records are kept could not be loaded" error={retentionError} onRetry={refetch} />
+  }
+  return (
+    <GlassCard sx={{ p: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>How long the fleet's records are kept</Typography>
+      <Box sx={{ display: 'grid', gap: 2 }}>
+        {data.kinds.map((k) => (
+          <Period key={k.key} kind={k} mayChange={data.may_set} least={data.least_days}
+                  onSaved={() => qc.invalidateQueries({ queryKey: ['fleet-retention'] })} />
+        ))}
+      </Box>
+      {!data.may_set && (
+        <Typography variant="caption" color="text.secondary">
+          A period is set by somebody who may change the organisation's settings and is not held to particular sites.
+        </Typography>
+      )}
+    </GlassCard>
+  )
+}
+
+function Period({ kind, mayChange, least, onSaved }: { kind: RetentionKind; mayChange: boolean; least: number; onSaved: () => void }) {
+  const [days, setDays] = useState(kind.days != null ? String(kind.days) : '')
+  const [confirm, setConfirm] = useState<{ older: number; message: string } | null>(null)
+  const save = useMutation({
+    mutationFn: (older?: number) => setFleetRetention(kind.key, days ? Number(days) : null, older),
+    onSuccess: () => { setConfirm(null); onSaved() },
+    onError: (err: unknown) => {
+      const e = err as { response?: { status?: number; data?: { detail?: { already_older?: number; message?: string } } } }
+      const d = e.response?.data?.detail
+      if (e.response?.status === 409 && d?.already_older != null) setConfirm({ older: d.already_older, message: d.message ?? '' })
+    },
+  })
+  const asked = days ? Number(days) : null
+  const valid = asked === null || (Number.isInteger(asked) && asked >= least)
+  return (
+    <Box>
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>{kind.label}</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+        {kind.days != null ? `Kept ${kind.days} days, counted from ${kind.counted_from}.` : 'No period is set: everything is kept.'}{' '}
+        Removed: {kind.removes}.{kind.kept_whatever ? ` Kept whatever its age: ${kind.kept_whatever}.` : ''}
+      </Typography>
+      {mayChange && (
+        <Stack direction="row" sx={{ gap: 1, mt: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField size="small" type="number" label="Days" value={days} onChange={(e) => { setDays(e.target.value); setConfirm(null) }}
+                     sx={{ width: 140 }} helperText={`Empty: kept. At least ${least}.`} error={!valid} />
+          <Button variant="outlined" disabled={!valid || save.isPending} onClick={() => save.mutate(undefined)}>Save</Button>
+          <SaveStatus state={save.isPending ? 'saving' : save.isError && !confirm ? 'failed' : save.isSuccess ? 'saved' : 'idle'} error={save.error} />
+        </Stack>
+      )}
+      {confirm && (
+        <Alert severity="warning" sx={{ mt: 1 }} action={
+          <Button color="inherit" size="small" disabled={save.isPending} onClick={() => save.mutate(confirm.older)}>Set it</Button>}>
+          {confirm.message}
+        </Alert>
+      )}
+    </Box>
   )
 }

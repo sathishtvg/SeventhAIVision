@@ -254,6 +254,40 @@ describe('tracking', () => {
     expect(screen.getByText(/Providers are set up by whoever manages/)).toBeInTheDocument()
   })
 
+  const retention = (maySet: boolean, days: number | null = null): api.FleetRetention => ({
+    least_days: 30, most_days: 3650, may_set: maySet,
+    kinds: [{ key: 'FLEET_POSITIONS', label: 'Vehicle positions', days, set_at: null, counted_from: 'when the position was recorded',
+              removes: 'positions older than the period', kept_whatever: null, removed_by: 'the daily retention job' }],
+  })
+
+  it('keeps everything until a period is set, and lets only whoever may set one', async () => {
+    mocked.getFleetLimits.mockResolvedValue({ online_minutes: 5, offline_minutes: 30 })
+    mocked.listProviders.mockResolvedValue({ items: [], builtin: { available: false, forwarding: false, forward_path: '' } })
+    mocked.getFleetRetention.mockResolvedValue(retention(false))
+    show(<FleetProviders />, '/gps/providers', '/gps/providers')
+    expect(await screen.findByText(/No period is set: everything is kept/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Days')).not.toBeInTheDocument()
+    expect(screen.getByText(/A period is set by somebody who may change the organisation/)).toBeInTheDocument()
+  })
+
+  it('asks again, saying how many are already older, before a period removes anything', async () => {
+    mocked.getFleetLimits.mockResolvedValue({ online_minutes: 5, offline_minutes: 30 })
+    mocked.listProviders.mockResolvedValue({ items: [], builtin: { available: false, forwarding: false, forward_path: '' } })
+    mocked.getFleetRetention.mockResolvedValue(retention(true))
+    mocked.setFleetRetention.mockRejectedValueOnce({ response: { status: 409, data: { detail: {
+      already_older: 12, message: '12 positions are already older than 90 days and would be removed.' } } } })
+    mocked.setFleetRetention.mockResolvedValueOnce({})
+    show(<FleetProviders />, '/gps/providers', '/gps/providers')
+    fireEvent.change(await screen.findByLabelText('Days'), { target: { value: '10' } })
+    expect(screen.getByText(/At least 30/).closest('.Mui-error, p')).toHaveClass('Mui-error')
+    fireEvent.change(screen.getByLabelText('Days'), { target: { value: '90' } })
+    const saves = screen.getAllByRole('button', { name: 'Save' })
+    fireEvent.click(saves[saves.length - 1])
+    expect(await screen.findByText(/12 positions are already older than 90 days/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Set it' }))
+    await waitFor(() => expect(mocked.setFleetRetention).toHaveBeenLastCalledWith('FLEET_POSITIONS', 90, 12))
+  })
+
   it('shows each vehicle’s tracking status on the list', async () => {
     mocked.listFleetVehicles.mockResolvedValue(list([vehicle({ tracking_status: 'stale', tracking_label: 'Stale' })]))
     show(<FleetVehicles />)
