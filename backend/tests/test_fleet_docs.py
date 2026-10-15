@@ -78,8 +78,8 @@ def test_what_is_not_done_is_said():
     doc = _flat(_read(DOC))
     for said in ("Only Traccar. No commercial provider's API is connected.",
                  "The Seventh AI phone app does not report its own position as a tracker",
-                 "are not shown beside it yet. That is phase 6 of the design.",
-                 "No screen reads them: Journeys are worked out from the positions instead."):
+                 "without the protection against a wobbling fix",
+                 "No screen reads those journeys, and no tracker set up here sends through it"):
         assert said in doc, said
     design = _flat(_read(DESIGN))
     assert "**Why an administrator could not delete a vehicle:**" in design
@@ -139,3 +139,16 @@ def test_the_geofence_rules_the_document_gives_are_the_ones_the_code_uses():
     assert "(on until switched off)" in doc and "if switched on" in doc
     assert fa.PUSHED_ANYWAY == ("high", "critical") and "when the alert is below high" in doc
     assert "**A geofence never opens a barrier, admits anybody or confirms who is driving.**" in doc
+
+
+def test_the_evidence_the_document_describes_is_what_the_code_looks_for_and_never_confirmed():
+    from app.services import fleet_evidence as fe
+    doc = _flat(_read(DOC))
+    assert (fe.DEFAULT_WINDOW_S, fe.LEAST_WINDOW_S, fe.MOST_WINDOW_S) == (120, 30, 900)
+    assert "within two minutes either side of it (30 seconds to 15 minutes" in doc
+    for code, _label in fe.SECTIONS.values():
+        assert f"(needs `{code}`)" in doc, code
+    assert list(fe.MATCH_WORDS.values()) == ["Plate matches", "Near in time only"]
+    assert "**Plate matches**" in doc and "**Near in time only**" in doc
+    assert "Nothing is ever called confirmed" in doc
+    assert "confirmed" not in " ".join(fe.MATCH_WORDS.values()).lower()

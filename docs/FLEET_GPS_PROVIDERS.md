@@ -206,6 +206,27 @@ their sites' vehicles' events only.
 driving.** It records where a vehicle's tracker said the vehicle was and
 raises an alert for a person to look at.
 
+## What else was recorded around an entry or exit
+
+Beside each geofence event on Fleet → Geofences, **What else was recorded**
+shows what the geofence's site recorded within two minutes either side of it
+(30 seconds to 15 minutes, set there by whoever may set the fleet's alerts),
+worked out when it is opened:
+
+- plate reads at the site's cameras (needs `detection:read`),
+- barrier commands at the site's barriers (needs `barrier:read`),
+- door events at the site's doors (needs `access:read`),
+- incidents at the site that were open at the time (needs `incident:read`).
+
+A plate read or barrier command whose plate is the vehicle's, compared letters
+and digits only, says **Plate matches**; anything else says **Near in time
+only**. Each says how long before or after the event it was, and a plate read
+how sure the camera was. Nothing is ever called confirmed: a plate that matches
+is a plate that matches, not the vehicle, and not who was driving. A section
+somebody may not read says so; an empty one says none was found. A geofence of
+the whole organisation has no site cameras, barriers or doors, and says so.
+Somebody limited to sites sees this only for their sites.
+
 ## How long positions are kept
 
 Positions are kept until the organisation sets a period, under Fleet →
@@ -243,11 +264,11 @@ statement with the others.
 - Only Traccar. No commercial provider's API is connected.
 - The Seventh AI phone app does not report its own position as a tracker;
   for a phone, use Traccar Client.
-- Plate reads, barrier commands and door events near a geofence entry or exit
-  are not shown beside it yet. That is phase 6 of the design.
 - The older position endpoint (`POST /api/v1/gps/vehicles/{id}/positions`,
   signed in as a user) still writes its own rows to `vehicle_journeys` by its
-  old speed rule. No screen reads them: Journeys are worked out from the
-  positions instead.
+  old speed rule, and checks geofences its old way: against the position
+  before only, without the protection against a wobbling fix. No screen
+  reads those journeys, and no tracker set up here sends through it;
+  positions from Traccar go through everything described above.
 - Traccar's own screen and API are reachable from the server only; to manage
   it from elsewhere, put it behind the platform's TLS proxy first.

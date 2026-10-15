@@ -5,7 +5,8 @@
  * A fix that wobbles on the boundary changes nothing (the server's rule: past the line by 15 m or the fix's own
  * accuracy, held for a second fix or 30 seconds). A geofence never opens a barrier, admits anybody or confirms
  * who is driving. Somebody limited to sites sees their sites' geofences and the organisation's own, and their
- * sites' vehicles' events only. A geofence is archived, never deleted.
+ * sites' vehicles' events only. A geofence is archived, never deleted. Beside each event, what else the site
+ * recorded around it - "plate matches" or "near in time only", never confirmed.
  */
 import { useState } from 'react'
 import {
@@ -20,20 +21,24 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { GlassCard } from '@/components/common/GlassCard'
 import { SkeletonRows } from '@/components/common/SkeletonRows'
 import { FleetNav } from '@/components/fleet/FleetNav'
+import { EvidenceDialog } from '@/components/fleet/EvidenceDialog'
 import { GeofenceDialog } from '@/components/fleet/GeofenceDialog'
 import { GeofenceMap } from '@/components/fleet/GeofenceMap'
 import { SEVERITY_COLOUR, activeRules, eventWhen, eventWords, ruleWords, shapeWords } from '@/components/fleet/geofenceFormat'
 import { SaveStatus, TableEmptyRow, TableErrorRow } from '@/components/states'
-import { archiveGeofence, getGeofenceOptions, listFleetGeofenceEvents, listGeofences, vehicleLabel, type Geofence } from '@/api/fleet'
+import {
+  archiveGeofence, getGeofenceOptions, listFleetGeofenceEvents, listGeofences, vehicleLabel, type Geofence, type GeofenceEvent,
+} from '@/api/fleet'
 
 const COLS = 6
-const EVENT_COLS = 4
+const EVENT_COLS = 5
 
 export default function FleetGeofences() {
   const qc = useQueryClient()
   const [archived, setArchived] = useState(false)
   const [editing, setEditing] = useState<Geofence | 'new' | null>(null)
   const [archiving, setArchiving] = useState<Geofence | null>(null)
+  const [around, setAround] = useState<GeofenceEvent | null>(null)
   const { data, isLoading, isLoadingError: fencesFailed, error: fencesError, refetch: refetchFences } = useQuery({
     queryKey: ['fleet-geofences', archived], queryFn: () => listGeofences(archived),
   })
@@ -114,7 +119,8 @@ export default function FleetGeofences() {
         <TableContainer>
           <Table size="small" aria-label="Geofence events">
             <TableHead>
-              <TableRow><TableCell>When</TableCell><TableCell>Vehicle</TableCell><TableCell>What</TableCell><TableCell>Alert</TableCell></TableRow>
+              <TableRow><TableCell>When</TableCell><TableCell>Vehicle</TableCell><TableCell>What</TableCell><TableCell>Alert</TableCell>
+                <TableCell align="right">Around it</TableCell></TableRow>
             </TableHead>
             <TableBody>
               {eventsLoading ? (
@@ -133,6 +139,10 @@ export default function FleetGeofences() {
                       ? <Chip size="small" color={SEVERITY_COLOUR[e.alert_severity]} label={`${e.alert_severity} · ${e.alert_status ?? ''}`} />
                       : <Typography variant="caption" color="text.secondary">Recorded, no alert</Typography>}
                   </TableCell>
+                  <TableCell align="right">
+                    <Button size="small" aria-label={`What else was recorded when ${e.vehicle_name} ${eventWords(e).toLowerCase()} ${e.geofence_name}`}
+                            onClick={() => setAround(e)}>What else was recorded</Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -144,6 +154,7 @@ export default function FleetGeofences() {
                         organisationWide={data.may.organisation_wide}
                         onClose={() => setEditing(null)} onSaved={() => { setEditing(null); again() }} />
       )}
+      {around && <EvidenceDialog event={around} mayChangeWindow={!!data?.may.manage_alerts} onClose={() => setAround(null)} />}
       {archiving && <ArchiveDialog geofence={archiving} onClose={() => setArchiving(null)} onDone={() => { setArchiving(null); again() }} />}
     </Box>
   )

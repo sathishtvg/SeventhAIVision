@@ -60,6 +60,7 @@ from app.routers import (
     fleet_tracking,
     fleet_history,
     fleet_geofences,
+    fleet_evidence,
     handover,
     i18n,
     incident_responses,
@@ -482,6 +483,7 @@ app.include_router(fleet.router)
 app.include_router(fleet_tracking.router)
 app.include_router(fleet_history.router)
 app.include_router(fleet_geofences.router)
+app.include_router(fleet_evidence.router)
 app.include_router(i18n.router)
 app.include_router(contractors.router)
 app.include_router(parking.router)

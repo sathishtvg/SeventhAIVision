@@ -469,3 +469,40 @@ export const listFleetGeofenceEvents = (params: { geofence_id?: string; vehicle_
   Promise<{ items: GeofenceEvent[] }> => apiClient.get(`${BASE}/geofence-events`, { params }).then((r) => r.data)
 export const getStopAlerts = (): Promise<StopAlerts> => apiClient.get(`${BASE}/alert-settings`).then((r) => r.data)
 export const setStopAlerts = (body: StopAlerts): Promise<StopAlerts> => apiClient.put(`${BASE}/alert-settings`, body).then((r) => r.data)
+
+// ── evidence around a geofence event (phase 6) ───────────────────────────────
+// Plate reads, barrier commands, door events and incidents at the geofence's site, either side of the event.
+// "Plate matches" or "near in time only" - never confirmed: a plate that matches is not who was driving.
+
+export type EvidenceMatch = 'plate_matches' | 'near_in_time_only'
+export interface EvidenceItem {
+  at: string
+  gap_s: number
+  place?: string
+  match?: EvidenceMatch
+  plate_number?: string | null
+  confidence?: number | null
+  direction?: string | null
+  command?: string; source?: string; decision?: string | null; succeeded?: boolean | null
+  event_type?: string; denial_reason?: string | null
+  id?: string; title?: string; status?: string; severity?: string
+}
+export interface EvidenceSection { label: string; allowed: boolean; items: EvidenceItem[]; said: string | null }
+export interface EventEvidence {
+  event: { id: string; event_type: string; occurred_at: string; between_start: string | null; between_end: string | null
+           vehicle_name: string; plate_number: string | null; geofence_name: string; site_id: string | null; site_name: string | null }
+  window_s: number
+  site_id: string | null
+  site_name: string | null
+  plate_number: string | null
+  match_words: Record<EvidenceMatch, string>
+  said?: string
+  sections: Partial<Record<'plate_reads' | 'barrier_commands' | 'door_events' | 'incidents', EvidenceSection>>
+}
+export interface EvidenceSettings { window_s: number; least_s: number; most_s: number }
+
+export const getEventEvidence = (eventId: string): Promise<EventEvidence> =>
+  apiClient.get(`${BASE}/geofence-events/${eventId}/evidence`).then((r) => r.data)
+export const getEvidenceSettings = (): Promise<EvidenceSettings> => apiClient.get(`${BASE}/evidence-settings`).then((r) => r.data)
+export const setEvidenceSettings = (windowS: number): Promise<EvidenceSettings> =>
+  apiClient.put(`${BASE}/evidence-settings`, { window_s: windowS }).then((r) => r.data)

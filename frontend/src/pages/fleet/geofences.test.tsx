@@ -178,6 +178,58 @@ describe('the geofences page', () => {
   })
 })
 
+describe('what else the site recorded around an event', () => {
+  const exit = {
+    id: 'e1', event_type: 'exit', occurred_at: '2026-10-15T08:00:00Z', lat: null, lon: null, speed: null, accuracy: null,
+    between_start: null, between_end: null, alert_id: null, alert_status: null, alert_severity: null,
+    vehicle_id: 'v1', vehicle_name: 'Patrol 3', plate_number: 'SBA 1234 K', geofence_id: 'g1', geofence_name: 'Main gate',
+  } as const
+
+  it('says plate matches or near in time only, how long before or after, and never confirmed', async () => {
+    mocked.listGeofences.mockResolvedValue(list([fence()], false))
+    mocked.listFleetGeofenceEvents.mockResolvedValue({ items: [exit] })
+    mocked.getEventEvidence.mockResolvedValue({
+      event: { ...exit, site_id: 's1', site_name: 'Factory A' }, window_s: 120, site_id: 's1', site_name: 'Factory A',
+      plate_number: 'SBA 1234 K', match_words: { plate_matches: 'Plate matches', near_in_time_only: 'Near in time only' },
+      sections: {
+        plate_reads: { label: "Plate reads at the site's cameras", allowed: true, said: null, items: [
+          { at: '2026-10-15T07:59:20Z', gap_s: -40, place: 'Gate cam', match: 'plate_matches', plate_number: 'SBA1234K', confidence: 0.91, direction: 'out' },
+          { at: '2026-10-15T08:00:10Z', gap_s: 10, place: 'Gate cam', match: 'near_in_time_only', plate_number: 'SGX9Z', confidence: 0.8 }] },
+        barrier_commands: { label: 'Barrier commands at the site', allowed: false, items: [], said: 'Not shown: it needs barrier:read.' },
+        door_events: { label: 'Door events at the site', allowed: true, items: [], said: 'None found.' },
+        incidents: { label: 'Incidents at the site, open at the time', allowed: true, items: [], said: 'None found.' },
+      },
+    })
+    show(<FleetGeofences />, '/gps/geofences')
+    fireEvent.click(await screen.findByRole('button', { name: 'What else was recorded when Patrol 3 left Main gate' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('SBA1234K (91% sure), out at Gate cam')).toBeInTheDocument()
+    expect(within(dialog).getByText(/40 s before$/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/10 s after$/)).toBeInTheDocument()
+    expect(within(dialog).getByText('Plate matches')).toBeInTheDocument()
+    expect(within(dialog).getByText('Near in time only')).toBeInTheDocument()
+    expect(within(dialog).getByText('Not shown: it needs barrier:read.')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('None found.')).toHaveLength(2)
+    expect(within(dialog).getByText(/Looked for 2 min either side, at Factory A/)).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Seconds either side')).not.toBeInTheDocument()
+    expect(dialog.textContent?.toLowerCase()).not.toContain('confirmed')
+    expect(mocked.getEventEvidence).toHaveBeenCalledWith('e1')
+  })
+
+  it('says when a geofence of the whole organisation has no site to look at', async () => {
+    mocked.listGeofences.mockResolvedValue(list([fence({ site_id: null, site_name: null })], true))
+    mocked.listFleetGeofenceEvents.mockResolvedValue({ items: [exit] })
+    mocked.getEventEvidence.mockResolvedValue({
+      event: { ...exit, site_id: null, site_name: null }, window_s: 120, site_id: null, site_name: null, plate_number: 'SBA 1234 K',
+      match_words: { plate_matches: 'Plate matches', near_in_time_only: 'Near in time only' }, sections: {},
+      said: 'This geofence belongs to the whole organisation, not to a site: there are no site cameras, barriers or doors to look at.',
+    })
+    show(<FleetGeofences />, '/gps/geofences')
+    fireEvent.click(await screen.findByRole('button', { name: /What else was recorded when Patrol 3/ }))
+    expect(await screen.findByText(/belongs to the whole organisation, not to a site/)).toBeInTheDocument()
+  })
+})
+
 describe('the alerts when a vehicle stops reporting', () => {
   it('are offline on and stale off until changed, by whoever may', async () => {
     const may = { edit: true, archive: true, manage_fields: true, manage_devices: false, manage_limits: true, read_history: true, export_history: true }
