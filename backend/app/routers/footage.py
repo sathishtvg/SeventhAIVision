@@ -9,7 +9,8 @@ app.services.footage_retention.
 
 Permissions:
     footage:upload       start an upload, send its parts, finish or cancel one's own
-    footage:view         list the videos and read one
+    footage:view         list the videos, read one, search them, see their frames and play them
+    footage:review       have a video analysed again
     footage:delete       delete a video before its 30 days are up, or cancel anybody's upload
     evidence:hold:manage keep a video past its 30 days (with footage:view); a hold is
                          lifted where every hold is, POST /api/v1/evidence-holds/{id}/release
@@ -31,29 +32,41 @@ from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse
+from limits import parse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.limiter import limiter
 from app.core.pagination import clamp
+from app.core.security import InvalidTokenError, decode_access_token
+from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
+from app.dependencies.rate_limit import STORE_TIMEOUT_S, caller_of
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
 from app.routers.operations_board import held_by
 from app.services import footage
+from app.services import footage_search as finder
 from app.services import intel_audit
+from app.services.audit import write_audit_log
 
 router = APIRouter(prefix="/api/v1/footage", tags=["footage"])
 
 _UPLOAD = [Depends(require_permission("footage:upload"))]
 _VIEW = [Depends(require_permission("footage:view"))]
 _DELETE = [Depends(require_permission("footage:delete"))]
+_REVIEW = [Depends(require_permission("footage:review"))]
 _HOLD = [Depends(require_permission("footage:view")), Depends(require_permission("evidence:hold:manage"))]
 HELD = ("footage:upload", "footage:view", "footage:review", "footage:delete", "evidence:hold:manage")
 
 #: How far ahead of the server's clock a "filmed at" may be: a camera's clock is rarely right.
 CLOCK_SLACK = timedelta(minutes=10)
+#: A search is heavier than a read, and the default limit counts reads only. Per person.
+SEARCH_LIMIT = parse("60/minute")
 
 
 def _like(q: str) -> str:
@@ -74,6 +87,7 @@ _VIDEO = """
     v.id, v.source, v.title, v.original_filename, v.content_type, v.size_bytes, v.received_bytes, v.part_size,
     v.site_id, s.name AS site_name, v.place, v.filmed_at, v.duration_seconds, v.width, v.height, v.frame_rate,
     v.status, v.progress, v.error, v.sha256, v.storage_path, v.uploaded_by_user_id, u.full_name AS uploaded_by_name,
+    v.codec, v.frames_indexed, v.index_model, v.playable,
     v.created_at, v.updated_at, v.upload_completed_at, v.processed_at, v.expires_at,
     h.id AS hold_id, h.reason AS hold_reason, h.placed_at AS hold_placed_at, hu.full_name AS hold_placed_by_name
 """
@@ -89,7 +103,7 @@ _FROM = """
 
 
 def _out(row, now: datetime) -> dict:
-    v = {k: val for k, val in dict(row).items() if k not in ("total", "storage_path")}
+    v = {k: val for k, val in dict(row).items() if k not in ("total", "storage_path", "proxy_path")}
     v["status_label"] = footage.STATUS_LABEL.get(v["status"], v["status"])
     v["held"] = v["hold_id"] is not None
     left = v["expires_at"] - now
@@ -424,3 +438,203 @@ async def _remove(db: AsyncSession, request: Request, token: TokenPayload, v, ac
     await db.execute(text("DELETE FROM footage_videos WHERE id = CAST(:id AS uuid)"), {"id": str(v["id"])})
     await intel_audit.record(db, request, token, action, "footage_video", v["id"], site_id=v["site_id"],
                              detail={"title": v["title"], "status": v["status"], "reason": reason})
+
+
+# ── analysing again ───────────────────────────────────────────────────────────
+
+@router.post("/{video_id:uuid}/reanalyse", dependencies=_REVIEW)
+async def reanalyse_video(
+    video_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Have a video analysed again from the start: after a failure, or after the
+    model has changed. What the last analysis found is replaced."""
+    v = await _one(db, video_id, allowed, lock=True)
+    if v["status"] not in ("READY", "FAILED"):
+        raise HTTPException(409, "Only a video that is ready, or could not be analysed, can be analysed again.")
+    await db.execute(text("""
+        UPDATE footage_videos SET status = 'QUEUED', attempts = 0, progress = 0, error = NULL, updated_at = now()
+         WHERE id = CAST(:id AS uuid)
+    """), {"id": str(video_id)})
+    await intel_audit.record(db, request, token, "footage.reanalyse", "footage_video", video_id,
+                             site_id=v["site_id"], detail={"title": v["title"], "was": v["status"]})
+    answer = _out(await _one(db, video_id, allowed), datetime.now(timezone.utc))
+    await db.commit()
+    answer["announced"] = await footage.announce(getattr(request.app.state, "redis", None), token.tenant_id, video_id)
+    return answer
+
+
+# ── searching by description ──────────────────────────────────────────────────
+
+async def _paced(request: Request) -> None:
+    """No more searches a minute from one person than a person makes. If the
+    counter cannot be reached the search goes ahead, as with every other limit."""
+    if not limiter.enabled:
+        return
+    try:
+        allowed = await asyncio.wait_for(asyncio.to_thread(
+            limiter.limiter.hit, SEARCH_LIMIT, caller_of(request), "footage-search"), STORE_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 — the counter being down is never the caller's problem
+        return
+    if not allowed:
+        raise HTTPException(429, "Too many searches in a minute. Wait a moment and try again.",
+                            headers={"Retry-After": "60"})
+
+
+class SearchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(..., min_length=1, max_length=finder.MAX_TEXT)
+    video_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    filmed_from: datetime | None = None
+    filmed_to: datetime | None = None
+    limit: int = Field(20, ge=1, le=50)
+
+
+@router.post("/search", dependencies=[*_VIEW, Depends(_paced)])
+async def search_footage(
+    body: SearchBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """The moments that look most like the description, in one video or every
+    ready video the person may see. The wording is kept in the audit log: a
+    search for "a woman in a red dress" is a search for a person."""
+    words = " ".join(body.text.split())
+    if not words:
+        raise HTTPException(422, "Describe what you are looking for.")
+    for when in (body.filmed_from, body.filmed_to):
+        if when is not None and when.tzinfo is None:
+            raise HTTPException(422, "Say the time zone of the period searched.")
+    params: dict = {}
+    where = ["v.status = 'READY'"]
+    scope = site_scope_clause(allowed, "v.site_id", params)
+    if scope:
+        where.append(scope)
+    if body.video_id is not None:
+        where.append("v.id = CAST(:vid AS uuid)")
+        params["vid"] = str(body.video_id)
+    if body.site_id is not None:
+        where.append("v.site_id = CAST(:site AS uuid)")
+        params["site"] = str(body.site_id)
+    if body.filmed_from is not None:
+        where.append("v.filmed_at IS NOT NULL AND v.filmed_at + make_interval(secs => coalesce(v.duration_seconds, 0)) "
+                     ">= :from")
+        params["from"] = body.filmed_from
+    if body.filmed_to is not None:
+        where.append("v.filmed_at IS NOT NULL AND v.filmed_at <= :to")
+        params["to"] = body.filmed_to
+    videos = (await db.execute(text(f"""
+        SELECT v.id::text AS id, v.title, v.site_id, s.name AS site_name, v.place, v.filmed_at, v.index_model
+          FROM footage_videos v LEFT JOIN sites s ON s.id = v.site_id
+         WHERE {' AND '.join(where)}
+    """), params)).mappings().all()
+    if body.video_id is not None and not videos:
+        raise HTTPException(404, "Video not found, or not ready to be searched.")
+    try:
+        read = await finder.embed(words)
+    except finder.SearchUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    by_id = {v["id"]: v for v in videos}
+    searched = [v["id"] for v in videos if v["index_model"] == read.model_version]
+    found = await finder.search(db, read, searched, body.limit)
+    moments = []
+    for m in found["moments"]:
+        v = by_id[m.video_id]
+        moments.append({
+            "video_id": m.video_id, "title": v["title"], "site_name": v["site_name"], "place": v["place"],
+            "start": m.start, "end": m.end, "best": m.best, "likeness": round(m.likeness, 4),
+            "match": round(m.match, 4), "label": m.label, "label_words": finder.STRENGTH_WORDS[m.label],
+            "at": v["filmed_at"] + timedelta(seconds=m.best) if v["filmed_at"] else None,
+        })
+    await intel_audit.record(db, request, token, "footage.search", "footage_search", None, site_id=body.site_id,
+                             detail={"text": words, "video_id": str(body.video_id) if body.video_id else None,
+                                     "filmed_from": body.filmed_from.isoformat() if body.filmed_from else None,
+                                     "filmed_to": body.filmed_to.isoformat() if body.filmed_to else None,
+                                     "videos_searched": len(searched), "moments": len(moments)})
+    answer = {
+        "text": words, "model_version": read.model_version, "moments": moments,
+        "strong": any(m["label"] != "LOW" for m in moments),
+        "videos_searched": len(searched), "frames_searched": found["frames_searched"],
+        # Ready videos indexed by another model are not searched until they are analysed again.
+        "not_searched": len(videos) - len(searched),
+        "thresholds": {"strong": finder.STRONG, "possible": finder.POSSIBLE, "weak": finder.WEAK},
+    }
+    await db.commit()
+    return answer
+
+
+# ── a frame, and the video itself, for the browser ────────────────────────────
+# A plain <img> or <video> cannot send an Authorization header, so these take
+# the access token in the address, as the evidence images and the live video do.
+
+async def _media(video_id: uuid.UUID, token: str):
+    """(the video's row, the caller) when the token's holder may watch it; else 401, 403 or 404."""
+    try:
+        payload = decode_access_token(token)
+    except InvalidTokenError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    who = TokenPayload(user_id=payload["sub"], tenant_id=payload["tenant_id"], role_id=payload["role_id"],
+                       support_session_id=payload.get("support_session_id"))
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": who.tenant_id})
+        if "footage:view" not in await held_by(db, who.role_id, ("footage:view",)):
+            raise HTTPException(403, "Missing permission: footage:view")
+        allowed = await get_allowed_site_ids(who, db)
+        row = (await db.execute(text("""
+            SELECT id, site_id, title, status, storage_path, playable, proxy_path, content_type
+              FROM footage_videos WHERE id = CAST(:id AS uuid)
+        """), {"id": str(video_id)})).mappings().first()
+        await db.rollback()
+    if row is None or not is_site_allowed(allowed, row["site_id"]):
+        raise HTTPException(404, "Video not found")
+    return row, who
+
+
+async def _serve(path: str, media_type: str):
+    if settings.STORAGE_BACKEND == "s3":
+        from app.core.object_store import presign_url
+
+        return RedirectResponse(await presign_url(path, settings.S3_PRESIGN_TTL_SECONDS), status_code=307)
+    full = footage.local_file(path)
+    if not full.exists():
+        raise HTTPException(404, "The file is not there.")
+    return FileResponse(full, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/{video_id:uuid}/frames/{second}.jpg")
+async def frame_image(video_id: uuid.UUID, second: int, token: str = Query(..., description="JWT access token")):
+    """The frame kept for one second of the video."""
+    if second < 0:
+        raise HTTPException(404, "No frame")
+    row, _who = await _media(video_id, token)
+    return await _serve(footage.frame_path(row["storage_path"], second), "image/jpeg")
+
+
+@router.get("/{video_id:uuid}/video")
+async def play_video(video_id: uuid.UUID, request: Request, token: str = Query(..., description="JWT access token")):
+    """The video for the browser's player: the original when a browser plays it,
+    else the copy the worker made. Opening it is audited; the player's later
+    requests for other parts of the same file are not."""
+    row, who = await _media(video_id, token)
+    if row["status"] != "READY" or row["playable"] not in ("ORIGINAL", "PROXY"):
+        raise HTTPException(409, "This video cannot be played in a browser. Its frames can still be searched.")
+    path, media_type = ((row["storage_path"], row["content_type"] or "video/mp4") if row["playable"] == "ORIGINAL"
+                        else (row["proxy_path"], "video/mp4"))
+    asked = request.headers.get("range", "")
+    if not asked or asked.replace(" ", "").startswith("bytes=0-"):
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": who.tenant_id})
+            await write_audit_log(db, tenant_id=who.tenant_id, user_id=who.user_id, action="footage.play",
+                                  resource_type="footage_video", resource_id=str(row["id"]),
+                                  ip_address=_client_ip(request),
+                                  detail={"title": row["title"], "copy": row["playable"],
+                                          "site_id": str(row["site_id"]) if row["site_id"] else None})
+            await db.commit()
+    return await _serve(path, media_type)

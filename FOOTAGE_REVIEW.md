@@ -17,14 +17,15 @@ events and checked for possible altercations. Design and the owner's decisions:
 | Phase | What | State |
 |---|---|---|
 | 1 | Uploads in parts, storage, the 30-day removal and the `FOOTAGE` hold, the list page, permissions | Built |
-| 2 | Frame sampling, thumbnails, SigLIP 2 vectors, semantic search and its screen | Not yet |
+| 2 | Frame sampling, thumbnails, SigLIP 2 vectors, semantic search and its screen | Built |
 | 3 | Event review: people and vehicles on the timeline | Not yet |
 | 4 | Fight detection in two stages, and review verdicts | Not yet |
 | 5 | "Analyse this recording" | Not yet |
 | 6 | Helm template, the GCC package, the deployment guide and the controls sheet | Not yet |
 
-Until phase 2 is built nothing analyses a video: a finished upload waits as
-**Waiting to be analysed**.
+A finished upload waits as **Waiting to be analysed** until the footage worker
+takes it. The worker is not one of the core services: start it while footage
+is being analysed or searched (below).
 
 ## Nothing here raises an alert or an incident
 
@@ -63,9 +64,16 @@ A video somebody may not see is answered as one that does not exist.
 | `GET` | `/footage/{id}` | `footage:view` |
 | `POST` | `/footage/{id}/hold` | `footage:view`, `evidence:hold:manage` |
 | `DELETE` | `/footage/{id}` | `footage:delete` |
+| `POST` | `/footage/{id}/reanalyse` | `footage:review` |
+| `POST` | `/footage/search` | `footage:view` |
+| `GET` | `/footage/{id}/frames/{second}.jpg` | `footage:view`, from the token in the address |
+| `GET` | `/footage/{id}/video` | `footage:view`, from the token in the address |
 
 All under `/api/v1`. A hold on a video is lifted where every hold is lifted:
-`POST /api/v1/evidence-holds/{id}/release`, with a reason.
+`POST /api/v1/evidence-holds/{id}/release`, with a reason. A frame and the video
+take the access token in the address, as the evidence pictures do: a browser's
+`<img>` and `<video>` cannot send it otherwise. Searches are limited to 60 a
+minute per person.
 
 ## Uploading
 
@@ -90,6 +98,80 @@ All under `/api/v1`. A hold on a video is lifted where every hold is lifted:
   the worker finds it.
 - **Audited:** an upload begun, finished and cancelled; a hold; a deletion with
   its reason; a removal by the 30-day job with why.
+
+## The footage worker
+
+A container of its own, `footage-worker` (`docker/footage-worker.Dockerfile`,
+code in `ai-worker/worker/footage/`). ONNX Runtime and ffmpeg, no PyTorch, so
+it can run beside the live stack on a small machine; it is not one of the core
+services and is started when needed:
+
+    docker compose -f docker/docker-compose.yml --profile footage up -d --no-deps footage-worker
+
+- **One video at a time.** It takes a video from `footage_jobs`, and every
+  minute asks the database which videos are waiting (`footage_waiting()`, the
+  one question asked across organisations, answered as the database's owner).
+  A video a stopped worker was holding goes back in the queue; after three tries
+  it is *Could not be analysed*.
+- **What it does to a video:** reads what it is (ffprobe), takes its SHA-256,
+  takes **one frame a second**, keeps each as a thumbnail and its SigLIP 2
+  vector in `footage_frames`, and — when the original is not something every
+  browser plays (H.264 in MP4 or MOV) — makes a copy that is. A file that is
+  not a video, or is longer than may be analysed, is *Could not be analysed*
+  with the reason.
+- **It answers the API's searches**: a typed description in, its vector out,
+  on port **8090** of the stack's own network. That port is published nowhere,
+  and the words are not logged there.
+- **It writes as the application's role**, under each video's organisation.
+  PostgreSQL refuses `COPY` into a table under a row-level policy, so frames are
+  inserted.
+- **It raises no alert, incident or notification.**
+
+## The model
+
+SigLIP 2 base (Google, **Apache-2.0**), as converted to ONNX and quantised to
+int8 by onnx-community: `onnx-community/siglip2-base-patch16-224-ONNX`, revision
+`ba1f3b0`, built into the worker's image with every file checked against its
+published size and SHA-256 (`worker/footage/fetch_model.py`). Nothing is
+fetched when the worker runs: a GCC network gives a container no internet.
+
+A frame and a sentence each become 768 numbers; the nearer they point, the more
+the frame looks like the words. The model writes no text and decides nothing:
+it ranks. A sentence may be written in any of the languages the model was
+trained on (109); how well each works is to be measured before it is claimed.
+
+Each frame records which model made its vector, and a search compares only
+vectors of one model: a video analysed by an earlier model is not searched until
+it is analysed again, and the search says how many were left out.
+
+## Searching by description
+
+- **The words go to the footage worker, nothing else does.** No footage leaves
+  the platform.
+- **How likely a match is, is the model's own measure**: SigLIP was trained to
+  give each picture-and-sentence pair a probability, from two numbers it learned
+  (`logit_scale` and `logit_bias`, read from Google's weights). A frame is judged
+  on its own, so what fills half a video is found as readily as what appears
+  once. **Strong match** at 0.5 or more, **Possible match** at 0.1, **Weak
+  match** at 0.01; below that a frame is not offered. These are first settings,
+  to be checked against labelled clips and changed when they are measured.
+- **Neighbouring seconds are one moment**, shown by its best frame.
+- **A search with no strong or possible match says so**, and shows any weak
+  ones as weak, for a person to judge.
+- **Every search is audited with its wording.** A search for "a woman in a red
+  dress" is a search for a person.
+- On a 15-second test video of a red scene, a blue scene and a test pattern,
+  run through the real worker on 20 October 2026, each description found its
+  own scene (the plain colours as weak matches, the test pattern as a strong
+  one) and "a dog on a beach" found nothing.
+
+## Playing a video
+
+The video's page plays the original when a browser can, otherwise the copy the
+worker made; a video neither will play says so, and its frames can still be
+searched. Opened from a search, the player starts a few seconds before the
+moment. Opening a video is audited; the player's later requests for other parts
+of the same file are not.
 
 ## Keeping and removal
 
@@ -117,9 +199,13 @@ All approved in the design. Each is an addition:
 - `backend/app/scheduler_main.py` — the daily removal, after the fleet's.
 - `backend/app/main.py` — the router.
 - `docker/nginx.conf` — the upload location.
-- Web: the route, the menu entry under Investigate, the page's scene, the
-  built-in permissions of each role, and the label of the `FOOTAGE` kind on
-  Evidence Holds.
+- `docker/docker-compose.yml` — the `footage-worker` service, under the profile
+  `footage`.
+- Migration `0164` — what the worker found out about a video is kept on it:
+  `codec`, `frames_indexed`, `index_model`, `playable`, `proxy_path`.
+- Web: the routes, the menu entry under Investigate, the pages' scenes (a
+  video's page arrives as playback does), the built-in permissions of each role,
+  and the label of the `FOOTAGE` kind on Evidence Holds.
 
 ## Left for the owner
 

@@ -95,6 +95,16 @@ def _local(path: str) -> Path:
     return full
 
 
+def local_file(path: str) -> Path:
+    """The file on disk for a path the platform wrote itself, never one from a request."""
+    return _local(path)
+
+
+def frame_path(storage_path: str, second: int) -> str:
+    """Where the footage worker keeps the frame of one second (ai-worker/worker/footage/store.py)."""
+    return f"{storage_path.rsplit('/', 1)[0]}/frames/{second:06d}.jpg"
+
+
 def _s3() -> bool:
     return settings.STORAGE_BACKEND == "s3"
 

@@ -63,6 +63,11 @@ export interface FootageVideo {
   hold_placed_by_name: string | null
   /** Days until the 30-day removal; null while a hold keeps it. */
   deleted_in_days: number | null
+  codec?: string | null
+  frames_indexed?: number
+  index_model?: string | null
+  /** What a browser can play: the original, a copy the worker made, or neither. */
+  playable?: 'ORIGINAL' | 'PROXY' | 'NONE' | null
 }
 
 export interface FootagePage {
@@ -181,4 +186,71 @@ export async function sendRest(
     }
   }
   return finish(video.id)
+}
+
+// ── phase 2: searching by description, frames, playing, analysing again ─────
+
+export type Strength = 'HIGH' | 'MEDIUM' | 'LOW'
+
+export interface SearchMoment {
+  video_id: string
+  title: string
+  site_name: string | null
+  place: string | null
+  /** Seconds into the video: where the moment begins and ends, and its best frame. */
+  start: number
+  end: number
+  best: number
+  likeness: number
+  /** The model's own probability that the best frame shows what was described, 0 to 1. */
+  match: number
+  label: Strength
+  label_words: string
+  /** When the best frame was filmed, if the video's start time is known. */
+  at: string | null
+}
+
+export interface SearchAnswer {
+  text: string
+  model_version: string
+  moments: SearchMoment[]
+  strong: boolean
+  videos_searched: number
+  frames_searched: number
+  not_searched: number
+  thresholds: { strong: number; possible: number; weak: number }
+}
+
+export interface SearchAsk {
+  text: string
+  video_id?: string
+  site_id?: string
+  filmed_from?: string | null
+  filmed_to?: string | null
+  limit?: number
+}
+
+export const searchFootage = (body: SearchAsk) =>
+  apiClient.post<SearchAnswer>('/api/v1/footage/search', body).then((r) => r.data)
+
+export const reanalyse = (id: string) =>
+  apiClient.post<FootageVideo & { announced: boolean }>(`/api/v1/footage/${id}/reanalyse`).then((r) => r.data)
+
+const base = () => apiClient.defaults.baseURL ?? ''
+
+/** The frame kept for one second, for an <img>: the token goes in the address. */
+export const frameUrl = (id: string, second: number, token: string | null) =>
+  `${base()}/api/v1/footage/${id}/frames/${Math.max(0, Math.floor(second))}.jpg?token=${encodeURIComponent(token ?? '')}`
+
+/** The video for a <video>: the original, or the copy the worker made a browser can play. */
+export const videoUrl = (id: string, token: string | null) =>
+  `${base()}/api/v1/footage/${id}/video?token=${encodeURIComponent(token ?? '')}`
+
+/** Seconds as the player shows them: 1:05, or 1:02:03. */
+export function clock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const rest = String(s % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${rest}` : `${m}:${rest}`
 }

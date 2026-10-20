@@ -96,10 +96,23 @@ def test_the_web_gives_each_role_exactly_what_the_migration_grants():
     assert granted["footage:delete"] == {2}
 
 
+#: Routes a browser's <img> or <video> asks for: the permission is checked from the token in the address.
+MEDIA = {("GET", "/footage/{id}/frames/{second}.jpg"), ("GET", "/footage/{id}/video")}
+
+
 def test_the_api_table_is_every_route_with_what_it_needs():
     rows = re.findall(r"^\| `([A-Z]+)` \| `(/footage[^`]*)` \| (.+) \|$", _doc(), re.M)
     written = {(m, p): set(re.findall(r"`([a-z:]+)`", needs)) for m, p, needs in rows}
-    assert written == _served()
+    served = _served()
+    assert set(written) == set(served)
+    for route, needs in written.items():
+        if route in MEDIA:
+            assert served[route] == set() and needs == {"footage:view"}, route
+            assert "from the token in the address" in dict(((m, p), n) for m, p, n in rows)[route]
+        else:
+            assert needs == served[route], route
+    media = (REPO_ROOT / "backend" / "app" / "routers" / "footage.py").read_text(encoding="utf-8")
+    assert '"footage:view" not in await held_by(db, who.role_id, ("footage:view",))' in media
 
 
 def test_the_numbers_in_the_document_are_the_codes():
@@ -131,4 +144,31 @@ def test_the_screen_is_in_the_menu_and_the_route_table():
 
 def test_the_state_of_each_phase_is_said():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", "2": "Not yet", "3": "Not yet", "4": "Not yet", "5": "Not yet", "6": "Not yet"}
+    assert phases == {"1": "Built", "2": "Built", "3": "Not yet", "4": "Not yet", "5": "Not yet", "6": "Not yet"}
+
+
+def test_the_worker_and_the_model_are_as_the_document_says():
+    import yaml
+
+    doc = " ".join(_doc().split())
+    compose = yaml.safe_load((REPO_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8"))["services"]
+    worker = compose["footage-worker"]
+    assert worker["profiles"] == ["footage"] and "ports" not in worker, "the worker publishes nothing"
+    assert worker["build"]["dockerfile"] == "docker/footage-worker.Dockerfile"
+    assert "--profile footage up -d --no-deps footage-worker" in doc
+    dockerfile = (REPO_ROOT / "docker" / "footage-worker.Dockerfile").read_text(encoding="utf-8")
+    assert "USER appuser" in dockerfile and "EXPOSE 8090" in dockerfile
+    lines = (REPO_ROOT / "ai-worker" / "requirements-footage.txt").read_text(encoding="utf-8").splitlines()
+    packages = {line.split("==")[0].split("[")[0].strip().lower() for line in lines if line and not line.startswith("#")}
+    assert "onnxruntime" in packages and not {"torch", "torchvision", "ultralytics"} & packages, "ONNX Runtime, no PyTorch"
+    fetch = (REPO_ROOT / "ai-worker" / "worker" / "footage" / "fetch_model.py").read_text(encoding="utf-8")
+    revision = re.search(r'REVISION = "([0-9a-f]{40})"', fetch).group(1)
+    assert f"revision `{revision[:7]}`" in doc and "onnx-community/siglip2-base-patch16-224-ONNX" in doc
+    assert "**Apache-2.0**" in doc and "port **8090**" in doc and "**one frame a second**" in doc
+    model = (REPO_ROOT / "ai-worker" / "worker" / "footage" / "model.py").read_text(encoding="utf-8")
+    assert "LOGIT_SCALE = math.exp(4.724453449249268)" in model and "LOGIT_BIAS = -16.771724700927734" in model
+    from app.services import footage_search as finder
+
+    assert (finder.STRONG, finder.POSSIBLE, finder.WEAK) == (0.5, 0.1, 0.01)
+    assert "**Strong match** at 0.5 or more, **Possible match** at 0.1, **Weak match** at 0.01" in doc
+    assert finder.STRENGTH_WORDS == {"HIGH": "Strong match", "MEDIUM": "Possible match", "LOW": "Weak match"}

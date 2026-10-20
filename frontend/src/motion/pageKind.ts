@@ -28,12 +28,15 @@ const DASHBOARDS = [
   '/security-insight', '/guard-ops', '/heatmap', '/workforce-readings', '/risk-advice',
 ]
 
+/** A video being reviewed (`/footage/abc`): a player, so it arrives as playback does. */
+const FOOTAGE_VIDEO = /^\/footage\/(?!search$)[^/]+$/
+
 /** One record, by its id: `/situations/42`, `/platform/tenants/abc`. */
 const DETAIL = /^\/(situations|investigations|evidence-packages|drone-missions|drone-patrols|drone-events|platform\/tenants|gps\/vehicles)\/[^/]+$/
 
 export function pageKindOf(pathname: string): PageKind {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
-  if (OPERATIONAL.includes(path)) return 'operational'
+  if (OPERATIONAL.includes(path) || FOOTAGE_VIDEO.test(path)) return 'operational'
   if (DASHBOARDS.includes(path)) return 'dashboard'
   if (DETAIL.test(path)) return 'detail'
   return 'table'

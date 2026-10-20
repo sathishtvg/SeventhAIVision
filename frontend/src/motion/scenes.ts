@@ -64,6 +64,7 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/evidence-packages': scene('casefile', 'Evidence Packages', 'Loading evidence packages'),
   '/evidence-holds': scene('casefile', 'Evidence Holds', 'Loading evidence holds'),
   '/footage': scene('film', 'Footage Review', 'Loading the videos'),
+  '/footage/search': scene('search', 'Footage Search', 'Getting the search ready'),
   '/cases': scene('casefile', 'Cases', 'Loading cases'),
   '/detections': scene('search', 'Detections', 'Loading detections'),
   '/evidence': scene('film', 'Evidence', 'Loading evidence'),
@@ -182,6 +183,7 @@ const RECORD_SCENES: [RegExp, PageScene][] = [
   [/^\/drone-patrols\/[^/]+$/, scene('drone', 'Drone Patrol', 'Reaching the drone', { urgent: true })],
   [/^\/drone-events\/[^/]+$/, scene('warning', 'Drone Event', 'Loading the event', { tone: 'warn' })],
   [/^\/platform\/tenants\/[^/]+$/, scene('building', 'Tenant', 'Loading the tenant')],
+  [/^\/footage\/[^/]+$/, scene('film', 'Footage', 'Opening the video')],
 ]
 
 /** What a page that is not listed gets: the product's own mark, so a page added later still arrives as one of these. */
