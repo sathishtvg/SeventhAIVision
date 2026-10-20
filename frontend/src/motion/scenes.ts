@@ -63,6 +63,7 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/investigations': scene('casefile', 'Investigations', 'Loading investigations'),
   '/evidence-packages': scene('casefile', 'Evidence Packages', 'Loading evidence packages'),
   '/evidence-holds': scene('casefile', 'Evidence Holds', 'Loading evidence holds'),
+  '/footage': scene('film', 'Footage Review', 'Loading the videos'),
   '/cases': scene('casefile', 'Cases', 'Loading cases'),
   '/detections': scene('search', 'Detections', 'Loading detections'),
   '/evidence': scene('film', 'Evidence', 'Loading evidence'),

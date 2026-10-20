@@ -157,6 +157,9 @@ const ALL_PERMISSIONS = [
   'case:read', 'case:work', 'case:manage',
   // Retention and subject reports (migration 0156). The platform owner, an operator, a guard and the client role hold neither.
   'retention:read', 'subject:report',
+  // Footage Review (migration 0163). The platform owner, a guard and the client role hold none; deleting a video
+  // before its 30 days are up is the admin's alone.
+  'footage:upload', 'footage:view', 'footage:review', 'footage:delete',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -197,7 +200,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
   // manager (migration 0063) — same grant set as admin; mirrors the DB seed
   // that clones role 2's role_permissions rows for role 8.
   8: ALL_PERMISSIONS.filter((p) => !['tenant:manage', 'license:manage', 'support:manage',
-     'platform:read', 'billing:read', 'billing:manage'].includes(p)),
+     'platform:read', 'billing:read', 'billing:manage', 'footage:delete'].includes(p)),
   3: [ // supervisor
     'alert_rule:read',
     'camera:read', 'camera:update',
@@ -281,6 +284,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'workforce:read', 'workforce:answer', 'workforce:own', // Workforce readings (0154): reads, answers; and their own
     'case:read', 'case:work', 'case:manage', // Cases (0155): reads, works, assigns and approves closing
     'retention:read', // Data retention (0156): reads the statement; asks about nobody
+    'footage:upload', 'footage:view', 'footage:review', // Footage Review (0163): uploads, watches, reviews; deletes nothing
   ],
   4: [ // operator
     'camera:read',
@@ -337,6 +341,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'board:read', 'briefing:read', // Operations board and briefing (0152): reads
     'workforce:own', // Workforce readings (0154): their own reading, nobody else's
     'case:read', 'case:work', // Cases (0155): reads; works the cases they are on
+    'footage:upload', 'footage:view', 'footage:review', // Footage Review (0163): uploads, watches, reviews; deletes nothing
   ],
   5: [ // security_guard
     'camera:read',
@@ -419,6 +424,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'board:read', 'briefing:read', // Operations board and briefing (0152): reads
     'case:read', // Cases (0155): reads
     'retention:read', // Data retention (0156): reads the statement
+    'footage:view', // Footage Review (0163): watches and searches
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',

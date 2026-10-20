@@ -39,6 +39,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import LiveTvIcon from '@mui/icons-material/LiveTv'
 import VideoFileIcon from '@mui/icons-material/VideoFile'
+import VideoLibraryIcon from '@mui/icons-material/VideoLibrary'
 import SecurityIcon from '@mui/icons-material/Security'
 import VpnKeyIcon from '@mui/icons-material/VpnKey'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
@@ -237,6 +238,7 @@ const NAV_SECTIONS: {
       { label: 'Search Records', path: '/investigate',     icon: <ManageSearchIcon fontSize="small" />,  permission: 'investigation:read' },
       { label: 'Investigations', path: '/investigations',  icon: <FolderSpecialIcon fontSize="small" />, permission: 'investigation:read' },
       { label: 'Evidence Packages', path: '/evidence-packages', icon: <Inventory2Icon fontSize="small" />, permission: 'evidence:package:read' },
+      { label: 'Footage Review', path: '/footage',         icon: <VideoLibraryIcon fontSize="small" />, permission: 'footage:view' },
       { label: 'Cases',          path: '/cases',           icon: <FolderSharedIcon fontSize="small" />,  permission: 'case:read' },
       { label: 'Detections',  path: '/detections', icon: <SearchIcon fontSize="small" />,        permission: 'detection:read' },
       { label: 'Evidence',    path: '/evidence',   icon: <PhotoLibraryIcon fontSize="small" />,  permission: 'evidence:read' },

@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.routers import data_governance as api
-from app.services import continuous_recording, drone_retention, drone_runner, evidence_hold, fleet_retention, record_retention, recording_policy
+from app.services import continuous_recording, drone_retention, drone_runner, evidence_hold, fleet_retention, footage, record_retention, recording_policy
 from app.services import retention_statement as statement
 from app.services import subject_records as subjects
 from tests.test_drone_api import ADMIN, GUARD, MANAGER, OPERATOR, SUPERVISOR, VIEWER, _client, _run, _sql, _world
@@ -74,7 +74,8 @@ async def test_the_statement_gives_every_period_as_the_job_that_applies_it_reads
     async with _client() as c:
         first = (await c.get(f"{BASE}/retention", headers=w["h"][ADMIN])).json()
     by = {p["key"]: p for p in first["periods"]}
-    assert list(by) == ["EVIDENCE", "RECORDINGS", "DRONE_FOOTAGE", "DRONE_TRACKS", "DRONE_RECEIPTS", "AUDIT"]
+    assert list(by) == ["EVIDENCE", "RECORDINGS", "DRONE_FOOTAGE", "DRONE_TRACKS", "DRONE_RECEIPTS", "FOOTAGE_REVIEW",
+                        "AUDIT"]
     # Nothing set: each falls back to the installation's default, and says that the job's own is the one in force.
     assert (by["EVIDENCE"]["period"]["amount"], by["EVIDENCE"]["period"]["unit"]) == (settings.EVIDENCE_RETENTION_DAYS, "days")
     assert by["RECORDINGS"]["period"]["amount"] == continuous_recording.DEFAULT_RETENTION_DAYS
@@ -86,15 +87,18 @@ async def test_the_statement_gives_every_period_as_the_job_that_applies_it_reads
     assert by["DRONE_FOOTAGE"]["setting_key"] == "evidence.retention_days"
     assert (by["DRONE_RECEIPTS"]["period"]["amount"], by["DRONE_RECEIPTS"]["period"]["source"],
             by["DRONE_RECEIPTS"]["period"]["note"]) == (drone_runner.RECEIPT_RETENTION.days, "FIXED", None)
+    assert (by["FOOTAGE_REVIEW"]["period"]["amount"], by["FOOTAGE_REVIEW"]["period"]["source"],
+            by["FOOTAGE_REVIEW"]["period"]["note"]) == (footage.RETENTION_DAYS, "FIXED", None) == (30, "FIXED", None)
     assert (by["AUDIT"]["period"]["amount"], by["AUDIT"]["period"]["unit"], by["AUDIT"]["per_organisation"]) == (
         settings.AUDIT_RETENTION_YEARS, "years", False)
     assert "Not deleted" in by["AUDIT"]["how"] and all(by[k]["per_organisation"] for k in by if k != "AUDIT")
     # What a hold stops is what the jobs ask about, in the jobs' own words.
     assert {k: p["hold_stops_it"] for k, p in by.items()} == {
-        "EVIDENCE": True, "RECORDINGS": True, "DRONE_FOOTAGE": True, "DRONE_TRACKS": False, "DRONE_RECEIPTS": False, "AUDIT": False}
+        "EVIDENCE": True, "RECORDINGS": True, "DRONE_FOOTAGE": True, "DRONE_TRACKS": False, "DRONE_RECEIPTS": False,
+        "FOOTAGE_REVIEW": True, "AUDIT": False}
     held = {p.key: p.hold for p in statement.PERIODS}
-    assert (held["EVIDENCE"], held["RECORDINGS"], held["DRONE_FOOTAGE"]) == (
-        evidence_hold.FRAMES_AND_CLIPS, evidence_hold.RECORDINGS, evidence_hold.DRONE_MEDIA)
+    assert (held["EVIDENCE"], held["RECORDINGS"], held["DRONE_FOOTAGE"], held["FOOTAGE_REVIEW"]) == (
+        evidence_hold.FRAMES_AND_CLIPS, evidence_hold.RECORDINGS, evidence_hold.DRONE_MEDIA, evidence_hold.FOOTAGE)
     assert by["EVIDENCE"]["held_now"] == 0 and by["DRONE_TRACKS"]["held_now"] is None
     assert "became an incident" in by["DRONE_FOOTAGE"]["kept_past"] and by["EVIDENCE"]["kept_past"] is None
     assert first["not_law"] == statement.NOT_LAW and first["everything_else"] == statement.EVERYTHING_ELSE
@@ -198,6 +202,7 @@ def test_everything_a_job_deletes_is_in_the_statement():
     assert deleted["drone_event_media"] == deleted["drone_telemetry"] == {"drone_retention.py"}
     assert "drone runner" in by["DRONE_FOOTAGE"].removed_by and "drone runner" in by["DRONE_TRACKS"].removed_by
     assert deleted["drone_sync_receipts"] == {"drone_runner.py"}
+    assert deleted["footage_videos"] == {"footage_retention.py"} and by["FOOTAGE_REVIEW"].removed_by.startswith("The scheduler")
     # Of what the expansion added, one job removes anything: the one that applies a period the organisation set,
     # to the four kinds that may have one. It names the table it removes from, and nothing else of the expansion's.
     assert not set(deleted) & set(_expansion_tables())
@@ -209,6 +214,8 @@ def test_everything_a_job_deletes_is_in_the_statement():
     scheduler = (APP / "scheduler_main.py").read_text(encoding="utf-8")
     assert "not_held(FRAMES_AND_CLIPS" in scheduler and "not_held(RECORDINGS" in (APP / "services" / "continuous_recording.py").read_text(encoding="utf-8")
     assert "not_held(DRONE_MEDIA" in (APP / "services" / "drone_retention.py").read_text(encoding="utf-8")
+    assert "not_held(FOOTAGE" in (APP / "services" / "footage_retention.py").read_text(encoding="utf-8")
+    assert "footage_retention.run(" in scheduler
 
 
 async def test_every_table_the_expansion_added_is_stated_as_kept_with_whether_it_names_a_person():
