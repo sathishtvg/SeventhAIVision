@@ -407,6 +407,34 @@ services:
       - evidence_data:/data/evidence
     restart: unless-stopped
 
+  # The footage worker (FOOTAGE_REVIEW.md): analyses the videos uploaded to Footage Review one at a time, and turns a
+  # typed description into a vector for the API's search (port 8090, this network only - published nowhere).
+  # Opt-in, and not one of the core services: on a small machine start it only while footage is being analysed
+  # or searched:
+  #   docker compose -f docker/docker-compose.yml --profile footage up -d --no-deps footage-worker
+  # It raises no alert and no incident. ONNX Runtime, not PyTorch; the model is part of its image.
+  footage-worker:
+    profiles: ["footage"]
+    build: { context: .., dockerfile: docker/footage-worker.Dockerfile }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_APP_USER:-svc_app}:${POSTGRES_APP_PASSWORD:-change_me_dev_only}@postgres:5432/${POSTGRES_DB:-seventh_ai_vision}"
+      EVIDENCE_ROOT: /data/evidence
+      STORAGE_BACKEND: "${STORAGE_BACKEND:-local}"
+      S3_ENDPOINT_URL: "${S3_ENDPOINT_URL:-http://minio:9000}"
+      S3_BUCKET: "${S3_BUCKET:-evidence}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+      FOOTAGE_THREADS: "${FOOTAGE_THREADS:-2}"
+      FOOTAGE_MAX_SECONDS: "${FOOTAGE_MAX_SECONDS:-21600}"
+    volumes:
+      - evidence_data:/data/evidence
+    mem_limit: 1536m
+    restart: unless-stopped
+
   # The AI security intelligence runner: reads the security events the platform
   # has already recorded and writes them in one common shape for the tenants
   # that have switched `intel.enabled` on. It is extra by design — it takes no

@@ -10,8 +10,9 @@
  * in Footage Review until a person does something with it.
  */
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  Alert, Box, Button, Chip, LinearProgress, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
+  Alert, Box, Button, Chip, LinearProgress, Link, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
   TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
@@ -22,6 +23,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { ErrorState, RefreshingLine } from '@/components/states'
 import { WhyDialog } from '@/components/investigations/InvestigationDialogs'
 import UploadDialog from '@/components/footage/UploadDialog'
+import { FootageNav } from '@/components/footage/FootageNav'
 import { keptText } from '@/components/footage/footageFormat'
 import { fmt } from '@/components/evidence/evidenceFormat'
 import { useAuthStore } from '@/store/auth'
@@ -39,6 +41,7 @@ const STATUS_WORDS: Record<FootageStatus, string> = {
 
 export default function FootageList() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const me = useAuthStore((s) => s.user?.id)
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<FootageStatus | ''>('')
@@ -66,6 +69,7 @@ export default function FootageList() {
                   action={may?.upload ? (
                     <Button variant="contained" startIcon={<CloudUploadIcon />} onClick={() => setUploading(true)}>
                       Upload a video</Button>) : undefined} />
+      <FootageNav />
       <GlassCard sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField size="small" label="Search titles, places and file names" value={q} sx={{ minWidth: 280 }}
@@ -98,7 +102,12 @@ export default function FootageList() {
                   return (
                     <TableRow key={v.id} data-testid="footage-row">
                       <TableCell sx={{ maxWidth: 320 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.title}</Typography>
+                        {v.status === 'UPLOADING' ? (
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.title}</Typography>
+                        ) : (
+                          <Link component="button" variant="body2" sx={{ fontWeight: 600, textAlign: 'left' }}
+                                onClick={() => navigate(`/footage/${v.id}`)}>{v.title}</Link>
+                        )}
                         <Typography variant="caption" color="text.secondary">
                           {v.original_filename} · {sizeText(v.size_bytes)}{v.filmed_at ? ` · filmed ${fmt(v.filmed_at)}` : ''}</Typography>
                       </TableCell>
