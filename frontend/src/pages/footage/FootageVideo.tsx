@@ -18,10 +18,11 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { ErrorState } from '@/components/states'
 import { FootageNav } from '@/components/footage/FootageNav'
 import { SearchPanel } from '@/components/footage/SearchPanel'
+import { Timeline } from '@/components/footage/Timeline'
 import { keptText } from '@/components/footage/footageFormat'
 import { fmt } from '@/components/evidence/evidenceFormat'
 import { useAuthStore } from '@/store/auth'
-import { clock, getFootage, reanalyse, sizeText, videoUrl } from '@/api/footage'
+import { clock, getFindings, getFootage, reanalyse, sizeText, videoUrl } from '@/api/footage'
 
 export default function FootageVideo() {
   const { id = '' } = useParams()
@@ -38,6 +39,12 @@ export default function FootageVideo() {
     queryFn: () => getFootage(id),
     refetchInterval: (q) => (q.state.data && ['QUEUED', 'PROCESSING'].includes(q.state.data.status) ? 5000 : false),
   })
+  const ready = video?.status === 'READY'
+  const { data: found, isLoading: findingsLoading, isLoadingError: findingsFailed, error: findingsError, refetch: refetchFindings } = useQuery({
+    queryKey: ['footage-findings', id],
+    queryFn: () => getFindings(id),
+    enabled: ready,
+  })
   // The address carries the token as it was when the video was opened, or reopened after a failure.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const source = useMemo(() => videoUrl(id, token), [id, attempt])
@@ -46,7 +53,8 @@ export default function FootageVideo() {
     const el = player.current
     if (!el) return
     el.currentTime = second
-    void el.play().catch(() => undefined)
+    // play() answers a promise in a browser and nothing in some others; a refusal to start is not an error here.
+    el.play()?.catch(() => undefined)
   }
 
   return (
@@ -89,6 +97,17 @@ export default function FootageVideo() {
             {video.status === 'FAILED' && <Alert severity="error">{video.error ?? 'This video could not be analysed.'}</Alert>}
             {video.status === 'UPLOADING' && <Alert severity="info">This video is still being uploaded.</Alert>}
           </GlassCard>
+          {ready && (
+            <GlassCard sx={{ p: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>What was found</Typography>
+              {findingsLoading ? <Skeleton height={96} /> : findingsFailed ? (
+                <ErrorState compact error={findingsError} onRetry={refetchFindings} />
+              ) : found && (
+                <Timeline videoId={id} duration={Number(video.duration_seconds ?? 0)} findings={found.findings}
+                          onSeek={(second) => (player.current ? seekTo(second) : navigate(`/footage/${id}?t=${second}`))} />
+              )}
+            </GlassCard>
+          )}
           {video.status === 'READY' && (
             <GlassCard sx={{ p: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Search in this video</Typography>

@@ -5,7 +5,8 @@ import { render, screen, fireEvent, waitFor, within } from '@/test/utils'
 import { theme } from '@/theme/glassmorphism'
 import { useAuthStore } from '@/store/auth'
 import * as api from '@/api/footage'
-import type { FootageVideo, SearchAnswer, SearchMoment } from '@/api/footage'
+import type { Finding, FootageVideo, SearchAnswer, SearchMoment } from '@/api/footage'
+import { along, eventText } from '@/components/footage/footageFormat'
 import FootageSearch from './FootageSearch'
 import FootageVideoPage from './FootageVideo'
 
@@ -53,7 +54,17 @@ function show(path: string) {
     </MemoryRouter>, { wrapper: ({ children }) => <>{children}</> })
 }
 
-beforeEach(() => vi.clearAllMocks())
+const finding = (over: Partial<Finding>): Finding => ({
+  id: 'f1', kind: 'PEOPLE', kind_words: 'People present', start_second: 3, end_second: 5, best_second: 4, score: 0.92,
+  most: 2, reasons: { seen_in_seconds: 3, most_at_once: 2 }, model_version: 'yolov8s-coco-onnx', verdict: null,
+  verdict_words: null, verdict_note: null, verdict_at: null, verdict_by_name: null, at: null, ...over,
+})
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(api.getFindings).mockResolvedValue({ video_id: 'v1', status: 'READY', duration_seconds: 125, findings: [],
+                                                 counts: [], may: { upload: true, review: true, delete: false, hold: false } })
+})
 
 describe('Footage Review: search by description', () => {
   it('sends the words, shows each moment by its best frame and strength, and opens the video just before it', async () => {
@@ -150,5 +161,42 @@ describe('Footage Review: one video', () => {
     vi.mocked(api.getFootage).mockRejectedValue(new Error('Network Error'))
     show('/footage/v1')
     expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+})
+
+describe('Footage Review: what was found, on the timeline', () => {
+  it('marks each event where it happens and lists them, each jumping the player there', async () => {
+    vi.mocked(api.getFootage).mockResolvedValue(video({}))
+    vi.mocked(api.getFindings).mockResolvedValue({
+      video_id: 'v1', status: 'READY', duration_seconds: 125, counts: [[3, 1, 0], [4, 2, 0]],
+      may: { upload: true, review: true, delete: false, hold: false },
+      findings: [finding({}), finding({ id: 'f2', kind: 'VEHICLES', kind_words: 'Vehicle present', start_second: 60,
+                                        end_second: 80, best_second: 70, most: 1 })],
+    })
+    show('/footage/v1')
+    const events = await screen.findAllByTestId('event')
+    expect(events).toHaveLength(2)
+    expect(within(events[0]).getByText('People present')).toBeInTheDocument()
+    expect(within(events[0]).getByText('0:03 – 0:05, up to 2 at once')).toBeInTheDocument()
+    expect(events[0].querySelector('img')).toHaveAttribute('src', expect.stringMatching(/frames\/4\.jpg/))
+    const mark = within(screen.getByTestId('timeline')).getByRole('button', { name: 'Vehicle present 1:00 – 1:20' })
+    expect(mark).toHaveStyle({ left: `${along(60, 125)}%` })
+    const player = screen.getByTestId('player') as HTMLVideoElement
+    fireEvent.click(events[1])
+    expect(player.currentTime).toBe(60)
+  })
+
+  it('says when nobody and nothing was seen', async () => {
+    vi.mocked(api.getFootage).mockResolvedValue(video({}))
+    show('/footage/v1')
+    expect(await screen.findByText(/No people or vehicles were seen/)).toBeInTheDocument()
+  })
+
+  it('says an event in a person\'s words', () => {
+    expect(eventText(finding({}))).toBe('People present 0:03 – 0:05, up to 2 at once')
+    expect(eventText(finding({ start_second: 7, end_second: 7, most: 1 }))).toBe('People present 0:07')
+    expect(along(30, 120)).toBe(25)
+    expect(along(500, 120)).toBe(100)
+    expect(along(5, 0)).toBe(0)
   })
 })

@@ -3,9 +3,11 @@
     1. claim it                       QUEUED -> PROCESSING
     2. read what it is                length, size, frame rate, codec      progress  2
     3. its checksum                   SHA-256 of the original               progress  5
-    4. one frame a second             a thumbnail and a SigLIP 2 vector     progress  5 -> 80
-    5. a copy a browser can play      only when the original is not one     progress 80 -> 100
-    6. READY
+    4. one frame a second             a thumbnail, a SigLIP 2 vector, and   progress  5 -> 80
+                                      how many people and vehicles are in it
+    5. events                         the stretches people or vehicles were seen in
+    6. a copy a browser can play      only when the original is not one     progress 80 -> 100
+    7. READY
 
 A file that is not a video, or is longer than may be analysed, is FAILED with
 a reason the person can act on. Anything else that goes wrong puts the video
@@ -18,7 +20,7 @@ from __future__ import annotations
 import logging
 import os
 
-from worker.footage import db, model, store, video
+from worker.footage import db, events, model, store, video
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,11 @@ def _hours(seconds: float) -> str:
     return f"{seconds / 3600:.1f} hours" if seconds >= 3600 else f"{seconds / 60:.0f} minutes"
 
 
-def process(conn, embedder: "model.Embedder", tenant_id, video_id) -> str:
+#: What the findings were made with: the detector's version beside the search model's.
+FINDINGS_MODEL = "yolov8s-coco-onnx"
+
+
+def process(conn, embedder: "model.Embedder", tenant_id, video_id, detector=None) -> str:
     """What became of the video: READY, FAILED, QUEUED (to be tried again) or SKIPPED (not waiting)."""
     v = db.claim(conn, tenant_id, video_id)
     if v is None:
@@ -49,8 +55,11 @@ def process(conn, embedder: "model.Embedder", tenant_id, video_id) -> str:
 
         store.remove_frames(path)
         db.clear_frames(conn, tenant_id, video_id)
+        db.clear_findings(conn, tenant_id, video_id)
         expected = max(1, int(info.duration))
         written, shown, batch = 0, 5, []
+        people: dict[int, tuple[int, float]] = {}
+        vehicles: dict[int, tuple[int, float]] = {}
 
         def flush() -> None:
             nonlocal written, shown, batch
@@ -60,8 +69,12 @@ def process(conn, embedder: "model.Embedder", tenant_id, video_id) -> str:
             rows = []
             for (second, frame), vector in zip(batch, vectors):
                 thumb = store.frame_path(path, second)
-                store.put_frame(thumb, frame)
-                rows.append((second, thumb, vector))
+                store.put_frame(thumb, frame, video.THUMB_WIDTH)
+                n_people = n_vehicles = None
+                if detector is not None:
+                    n_people, n_vehicles, p_score, v_score = detector.count(frame)
+                    people[second], vehicles[second] = (n_people, p_score), (n_vehicles, v_score)
+                rows.append((second, thumb, vector, n_people, n_vehicles))
             db.add_frames(conn, tenant_id, video_id, rows, model.VERSION)
             written += len(batch)
             batch = []
@@ -77,6 +90,9 @@ def process(conn, embedder: "model.Embedder", tenant_id, video_id) -> str:
         flush()
         if written == 0:
             raise video.NotAVideo("No picture could be read from this file.")
+        if detector is not None:
+            found = events.stretches("PEOPLE", people) + events.stretches("VEHICLES", vehicles)
+            db.add_findings(conn, tenant_id, video_id, found, FINDINGS_MODEL)
 
         playable, copy = "ORIGINAL", None
         if not info.playable:

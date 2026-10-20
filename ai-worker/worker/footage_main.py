@@ -19,7 +19,7 @@ import time
 
 import redis
 
-from worker.footage import db, model, pipeline, textserver
+from worker.footage import db, detect, model, pipeline, textserver
 
 logger = logging.getLogger("footage")
 
@@ -36,7 +36,7 @@ def _group(client: redis.Redis) -> None:
             raise
 
 
-def sweep(conn, embedder) -> None:
+def sweep(conn, embedder, detector) -> None:
     for tenant_id, video_id, status, _attempts in db.waiting(conn):
         if status == "PROCESSING":
             became = db.release_stale(conn, tenant_id, video_id)
@@ -44,7 +44,7 @@ def sweep(conn, embedder) -> None:
                 logger.warning("footage %s: a stopped worker was holding it; now %s", video_id, became)
             if became != "QUEUED":
                 continue
-        pipeline.process(conn, embedder, tenant_id, video_id)
+        pipeline.process(conn, embedder, tenant_id, video_id, detector)
 
 
 def main() -> None:
@@ -52,6 +52,9 @@ def main() -> None:
     embedder = model.Embedder()
     # Both halves loaded before the first search, which would otherwise wait for the text half to load.
     embedder.embed_text("ready")
+    detector = detect.Detector() if detect.DEFAULT_PATH.exists() else None
+    if detector is None:
+        logger.warning("no person and vehicle detector at %s: events are not looked for", detect.DEFAULT_PATH)
     textserver.serve(embedder, int(os.environ.get("FOOTAGE_TEXT_PORT", "8090")))
     logger.info("footage worker ready: %s", model.VERSION)
     client = redis.from_url(os.environ.get("REDIS_URL", "redis://redis:6379/0"), socket_timeout=None,
@@ -64,7 +67,7 @@ def main() -> None:
             if conn.closed:
                 conn = db.connect()
             if time.monotonic() - last_sweep >= SWEEP_EVERY:
-                sweep(conn, embedder)
+                sweep(conn, embedder, detector)
                 last_sweep = time.monotonic()
             _group(client)
             answer = client.xreadgroup(GROUP, consumer, {STREAM: ">"}, count=1, block=5000)
@@ -74,7 +77,7 @@ def main() -> None:
                     video_id = fields.get(b"video_id", b"").decode()
                     try:
                         if tenant_id and video_id:
-                            outcome = pipeline.process(conn, embedder, tenant_id, video_id)
+                            outcome = pipeline.process(conn, embedder, tenant_id, video_id, detector)
                             logger.info("footage %s: %s", video_id, outcome)
                     finally:
                         client.xack(STREAM, GROUP, message_id)

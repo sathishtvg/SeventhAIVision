@@ -18,7 +18,7 @@ events and checked for possible altercations. Design and the owner's decisions:
 |---|---|---|
 | 1 | Uploads in parts, storage, the 30-day removal and the `FOOTAGE` hold, the list page, permissions | Built |
 | 2 | Frame sampling, thumbnails, SigLIP 2 vectors, semantic search and its screen | Built |
-| 3 | Event review: people and vehicles on the timeline | Not yet |
+| 3 | Event review: people and vehicles on the timeline | Built |
 | 4 | Fight detection in two stages, and review verdicts | Not yet |
 | 5 | "Analyse this recording" | Not yet |
 | 6 | Helm template, the GCC package, the deployment guide and the controls sheet | Not yet |
@@ -68,6 +68,7 @@ A video somebody may not see is answered as one that does not exist.
 | `POST` | `/footage/search` | `footage:view` |
 | `GET` | `/footage/{id}/frames/{second}.jpg` | `footage:view`, from the token in the address |
 | `GET` | `/footage/{id}/video` | `footage:view`, from the token in the address |
+| `GET` | `/footage/{id}/findings` | `footage:view` |
 
 All under `/api/v1`. A hold on a video is lifted where every hold is lifted:
 `POST /api/v1/evidence-holds/{id}/release`, with a reason. A frame and the video
@@ -114,11 +115,12 @@ services and is started when needed:
   A video a stopped worker was holding goes back in the queue; after three tries
   it is *Could not be analysed*.
 - **What it does to a video:** reads what it is (ffprobe), takes its SHA-256,
-  takes **one frame a second**, keeps each as a thumbnail and its SigLIP 2
-  vector in `footage_frames`, and — when the original is not something every
-  browser plays (H.264 in MP4 or MOV) — makes a copy that is. A file that is
-  not a video, or is longer than may be analysed, is *Could not be analysed*
-  with the reason.
+  takes **one frame a second**, keeps each as a thumbnail with its SigLIP 2
+  vector and how many people and vehicles are in it (`footage_frames`), joins
+  those seconds into events (`footage_findings`), and — when the original is
+  not something every browser plays (H.264 in MP4 or MOV) — makes a copy that
+  is. A file that is not a video, or is longer than may be analysed, is *Could
+  not be analysed* with the reason.
 - **It answers the API's searches**: a typed description in, its vector out,
   on port **8090** of the stack's own network. That port is published nowhere,
   and the words are not logged there.
@@ -126,6 +128,36 @@ services and is started when needed:
   PostgreSQL refuses `COPY` into a table under a row-level policy, so frames are
   inserted.
 - **It raises no alert, incident or notification.**
+
+## The person and vehicle detector
+
+The same weights the live AI workers run: YOLOv8s (`ai-worker/yolov8s.pt`,
+Ultralytics, **AGPL-3.0** — see *Left for the owner*). It is converted to ONNX
+when the worker's image is built, in a stage of its own that holds PyTorch; the
+worker itself has none. A machine that already has the AI workers' image builds
+it with nothing downloaded:
+
+    docker build --build-arg DETECTOR_EXPORT_BASE=docker-ai-worker-behavior:latest -f docker/footage-worker.Dockerfile .
+
+Each sampled second is read 640 pixels wide and shown to the detector, which
+counts **people** (COCO person) and **vehicles** (bicycle, car, motorcycle, bus,
+truck) with a score of at least 0.35.
+
+## Events
+
+- **Seconds in which some were seen are one event** when no more than **3
+  seconds** without any lie between them — a person walking behind a pillar is
+  one event, not three. An event says when it begins and ends, how many were
+  seen at once at most, and which second shows the most (its picture).
+- **A count is how many were seen in one frame, never who.** Somebody who passes
+  in less than a second may be missed, and a count is not how many different
+  people came by.
+- **On a video's page** the events are marks on a timeline — a row for people,
+  one for vehicles — and a list in the order they happen, each with its
+  picture; choosing one jumps the player there.
+- On Ultralytics' own street photo (a bus and the people beside it) the
+  detector counted the people and the bus, through the real worker on
+  20 October 2026.
 
 ## The model
 
@@ -203,6 +235,8 @@ All approved in the design. Each is an addition:
   `footage`.
 - Migration `0164` — what the worker found out about a video is kept on it:
   `codec`, `frames_indexed`, `index_model`, `playable`, `proxy_path`.
+- Migration `0165` — `footage_frames` gains the counts of people and vehicles;
+  `footage_findings` is new. Both tables are this module's own.
 - Web: the routes, the menu entry under Investigate, the pages' scenes (a
   video's page arrives as playback does), the built-in permissions of each role,
   and the label of the `FOOTAGE` kind on Evidence Holds.

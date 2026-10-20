@@ -16,6 +16,8 @@ import numpy as np
 
 #: Width of the frame kept for each second: big enough to see, small enough to keep thousands.
 THUMB_WIDTH = 320
+#: Width each second is read at: what the person and vehicle detector is given.
+SAMPLE_WIDTH = 640
 #: Containers and the one codec every browser plays without help.
 PLAYABLE_CONTAINERS = {"mov", "mp4", "m4a", "3gp", "3g2", "mj2"}
 PLAYABLE_CODECS = {"h264"}
@@ -42,10 +44,16 @@ class Probe:
         return bool(containers & PLAYABLE_CONTAINERS) and self.codec in PLAYABLE_CODECS and \
             self.pixel_format in (None, "yuv420p", "yuvj420p")
 
-    def thumb_size(self) -> tuple[int, int]:
-        width = min(THUMB_WIDTH, self.width) // 2 * 2
+    def size_at(self, most: int) -> tuple[int, int]:
+        width = max(2, min(most, self.width) // 2 * 2)
         height = max(2, round(width * self.height / self.width / 2) * 2)
         return width, height
+
+    def thumb_size(self) -> tuple[int, int]:
+        return self.size_at(THUMB_WIDTH)
+
+    def sample_size(self) -> tuple[int, int]:
+        return self.size_at(SAMPLE_WIDTH)
 
 
 def _rate(text: str | None) -> float | None:
@@ -82,8 +90,8 @@ def probe(source: str, timeout: int = 120) -> Probe:
 
 
 def frames_per_second(source: str, info: Probe, every: float = 1.0) -> Iterator[tuple[int, np.ndarray]]:
-    """(second, frame) for every `every` seconds, as RGB at the thumbnail's size. The n-th frame is second n."""
-    width, height = info.thumb_size()
+    """(second, frame) for every `every` seconds, as RGB at most SAMPLE_WIDTH wide. The n-th frame is second n."""
+    width, height = info.sample_size()
     size = width * height * 3
     process = subprocess.Popen(
         ["ffmpeg", "-nostdin", "-v", "error", "-i", source, "-an", "-sn", "-dn",

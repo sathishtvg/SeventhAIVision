@@ -144,7 +144,21 @@ def test_the_screen_is_in_the_menu_and_the_route_table():
 
 def test_the_state_of_each_phase_is_said():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", "2": "Built", "3": "Not yet", "4": "Not yet", "5": "Not yet", "6": "Not yet"}
+    assert phases == {"1": "Built", "2": "Built", "3": "Built", "4": "Not yet", "5": "Not yet", "6": "Not yet"}
+
+
+def test_the_events_are_as_the_document_says():
+    doc = " ".join(_doc().split())
+    worker = REPO_ROOT / "ai-worker" / "worker" / "footage"
+    events = (worker / "events.py").read_text(encoding="utf-8")
+    assert re.search(r"^GAP = 3$", events, re.M) and "no more than **3 seconds** without any lie between them" in doc
+    detect = (worker / "detect.py").read_text(encoding="utf-8")
+    assert 'SCORE = float(os.environ.get("FOOTAGE_DETECT_SCORE", "0.35"))' in detect and "score of at least 0.35" in doc
+    assert "PEOPLE = {0}" in detect and "VEHICLES = {1, 2, 3, 5, 7}" in detect
+    assert "**A count is how many were seen in one frame, never who.**" in doc
+    dockerfile = (REPO_ROOT / "docker" / "footage-worker.Dockerfile").read_text(encoding="utf-8")
+    assert "ARG DETECTOR_EXPORT_BASE=python:3.11-slim" in dockerfile and "COPY ai-worker/yolov8s.pt" in dockerfile
+    assert "--build-arg DETECTOR_EXPORT_BASE=docker-ai-worker-behavior:latest" in doc and "**AGPL-3.0**" in doc
 
 
 def test_the_worker_and_the_model_are_as_the_document_says():

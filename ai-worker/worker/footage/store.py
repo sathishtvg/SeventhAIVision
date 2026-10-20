@@ -71,11 +71,15 @@ def sha256(path: str) -> str:
     return digest.hexdigest()
 
 
-def put_frame(path: str, frame: np.ndarray) -> None:
+def put_frame(path: str, frame: np.ndarray, width: int = 320) -> None:
+    """The frame kept for one second, at most `width` wide."""
     from PIL import Image
 
+    picture = Image.fromarray(frame)
+    if picture.width > width:
+        picture = picture.resize((width, max(2, round(picture.height * width / picture.width))), Image.BILINEAR)
     buffer = io.BytesIO()
-    Image.fromarray(frame).save(buffer, format="JPEG", quality=75)
+    picture.save(buffer, format="JPEG", quality=75)
     data = buffer.getvalue()
     if BACKEND == "s3":
         _client().put_object(Bucket=BUCKET, Key=path, Body=data, ContentType="image/jpeg")

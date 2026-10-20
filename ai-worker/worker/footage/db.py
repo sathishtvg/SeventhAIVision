@@ -94,16 +94,33 @@ def _vector(v: np.ndarray) -> str:
     return "[" + ",".join(f"{x:.7g}" for x in v.tolist()) + "]"
 
 
-def add_frames(conn: psycopg.Connection, tenant_id, video_id, rows: Sequence[tuple[int, str, np.ndarray]],
-               model_version: str) -> None:
-    """(second, thumbnail path, vector) for each sampled second. INSERT, not COPY: PostgreSQL refuses COPY into a
-    table under a row-level policy."""
+def add_frames(conn: psycopg.Connection, tenant_id, video_id,
+               rows: Sequence[tuple[int, str, np.ndarray, int | None, int | None]], model_version: str) -> None:
+    """(second, thumbnail path, vector, people, vehicles) for each sampled second. INSERT, not COPY: PostgreSQL
+    refuses COPY into a table under a row-level policy."""
     with as_tenant(conn, tenant_id) as cur:
         cur.executemany(
-            "INSERT INTO footage_frames (tenant_id, video_id, second, thumb_path, embedding, model_version) "
-            "VALUES (%s, %s, %s, %s, CAST(%s AS vector), %s)",
-            [(str(tenant_id), str(video_id), second, path, _vector(vector), model_version)
-             for second, path, vector in rows])
+            "INSERT INTO footage_frames (tenant_id, video_id, second, thumb_path, embedding, model_version, people, "
+            "vehicles) VALUES (%s, %s, %s, %s, CAST(%s AS vector), %s, %s, %s)",
+            [(str(tenant_id), str(video_id), second, path, _vector(vector), model_version, people, vehicles)
+             for second, path, vector, people, vehicles in rows])
+
+
+def clear_findings(conn: psycopg.Connection, tenant_id, video_id) -> None:
+    with as_tenant(conn, tenant_id) as cur:
+        cur.execute("DELETE FROM footage_findings WHERE video_id = %s AND tenant_id = %s", (video_id, tenant_id))
+
+
+def add_findings(conn: psycopg.Connection, tenant_id, video_id, findings: Sequence, model_version: str) -> None:
+    """Events (worker.footage.events.Event), as findings of the video."""
+    import json
+
+    with as_tenant(conn, tenant_id) as cur:
+        cur.executemany(
+            "INSERT INTO footage_findings (tenant_id, video_id, kind, start_second, end_second, best_second, score, "
+            "most, reasons, model_version) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CAST(%s AS jsonb), %s)",
+            [(str(tenant_id), str(video_id), f.kind, f.start, f.end, f.best, round(f.score, 4), f.most,
+              json.dumps(f.reasons), model_version) for f in findings])
 
 
 def finish(conn: psycopg.Connection, tenant_id, video_id, *, frames: int, model_version: str, playable: str,
