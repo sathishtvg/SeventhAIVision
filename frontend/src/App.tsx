@@ -110,6 +110,7 @@ import Investigation from '@/pages/investigations/Investigation'
 import EvidencePackages from '@/pages/evidencePackages/EvidencePackages'
 import EvidencePackage from '@/pages/evidencePackages/EvidencePackage'
 import EvidenceHolds from '@/pages/evidencePackages/EvidenceHolds'
+import FootageList from '@/pages/footage/FootageList'
 import SecurityMap from '@/pages/securityMap/SecurityMap'
 import SitePlaces from '@/pages/securityMap/SitePlaces'
 import ResponseDesk from '@/pages/response/ResponseDesk'
@@ -295,6 +296,7 @@ export default function App() {
         <Route path="evidence-packages" element={<EvidencePackages />} />
         <Route path="evidence-packages/:id" element={<EvidencePackage />} />
         <Route path="evidence-holds" element={<EvidenceHolds />} />
+        <Route path="footage" element={<FootageList />} />
         {/* The security map: what is where, in layers, and the places of a site. */}
         <Route path="security-map" element={<SecurityMap />} />
         <Route path="site-places" element={<SitePlaces />} />

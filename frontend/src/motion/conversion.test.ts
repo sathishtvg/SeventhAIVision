@@ -35,8 +35,8 @@ describe('every page says so when a request fails', () => {
   it('counts what has been done', () => {
     const fetching = pages.filter((p) => fetches(p.text))
     const done = fetching.filter((p) => saysItFailed(p.text))
-    expect(pages.length).toBe(124)
-    expect(fetching.length).toBe(117)
+    expect(pages.length).toBe(125)
+    expect(fetching.length).toBe(118)
     expect(done.length).toBe(fetching.length - Object.keys(NOT_YET_CONVERTED).length - Object.keys(NOT_A_PAGE).length)
     const places = everything.reduce((n, f) => n + (f.text.match(/<(ErrorState|TableErrorRow)\b/g) ?? []).length, 0)
     expect(places).toBeGreaterThanOrEqual(220)

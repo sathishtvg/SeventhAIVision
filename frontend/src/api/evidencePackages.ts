@@ -12,7 +12,7 @@ import { apiClient } from './client'
 const BASE = '/api/v1/evidence-packages'
 const HOLDS = '/api/v1/evidence-holds'
 
-export type EvidenceKind = 'SNAPSHOT' | 'CLIP' | 'RECORDING' | 'DRONE_MEDIA'
+export type EvidenceKind = 'SNAPSHOT' | 'CLIP' | 'RECORDING' | 'DRONE_MEDIA' | 'FOOTAGE'
 export type PackageStatus = 'DRAFT' | 'SEALED'
 export type ItemState = 'SHOWN' | 'NOT_PERMITTED' | 'NOT_AVAILABLE'
 export type CustodyStep =

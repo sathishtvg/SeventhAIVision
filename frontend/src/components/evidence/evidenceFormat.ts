@@ -4,7 +4,7 @@
 import type { CustodyStep, EvidenceKind, Step } from '@/api/evidencePackages'
 
 export const KIND_LABEL: Record<EvidenceKind, string> = {
-  SNAPSHOT: 'Frame', CLIP: 'Clip', RECORDING: 'Recording', DRONE_MEDIA: 'Drone media',
+  SNAPSHOT: 'Frame', CLIP: 'Clip', RECORDING: 'Recording', DRONE_MEDIA: 'Drone media', FOOTAGE: 'Uploaded video',
 }
 
 /** Each step of custody, as a person would say it. */

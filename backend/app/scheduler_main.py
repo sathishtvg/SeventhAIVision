@@ -1319,6 +1319,20 @@ async def run_once(redis: Redis | None = None) -> None:
             except Exception:
                 logger.exception("fleet retention failed (non-fatal, maintenance continues)")
 
+    # Footage Review (services/footage_retention.py): a video 30 days after its upload began, and an upload left
+    # unfinished for a day, unless an evidence hold is on it. On the superuser session, as above.
+    async with admin_session() as db:
+        if db is None:
+            logger.warning("footage retention skipped: no POSTGRES_USER/PGPASSWORD")
+        else:
+            try:
+                from app.services import footage_retention
+                removed = await footage_retention.run(db)
+                if removed["removed"] or removed["failed"]:
+                    logger.info("footage retention: %s", removed)
+            except Exception:
+                logger.exception("footage retention failed (non-fatal, maintenance continues)")
+
     try:
         result = await run_database_backup()
         logger.info("run_database_backup: %s (%d bytes)", result["filename"], result["size_bytes"])
