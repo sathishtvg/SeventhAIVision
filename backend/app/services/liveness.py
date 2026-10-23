@@ -8,11 +8,18 @@ precedent of running a face model synchronously inside an API request).
 Model file (NOT included — must be sourced and placed manually before this
 feature works, same as the LPR plate-detector weight in Phase 1):
     backend/models/liveness_minifasnet.onnx
-Expected shape: 128x128 RGB, single sigmoid/softmax "real" probability
-output — matches https://github.com/facenox/face-antispoof-onnx's
-best_model_quantized.onnx (~600KB). The input size is read from the model
-itself at load time rather than hardcoded, so a differently-shaped variant
-still works without a code change.
+Expected: https://github.com/facenox/face-antispoof-onnx's best_model_quantized.onnx
+(~600KB): input 128x128 RGB in [0, 1], CHW; output two RAW LOGITS, index 0 = real,
+index 1 = spoof (its src/inference/inference.py: `logit_diff = real_logit -
+spoof_logit`, `is_real = logit_diff >= logit(threshold)`). Its face crop is a
+square of 1.5x the face box's longer side, centred, edges reflect-padded
+(src/inference/preprocess.py). This follows both.
+
+FIXED 23 October 2026: this read output[1] - the SPOOF logit - and returned it
+as the "real" probability. A real face scored about -4.5 and was refused; a spoof
+would have passed. It now returns the model's real probability,
+sigmoid(real - spoof), in 0..1, so attendance.liveness_min_score (0.70) means
+what it says. The input size is still read from the model itself.
 """
 import os
 import threading
@@ -55,15 +62,39 @@ def _load_session():
     return _session, _input_name, _input_hw
 
 
-def _crop_face(img_rgb: np.ndarray, bbox: np.ndarray, pad_ratio: float = 0.25) -> np.ndarray:
-    x1, y1, x2, y2 = bbox
+#: The model's own crop: a square this many times the face box's longer side, centred on the face.
+CROP_EXPANSION = 1.5
+
+
+def _crop_face(img_rgb: np.ndarray, bbox: np.ndarray, expansion: float = CROP_EXPANSION) -> np.ndarray:
+    """A square crop around the face, as the model was trained on: edges that fall outside the photo are
+    filled by reflection rather than cut off, so the face stays centred."""
+    x1, y1, x2, y2 = (float(v) for v in bbox[:4])
     w, h = x2 - x1, y2 - y1
-    pad_x, pad_y = w * pad_ratio, h * pad_ratio
-    x1 = max(0, int(x1 - pad_x))
-    y1 = max(0, int(y1 - pad_y))
-    x2 = min(img_rgb.shape[1], int(x2 + pad_x))
-    y2 = min(img_rgb.shape[0], int(y2 + pad_y))
-    return img_rgb[y1:y2, x1:x2]
+    if w <= 0 or h <= 0:
+        return np.zeros((0, 0, 3), dtype=img_rgb.dtype)
+    size = int(max(w, h) * expansion)
+    left = int(x1 + w / 2 - size / 2)
+    top = int(y1 + h / 2 - size / 2)
+    height, width = img_rgb.shape[:2]
+    cx1, cy1 = max(0, left), max(0, top)
+    cx2, cy2 = min(width, left + size), min(height, top + size)
+    if cx2 <= cx1 or cy2 <= cy1:
+        return np.zeros((0, 0, 3), dtype=img_rgb.dtype)
+    crop = img_rgb[cy1:cy2, cx1:cx2]
+    return cv2.copyMakeBorder(crop, max(0, -top), max(0, top + size - height), max(0, -left),
+                              max(0, left + size - width), cv2.BORDER_REFLECT_101)
+
+
+def real_probability(scores: np.ndarray) -> float:
+    """The model's 'this is a live face' probability, 0..1. Two raw logits are [real, spoof]: the probability
+    is sigmoid(real - spoof), which is softmax's value for 'real'. A single output is taken as a probability
+    already (a sigmoid variant)."""
+    scores = np.asarray(scores, dtype=np.float64).squeeze()
+    if scores.ndim == 0:
+        return float(scores)
+    real, spoof = float(scores[0]), float(scores[1])
+    return float(1.0 / (1.0 + np.exp(-(real - spoof))))
 
 
 def check_liveness_sync(image_bytes: bytes) -> float:
@@ -78,12 +109,9 @@ def check_liveness_sync(image_bytes: bytes) -> float:
         raise ValueError("Detected face region is empty after cropping")
 
     session, input_name, (h, w) = _load_session()
-    resized = cv2.resize(crop, (w, h)).astype(np.float32) / 255.0
-    tensor = np.transpose(resized, (2, 0, 1))[np.newaxis, ...]  # NCHW
+    interpolation = cv2.INTER_LANCZOS4 if w > crop.shape[1] else cv2.INTER_AREA
+    resized = cv2.resize(crop, (w, h), interpolation=interpolation).astype(np.float32) / 255.0
+    tensor = np.transpose(resized, (2, 0, 1))[np.newaxis, ...]  # NCHW, RGB, 0..1
 
     outputs = session.run(None, {input_name: tensor})
-    scores = np.asarray(outputs[0]).squeeze()
-    if scores.ndim == 0:
-        return float(scores)  # single sigmoid "real" probability
-    # Two-class softmax output — convention: index 1 = "real", index 0 = "spoof"
-    return float(scores[1]) if scores.shape[-1] >= 2 else float(scores[0])
+    return real_probability(outputs[0])

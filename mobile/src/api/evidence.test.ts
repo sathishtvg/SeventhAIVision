@@ -11,7 +11,7 @@
  *   pointed.
  */
 import { apiClient, setApiBaseUrl } from './client'
-import { evidenceFileUrl, getEvidenceFileHeaders } from './evidence'
+import { evidenceFileUrl, evidenceImageUrl, getEvidenceFileHeaders } from './evidence'
 
 test('an evidence picture is asked of the server the app is signed in to', () => {
   setApiBaseUrl('https://vision.example.sg')
@@ -30,4 +30,13 @@ test('the request carries the signed-in token, which an Image cannot add by itse
   expect(getEvidenceFileHeaders()).toEqual({ Authorization: 'Bearer t' })
   delete apiClient.defaults.headers.common['Authorization']
   expect(getEvidenceFileHeaders()).toEqual({})
+})
+
+test('a picture the Evidence screen shows carries the token in its address, and a thumbnail asks for a width', () => {
+  // An <Image> on the phone did not get the pictures with a header; the web's /image endpoint takes the token
+  // in the address instead, and downscales when given w.
+  setApiBaseUrl('http://192.168.1.6:8000')
+  expect(evidenceImageUrl('e3', 'a.b.c', 336)).toBe('http://192.168.1.6:8000/api/v1/evidence/e3/image?token=a.b.c&w=336')
+  expect(evidenceImageUrl('e3', 'a.b.c')).toBe('http://192.168.1.6:8000/api/v1/evidence/e3/image?token=a.b.c')
+  expect(evidenceImageUrl('e3', null, 336)).toBeNull()
 })

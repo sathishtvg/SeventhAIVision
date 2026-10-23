@@ -1,14 +1,33 @@
 import React, { useState } from 'react'
 import {
-  FlatList, Image, Modal, RefreshControl,
+  FlatList, Image, Modal, PixelRatio, RefreshControl,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { getEvidence, evidenceFileUrl, getEvidenceFileHeaders } from '@/api/evidence'
+import { getEvidence, evidenceImageUrl } from '@/api/evidence'
+import { useAuthStore } from '@/store/auth'
 import { Card } from '@/components/Card'
 import { colors, fontSize, spacing, radius } from '@/theme'
 import { ErrorState, ListSkeleton } from '@/components/states'
+
+/** One picture, or a plain "not available" mark if it cannot be had - never a silent blank tile. */
+function EvidenceImage({ uri, style, resizeMode }: {
+  uri: string | null
+  style: object
+  resizeMode: 'cover' | 'contain'
+}) {
+  const [failed, setFailed] = useState(false)
+  if (!uri || failed) {
+    return (
+      <View style={[style, styles.unavailable]}>
+        <Ionicons name="image-outline" size={28} color={colors.textDisabled} />
+        <Text style={styles.unavailableText}>{uri ? 'Picture not available' : 'Loading'}</Text>
+      </View>
+    )
+  }
+  return <Image source={{ uri }} style={style} resizeMode={resizeMode} onError={() => setFailed(true)} />
+}
 
 export function EvidenceScreen() {
   const qc = useQueryClient()
@@ -19,7 +38,9 @@ export function EvidenceScreen() {
     queryFn: () => getEvidence({ limit: 40 }),
   })
 
-  const authHeaders = getEvidenceFileHeaders()
+  // From the store, so the addresses follow the token when it is refreshed.
+  const token = useAuthStore((s) => s.accessToken)
+  const thumbWidth = Math.min(600, Math.round(TILE_SIZE * PixelRatio.get()))
 
   return (
     <View style={styles.root}>
@@ -51,8 +72,8 @@ export function EvidenceScreen() {
               activeOpacity={0.8}
               onPress={() => setPreview(item.id)}
             >
-              <Image
-                source={{ uri: evidenceFileUrl(item.id), headers: authHeaders }}
+              <EvidenceImage
+                uri={evidenceImageUrl(item.id, token, thumbWidth)}
                 style={styles.thumb}
                 resizeMode="cover"
               />
@@ -78,8 +99,9 @@ export function EvidenceScreen() {
             <Ionicons name="close-circle" size={32} color={colors.text} />
           </TouchableOpacity>
           {preview && (
-            <Image
-              source={{ uri: evidenceFileUrl(preview), headers: authHeaders }}
+            <EvidenceImage
+              key={preview}
+              uri={evidenceImageUrl(preview, token, 1600)}
               style={styles.modalImg}
               resizeMode="contain"
             />
@@ -106,6 +128,8 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   thumb:      { width: TILE_SIZE, height: TILE_SIZE },
+  unavailable: { alignItems: 'center', justifyContent: 'center', gap: 4 },
+  unavailableText: { fontSize: fontSize.xs, color: colors.textDisabled },
   tileFooter: {
     flexDirection: 'row',
     alignItems: 'center',

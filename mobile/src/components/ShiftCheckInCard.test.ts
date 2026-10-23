@@ -5,7 +5,7 @@
  * time, and a guard checking in trusts it. Offering yesterday's shift, or
  * tomorrow's while one is running, both look perfectly normal in a screenshot.
  */
-import { shiftForCheckIn } from './ShiftCheckInCard'
+import { isStaleOpenShift, shiftForCheckIn } from './ShiftCheckInCard'
 import type { Shift } from '@/api/patrols'
 
 const NOW = new Date('2026-09-23T14:00:00Z')
@@ -52,6 +52,29 @@ describe('shiftForCheckIn', () => {
     const tomorrow = shift({ id: 'tomorrow', scheduled_start: '2026-09-24T13:00:00Z', scheduled_end: '2026-09-24T21:00:00Z' })
     const tonight = shift({ id: 'tonight', scheduled_start: '2026-09-23T21:00:00Z', scheduled_end: '2026-09-24T05:00:00Z' })
     expect(shiftForCheckIn([tomorrow, tonight], NOW)?.id).toBe('tonight')
+  })
+
+  it('does not offer Check Out for a shift left open weeks ago; it offers the next shift', () => {
+    // Found on the owner's phone, 23 October 2026: a shift from 7 October was never checked out, so the card
+    // showed Check Out to a guard who had not checked in.
+    const forgotten = shift({
+      id: 'forgotten', status: 'active', actual_start: '2026-09-07T13:00:00Z',
+      scheduled_start: '2026-09-07T13:00:00Z', scheduled_end: '2026-09-07T21:00:00Z',
+    })
+    const today = shift({ id: 'today' })
+    expect(isStaleOpenShift(forgotten, NOW)).toBe(true)
+    expect(shiftForCheckIn([forgotten, today], NOW)?.id).toBe('today')
+    expect(shiftForCheckIn([forgotten], NOW)).toBeNull()
+  })
+
+  it('still offers Check Out to a guard working past the end of the shift', () => {
+    // Ended at 08:00, still on site at 14:00: overtime, not a forgotten shift.
+    const overtime = shift({
+      id: 'overtime', status: 'active', actual_start: '2026-09-23T00:00:00Z',
+      scheduled_start: '2026-09-23T00:00:00Z', scheduled_end: '2026-09-23T08:00:00Z',
+    })
+    expect(isStaleOpenShift(overtime, NOW)).toBe(false)
+    expect(shiftForCheckIn([overtime, shift({ id: 'later' })], NOW)?.id).toBe('overtime')
   })
 
   it('ignores completed shifts even when they are the only ones today', () => {

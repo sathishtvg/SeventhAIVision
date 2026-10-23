@@ -88,6 +88,11 @@ export function useShiftCheckIn(onDone?: () => void) {
         setError(typeof detail === 'string' ? detail : 'Liveness check failed — please retake the photo.')
       } else if (status === 403) {
         setError(typeof detail === 'string' ? detail : 'Check-in blocked — fake GPS location detected.')
+      } else if (status === 503) {
+        // The face check is not available on the server (its model is missing): say so, not "try again".
+        setError(typeof detail === 'string' ? detail : 'The selfie check is not available on the server. Tell your supervisor.')
+      } else if (err?.code === 'ECONNABORTED') {
+        setError('The server took too long to check the selfie. Please try again.')
       } else {
         setError('Failed to submit check-in. Please try again.')
       }

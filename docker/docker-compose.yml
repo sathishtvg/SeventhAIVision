@@ -123,7 +123,10 @@ services:
       - employee_docs_data:/data/employee_docs
       - attendance_photos_data:/data/attendance_photos
       - guardhouse_data:/data/guardhouse
-      - models_data:/root/.insightface  # persist insightface model cache (buffalo_l ~330 MB)
+      # insightface keeps buffalo_l (~330 MB, face detection for the check-in liveness check) in ~/.insightface;
+      # the api runs as appuser, so that is /home/appuser. Mounted at /root it was never used, and the model
+      # was downloaded again on the first check-in after every rebuild.
+      - models_data:/home/appuser/.insightface
       - backups_data:/data/backups
     ports: ["8000:8000"]
     restart: unless-stopped

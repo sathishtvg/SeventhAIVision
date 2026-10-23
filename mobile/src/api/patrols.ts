@@ -114,6 +114,10 @@ function buildCheckinFormData(photoUri: string): FormData {
   return form
 }
 
+/** A check-in uploads a photo and the server checks the face in it; the first check after the server starts
+ *  also loads the face models (measured 15-40 s on the dev box). The app's usual 15 s would give up first. */
+export const CHECKIN_TIMEOUT_MS = 60_000
+
 export const startShift = (
   shiftId: string,
   photoUri: string,
@@ -125,6 +129,7 @@ export const startShift = (
     .post(`/api/v1/shifts/${shiftId}/start`, buildCheckinFormData(photoUri), {
       params: { latitude, longitude, is_mock_location: isMockLocation },
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: CHECKIN_TIMEOUT_MS,
     })
     .then((r) => r.data)
 
@@ -139,6 +144,7 @@ export const endShift = (
     .post(`/api/v1/shifts/${shiftId}/end`, buildCheckinFormData(photoUri), {
       params: { latitude, longitude, is_mock_location: isMockLocation },
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: CHECKIN_TIMEOUT_MS,
     })
     .then((r) => r.data)
 

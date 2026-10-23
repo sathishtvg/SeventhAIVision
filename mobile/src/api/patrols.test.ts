@@ -143,3 +143,11 @@ test('getMyShifts merges extra filters without dropping the guard scope', async 
     guard_user_id: 'guard-1',
   })
 })
+
+test('a check-in or check-out waits long enough for the selfie check', async () => {
+  // The face models load on the first check after the server starts, which can take longer than 15 s.
+  await startShift('shift-1', 'file:///p.jpg', false, 1.35, 103.8)
+  await endShift('shift-1', 'file:///p.jpg', false, 1.35, 103.8)
+  expect(mockPost.mock.calls[0][2].timeout).toBeGreaterThanOrEqual(60_000)
+  expect(mockPost.mock.calls[1][2].timeout).toBeGreaterThanOrEqual(60_000)
+})
