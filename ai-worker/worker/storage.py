@@ -34,11 +34,13 @@ def _get_s3():
     if _s3_client is None:
         import boto3
 
+        # An empty setting means none, so boto3 falls back to the pod's IAM role or AWS's own endpoint
+        # (as worker/footage/store.py and backend/app/core/object_store.py do).
         _s3_client = boto3.client(
             "s3",
-            endpoint_url=S3_ENDPOINT_URL,
-            aws_access_key_id=S3_ACCESS_KEY,
-            aws_secret_access_key=S3_SECRET_KEY,
+            endpoint_url=S3_ENDPOINT_URL or None,
+            aws_access_key_id=S3_ACCESS_KEY or None,
+            aws_secret_access_key=S3_SECRET_KEY or None,
         )
     return _s3_client
 

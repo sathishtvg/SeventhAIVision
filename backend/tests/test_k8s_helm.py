@@ -344,3 +344,14 @@ def test_helm_lint_passes():
     assert result.returncode == 0, (
         f"helm lint failed:\n{result.stdout}\n{result.stderr}"
     )
+
+
+def test_with_minio_off_the_s3_keys_come_from_the_values_and_are_empty_by_default():
+    """Empty keys mean the pods' IAM role; keys for another S3-compatible store come from the values."""
+    secret = (CHART_DIR / "templates" / "secret.yaml").read_text(encoding="utf-8")
+    assert '{{ .Values.s3.accessKey | default "" | quote }}' in secret
+    assert '{{ .Values.s3.secretKey | default "" | quote }}' in secret
+    assert _load_values()["s3"] == {"accessKey": "", "secretKey": ""}
+    worker = (REPO_ROOT / "ai-worker" / "worker" / "storage.py").read_text(encoding="utf-8")
+    assert "aws_access_key_id=S3_ACCESS_KEY or None" in worker
+

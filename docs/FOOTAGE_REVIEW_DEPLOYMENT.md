@@ -60,8 +60,8 @@ and runs the GCC compliance checks. We supply the images, the chart with
    endpoint.
 3. **Identity.** The pods use an IAM role through the service account (IRSA,
    `serviceAccount.annotations` in `values-gcc.yaml`), allowed the bucket and its
-   key and nothing else. *See Part D: two changes to existing code are needed
-   before the API can use a role or keys with real S3.*
+   key and nothing else. Leave `s3.accessKey` and `s3.secretKey` empty: with no
+   key the API, the AI workers and the footage worker all use the role (Part D).
 4. **The database.** A managed PostgreSQL 16 with **pgvector** (search) and
    **pg_partman** (partitions). Two jobs run as the database's superuser
    (partition maintenance and the retention removals, Footage Review's
@@ -99,16 +99,18 @@ agency's, with its own tools.
 
 ## Part D — Before it runs on a real bucket
 
-Three things are the owner's, not code that was missing by accident:
+Two were changes to existing code, made with the owner's yes on 23 October
+2026; one is still the owner's:
 
-1. **The chart's S3 keys.** With MinIO off, `templates/secret.yaml` gives the
-   pods empty S3 keys, so the API cannot use a real bucket with keys. A change
-   to that existing template — keys from the agency's secret store when MinIO
-   is off — awaits the owner's yes.
-2. **The API's S3 client and a role.** `backend/app/core/object_store.py` hands
-   boto3 the keys as given; empty keys are not "use the pod's role". A one-line
-   change — no key means the role — awaits the owner's yes. The footage worker
-   already does this.
+1. **The chart's S3 keys — done.** With MinIO off, `templates/secret.yaml` now
+   takes `s3.accessKey` and `s3.secretKey` from the values (empty by default),
+   for an S3-compatible store that needs keys. Give them from the agency's
+   secret store at install (`--set`, or a values file kept out of the
+   repository); on AWS leave them empty and use the role.
+2. **The S3 clients and a role — done.** `backend/app/core/object_store.py` and
+   `ai-worker/worker/storage.py` now treat an empty key or endpoint as none, so
+   boto3 uses the pod's IAM role and AWS's own endpoint. The footage worker
+   already did this.
 3. **The Ultralytics licence.** The person, vehicle and pose detectors are
    AGPL-3.0; Ultralytics states that SaaS and cloud use needs its Enterprise
    licence.
