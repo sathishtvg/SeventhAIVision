@@ -75,7 +75,7 @@ async def test_the_statement_gives_every_period_as_the_job_that_applies_it_reads
         first = (await c.get(f"{BASE}/retention", headers=w["h"][ADMIN])).json()
     by = {p["key"]: p for p in first["periods"]}
     assert list(by) == ["EVIDENCE", "RECORDINGS", "DRONE_FOOTAGE", "DRONE_TRACKS", "DRONE_RECEIPTS", "FOOTAGE_REVIEW",
-                        "AUDIT"]
+                        "STAFF_FACES", "AUDIT"]
     # Nothing set: each falls back to the installation's default, and says that the job's own is the one in force.
     assert (by["EVIDENCE"]["period"]["amount"], by["EVIDENCE"]["period"]["unit"]) == (settings.EVIDENCE_RETENTION_DAYS, "days")
     assert by["RECORDINGS"]["period"]["amount"] == continuous_recording.DEFAULT_RETENTION_DAYS
@@ -89,13 +89,16 @@ async def test_the_statement_gives_every_period_as_the_job_that_applies_it_reads
             by["DRONE_RECEIPTS"]["period"]["note"]) == (drone_runner.RECEIPT_RETENTION.days, "FIXED", None)
     assert (by["FOOTAGE_REVIEW"]["period"]["amount"], by["FOOTAGE_REVIEW"]["period"]["source"],
             by["FOOTAGE_REVIEW"]["period"]["note"]) == (footage.RETENTION_DAYS, "FIXED", None) == (30, "FIXED", None)
+    # Staff faces (0167): gone the night after the account is deactivated.
+    assert (by["STAFF_FACES"]["period"]["amount"], by["STAFF_FACES"]["period"]["source"],
+            by["STAFF_FACES"]["counted_from"]) == (1, "FIXED", "when the person's account is deactivated")
     assert (by["AUDIT"]["period"]["amount"], by["AUDIT"]["period"]["unit"], by["AUDIT"]["per_organisation"]) == (
         settings.AUDIT_RETENTION_YEARS, "years", False)
     assert "Not deleted" in by["AUDIT"]["how"] and all(by[k]["per_organisation"] for k in by if k != "AUDIT")
     # What a hold stops is what the jobs ask about, in the jobs' own words.
     assert {k: p["hold_stops_it"] for k, p in by.items()} == {
         "EVIDENCE": True, "RECORDINGS": True, "DRONE_FOOTAGE": True, "DRONE_TRACKS": False, "DRONE_RECEIPTS": False,
-        "FOOTAGE_REVIEW": True, "AUDIT": False}
+        "FOOTAGE_REVIEW": True, "STAFF_FACES": False, "AUDIT": False}
     held = {p.key: p.hold for p in statement.PERIODS}
     assert (held["EVIDENCE"], held["RECORDINGS"], held["DRONE_FOOTAGE"], held["FOOTAGE_REVIEW"]) == (
         evidence_hold.FRAMES_AND_CLIPS, evidence_hold.RECORDINGS, evidence_hold.DRONE_MEDIA, evidence_hold.FOOTAGE)
@@ -216,6 +219,7 @@ def test_everything_a_job_deletes_is_in_the_statement():
     assert "not_held(DRONE_MEDIA" in (APP / "services" / "drone_retention.py").read_text(encoding="utf-8")
     assert "not_held(FOOTAGE" in (APP / "services" / "footage_retention.py").read_text(encoding="utf-8")
     assert "footage_retention.run(" in scheduler
+    assert deleted["staff_faces"] == {"staff_face_retention.py"} and "staff_face_retention.run(" in scheduler
 
 
 async def test_every_table_the_expansion_added_is_stated_as_kept_with_whether_it_names_a_person():

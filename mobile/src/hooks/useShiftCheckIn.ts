@@ -19,6 +19,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Location from 'expo-location'
 
 import { startShift, endShift } from '@/api/patrols'
+import { faceCheckMessage, getMyFaceChecks } from '@/api/faces'
 
 export type CheckInAction = 'start' | 'end'
 
@@ -77,9 +78,21 @@ export function useShiftCheckIn(onDone?: () => void) {
         : endShift(shiftId, photoUri, false, latitude, longitude)
     },
     onSuccess: () => {
+      const done = flow
       qc.invalidateQueries({ queryKey: ['my-shifts'] })
       setFlow(null)
       onDone?.()
+      // The check-in went through whatever the face check found (allow but flag); the guard is told if it did
+      // not match, or if no face is registered. Best effort: a failed read says nothing.
+      if (done) {
+        getMyFaceChecks(done.shiftId)
+          .then((checks) => {
+            const which = done.action === 'start' ? 'check_in' : 'check_out'
+            const said = faceCheckMessage(checks.filter((c) => c.which === which).pop())
+            if (said) RNAlert.alert(said.title, said.body)
+          })
+          .catch(() => undefined)
+      }
     },
     onError: (err: any) => {
       const status = err?.response?.status

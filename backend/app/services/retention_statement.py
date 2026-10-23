@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.dependencies.sites import is_site_allowed
-from app.services import evidence_hold, footage, footage_retention, record_retention
+from app.services import evidence_hold, footage, footage_retention, record_retention, staff_face_retention
 from app.services.subject_records import names_people
 
 #: Where a period was read from.
@@ -105,6 +105,11 @@ PERIODS: tuple[Period, ...] = (
            "when its upload began", footage_retention.REMOVED_BY,
            "The file and everything worked out from it are deleted, then its record. An upload left unfinished for "
            "a day is removed the same way", evidence_hold.FOOTAGE, None, None, True),
+    # Staff face registration (docs/plans/2026-10-23-staff-face-registration-design.md, migration 0167).
+    Period("STAFF_FACES", "Faces registered for check-in", ("staff_faces",),
+           "when the person's account is deactivated", staff_face_retention.REMOVED_BY,
+           "The face code and its photo are deleted. The record of the person's consent stays", None, None, None,
+           True),
     Period("AUDIT", "The audit log", ("audit_logs",),
            "when the entry was written", "The scheduler, once a day",
            "Moved out of the log into a file, a month at a time, once every entry of that month is old enough. "
@@ -198,6 +203,8 @@ async def read(db: AsyncSession, allowed: list[str] | None) -> dict:
         "DRONE_RECEIPTS": {"amount": drone_runner.RECEIPT_RETENTION.days, "unit": "days", "source": "FIXED",
                            "set_at": None},
         "FOOTAGE_REVIEW": {"amount": footage.RETENTION_DAYS, "unit": "days", "source": "FIXED", "set_at": None},
+        # Removed by the first daily cycle after the account is deactivated.
+        "STAFF_FACES": {"amount": 1, "unit": "days", "source": "FIXED", "set_at": None},
         "AUDIT": {"amount": settings.AUDIT_RETENTION_YEARS, "unit": "years", "source": "INSTALLATION",
                   "set_at": None},
     }

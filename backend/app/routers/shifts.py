@@ -24,6 +24,7 @@ from app.services.alarm_shift import arm_site_panels, disarm_site_panels
 from app.services.geofence import is_within_site
 from app.services.handover import gather_site_position, snapshot_checklist
 from app.services.liveness import check_liveness_sync
+from app.services.staff_faces import check_at_checkin as _face_check
 from app.services.violations import VIOLATION_POINTS, create_violation
 
 from app.services.sos import raise_guard_sos
@@ -144,6 +145,11 @@ async def _process_checkin_photo(
     dest = Path(settings.ATTENDANCE_PHOTOS_ROOT) / relative_path
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(image_bytes)
+
+    # Staff face registration (docs/plans/2026-10-23-staff-face-registration-design.md): the selfie is compared
+    # with the face on file for the shift's guard and the outcome recorded with the shift. Allow but flag, the
+    # owner's choice: this never refuses a check-in, whatever it finds or however it fails.
+    await _face_check(db, shift_id=shift_id, which=which, image_bytes=image_bytes)
     return relative_path, score
 
 

@@ -355,4 +355,6 @@ def test_the_files_the_document_names_exist_and_the_record_names_what_changed():
     for path in PHONE_CHANGED:
         assert re.search(r"privacyZone|useMaskedCameras|CameraPrivacyZones", (REPO_ROOT / path).read_text(encoding="utf-8")), path
     assert "chose that it draw, list and delete" in flat and "The phone has 57 screens." in flat
-    assert len(list((PHONE / "screens").glob("*Screen.tsx"))) == 57
+    # 57 when that was written (10 October 2026). A screen added since (My Face, 23 October) does not make it
+    # untrue of that day, so the count may only grow.
+    assert len(list((PHONE / "screens").glob("*Screen.tsx"))) >= 57

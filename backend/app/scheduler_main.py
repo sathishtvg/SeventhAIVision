@@ -1351,6 +1351,20 @@ async def run_once(redis: Redis | None = None) -> None:
             except Exception:
                 logger.exception("footage retention failed (non-fatal, maintenance continues)")
 
+    # Staff faces (services/staff_face_retention.py): the registered face of a deactivated account. On the
+    # superuser session, as above.
+    async with admin_session() as db:
+        if db is None:
+            logger.warning("staff face removal skipped: no POSTGRES_USER/PGPASSWORD")
+        else:
+            try:
+                from app.services import staff_face_retention
+                removed = await staff_face_retention.run(db)
+                if removed["removed"] or removed["failed"]:
+                    logger.info("staff face removal: %s", removed)
+            except Exception:
+                logger.exception("staff face removal failed (non-fatal, maintenance continues)")
+
     try:
         result = await run_database_backup()
         logger.info("run_database_backup: %s (%d bytes)", result["filename"], result["size_bytes"])
