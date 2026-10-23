@@ -39,7 +39,7 @@ function VerdictForm({ videoId, finding, onClose, onJudged }: Props & { finding:
           {looked ? ` “${looked}”` : ' a fight'} than like people hugging, dancing or walking, and the bodies of people
           within reach of each other showed fast arm movement
           {typeof finding.reasons.moments_with_fast_arms_within_reach === 'number'
-            ? ` (${finding.reasons.moments_with_fast_arms_within_reach} times in a fifth of a second)` : ''}.
+            ? ` (in ${finding.reasons.moments_with_fast_arms_within_reach} of the frames checked, five a second)` : ''}.
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Your verdict is kept, with your name, and is what the detection is tuned against. It raises no alert and no

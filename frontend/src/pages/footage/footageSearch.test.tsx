@@ -215,7 +215,7 @@ describe('Footage Review: a verdict on a possible altercation', () => {
     expect(await screen.findByText('Not reviewed yet')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Give a verdict' }))
     expect(screen.getByText(/people pushing each other/)).toBeInTheDocument()
-    expect(screen.getByText(/4 times in a fifth of a second/)).toBeInTheDocument()
+    expect(screen.getByText(/in 4 of the frames checked, five a second/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Note (optional)'), { target: { value: ' Moving a pallet ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Not an altercation' }))
     await waitFor(() => expect(api.judgeFinding).toHaveBeenCalledWith('v1', 'f9', 'REJECTED', 'Moving a pallet'))

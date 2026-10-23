@@ -43,9 +43,9 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "15 October 2026"
-EDITION = "Edition 14"
-HEAD = "0162"
+GENERATED = "23 October 2026"
+EDITION = "Edition 15"
+HEAD = "0166"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -124,6 +124,11 @@ EDITIONS = [
      "live map, journeys played back, geofences a wobbling fix does not trip, and "
      "what else the site recorded around an entry or exit, never called confirmed. "
      "The vendor's console becomes module 31."],
+    ["Edition 15", "23 October 2026", "0166",
+     "Adds module 31, Footage Review: uploaded video searched by description, "
+     "with events and possible altercations for a person to judge, kept 30 days. "
+     "The vendor's console becomes module 32. <b>Corrects</b> what is said of "
+     "language models."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -308,13 +313,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("293", "DATABASE TABLES"), ("1,092", "API OPERATIONS"), ("113", "API MODULES"),
-        ("119", "WEB ROUTES"), ("57", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("296", "DATABASE TABLES"), ("1,108", "API OPERATIONS"), ("114", "API MODULES"),
+        ("122", "WEB ROUTES"), ("57", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("216", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("162", "MIGRATIONS"),
-        ("6,597", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("220", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("166", "MIGRATIONS"),
+        ("6,666", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -366,9 +371,9 @@ story += [Spacer(1, 8), KeepTogether([
     "<b>At a glance</b> — one page for the person who signs.",
     "<b>Part 1, modules 01 to 13</b> — the platform as the first edition described "
     "it, brought up to date.",
-    "<b>Part 2, modules 14 to 31</b> — what has been added since: patrols from a "
+    "<b>Part 2, modules 14 to 32</b> — what has been added since: patrols from a "
     "screen and from the air, security intelligence, the enterprise expansion — "
-    "from investigation to cases — and the fleet.",
+    "from investigation to cases — the fleet, and footage review.",
     "<b>Where AI is used, and where a person decides</b> — every place a model or a "
     "rule does work, what it is trusted with, and what stays a person's. "
     "<b>AI capabilities added or upgraded later are recorded here.</b>",
@@ -434,10 +439,10 @@ story.append(data_table(
     widths=[46 * mm, 48 * mm, 76 * mm]))
 story += [
     Spacer(1, 8),
-    Paragraph("The platform in thirty-one lines", S["h2"]),
+    Paragraph("The platform in thirty-two lines", S["h2"]),
 ]
 story += bullets([
-    "<b>Identity and access</b> — 8 roles, 216 permissions, SSO, 2FA, audit log, "
+    "<b>Identity and access</b> — 8 roles, 220 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
     "playback, privacy zones painted out of the picture, NVR.",
@@ -459,6 +464,8 @@ story += bullets([
     "<b>Virtual Patrolling</b> — a scheduled camera-by-camera inspection from a "
     "screen, with a report.",
     "<b>Drone Patrol</b> — planned flights whose camera the AI watches like any other.",
+    "<b>Footage Review</b> — uploaded video searched by description, events on a "
+    "timeline, possible altercations for a person to judge; kept 30 days.",
     "<b>AI Security Intelligence</b> — events related into situations, assessed, "
     "with a suggestion a person decides on.",
     "<b>Smart Investigation</b> — one search across fourteen sources, and the "
@@ -522,12 +529,12 @@ story += module(
         "only, and the application's database role cannot empty a table.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 216 permission codes.",
+        "per tenant, across 220 permission codes.",
         "<b>Site scope.</b> A user can be held to particular sites; every list, "
         "search and record honours it.",
         "<b>The platform operator is not a customer's administrator.</b> Super "
         "Admin runs the platform from a tenant of its own and holds none of a "
-        "customer's day-to-day permissions (module 31).",
+        "customer's day-to-day permissions (module 32).",
         "<b>Single sign-on and SCIM</b> for automated user provisioning and "
         "de-provisioning from the customer's own directory.",
         "<b>Two-factor authentication (TOTP)</b> — required, not optional, for "
@@ -843,7 +850,7 @@ story += module(
         "<b>Client portal</b> — the customer signs in and sees their own sites, "
         "incidents and invoices, and nothing else.",
         "<b>What the vendor charges the agency</b> — plans, module prices, "
-        "subscriptions and the vendor's own invoices — is module 31.",
+        "subscriptions and the vendor's own invoices — is module 32.",
     ])
 
 story += module(
@@ -874,7 +881,7 @@ story.append(PageBreak())
 # ═══ PART 2 ═════════════════════════════════════════════════════════════════
 story += part(
     "Part 2 — Added since the first edition",
-    "Seventeen modules built after the first edition. Each was added beside what "
+    "Eighteen modules built after the first edition. Each was added beside what "
     "already worked: new tables, new API modules and new screens, with the "
     "existing ones left as they were. Every one keeps the same rule — the "
     "platform detects, relates, assesses and recommends, and a person decides.")
@@ -1519,7 +1526,44 @@ story += module(
     tag="ADDED IN EDITION 14 · MIGRATIONS 0159 TO 0162")
 
 story += module(
-    "31", "Platform operations — the vendor's console",
+    "31", "Footage Review — uploaded video",
+    "Video that did not come from a live camera — a client's export, a phone "
+    "recording, or a saved recording — searched by description, with events and "
+    "possible altercations found in it. Nothing found raises an alert or an "
+    "incident: it waits for a person.",
+    [
+        "<b>Uploads in 16 MB parts</b> that carry on where they stopped: MP4, MOV, "
+        "MKV and AVI, up to 4 GB and 6 hours, to disk or S3.",
+        "<b>Kept 30 days</b>, then removed with everything worked out from it, each "
+        "removal audited; an evidence hold keeps a video until it is lifted. A "
+        "saved recording can be copied in, masked as it was recorded.",
+        "<b>Search by description.</b> SigLIP 2 (Google, Apache-2.0), run inside the "
+        "platform, turns one frame a second and the typed words into vectors; the "
+        "nearest frames are ranked by the model's own probability, said as strong, "
+        "possible or weak. Nothing below weak is offered, a search with no strong or "
+        "possible match says so, and every search is audited with its wording.",
+        "<b>Events</b> — the live workers' person and vehicle detector counts people "
+        "and vehicles in each sampled second; the seconds with some are events on "
+        "the video's timeline. A count is how many, never who.",
+        "<b>Possible altercations</b>, in two stages: frames compared with "
+        "descriptions of fighting and of its look-alikes (hugging, dancing, a crowd "
+        "walking); where that holds and two people are there, a pose model looks five "
+        "times a second for people within reach and a fast arm. Never an assault, "
+        "never a name: a person marks each confirmed or not, audited.",
+        "<b>Its own worker</b> — ONNX Runtime and ffmpeg, no PyTorch, every model in "
+        "its image and checked against published checksums; it reaches nothing on "
+        "the internet, and only the API reaches it. A chart, GCC values, S3 settings "
+        "and a controls sheet make the deployment package.",
+        "<i>Documented limitations:</i> the search and the altercation check are not "
+        "yet measured on real footage, and every threshold is a first setting; the "
+        "worker is not a core service; two changes to existing code await the owner "
+        "before a real S3 bucket can be used; the detectors are AGPL-3.0, and SaaS "
+        "use needs Ultralytics' licence; the package has never been run.",
+    ],
+    tag="ADDED IN EDITION 15 · MIGRATIONS 0163 TO 0166")
+
+story += module(
+    "32", "Platform operations — the vendor's console",
     "Seventh AI sells this to security companies, so the vendor and the "
     "customer are different businesses and do not share a login, a permission "
     "set or a bill.",
@@ -1666,6 +1710,20 @@ story.append(data_table(
         ["Daily intelligence and the site security score",
          "Counting over a stated period of history",
          "Reads it as history, not as a forecast"],
+        ["Searching uploaded video by description (module 31)",
+         "<b>Edition 15:</b> SigLIP 2, an image-and-text model inside the "
+         "platform, ranks frames by likeness to the typed words, its probability "
+         "said in words. It writes nothing; nothing leaves the platform",
+         "Judges each moment by watching it; nothing follows from a match"],
+        ["People and vehicles in uploaded video (module 31)",
+         "The person and vehicle detector, one frame a second; seconds joined "
+         "into events. Counts, never identities",
+         "Watches the events; places an evidence hold on a video that matters"],
+        ["Possible altercations in uploaded video (module 31)",
+         "The image-and-text model screens for fighting against its look-alikes; "
+         "a pose model looks for people within reach and a fast arm. Not yet "
+         "measured",
+         "Marks each one confirmed or not an altercation. No alert, no incident"],
     ],
     widths=[44 * mm, 72 * mm, 54 * mm]))
 story += [
@@ -1673,9 +1731,10 @@ story += [
     Paragraph("What the platform does not do today", S["h2"]),
 ]
 story += bullets([
-    "<b>No language model.</b> There is none in the platform and no dependency "
-    "on one. Nothing is sent to an outside AI service. A typed question is "
-    "parsed, not understood; a summary is a template, not prose.",
+    "<b>No language model that writes or answers.</b> Nothing is sent to an "
+    "outside AI service. A typed question is parsed, not understood; a summary is "
+    "a template, not prose. The one model that reads words, Footage Review's "
+    "SigLIP 2 (module 31), only ranks frames, inside the platform.",
     "<b>Nothing decides for a person.</b> No part of the platform dispatches a "
     "guard, opens or closes an incident, flies a drone to an unplanned place, "
     "operates a door, admits or refuses a visitor, raises maintenance work, "
@@ -1704,15 +1763,13 @@ story += [
     Paragraph(
         "The enterprise expansion was fourteen phases, built and merged one at a "
         "time, and all fourteen are built. Phases 1 to 13 are modules 17 to 29 "
-        "above. Phase 14 added no module: it follows eleven chains end to end as "
-        "tests — from what a camera saw, through the decision, the guard sent, the "
-        "investigation, the evidence and the case, to the case's report — and "
-        "holds that every step that mattered was a person's. Nothing is in "
-        "progress, and nothing waits on a decision. Privacy zones, found to be "
+        "above. Phase 14 added no module: it tests eleven chains end to end, from "
+        "what a camera saw to a case's report, and holds that every step that "
+        "mattered was a person's. Nothing is in progress. Privacy zones, found to be "
         "recorded and not applied, were decided and built the same day "
-        "(module 02). The GPS fleet upgrade asked for on 14 October 2026 was six "
-        "phases, each merged after its tests passed, and all six are built "
-        "(module 30).", S["body"]),
+        "(module 02). The GPS fleet upgrade (14 October 2026) and Footage Review "
+        "(20 October 2026) were six phases each, every phase merged after its tests "
+        "passed; all are built (modules 30 and 31).", S["body"]),
     Paragraph("Decided by the owner on 9 October 2026, and carried out", S["h2"]),
     Paragraph(
         "Each of these was found while building and left as it was, because "
@@ -1763,9 +1820,8 @@ story += bullets([
     "handover notes, procedures and visitor authorisation — the four screens "
     "added in edition 7: a person's own reading, published briefings, work "
     "orders and case tasks given to them — and privacy zones drawn and deleted "
-    "on the phone (edition 9) are type-checked, their rules tested "
-    "and each held to the server by a test, but "
-    "have not been run on a device since the app moved to Expo SDK 57. Guards "
+    "on the phone (edition 9) are type-checked and tested against the server, "
+    "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
     "<b>A code-signing certificate.</b> Desktop 1.0.8 is built and carries every "
     "screen of this edition. Its installer is not code-signed, so Windows warns "
@@ -1775,6 +1831,9 @@ story += bullets([
     "alarm panels have not been connected.",
     "<b>A cluster install.</b> The Helm chart lints and renders in CI and has "
     "not yet been installed on a cluster.",
+    "<b>Footage Review (module 31).</b> The owner's yes to two changes to existing "
+    "code before a real S3 bucket can be used; Ultralytics' licence for SaaS; and "
+    "footage of real altercations, to measure the check against.",
 ])
 story.append(PageBreak())
 
@@ -1785,7 +1844,7 @@ story.append(Spacer(1, 8))
 story.append(data_table(
     ["Application", "Platform", "Scale", "Notes"],
     [
-        ["Web console", "Browser (React)", "119 routes",
+        ["Web console", "Browser (React)", "122 routes",
          "The full platform. Every module, every administrative surface."],
         ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "57 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
@@ -1809,7 +1868,7 @@ story.append(Paragraph("How the web console moves, waits and fails", S["h1"]))
 story.append(rule(thickness=2))
 story.append(Spacer(1, 8))
 story.append(Paragraph(
-    "One set of rules for all 119 routes, kept in one place in the code, so the "
+    "One set of rules for all 122 routes, kept in one place in the code, so the "
     "same thing looks and reads the same wherever it happens. What each page has "
     "is listed page by page in <font face='Courier'>PAGE_AWARE_ANIMATION_MATRIX.md</font>, "
     "which is written from the pages and checked against them by a test.", S["body"]))
@@ -1924,8 +1983,9 @@ story += bullets([
     "<b>Drone Patrol has flown only in a simulator.</b>",
     "<b>Access control and alarm panels</b> have no real hardware behind them on "
     "the development system.",
-    "<b>There is no language model.</b> Questions are parsed by fixed rules; "
-    "summaries are templates; a procedure is found by its words.",
+    "<b>No language model writes or answers:</b> questions are parsed by rules, "
+    "summaries are templates. Footage Review's search and altercation check are "
+    "<b>not yet measured</b> on real footage.",
     "<b>An unidentified person cannot be followed across cameras.</b> A plate "
     "can; a watchlist entry can.",
     "<b>Guards are not tracked continuously.</b> A guard's position is the last "
@@ -1978,10 +2038,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 162 "
-    "database migrations, 293 tables, 113 API modules serving 1,092 operations, 122 backend "
-    "services, 119 web routes and 57 phone screens, covered by 6,597 automated tests "
-    "(backend 4,110, repository inspection 1,358, web 738, phone 391). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 166 "
+    "database migrations, 296 tables, 114 API modules serving 1,108 operations, 125 backend "
+    "services, 122 web routes and 57 phone screens, covered by 6,666 automated tests "
+    "(backend 4,138, repository inspection 1,370, web 767, phone 391). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
