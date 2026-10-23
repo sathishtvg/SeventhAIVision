@@ -20,7 +20,7 @@ events and checked for possible altercations. Design and the owner's decisions:
 | 2 | Frame sampling, thumbnails, SigLIP 2 vectors, semantic search and its screen | Built |
 | 3 | Event review: people and vehicles on the timeline | Built |
 | 4 | Fight detection in two stages, and review verdicts | Built |
-| 5 | "Analyse this recording" | Not yet |
+| 5 | "Analyse this recording" | Built |
 | 6 | Helm template, the GCC package, the deployment guide and the controls sheet | Not yet |
 
 A finished upload waits as **Waiting to be analysed** until the footage worker
@@ -70,6 +70,7 @@ A video somebody may not see is answered as one that does not exist.
 | `GET` | `/footage/{id}/video` | `footage:view`, from the token in the address |
 | `GET` | `/footage/{id}/findings` | `footage:view` |
 | `POST` | `/footage/{id}/findings/{finding_id}/verdict` | `footage:review` |
+| `POST` | `/footage/from-recording` | `footage:upload`, `recording:read` |
 
 All under `/api/v1`. A hold on a video is lifted where every hold is lifted:
 `POST /api/v1/evidence-holds/{id}/release`, with a reason. A frame and the video
@@ -243,6 +244,25 @@ searched. Opened from a search, the player starts a few seconds before the
 moment. Opening a video is audited; the player's later requests for other parts
 of the same file are not.
 
+## A saved recording
+
+**Analyse a saved recording** on the list offers the finished recordings the
+person may see (it needs `footage:upload` and `recording:read`). The one chosen
+is copied into Footage Review, byte for byte, after the answer is sent; until
+the copy is whole it is shown as *Copying the recording*, and then it is
+analysed like an upload. A copy that cannot be made says so.
+
+- **The 30 days are the copy's.** A camera's recordings are usually kept for
+  days, not weeks; the recording keeps its own retention, and when it is
+  removed the copy stays until its own 30 days are up.
+- **It is masked.** Recordings are masked when they are recorded
+  (`PRIVACY_MASKING.md`), so the copy, its frames and its search results are
+  of the masked picture.
+- **One copy at a time.** A recording already in Footage Review is not copied
+  again (unless its copy failed); the answer names the video it is in.
+- It is filmed at the recording's start, at the camera's site, and named after
+  the camera.
+
 ## Keeping and removal
 
 - A video is kept **30 days** from when its upload began, shown on the list as
@@ -273,6 +293,11 @@ All approved in the design. Each is an addition:
   `footage`.
 - Migration `0164` — what the worker found out about a video is kept on it:
   `codec`, `frames_indexed`, `index_model`, `playable`, `proxy_path`.
+- `PRIVACY_MASKING.md` — a paragraph saying a copied recording is masked, and an
+  upload has no zone.
+- Migration `0166` — `footage_videos.source` may be `RECORDING`, with the
+  recording it was copied from (`recording_id`, set to NULL when the recording
+  is removed).
 - Migration `0165` — `footage_frames` gains the counts of people and vehicles;
   `footage_findings` is new. Both tables are this module's own. The application
   may change only a verdict on a finding, never the finding.

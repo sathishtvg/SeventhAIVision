@@ -23,6 +23,12 @@ QUEUED and announced on the Redis stream `footage_jobs`. If the announcement is
 lost, the video is still QUEUED, and the worker looks for QUEUED videos it has
 not been told about when it starts and from time to time.
 
+A SAVED RECORDING MAY BE COPIED IN, to be analysed like an upload: the copy is
+Footage Review's and the 30-day rule applies to it, while the recording keeps
+its own retention. Recordings are masked when they are recorded
+(PRIVACY_MASKING.md), so the copy is masked too; it is a plain copy of the
+file, nothing is decoded here.
+
 A VIDEO IS KEPT FOR RETENTION_DAYS from when its upload began, then removed with
 everything worked out from it, unless an evidence hold of kind FOOTAGE is in
 force on it (services/footage_retention.py). An upload nobody has added to for
@@ -60,6 +66,8 @@ STATUS_LABEL = {
     "FAILED": "Could not be analysed",
 }
 JOBS_STREAM = "footage_jobs"
+#: Where the recorder keeps saved recordings (app/routers/streams.py).
+RECORDINGS_ROOT = os.environ.get("RECORDINGS_ROOT", "/data/recordings")
 
 TITLE_LIMIT = 200
 PLACE_LIMIT = 200
@@ -165,6 +173,27 @@ async def finish(path: str, upload_id: str | None, parts: list[dict]) -> None:
 def with_part(parts: list[dict], part: dict) -> list[dict]:
     """The parts so far, with this one in place of any sent before at its number."""
     return [p for p in parts if p["PartNumber"] != part["PartNumber"]] + [part]
+
+
+def recording_file(rel_path: str) -> Path:
+    """A saved recording's file, from the path the recorder stored; never a path from a request."""
+    root = Path(RECORDINGS_ROOT).resolve()
+    full = (root / rel_path).resolve()
+    if root not in full.parents:
+        raise ValueError(f"{rel_path!r} is not under the recordings root")
+    return full
+
+
+def copy_in(source: Path, path: str) -> None:
+    """Copy a recording into Footage Review's storage. Synchronous: called in a thread."""
+    if _s3():
+        from app.core.object_store import _get_client
+
+        _get_client().upload_file(str(source), settings.S3_BUCKET, path, ExtraArgs={"ContentType": "video/mp4"})
+        return
+    target = _local(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
 
 
 # ── removing ──────────────────────────────────────────────────────────────────

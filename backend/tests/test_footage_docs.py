@@ -144,7 +144,7 @@ def test_the_screen_is_in_the_menu_and_the_route_table():
 
 def test_the_state_of_each_phase_is_said():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", "2": "Built", "3": "Built", "4": "Built", "5": "Not yet", "6": "Not yet"}
+    assert phases == {"1": "Built", "2": "Built", "3": "Built", "4": "Built", "5": "Built", "6": "Not yet"}
 
 
 def test_the_two_stages_are_as_the_document_says():
@@ -208,3 +208,16 @@ def test_the_worker_and_the_model_are_as_the_document_says():
     assert (finder.STRONG, finder.POSSIBLE, finder.WEAK) == (0.5, 0.1, 0.01)
     assert "**Strong match** at 0.5 or more, **Possible match** at 0.1, **Weak match** at 0.01" in doc
     assert finder.STRENGTH_WORDS == {"HIGH": "Strong match", "MEDIUM": "Possible match", "LOW": "Weak match"}
+
+
+def test_a_saved_recording_is_as_the_document_says():
+    doc = " ".join(_doc().split())
+    privacy = " ".join((REPO_ROOT / "PRIVACY_MASKING.md").read_text(encoding="utf-8").split())
+    assert "A saved recording it analyses is a byte-for-byte copy of the recording" in privacy
+    assert "`FOOTAGE_REVIEW.md`" in privacy and "(`PRIVACY_MASKING.md`)" in doc
+    migration = (REPO_ROOT / "backend" / "alembic" / "versions" / "0166_footage_from_recordings.py").read_text(encoding="utf-8")
+    assert "REFERENCES recordings(id) ON DELETE SET NULL" in migration and "**The 30 days are the copy's.**" in doc
+    router = (REPO_ROOT / "backend" / "app" / "routers" / "footage.py").read_text(encoding="utf-8")
+    assert 'require_permission("footage:upload")), Depends(require_permission("recording:read"))' in router
+    service = (REPO_ROOT / "backend" / "app" / "services" / "footage.py").read_text(encoding="utf-8")
+    assert "shutil.copyfile(source, target)" in service and "ffmpeg" not in service, "a plain copy: nothing decoded"
