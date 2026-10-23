@@ -44,7 +44,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "23 October 2026"
-EDITION = "Edition 15"
+EDITION = "Edition 16"
 HEAD = "0166"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -129,6 +129,8 @@ EDITIONS = [
      "with events and possible altercations for a person to judge, kept 30 days. "
      "The vendor's console becomes module 32. <b>Corrects</b> what is said of "
      "language models."],
+    ["Edition 16", "23 October 2026", "0166",
+     "Windows app 1.0.9. A real S3 bucket is reached with the pods' role (module 31)."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -319,7 +321,7 @@ story += [
     Spacer(1, 6),
     stat_strip([
         ("220", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("166", "MIGRATIONS"),
-        ("6,666", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,670", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1556,8 +1558,8 @@ story += module(
         "and a controls sheet make the deployment package.",
         "<i>Documented limitations:</i> the search and the altercation check are not "
         "yet measured on real footage, and every threshold is a first setting; the "
-        "worker is not a core service; two changes to existing code await the owner "
-        "before a real S3 bucket can be used; the detectors are AGPL-3.0, and SaaS "
+        "worker is not a core service; a real S3 bucket, reached with the pods' role "
+        "since edition 16, has not been tried; the detectors are AGPL-3.0, and SaaS "
         "use needs Ultralytics' licence; the package has never been run.",
     ],
     tag="ADDED IN EDITION 15 · MIGRATIONS 0163 TO 0166")
@@ -1823,7 +1825,7 @@ story += bullets([
     "on the phone (edition 9) are type-checked and tested against the server, "
     "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.8 is built and carries every "
+    "<b>A code-signing certificate.</b> Desktop 1.0.9 is built and carries every "
     "screen of this edition. Its installer is not code-signed, so Windows warns "
     "before it runs - and where Smart App Control is on, may refuse a newly "
     "built installer for some minutes before it allows it.",
@@ -1831,9 +1833,9 @@ story += bullets([
     "alarm panels have not been connected.",
     "<b>A cluster install.</b> The Helm chart lints and renders in CI and has "
     "not yet been installed on a cluster.",
-    "<b>Footage Review (module 31).</b> The owner's yes to two changes to existing "
-    "code before a real S3 bucket can be used; Ultralytics' licence for SaaS; and "
-    "footage of real altercations, to measure the check against.",
+    "<b>Footage Review (module 31).</b> A first run on a real S3 bucket; "
+    "Ultralytics' licence for SaaS; and footage of real altercations, to measure "
+    "the check against.",
 ])
 story.append(PageBreak())
 
@@ -1857,7 +1859,7 @@ story.append(data_table(
          "entrance and loading."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.8, which installs over 1.0.7. It is a copy of the web "
+         "Version 1.0.9, which installs over 1.0.8. It is a copy of the web "
          "console taken when it is built: a fix to the web reaches it in the "
          "next build."],
     ],
@@ -2040,8 +2042,8 @@ story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 166 "
     "database migrations, 296 tables, 114 API modules serving 1,108 operations, 125 backend "
-    "services, 122 web routes and 57 phone screens, covered by 6,666 automated tests "
-    "(backend 4,138, repository inspection 1,370, web 767, phone 391). Capability counts "
+    "services, 122 web routes and 57 phone screens, covered by 6,670 automated tests "
+    "(backend 4,141, repository inspection 1,371, web 767, phone 391). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
