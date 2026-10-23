@@ -10,7 +10,7 @@ app.services.footage_retention.
 Permissions:
     footage:upload       start an upload, send its parts, finish or cancel one's own
     footage:view         list the videos, read one, search them, see their frames and play them
-    footage:review       have a video analysed again
+    footage:review       have a video analysed again; mark a possible altercation confirmed or not
     footage:delete       delete a video before its 30 days are up, or cancel anybody's upload
     evidence:hold:manage keep a video past its 30 days (with footage:view); a hold is
                          lifted where every hold is, POST /api/v1/evidence-holds/{id}/release
@@ -30,6 +30,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
@@ -88,6 +89,8 @@ _VIDEO = """
     v.site_id, s.name AS site_name, v.place, v.filmed_at, v.duration_seconds, v.width, v.height, v.frame_rate,
     v.status, v.progress, v.error, v.sha256, v.storage_path, v.uploaded_by_user_id, u.full_name AS uploaded_by_name,
     v.codec, v.frames_indexed, v.index_model, v.playable,
+    (SELECT count(*) FROM footage_findings ff
+      WHERE ff.video_id = v.id AND ff.kind = 'ALTERCATION' AND ff.verdict IS NULL) AS altercations_to_review,
     v.created_at, v.updated_at, v.upload_completed_at, v.processed_at, v.expires_at,
     h.id AS hold_id, h.reason AS hold_reason, h.placed_at AS hold_placed_at, hu.full_name AS hold_placed_by_name
 """
@@ -681,3 +684,50 @@ async def video_findings(
     return {"video_id": str(video_id), "status": v["status"], "duration_seconds": v["duration_seconds"],
             "findings": findings, "counts": [[r.second, r.people or 0, r.vehicles or 0] for r in counted],
             "may": _may(held)}
+
+
+# ── a person's verdict on a possible altercation ──────────────────────────────
+
+class VerdictBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["CONFIRMED", "REJECTED"]
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.post("/{video_id:uuid}/findings/{finding_id:uuid}/verdict", dependencies=_REVIEW)
+async def judge_finding(
+    video_id: uuid.UUID,
+    finding_id: uuid.UUID,
+    body: VerdictBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Mark a possible altercation confirmed, or not an altercation, with a note.
+    A verdict may be changed; each one is audited, with what it was before.
+    Verdicts are what the thresholds are tuned against. Nothing else follows
+    from one: no alert, no incident."""
+    v = await _one(db, video_id, allowed)
+    f = (await db.execute(text("""
+        SELECT id, kind, verdict, start_second, end_second FROM footage_findings
+         WHERE id = CAST(:f AS uuid) AND video_id = CAST(:v AS uuid) FOR UPDATE
+    """), {"f": str(finding_id), "v": str(video_id)})).mappings().first()
+    if f is None:
+        raise HTTPException(404, "Finding not found")
+    if f["kind"] != "ALTERCATION":
+        raise HTTPException(409, "Only a possible altercation is given a verdict.")
+    note = (body.note or "").strip() or None
+    await db.execute(text("""
+        UPDATE footage_findings
+           SET verdict = :verdict, verdict_note = :note, verdict_by_user_id = CAST(:who AS uuid), verdict_at = now()
+         WHERE id = CAST(:f AS uuid)
+    """), {"verdict": body.verdict, "note": note, "who": token.user_id, "f": str(finding_id)})
+    await intel_audit.record(db, request, token, "footage.verdict", "footage_finding", finding_id, site_id=v["site_id"],
+                             detail={"video_id": str(video_id), "verdict": body.verdict, "was": f["verdict"],
+                                     "note": note, "start_second": f["start_second"], "end_second": f["end_second"]})
+    answer = {"id": str(finding_id), "verdict": body.verdict, "verdict_words": VERDICT_WORDS[body.verdict],
+              "verdict_note": note}
+    await db.commit()
+    return answer

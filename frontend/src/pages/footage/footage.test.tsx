@@ -82,6 +82,15 @@ describe('Footage Review: the list', () => {
     expect(screen.getByText(/raises an alert or an incident/)).toBeInTheDocument()
   })
 
+  it('says how many possible altercations in a video are waiting for a verdict', async () => {
+    vi.mocked(api.listFootage).mockResolvedValue(page([video({ status: 'READY', status_label: 'Ready', altercations_to_review: 2 }),
+                                                       video({ id: 'v2', status: 'READY', status_label: 'Ready', altercations_to_review: 0 })]))
+    show()
+    const rows = await screen.findAllByTestId('footage-row')
+    expect(within(rows[0]).getByText('2 possible altercations to review')).toBeInTheDocument()
+    expect(within(rows[1]).queryByText(/to review/)).not.toBeInTheDocument()
+  })
+
   it('offers only what the person may do', async () => {
     vi.mocked(api.listFootage).mockResolvedValue(page([video({})], { upload: false, review: false, delete: false, hold: false }))
     show()

@@ -8,7 +8,7 @@
  * What is counted is what the detector saw in one frame a second: a count is how
  * many were seen at once, never who.
  */
-import { Box, ButtonBase, Chip, Tooltip, Typography } from '@mui/material'
+import { Box, Button, ButtonBase, Chip, Tooltip, Typography } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import { useAuthStore } from '@/store/auth'
 import { frameUrl } from '@/api/footage'
@@ -27,9 +27,11 @@ interface Props {
   duration: number
   findings: Finding[]
   onSeek: (second: number) => void
+  /** Offered on a possible altercation to who may give a verdict. */
+  onJudge?: (finding: Finding) => void
 }
 
-export function Timeline({ videoId, duration, findings, onSeek }: Props) {
+export function Timeline({ videoId, duration, findings, onSeek, onJudge }: Props) {
   const token = useAuthStore((s) => s.accessToken)
   const rows = ROWS.filter((r) => r.kind !== 'ALTERCATION' || findings.some((f) => f.kind === 'ALTERCATION'))
   // Seconds are counted from 0, so a video of 30 seconds ends at second 29: one second's mark is a whole second wide.
@@ -62,8 +64,10 @@ export function Timeline({ videoId, duration, findings, onSeek }: Props) {
       ) : (
         <Box sx={{ mt: 1.5, display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
           {findings.map((f) => (
-            <ButtonBase key={f.id} onClick={() => onSeek(f.start_second)} data-testid="event"
-                        sx={{ display: 'flex', gap: 1, p: 0.75, borderRadius: 1, border: 1, borderColor: 'divider',
+            <Box key={f.id} sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <ButtonBase onClick={() => onSeek(f.start_second)} data-testid="event"
+                        sx={{ display: 'flex', gap: 1, p: 0.75, borderRadius: 1, border: 1,
+                              borderColor: f.kind === 'ALTERCATION' && !f.verdict ? 'error.main' : 'divider',
                               justifyContent: 'flex-start', textAlign: 'left' }}>
               <Box component="img" src={frameUrl(videoId, f.best_second, token)} alt="" loading="lazy"
                    sx={{ width: 88, height: 66, objectFit: 'cover', borderRadius: 0.5, bgcolor: 'action.hover', flexShrink: 0 }} />
@@ -73,8 +77,15 @@ export function Timeline({ videoId, duration, findings, onSeek }: Props) {
                   {eventText(f).slice(f.kind_words.length + 1)}</Typography>
                 {f.verdict_words && <Chip size="small" sx={{ mt: 0.5 }} label={f.verdict_words}
                                           color={f.verdict === 'CONFIRMED' ? 'error' : 'default'} />}
+                {f.kind === 'ALTERCATION' && !f.verdict && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block' }}>Not reviewed yet</Typography>)}
               </Box>
             </ButtonBase>
+            {f.kind === 'ALTERCATION' && onJudge && (
+              <Button size="small" onClick={() => onJudge(f)} sx={{ alignSelf: 'flex-start' }}>
+                {f.verdict ? 'Change the verdict' : 'Give a verdict'}</Button>
+            )}
+            </Box>
           ))}
         </Box>
       )}

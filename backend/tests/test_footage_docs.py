@@ -59,7 +59,7 @@ def _served() -> dict[tuple[str, str], set[str]]:
 
             for d in route.dependant.dependencies:
                 walk(d)
-            written = path.removeprefix("/api/v1").replace("{video_id:uuid}", "{id}")
+            written = path.removeprefix("/api/v1").replace("{video_id:uuid}", "{id}").replace(":uuid}", "}")
             for method in route.methods - {"HEAD"}:
                 out[(method, written)] = needs
     return out
@@ -144,7 +144,29 @@ def test_the_screen_is_in_the_menu_and_the_route_table():
 
 def test_the_state_of_each_phase_is_said():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", "2": "Built", "3": "Built", "4": "Not yet", "5": "Not yet", "6": "Not yet"}
+    assert phases == {"1": "Built", "2": "Built", "3": "Built", "4": "Built", "5": "Not yet", "6": "Not yet"}
+
+
+def test_the_two_stages_are_as_the_document_says():
+    doc = " ".join(_doc().split())
+    worker = REPO_ROOT / "ai-worker" / "worker" / "footage"
+    fight = (worker / "fight.py").read_text(encoding="utf-8")
+    pose = (worker / "pose.py").read_text(encoding="utf-8")
+    fighting = re.findall(r'^    "([^"]+)",$', fight.split("FIGHTING = (", 1)[1].split(")", 1)[0], re.M)
+    alikes = re.findall(r'^    "([^"]+)",$', fight.split("LOOK_ALIKES = (", 1)[1].split(")", 1)[0], re.M)
+    assert (len(fighting), len(alikes)) == (5, 7) and "five fixed descriptions of fighting" in doc and "seven of what" in doc
+    for words in fighting[:3] + alikes[:3]:
+        assert f'"{words}"' in doc, words
+    assert re.search(r"^SHARE = 0.5$", fight, re.M) and "share is at least **0.5**" in doc
+    assert re.search(r"^LEAST_PEOPLE = 2$", fight, re.M) and "at least **two people**" in doc
+    assert re.search(r"^FPS = 5$", fight, re.M) and "five frames a second" in doc
+    assert re.search(r"^MOMENTS = 3$", fight, re.M) and "at least **3** such moments" in doc
+    assert re.search(r"^REACH = 1.2$", pose, re.M) and "**1.2** times their mean height" in doc
+    assert re.search(r"^FAST = 1.5$", pose, re.M) and "faster than **1.5** body heights a second" in doc
+    assert '"assault"' not in fight.replace('never "assault"', "") and "never \"assault\"" in doc
+    assert "**How well it works is not yet measured.**" in doc
+    dockerfile = (REPO_ROOT / "docker" / "footage-worker.Dockerfile").read_text(encoding="utf-8")
+    assert "yolov8s-pose.pt" in dockerfile and "234314cd8baf62616791aceb9ea6ad5c19f26cf6c0d8f3a1bfce1e23b186cfb3" in dockerfile
 
 
 def test_the_events_are_as_the_document_says():

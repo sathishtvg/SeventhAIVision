@@ -19,7 +19,7 @@ events and checked for possible altercations. Design and the owner's decisions:
 | 1 | Uploads in parts, storage, the 30-day removal and the `FOOTAGE` hold, the list page, permissions | Built |
 | 2 | Frame sampling, thumbnails, SigLIP 2 vectors, semantic search and its screen | Built |
 | 3 | Event review: people and vehicles on the timeline | Built |
-| 4 | Fight detection in two stages, and review verdicts | Not yet |
+| 4 | Fight detection in two stages, and review verdicts | Built |
 | 5 | "Analyse this recording" | Not yet |
 | 6 | Helm template, the GCC package, the deployment guide and the controls sheet | Not yet |
 
@@ -69,6 +69,7 @@ A video somebody may not see is answered as one that does not exist.
 | `GET` | `/footage/{id}/frames/{second}.jpg` | `footage:view`, from the token in the address |
 | `GET` | `/footage/{id}/video` | `footage:view`, from the token in the address |
 | `GET` | `/footage/{id}/findings` | `footage:view` |
+| `POST` | `/footage/{id}/findings/{finding_id}/verdict` | `footage:review` |
 
 All under `/api/v1`. A hold on a video is lifted where every hold is lifted:
 `POST /api/v1/evidence-holds/{id}/release`, with a reason. A frame and the video
@@ -159,6 +160,43 @@ truck) with a score of at least 0.35.
   detector counted the people and the bus, through the real worker on
   20 October 2026.
 
+## Possible altercations
+
+Two stages, and the result is never more than **"Possible altercation"** —
+never "assault", never a name — for a person to mark **confirmed** or **not an
+altercation**.
+
+1. **A screen, every sampled second.** The frame's SigLIP 2 vector is compared
+   with five fixed descriptions of fighting ("people fighting", "a person
+   punching another person", "people pushing each other", ...) and seven of what
+   looks like it and is not ("people hugging", "people dancing", "a crowd of
+   people walking", "people playing sports", ...). The share of the fighting
+   descriptions among all twelve, by the model's own logits, is how much more
+   the frame looks like a fight than like its look-alikes. A second is flagged
+   when that share is at least **0.5** and at least **two people** were counted
+   in it; where **2 of 3** consecutive seconds are flagged, that stretch and a
+   second either side is looked at again.
+2. **The bodies, five frames a second.** The pose model (YOLOv8s-pose, the same
+   family and licence as the detector, converted in the same build stage) finds
+   each person's body points. A moment of struggle is two people within reach of
+   each other (centres nearer than **1.2** times their mean height) one of whom
+   moved a wrist faster than **1.5** body heights a second — a punch or a
+   shove; an arm swinging while walking is well under it. The stretch is a
+   possible altercation when there are at least **3** such moments.
+
+A finding keeps its reasons: what it looked like, how strongly, and what the
+pose model saw. The video's page shows it on the timeline in red, with **Give
+a verdict**; the list says how many in a video are waiting for one.
+
+**A verdict changes nothing else.** It raises no alert and no incident. It is
+kept with who gave it and when, may be changed, and every change is audited
+with what it replaced — verdicts are what the thresholds will be tuned against.
+
+**How well it works is not yet measured.** No footage of fights that the
+platform has the right to use has been tested yet (the owner will provide it).
+Every number above is a first setting; the measured catch rate and false-alarm
+rate are what will be published, and nothing before them.
+
 ## The model
 
 SigLIP 2 base (Google, **Apache-2.0**), as converted to ONNX and quantised to
@@ -236,14 +274,17 @@ All approved in the design. Each is an addition:
 - Migration `0164` — what the worker found out about a video is kept on it:
   `codec`, `frames_indexed`, `index_model`, `playable`, `proxy_path`.
 - Migration `0165` — `footage_frames` gains the counts of people and vehicles;
-  `footage_findings` is new. Both tables are this module's own.
+  `footage_findings` is new. Both tables are this module's own. The application
+  may change only a verdict on a finding, never the finding.
 - Web: the routes, the menu entry under Investigate, the pages' scenes (a
   video's page arrives as playback does), the built-in permissions of each role,
   and the label of the `FOOTAGE` kind on Evidence Holds.
 
 ## Left for the owner
 
-- Test footage of fights that we have the right to use (promised later).
+- Test footage of fights that we have the right to use (promised later): the
+  thresholds of both stages are set on it, and its catch and false-alarm rates
+  are what may be claimed.
 - The Ultralytics licence before any SaaS or GCC sale: the person, vehicle and
   pose detectors are AGPL-3.0.
 - For GCC, an agency to host it.

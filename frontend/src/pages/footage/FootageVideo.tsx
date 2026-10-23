@@ -19,6 +19,8 @@ import { ErrorState } from '@/components/states'
 import { FootageNav } from '@/components/footage/FootageNav'
 import { SearchPanel } from '@/components/footage/SearchPanel'
 import { Timeline } from '@/components/footage/Timeline'
+import { VerdictDialog } from '@/components/footage/VerdictDialog'
+import type { Finding } from '@/api/footage'
 import { keptText } from '@/components/footage/footageFormat'
 import { fmt } from '@/components/evidence/evidenceFormat'
 import { useAuthStore } from '@/store/auth'
@@ -33,6 +35,7 @@ export default function FootageVideo() {
   const player = useRef<HTMLVideoElement>(null)
   const [playFailed, setPlayFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [judging, setJudging] = useState<Finding | null>(null)
   const start = Number(params.get('t') ?? 0) || 0
   const { data: video, isLoading, isLoadingError: videoFailed, error: videoError, refetch } = useQuery({
     queryKey: ['footage-video', id],
@@ -104,7 +107,8 @@ export default function FootageVideo() {
                 <ErrorState compact error={findingsError} onRetry={refetchFindings} />
               ) : found && (
                 <Timeline videoId={id} duration={Number(video.duration_seconds ?? 0)} findings={found.findings}
-                          onSeek={(second) => (player.current ? seekTo(second) : navigate(`/footage/${id}?t=${second}`))} />
+                          onSeek={(second) => (player.current ? seekTo(second) : navigate(`/footage/${id}?t=${second}`))}
+                          onJudge={video.may.review ? setJudging : undefined} />
               )}
             </GlassCard>
           )}
@@ -119,6 +123,11 @@ export default function FootageVideo() {
           )}
         </Stack>
       )}
+      <VerdictDialog videoId={id} finding={judging} onClose={() => setJudging(null)}
+                     onJudged={() => {
+                       void qc.invalidateQueries({ queryKey: ['footage-findings', id] })
+                       void qc.invalidateQueries({ queryKey: ['footage-video', id] })
+                     }} />
     </Box>
   )
 }

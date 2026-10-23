@@ -121,6 +121,10 @@ export default function FootageList() {
                           <LinearProgress variant="determinate" value={v.progress} sx={{ mt: 0.5, height: 4, borderRadius: 2 }} />)}
                         {v.status === 'FAILED' && v.error && (
                           <Typography variant="caption" color="error" sx={{ display: 'block' }}>{v.error}</Typography>)}
+                        {!!v.altercations_to_review && (
+                          <Chip size="small" color="error" variant="outlined" sx={{ mt: 0.5, display: 'flex', width: 'fit-content' }}
+                                label={v.altercations_to_review === 1 ? '1 possible altercation to review'
+                                  : `${v.altercations_to_review} possible altercations to review`} />)}
                       </TableCell>
                       <TableCell>{fmt(v.created_at)}
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>

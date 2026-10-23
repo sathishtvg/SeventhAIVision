@@ -200,3 +200,33 @@ describe('Footage Review: what was found, on the timeline', () => {
     expect(along(5, 0)).toBe(0)
   })
 })
+
+describe('Footage Review: a verdict on a possible altercation', () => {
+  const altercation = finding({ id: 'f9', kind: 'ALTERCATION', kind_words: 'Possible altercation', start_second: 10,
+                                end_second: 14, best_second: 12, most: null,
+                                reasons: { looked_like: 'people pushing each other', moments_with_fast_arms_within_reach: 4 } })
+
+  it('is given by who may review, with the reasons, and the page shows it', async () => {
+    vi.mocked(api.getFootage).mockResolvedValue(video({}))
+    vi.mocked(api.getFindings).mockResolvedValue({ video_id: 'v1', status: 'READY', duration_seconds: 125, counts: [],
+      may: { upload: true, review: true, delete: false, hold: false }, findings: [altercation] })
+    vi.mocked(api.judgeFinding).mockResolvedValue({ id: 'f9', verdict: 'REJECTED', verdict_words: 'Not an altercation', verdict_note: 'Moving a pallet' })
+    show('/footage/v1')
+    expect(await screen.findByText('Not reviewed yet')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Give a verdict' }))
+    expect(screen.getByText(/people pushing each other/)).toBeInTheDocument()
+    expect(screen.getByText(/4 times in a fifth of a second/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Note (optional)'), { target: { value: ' Moving a pallet ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Not an altercation' }))
+    await waitFor(() => expect(api.judgeFinding).toHaveBeenCalledWith('v1', 'f9', 'REJECTED', 'Moving a pallet'))
+  })
+
+  it('is not offered to who may not review', async () => {
+    vi.mocked(api.getFootage).mockResolvedValue(video({ may: { upload: false, review: false, delete: false, hold: false } }))
+    vi.mocked(api.getFindings).mockResolvedValue({ video_id: 'v1', status: 'READY', duration_seconds: 125, counts: [],
+      may: { upload: false, review: false, delete: false, hold: false }, findings: [altercation] })
+    show('/footage/v1')
+    expect(await screen.findByTestId('event')).toHaveTextContent('Possible altercation')
+    expect(screen.queryByRole('button', { name: 'Give a verdict' })).not.toBeInTheDocument()
+  })
+})

@@ -111,6 +111,26 @@ def frames_per_second(source: str, info: Probe, every: float = 1.0) -> Iterator[
         process.wait()
 
 
+def frames_between(source: str, info: Probe, start: int, end: int, fps: int) -> Iterator[np.ndarray]:
+    """The frames from second `start` to second `end`, `fps` a second, as RGB at most SAMPLE_WIDTH wide."""
+    width, height = info.sample_size()
+    size = width * height * 3
+    process = subprocess.Popen(
+        ["ffmpeg", "-nostdin", "-v", "error", "-ss", str(max(0, start)), "-i", source, "-t", str(max(1, end - start)),
+         "-an", "-sn", "-dn", "-vf", f"fps={fps},scale={width}:{height}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        while True:
+            chunk = process.stdout.read(size)
+            if len(chunk) < size:
+                break
+            yield np.frombuffer(chunk, dtype=np.uint8).reshape(height, width, 3)
+    finally:
+        process.stdout.close()
+        process.kill()
+        process.wait()
+
+
 def proxy(source: str, target: str, timeout: int) -> None:
     """A copy every browser plays: H.264, at most 1280 wide, with the start of the file first."""
     answer = subprocess.run(
