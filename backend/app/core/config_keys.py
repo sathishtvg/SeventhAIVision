@@ -135,6 +135,8 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "attendance.overtime_threshold_minutes": _positive_int_validator,
     # ShiftSecure Phase 2D — check-in/out selfie liveness
     "attendance.liveness_min_score": _range_validator(0.0, 1.0),
+    # Staff face registration - how alike a check-in selfie and the face on file must be (services/staff_faces.py)
+    "attendance.face_match_min_similarity": _range_validator(0.0, 1.0),
     # ShiftSecure Phase 2B — roster auto-scheduler
     "roster.max_consecutive_days": _positive_int_validator,
     "roster.min_rest_hours": _positive_int_validator,

@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "23 October 2026"
-EDITION = "Edition 16"
-HEAD = "0166"
+EDITION = "Edition 17"
+HEAD = "0167"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -101,8 +101,7 @@ EDITIONS = [
      "The platform owner's two-factor sign-in now completes on the web, the phone "
      "and the desktop app. The server had asked for the code since the control was "
      "switched on; until this day no client had a step to give it. The desktop app "
-     "is 1.0.7. The sign-in page is no longer reused by a browser without asking, "
-     "and a build of the phone app for testing on the same network is described."],
+     "is 1.0.7. The sign-in page is no longer reused by a browser without asking."],
     ["Edition 11", "14 October 2026", "0158",
      "How the web console moves, waits and fails, in a section of its own: every "
      "page has its own entrance and its own loading; a page that could not fetch "
@@ -114,15 +113,12 @@ EDITIONS = [
      "loading. Every screen of the phone has its own entrance and its own loading, "
      "with the same bounds. No route and no table is added."],
     ["Edition 13", "14 October 2026", "0158",
-     "The phone keeps the web console's loading rules: every screen that fetches "
-     "says when it failed and can try again; what arrives is marked; a camera's "
-     "view says what it is doing; a tick only once the server has said so. No "
-     "route and no table is added."],
+     "The phone keeps the web console's loading rules: a screen says when it "
+     "failed and can try again; what arrives is marked; a tick only once the "
+     "server has said so. No route and no table is added."],
     ["Edition 14", "15 October 2026", "0162",
-     "Adds module 30, fleet tracking and geofences: vehicles archived and never "
-     "deleted, trackers through Traccar, online and offline from the last fix, the "
-     "live map, journeys played back, geofences a wobbling fix does not trip, and "
-     "what else the site recorded around an entry or exit, never called confirmed. "
+     "Adds module 30, fleet tracking and geofences: trackers through Traccar, the "
+     "live map, journeys played back, and geofences a wobbling fix does not trip. "
      "The vendor's console becomes module 31."],
     ["Edition 15", "23 October 2026", "0166",
      "Adds module 31, Footage Review: uploaded video searched by description, "
@@ -131,6 +127,8 @@ EDITIONS = [
      "language models."],
     ["Edition 16", "23 October 2026", "0166",
      "Windows app 1.0.9. A real S3 bucket is reached with the pods' role (module 31)."],
+    ["Edition 17", "23 October 2026", "0167",
+     "Face registration, and each check-in selfie matched to it (module 06)."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -688,7 +686,12 @@ story += module(
     "Proving a guard was where they were rostered, when they were rostered.",
     [
         "<b>Selfie check-in and check-out</b> with liveness scoring to reject a "
-        "photograph of a photograph.",
+        "photograph of a photograph. A guard checks in and out of their own shift.",
+        "<b>Face registration</b> — each person registers their face once on the "
+        "phone, with their agreement recorded; a supervisor changes a guard's, an "
+        "admin a supervisor's. Every check-in selfie is compared with it. A "
+        "mismatch never blocks the check-in: it is listed for a supervisor, beside "
+        "the photo on file. A closed account's face is deleted that night.",
         "<b>Anti-spoof location</b> — mock-GPS detection flagged on the record.",
         "<b>Site geofence</b> as a radius or a drawn polygon, with off-site "
         "check-ins marked rather than silently accepted.",

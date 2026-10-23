@@ -108,6 +108,7 @@ export const SCREEN_SCENES: Record<string, ScreenSceneDef> = {
   IoT: scene('access-point', 'IoT Devices', 'Loading sensors', 'ring'),
   Emergency: scene('bullhorn-outline', 'Emergency Broadcast', 'Loading emergency broadcasts', 'ring', { tone: 'danger', open: true }),
   MyRecord: scene('card-account-details-outline', 'My Record', 'Loading your record'),
+  MyFace: scene('face-recognition', 'My Face', 'Loading your face registration'),
   Leave: scene('calendar-remove-outline', 'Leave', 'Loading leave'),
   DroneEvents: scene('quadcopter', 'Drone Events', 'Loading drone events', 'bob', { tone: 'warn' }),
   DroneEventDetail: DRONE_EVENT,

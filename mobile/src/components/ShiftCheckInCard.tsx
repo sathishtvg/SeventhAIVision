@@ -20,7 +20,9 @@ import { useMemo } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigation } from '@react-navigation/native'
 
+import { getMyFace } from '@/api/faces'
 import { getMyShifts, type Shift } from '@/api/patrols'
 import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
 import { useShiftCheckIn } from '@/hooks/useShiftCheckIn'
@@ -82,6 +84,27 @@ function StaleShiftNote({ shifts }: { shifts: Shift[] }) {
         supervisor to close {stale.length === 1 ? 'it' : 'them'}.
       </Text>
     </View>
+  )
+}
+
+/** A guard with no face on file is offered registration here, where they check in. It never blocks the check-in
+ *  (the owner's rule: allow but flag). */
+function RegisterFaceLink() {
+  const nav = useNavigation<any>()
+  const mayRegister = useAuthStore((s) => s.permissions?.includes('face:register_self') ?? false)
+  const { data } = useQuery({ queryKey: ['my-face'], queryFn: getMyFace, enabled: mayRegister })
+  if (!data?.may_register) return null
+  return (
+    <Pressable
+      style={styles.registerRow}
+      onPress={() => nav.navigate('More', { screen: 'MyFace' })}
+      accessibilityRole="button"
+      accessibilityLabel="Register your face for check-in"
+    >
+      <Ionicons name="happy-outline" size={15} color={colors.primary} />
+      <Text style={styles.registerText}>Register your face, so your check-in can be confirmed</Text>
+      <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+    </Pressable>
   )
 }
 
@@ -160,6 +183,7 @@ export function ShiftCheckInCard() {
         <Text style={styles.note}>Location and a selfie are recorded with your check-in.</Text>
       </View>
       <StaleShiftNote shifts={shifts} />
+      <RegisterFaceLink />
 
       <CheckInPhotoModal
         visible={flow !== null}
@@ -202,4 +226,6 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700', fontSize: fontSize.md },
   noteRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.sm },
   note: { fontSize: fontSize.xs, color: colors.textSecondary, flex: 1 },
+  registerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.sm },
+  registerText: { fontSize: fontSize.xs, color: colors.primary, flex: 1, fontWeight: '600' },
 })

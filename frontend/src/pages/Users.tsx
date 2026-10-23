@@ -48,10 +48,14 @@ import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import DeleteIcon from '@mui/icons-material/Delete'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import FaceIcon from '@mui/icons-material/Face'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GlassCard } from '@/components/common/GlassCard'
 import { FilterRail, type FilterGroup } from '@/components/common/FilterRail'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
+import { FaceDialog } from '@/components/faces/FaceDialog'
+import { listFaces, type StaffFace } from '@/api/faces'
+import { usePermission } from '@/hooks/usePermission'
 import {
   getUsers, createUser, updateUser, deactivateUser, getUserSites, setUserSites,
   getEmployeeDocuments, uploadEmployeeDocument, deleteEmployeeDocument,
@@ -792,6 +796,14 @@ export default function Users() {
   const [siteAccessUser, setSiteAccessUser] = useState<User | null>(null)
   const queryClient = useQueryClient()
 
+  // Faces for check-in (docs/plans/2026-10-23-staff-face-registration-design.md): the server lists exactly the
+  // people whose face the signed-in person may change, so the button shows on those rows and no others.
+  const mayManageFaces = usePermission('face:manage')
+  const { data: faceList } = useQuery({ queryKey: ['staff-faces'], queryFn: listFaces, enabled: mayManageFaces })
+  const faces = useMemo(() => new Map((faceList ?? []).map((f) => [f.user_id, f])), [faceList])
+  const [faceUserId, setFaceUserId] = useState<string | null>(null)
+  const faceOpen: StaffFace | undefined = faceUserId ? faces.get(faceUserId) : undefined
+
   const { data: users, isLoading, isLoadingError: usersFailed, error: usersError, refetch: refetchUsers } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
   // The site list comes from the sites API rather than from whichever sites
@@ -1158,6 +1170,17 @@ export default function Users() {
                               </IconButton>
                             </Tooltip>
                           </PermissionGuard>
+                          {faces.has(user.id) && (
+                            <Tooltip title={faces.get(user.id)!.registered ? 'Face for check-in: on file' : 'Face for check-in: none'}>
+                              <IconButton
+                                size="small" aria-label="Face for check-in"
+                                color={faces.get(user.id)!.registered ? 'success' : 'default'}
+                                onClick={() => setFaceUserId(user.id)}
+                              >
+                                <FaceIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <PermissionGuard permission="session:manage">
                             <Tooltip title="View Sessions">
                               <IconButton size="small" onClick={() => setSessionsUserId(user.id)}>
@@ -1216,6 +1239,8 @@ export default function Users() {
           user={siteAccessUser}
         />
       )}
+
+      {faceOpen && <FaceDialog face={faceOpen} onClose={() => setFaceUserId(null)} />}
     </Box>
   )
 }

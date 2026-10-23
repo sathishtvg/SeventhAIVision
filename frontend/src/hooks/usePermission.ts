@@ -160,6 +160,9 @@ const ALL_PERMISSIONS = [
   // Footage Review (migration 0163). The platform owner, a guard and the client role hold none; deleting a video
   // before its 30 days are up is the admin's alone.
   'footage:upload', 'footage:view', 'footage:review', 'footage:delete',
+  // Staff faces for check-in (migration 0167). Everyone who checks in registers their own once; a supervisor,
+  // manager or admin changes one. The platform owner and the client role hold neither.
+  'face:register_self', 'face:manage',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -285,6 +288,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'case:read', 'case:work', 'case:manage', // Cases (0155): reads, works, assigns and approves closing
     'retention:read', // Data retention (0156): reads the statement; asks about nobody
     'footage:upload', 'footage:view', 'footage:review', // Footage Review (0163): uploads, watches, reviews; deletes nothing
+    'face:register_self', 'face:manage', // Staff faces (0167): their own once; a guard's or an operator's face
   ],
   4: [ // operator
     'camera:read',
@@ -342,6 +346,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'workforce:own', // Workforce readings (0154): their own reading, nobody else's
     'case:read', 'case:work', // Cases (0155): reads; works the cases they are on
     'footage:upload', 'footage:view', 'footage:review', // Footage Review (0163): uploads, watches, reviews; deletes nothing
+    'face:register_self', // Staff faces (0167): their own, once
   ],
   5: [ // security_guard
     'camera:read',
@@ -380,6 +385,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'sop:read', // The SOP library (0148)
     'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks at the gate; records the ID seen
     'workforce:own', // Workforce readings (0154): their own reading, nobody else's
+    'face:register_self', // Staff faces (0167): their own, once, on the phone
   ],
   6: [ // viewer
     'camera:read',

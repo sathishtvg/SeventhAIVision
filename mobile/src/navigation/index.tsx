@@ -45,6 +45,7 @@ import { ComplianceScreen }            from '@/screens/ComplianceScreen'
 import { IoTScreen }                   from '@/screens/IoTScreen'
 import { EmergencyScreen }             from '@/screens/EmergencyScreen'
 import { MyRecordScreen }              from '@/screens/MyRecordScreen'
+import { MyFaceScreen }                from '@/screens/MyFaceScreen'
 import { LeaveScreen }                 from '@/screens/LeaveScreen'
 import { TrainingScreen }              from '@/screens/TrainingScreen'
 import { PostOrdersScreen }            from '@/screens/PostOrdersScreen'
@@ -125,6 +126,8 @@ export type MoreStackParamList = {
   IoT:           undefined
   Emergency:     undefined
   MyRecord:      undefined
+  /** Register my face for check-in, once (docs/plans/2026-10-23-staff-face-registration-design.md). */
+  MyFace:        undefined
   Training:      undefined
   PostOrders:    undefined
   KeyRegister:   undefined
@@ -255,6 +258,7 @@ function MoreNavigator() {
       <MoreStack.Screen name="IoT"           component={IoTScreen}                  options={{ title: 'IoT Devices' }} />
       <MoreStack.Screen name="Emergency"     component={EmergencyScreen}            options={{ title: 'Emergency Broadcast' }} />
       <MoreStack.Screen name="MyRecord"      component={MyRecordScreen}             options={{ title: 'My Record' }} />
+      <MoreStack.Screen name="MyFace"        component={MyFaceScreen}               options={{ title: 'My Face' }} />
       {/* Leave has its own row now: it worked all along behind the second tab
           of My Record, where nobody looked for it. */}
       <MoreStack.Screen name="Leave"         component={LeaveScreen}                options={{ title: 'Leave' }} />

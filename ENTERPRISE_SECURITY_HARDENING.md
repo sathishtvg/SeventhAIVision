@@ -82,7 +82,7 @@ and routes; nothing asked the same questions of all of them at once.
 ## 2. The retention statement
 
 `GET /api/v1/data-governance/retention` (`services/retention_statement.py`).
-Seven kinds of record have a period, because a job removes them:
+Eight kinds of record have a period, because a job removes them:
 
 | Kind | Records | The period is | Removed by | A hold |
 |---|---|---|---|---|
@@ -92,6 +92,7 @@ Seven kinds of record have a period, because a job removes them:
 | `DRONE_TRACKS` | Drone flight tracks | `drone.telemetry_retention_days`, or the installation's default | The drone runner, every few hours | None applies |
 | `DRONE_RECEIPTS` | Receipts of what a site gateway sent | Fixed in the code | The drone runner, as it works | None applies |
 | `FOOTAGE_REVIEW` | Videos uploaded to Footage Review | Fixed in the code: 30 days | The scheduler, once a day | Stops it |
+| `STAFF_FACES` | Faces registered for check-in | Fixed in the code: the night after the account is deactivated | The scheduler, once a day | None applies |
 | `AUDIT` | The audit log | The installation's, in years; the same for every organisation | The scheduler, once a day | None applies |
 
 - **The audit log is moved, not deleted**: a month at a time, out of the log

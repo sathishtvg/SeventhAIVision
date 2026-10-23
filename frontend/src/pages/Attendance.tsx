@@ -69,6 +69,7 @@ import { openAttendanceWindow } from '@/lib/attendanceWindow'
 import { useAuthStore } from '@/store/auth'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { ErrorState } from '@/components/states'
+import { FaceChecksPanel } from '@/components/faces/FaceChecksPanel'
 
 // ── Status vocabulary ────────────────────────────────────────────────────────
 
@@ -963,6 +964,14 @@ export function AttendancePage() {
           </GlassCard>
         )}
       </PermissionGuard>
+
+      {/* Check-in face checks (docs/plans/2026-10-23-staff-face-registration-design.md): allow but flag, so the
+          check-ins whose selfie did not match are reviewed here. */}
+      {!kiosk && (
+        <PermissionGuard permission="face:manage">
+          <FaceChecksPanel token={token} />
+        </PermissionGuard>
+      )}
 
       <StatDetailDialog
         open={statDrill !== null} title={drillLabel} guards={drillGuards} token={token}

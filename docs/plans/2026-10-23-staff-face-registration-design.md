@@ -21,17 +21,18 @@ Guards use only the phone. Admins and supervisors use the web.
 
 | The person whose face it is | Registers it first | May change or delete it |
 |---|---|---|
-| Guard (5), Operator (4) | themselves, once, on the phone | Supervisor (3), Manager (8), Admin (2), Super Admin (1) |
-| Supervisor (3), Manager (8) | themselves, once | Admin (2), Super Admin (1) |
-| Admin (2) | themselves, once | Admin (2), Super Admin (1), their own included |
-| Super Admin (1) | themselves, once | Super Admin (1) |
+| Guard (5), Operator (4) | themselves, once, on the phone | Supervisor (3), Manager (8), Admin (2) |
+| Supervisor (3), Manager (8) | themselves, once | Admin (2) |
+| Admin (2) | themselves, once | Admin (2), their own included |
 
-Viewers (6) and Clients (7) have no face on file. A person cannot delete their own
+Viewers (6) and Clients (7) have no face on file, and neither has the platform
+owner (Super Admin, 1), who works no customer's shifts and, since migration 0102,
+sees no customer's staff records. A person cannot delete their own
 face to register a new one: withdrawing consent is done by asking someone who may
 change it.
 
-Two permissions carry this: `face:register_self` (roles 1, 2, 3, 4, 5, 8) and
-`face:manage` (roles 1, 2, 3, 8). The table above is then applied in code.
+Two permissions carry this: `face:register_self` (roles 2, 3, 4, 5, 8) and
+`face:manage` (roles 2, 3, 8). The table above is then applied in code.
 
 ## 3. What is kept
 
@@ -78,14 +79,15 @@ face did not match the one on file. Your supervisor will review this check-in."
 
 ## 6. Screens
 
-- **Phone, My Face** (from Profile): status, "Register my face" (consent, front
+- **Phone, My Face** (in the More menu): status, "Register my face" (consent, front
   camera, liveness, save); once registered, only a supervisor or admin can change it.
   The check-in card offers "Register your face" when none is on file.
 - **Web, Users**: a Face panel per person, shown only where the caller may change
   it: the photo on file, register or replace from an uploaded JPEG (with the
   consent tick), delete.
-- **Web, Attendance**: a face badge on each check-in and a "Needs review" filter;
-  the badge opens the check-in selfie beside the photo on file.
+- **Web, Attendance**: a "Check-in face checks" panel for the last 7 days, with
+  "Needs review" (did not match, no face on file, not checked) and "All"; each
+  row says the outcome and opens the check-in selfie beside the photo on file.
 
 ## 7. Refused registration photos
 
@@ -97,9 +99,11 @@ photo passes.
 
 `backend/app/routers/shifts.py` (the face comparison after liveness),
 `backend/app/core/config_keys.py` (the new setting), `backend/app/main.py` (the
-new router), `backend/app/scheduler_main.py` (the nightly removal), the web Users
-and Attendance pages and the permission list, the phone check-in card, Profile
-and navigation. Everything else is new.
+new router), `backend/app/scheduler_main.py` (the nightly removal),
+`frontend/src/pages/Users.tsx`, `frontend/src/pages/Attendance.tsx`,
+`frontend/src/hooks/usePermission.ts`, `mobile/src/components/ShiftCheckInCard.tsx`,
+`mobile/src/hooks/useShiftCheckIn.ts`, `mobile/src/screens/MoreMenuScreen.tsx` and
+`mobile/src/navigation/index.tsx`. Everything else is new.
 
 ## 9. Build order
 
