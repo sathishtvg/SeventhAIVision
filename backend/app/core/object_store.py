@@ -21,11 +21,14 @@ def _get_client():
 
         from app.core.config import settings
 
+        # An empty setting means none. With no keys boto3 uses its own chain - the environment, the pod's IAM
+        # role (IRSA), the machine's instance profile - which is how a real AWS bucket is reached; with no
+        # endpoint it uses AWS's own. Passing "" would be taken as keys and an address that were given.
         _s3_client = boto3.client(
             "s3",
-            endpoint_url=settings.S3_ENDPOINT_URL,
-            aws_access_key_id=settings.S3_ACCESS_KEY,
-            aws_secret_access_key=settings.S3_SECRET_KEY,
+            endpoint_url=settings.S3_ENDPOINT_URL or None,
+            aws_access_key_id=settings.S3_ACCESS_KEY or None,
+            aws_secret_access_key=settings.S3_SECRET_KEY or None,
         )
     return _s3_client
 

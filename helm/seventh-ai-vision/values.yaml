@@ -538,6 +538,14 @@ config:
   buildDate: "unknown"
 
 # ─── Sensitive credentials (use Sealed Secrets / Vault in production) ─────────
+# ─── S3 keys when MinIO is off ────────────────────────────────────────────────
+# Leave both empty on AWS: the pods then use their IAM role (IRSA, serviceAccount.annotations).
+# Set them only for an S3-compatible store that takes keys, from your secret store (--set or a values
+# file kept out of the repository), never committed here.
+s3:
+  accessKey: ""
+  secretKey: ""
+
 secrets:
   jwtSecretKeyCurrent: change_me_in_production
   jwtSecretKeyPrevious: ""
