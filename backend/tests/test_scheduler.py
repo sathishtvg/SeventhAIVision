@@ -237,6 +237,51 @@ async def test_purge_expired_evidence_deletes_old_rows_and_respects_retention(ad
 
 
 @pytest.mark.asyncio
+async def test_an_expired_file_that_cannot_be_deleted_is_kept_with_its_row_and_the_purge_goes_on(
+        admin_session, tmp_path, monkeypatch, caplog):
+    """Found on the dev box on 23 October 2026: files written by containers that ran as root could not be
+    deleted by the scheduler's own user, the PermissionError ended the purge, and with it the daily cycle and
+    its database backup, for twelve days."""
+    import pathlib
+
+    monkeypatch.setattr(scheduler_main, "EVIDENCE_ROOT", tmp_path)
+    tenant_id = uuid.uuid4()
+    await admin_session.execute(text("INSERT INTO tenants (id, name, slug) VALUES (:id, 'T', :slug)"),
+                                {"id": tenant_id, "slug": f"t-{tenant_id.hex[:8]}"})
+    (tmp_path / str(tenant_id)).mkdir(parents=True, exist_ok=True)
+    locked_id, free_id = uuid.uuid4(), uuid.uuid4()
+    for eid, name in ((locked_id, "locked.jpg"), (free_id, "free.jpg")):
+        (tmp_path / str(tenant_id) / name).write_bytes(b"x")
+        await admin_session.execute(text(
+            "INSERT INTO evidence (id, tenant_id, media_type, storage_path, checksum_sha256, captured_at) "
+            "VALUES (:id, :tid, 'image', :path, 'x', now() - interval '200 days')"),
+            {"id": eid, "tid": tenant_id, "path": f"{tenant_id}/{name}"})
+    await admin_session.commit()
+
+    real_unlink = pathlib.Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self.name == "locked.jpg":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "unlink", unlink)
+    with caplog.at_level("WARNING"):
+        await scheduler_main.purge_expired_evidence(admin_session)
+
+    remaining = {r.id for r in (await admin_session.execute(
+        text("SELECT id FROM evidence WHERE tenant_id = :tid"), {"tid": tenant_id})).fetchall()}
+    assert remaining == {locked_id}, "the one it could not delete is kept, the other is purged"
+    assert (tmp_path / str(tenant_id) / "locked.jpg").exists()
+    assert not (tmp_path / str(tenant_id) / "free.jpg").exists()
+    assert any("could not be deleted and were kept" in r.getMessage() for r in caplog.records)
+
+    await admin_session.execute(text("DELETE FROM evidence WHERE tenant_id = :tid"), {"tid": tenant_id})
+    await admin_session.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
+    await admin_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_archive_old_audit_partitions_detaches_and_exports(admin_session, tmp_path, monkeypatch):
     """Manufactures an 'already expired' scenario (AUDIT_RETENTION_YEARS=0,
     so the cutoff is ~now) against one specific, otherwise-empty partition in

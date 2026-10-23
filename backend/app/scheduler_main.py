@@ -177,6 +177,7 @@ async def purge_expired_evidence(db: AsyncSession) -> int:
     (silently wastes disk forever)."""
     tenants = (await db.execute(text("SELECT id FROM tenants WHERE is_active = TRUE"))).fetchall()
     total_deleted = 0
+    not_removed = 0
     for (tenant_id,) in tenants:
         await db.execute(text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": str(tenant_id)})
         setting_row = (
@@ -208,11 +209,24 @@ async def purge_expired_evidence(db: AsyncSession) -> int:
                     logger.warning("S3 delete failed for %s", storage_path)
             else:
                 file_path = EVIDENCE_ROOT / storage_path
-                if file_path.exists():
-                    file_path.unlink()
+                try:
+                    if file_path.exists():
+                        file_path.unlink()
+                except OSError as exc:
+                    # A file this process may not remove - one written by a container that ran as root - is
+                    # left, with its row, and counted. One such file must not stop the purge, nor the daily
+                    # cycle behind it (retention, the database backup).
+                    not_removed += 1
+                    if not_removed <= 3:
+                        logger.warning("purge_expired_evidence: could not delete %s (%s); kept with its row",
+                                       file_path, exc)
+                    continue
             await db.execute(text("DELETE FROM evidence WHERE id = :id"), {"id": evidence_id})
             total_deleted += 1
         await db.commit()
+    if not_removed:
+        logger.warning("purge_expired_evidence: %d expired evidence files could not be deleted and were kept "
+                       "with their rows (check who owns them)", not_removed)
     return total_deleted
 
 
@@ -1269,8 +1283,12 @@ async def run_once(redis: Redis | None = None) -> None:
     await secure_new_partitions()
 
     async with AsyncSessionLocal() as db:
-        deleted = await purge_expired_evidence(db)
-        logger.info("purge_expired_evidence: deleted %d expired evidence rows/files", deleted)
+        try:
+            deleted = await purge_expired_evidence(db)
+            logger.info("purge_expired_evidence: deleted %d expired evidence rows/files", deleted)
+        except Exception:
+            # Non-fatal: the steps after it - audit archiving, retention, the database backup - still run.
+            logger.exception("purge_expired_evidence failed (non-fatal, maintenance continues)")
 
     async with admin_session() as db:
         if db is None:
