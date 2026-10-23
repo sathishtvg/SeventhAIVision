@@ -11,6 +11,10 @@ import FootageList from './FootageList'
 
 vi.mock('@/store/auth', () => ({ useAuthStore: vi.fn() }))
 vi.mock('@/api/sites', () => ({ getSites: vi.fn().mockResolvedValue([{ id: 's1', name: 'Factory A' }]) }))
+vi.mock('@/api/recordings', () => ({ listAllRecordings: vi.fn().mockResolvedValue([
+  { id: 'r1', camera_id: 'c1', stream_id: 's1', site_id: 's1', status: 'completed', started_at: '2026-10-03T14:00:00Z',
+    ended_at: '2026-10-03T14:10:00Z', file_path: 'x.mp4', file_size_bytes: 1000, duration_seconds: 600,
+    created_at: '2026-10-03T14:00:00Z', camera_name: 'Gate 1', site_name: 'Factory A' }]) }))
 // PageHeader reads the tenant's page names from the settings.
 vi.mock('@/api/settings', () => ({ getSettings: vi.fn().mockResolvedValue([]), upsertSetting: vi.fn().mockResolvedValue({}) }))
 vi.mock('@/api/footage', async (orig) => {
@@ -80,6 +84,15 @@ describe('Footage Review: the list', () => {
     expect(within(rows[2]).getByText('Held')).toBeInTheDocument()
     expect(within(rows[2]).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
     expect(screen.getByText(/raises an alert or an incident/)).toBeInTheDocument()
+  })
+
+  it('says how many possible altercations in a video are waiting for a verdict', async () => {
+    vi.mocked(api.listFootage).mockResolvedValue(page([video({ status: 'READY', status_label: 'Ready', altercations_to_review: 2 }),
+                                                       video({ id: 'v2', status: 'READY', status_label: 'Ready', altercations_to_review: 0 })]))
+    show()
+    const rows = await screen.findAllByTestId('footage-row')
+    expect(within(rows[0]).getByText('2 possible altercations to review')).toBeInTheDocument()
+    expect(within(rows[1]).queryByText(/to review/)).not.toBeInTheDocument()
   })
 
   it('offers only what the person may do', async () => {
@@ -217,5 +230,31 @@ describe('Footage Review: words', () => {
     expect(instantOf('')).toBeNull()
     // The person's own clock, wherever the test runs: an instant, not a wall time.
     expect(instantOf('2026-10-03T22:15')).toBe(new Date(2026, 9, 3, 22, 15).toISOString())
+  })
+})
+
+describe('Footage Review: a saved recording', () => {
+  it('is chosen from the finished recordings and copied in to be analysed', async () => {
+    vi.mocked(api.listFootage).mockResolvedValue(page([]))
+    vi.mocked(api.analyseRecording).mockResolvedValue(video({ id: 'v9', source: 'RECORDING', status: 'UPLOADING' }))
+    show()
+    fireEvent.click(await screen.findByRole('button', { name: 'Analyse a saved recording' }))
+    const listed = await screen.findByTestId('recording')
+    expect(listed).toHaveTextContent('Gate 1')
+    expect(screen.getByRole('button', { name: 'Analyse it' })).toBeDisabled()
+    fireEvent.click(listed)
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Gate 1, night of the 3rd' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Analyse it' }))
+    await waitFor(() => expect(api.analyseRecording).toHaveBeenCalledWith('r1', 'Gate 1, night of the 3rd'))
+  })
+
+  it('shows a copy being made as such, with nothing to carry on or cancel', async () => {
+    vi.mocked(api.listFootage).mockResolvedValue(page([video({ source: 'RECORDING', status: 'UPLOADING', status_label: 'Uploading', received_bytes: 0 })]))
+    show()
+    const row = await screen.findByTestId('footage-row')
+    expect(within(row).getByText('Copying the recording')).toBeInTheDocument()
+    expect(within(row).getByText(/From a saved recording/)).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Carry on' })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
   })
 })

@@ -222,14 +222,19 @@ def test_a_video_goes_from_queued_to_ready_with_a_frame_and_a_vector_a_second(tm
         assert not conn.execute("SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user").fetchone()[0]
         waiting = {row[1] for row in db.waiting(conn)}
         assert set(videos) <= waiting, "the owner's function finds every organisation's waiting videos"
-        detector = None
+        detector = screen = poser = None
         if HAS_DETECTOR:
             from worker.footage import detect
 
             detector = detect.Detector(DETECTOR)
-        assert pipeline.process(conn, embedder, tenants[0], videos[0], detector) == "READY"
-        assert pipeline.process(conn, embedder, tenants[1], videos[1], detector) == "READY"
-        assert pipeline.process(conn, embedder, tenants[0], videos[0], detector) == "SKIPPED", "not claimed twice"
+        if os.path.exists(os.environ.get("FOOTAGE_POSE", "/opt/models/yolov8s-pose/yolov8s-pose.onnx")):
+            from worker.footage import fight, pose
+
+            screen = fight.Screen(embedder.embed_text, model.LOGIT_SCALE, model.LOGIT_BIAS)
+            poser = pose.PoseDetector()
+        assert pipeline.process(conn, embedder, tenants[0], videos[0], detector, screen, poser) == "READY"
+        assert pipeline.process(conn, embedder, tenants[1], videos[1], detector, screen, poser) == "READY"
+        assert pipeline.process(conn, embedder, tenants[0], videos[0], detector, screen, poser) == "SKIPPED",             "not claimed twice"
         rows = _admin("SELECT id, status, progress, frames_indexed, index_model, playable, proxy_path, codec, sha256 "
                       "FROM footage_videos WHERE id = ANY(%s) ORDER BY codec", (videos,))
         h264, mpeg4 = rows
@@ -284,3 +289,124 @@ def test_a_file_that_is_not_a_video_fails_with_its_reason(tmp_path, monkeypatch,
     finally:
         _admin("DELETE FROM footage_videos WHERE id = %s", (v,))
         _admin("DELETE FROM tenants WHERE id = %s", (t,))
+
+
+# ─── Possible altercations ───────────────────────────────────────────────────
+
+POSE = Path(os.environ.get("FOOTAGE_POSE", "/opt/models/yolov8s-pose/yolov8s-pose.onnx"))
+needs_pose = pytest.mark.skipif(not POSE.exists(), reason="the pose model is in the footage worker's image only")
+
+
+def _body(x: float, y: float = 100.0, wrist: tuple[float, float] | None = None, height: float = 100.0):
+    from worker.footage.pose import Body
+
+    points = np.zeros((17, 3), dtype=np.float32)
+    if wrist is not None:
+        points[9] = (wrist[0], wrist[1], 0.9)
+    return Body(0.9, np.array([x - 25, y - height / 2, x + 25, y + height / 2], dtype=np.float32), points)
+
+
+def test_a_frame_is_screened_by_how_much_more_it_looks_like_a_fight_than_its_look_alikes():
+    from worker.footage import fight
+
+    axes = {t: np.eye(32)[i] for i, t in enumerate(fight.FIGHTING + fight.LOOK_ALIKES)}
+    screen = fight.Screen(lambda t: axes[t], logit_scale=100.0, logit_bias=-10.0)
+    punching = axes["a person punching another person"]
+    hugging = axes["people hugging"]
+    shares, described = screen.shares(np.stack([punching, hugging, 0.5 * punching + 0.5 * hugging]))
+    assert shares[0] > 0.99 and shares[1] < 0.01 and 0.4 < shares[2] < 0.6
+    assert fight.FIGHTING[described[0]] == "a person punching another person"
+
+
+def test_two_of_three_seconds_make_a_window_and_a_second_either_side_is_looked_at():
+    from worker.footage import fight
+
+    per_second = {s: (0.1, 3, 0) for s in range(40)}
+    per_second.update({10: (0.7, 2, 1), 11: (0.9, 3, 2), 13: (0.6, 2, 0), 20: (0.95, 2, 0), 30: (0.8, 1, 0),
+                       31: (0.8, 1, 0)})
+    found = fight.windows(per_second)
+    assert [(w.start, w.end, w.best, w.seconds) for w in found] == [(9, 12, 11, [10, 11])]
+    assert found[0].described == fight.FIGHTING[2] and found[0].share == pytest.approx(0.9)
+    assert fight.windows({s: (0.1, 3, 0) for s in range(10)}) == [], "a lone second, or one person, is not enough"
+
+
+def test_bodies_within_reach_and_a_fast_arm_are_a_struggle_and_walking_is_not():
+    from worker.footage import pose
+
+    a0, b0 = _body(100, wrist=(110, 90)), _body(150, wrist=(140, 90))
+    a1, b1 = _body(102, wrist=(160, 80)), _body(151, wrist=(141, 90))
+    assert pose.within_reach([a1, b1]) == [(0, 1)]
+    assert pose.follow([a0, b0], [b1, a1]) == {0: 1, 1: 0}
+    assert pose.arm_speed(a0, a1, 0.2) == pytest.approx(np.hypot(50, 10) / 100 / 0.2)
+    assert pose.struggle([a0, b0], [a1, b1], 0.2), "a wrist moving 2.5 body heights a second, within reach"
+    slow = [_body(102, wrist=(115, 90)), _body(151, wrist=(141, 90))]
+    assert not pose.struggle([a0, b0], slow, 0.2), "an arm swinging while walking"
+    far = [_body(100, wrist=(110, 90)), _body(600, wrist=(600, 90))]
+    far_fast = [_body(102, wrist=(160, 80)), _body(601, wrist=(600, 90))]
+    assert not pose.struggle(far, far_fast, 0.2), "a fast arm with nobody within reach"
+
+
+def test_a_window_is_a_possible_altercation_only_with_enough_moments_of_struggle():
+    from worker.footage import fight
+
+    still = [_body(100, wrist=(110, 90)), _body(150, wrist=(140, 90))]
+    swung = [_body(100, wrist=(165, 80)), _body(150, wrist=(140, 90))]
+    struggling = [still, swung, still, swung, still, swung, still]
+    possible, why = fight.confirmed(struggling)
+    assert possible and why["moments_with_fast_arms_within_reach"] == 6 and why["frames_looked_at"] == 7
+    quiet = [still] * 7
+    assert fight.confirmed(quiet) == (False, {"frames_looked_at": 7, "frames_with_people_within_reach": 6,
+                                              "moments_with_fast_arms_within_reach": 0})
+
+
+def test_the_answer_of_the_pose_model_is_read_into_bodies_in_the_frame_s_own_pixels():
+    from worker.footage import pose
+
+    out = np.zeros((1, 56, 8400), dtype=np.float32)
+    out[0, :5, 0] = (100, 340, 40, 80, 0.9)      # a person at (100, 200) once the 140-pixel band is taken off
+    out[0, 5 + 3 * 9: 5 + 3 * 9 + 3, 0] = (110, 330, 0.8)
+    out[0, :5, 1] = (300, 300, 40, 80, 0.2)      # too faint
+    bodies = pose.decode(out, 1.0, 0.0, 140.0)
+    assert len(bodies) == 1 and tuple(bodies[0].box) == (80.0, 160.0, 120.0, 240.0)
+    assert tuple(bodies[0].points[9]) == pytest.approx((110.0, 190.0, 0.8))
+
+
+@needs_pose
+def test_the_pose_model_finds_the_bodies_in_a_street_photo():
+    from PIL import Image
+
+    from worker.footage import pose
+
+    photo = Path(__file__).parent / "fixtures" / "bus.jpg"
+    if not photo.exists():
+        pytest.skip("the street photo is not here")
+    bodies = pose.PoseDetector(POSE).bodies(np.asarray(Image.open(photo).convert("RGB")))
+    assert len(bodies) >= 3 and all((b.points[:, 2] >= pose.POINT).sum() >= 8 for b in bodies[:3])
+
+
+@needs_ffmpeg
+def test_a_flagged_stretch_is_read_again_five_frames_a_second_and_kept_when_the_bodies_struggle(tmp_path):
+    from worker.footage import fight, pipeline, video
+
+    clip = _make_video(tmp_path / "clip.mp4", seconds=8)
+    info = video.probe(str(clip))
+    still = [_body(100, wrist=(110, 90)), _body(150, wrist=(140, 90))]
+    swung = [_body(100, wrist=(165, 80)), _body(150, wrist=(140, 90))]
+
+    class Poser:
+        def __init__(self, struggling: bool):
+            self.calls, self.struggling = 0, struggling
+
+        def bodies(self, frame):
+            assert frame.shape == (240, 320, 3)
+            self.calls += 1
+            return (swung if self.calls % 2 else still) if self.struggling else still
+
+    flagged = {s: (0.1, 3, 0) for s in range(8)}
+    flagged.update({3: (0.8, 2, 1), 4: (0.9, 2, 1)})
+    struggling = Poser(True)
+    found = pipeline.altercations(str(clip), info, flagged, struggling)
+    assert struggling.calls == 20, "seconds 2 to 5 inclusive, five frames each"
+    assert [(f.kind, f.start, f.end, f.best, f.most) for f in found] == [("ALTERCATION", 2, 5, 4, None)]
+    assert found[0].reasons["looked_like"] == fight.FIGHTING[1] and found[0].reasons["moments_with_fast_arms_within_reach"] >= 3
+    assert pipeline.altercations(str(clip), info, flagged, Poser(False)) == [], "screened, but the bodies do not struggle"

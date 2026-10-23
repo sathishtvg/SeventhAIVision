@@ -41,6 +41,12 @@ leaves the camera through the platform:
 | Before a frame is encoded | `backend/app/routers/streams.py`, the recorder | Manual and continuous recordings |
 | Before the image is hashed and stored | `backend/app/services/vpatrol_snapshot.py` | The image a virtual patrol keeps. Its checksum is of the masked image |
 
+**Footage Review** (`FOOTAGE_REVIEW.md`) reads no camera. A saved recording it
+analyses is a byte-for-byte copy of the recording, which was masked when it was
+recorded; its frames, thumbnails and search results are of the masked picture.
+A video somebody uploads has come from no camera of the platform's, and no zone
+applies to it.
+
 **HLS.** HLS copies the camera's stream without decoding it, so nothing can be
 painted into it. `GET …/hls/index.m3u8` and `GET …/hls/{segment}` answer 409 for
 a camera with an active zone, and a session already running for it is stopped.

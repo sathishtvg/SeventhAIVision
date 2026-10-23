@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir "torch==2.12.1" --index-url https://download.pyto
 COPY ai-worker/yolov8s.pt /export/yolov8s.pt
 WORKDIR /export
 RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt').export(format='onnx', imgsz=640, simplify=False, dynamic=False, opset=17)"
+# The pose model for the second look at a possible altercation: Ultralytics' own release, checked.
+RUN python -c "import hashlib, urllib.request as u; d = u.urlopen('https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8s-pose.pt', timeout=300).read(); h = hashlib.sha256(d).hexdigest(); assert h == '234314cd8baf62616791aceb9ea6ad5c19f26cf6c0d8f3a1bfce1e23b186cfb3', h; open('yolov8s-pose.pt', 'wb').write(d)" \
+    && python -c "from ultralytics import YOLO; YOLO('yolov8s-pose.pt').export(format='onnx', imgsz=640, simplify=False, dynamic=False, opset=17)"
 
 # ── The worker ────────────────────────────────────────────────────────────────
 FROM --platform=linux/amd64 python:3.11-slim
@@ -37,6 +40,7 @@ COPY ai-worker/worker/footage/__init__.py ai-worker/worker/footage/fetch_model.p
 RUN python -m worker.footage.fetch_model /opt/models/siglip2
 
 COPY --from=detector /export/yolov8s.onnx /opt/models/yolov8s/yolov8s.onnx
+COPY --from=detector /export/yolov8s-pose.onnx /opt/models/yolov8s-pose/yolov8s-pose.onnx
 
 COPY ai-worker/worker/footage/ /app/ai-worker/worker/footage/
 COPY ai-worker/worker/footage_main.py /app/ai-worker/worker/footage_main.py

@@ -73,3 +73,50 @@ async def test_events_are_seen_by_who_may_see_the_video_and_nobody_else():
         stranger = await c.get(f"{BASE}/{at_b}/findings", headers=x["h"][ADMIN])
         admin = await c.get(f"{BASE}/{at_b}/findings", headers=w["h"][ADMIN])
     assert (limited.status_code, guard.status_code, stranger.status_code, admin.status_code) == (404, 403, 404, 200)
+
+
+async def _altercation(w: dict, vid: str) -> str:
+    fid = uuid.uuid4()
+    await _run([("INSERT INTO footage_findings (id, tenant_id, video_id, kind, start_second, end_second, best_second, "
+                 "score, reasons, model_version) VALUES (:i, :t, :v, 'ALTERCATION', 10, 14, 12, 0.83, CAST(:r AS jsonb), "
+                 "'siglip2+yolov8s-pose')",
+                 {"i": fid, "t": w["tenant"], "v": vid,
+                  "r": json.dumps({"looked_like": "people pushing each other", "moments_with_fast_arms_within_reach": 4})})])
+    return str(fid)
+
+
+async def test_a_possible_altercation_is_marked_by_who_may_review_and_every_verdict_is_audited():
+    from tests.test_drone_api import MANAGER, OPERATOR
+    from tests.test_investigation_search import _audit
+
+    w, x = await _world(), await _world()
+    vid = await _video_with_events(w)
+    fid = await _altercation(w, vid)
+    people = (await _run([("SELECT id FROM footage_findings WHERE video_id = :v AND kind = 'PEOPLE'", {"v": vid})]))[0][0]["id"]
+    async with _client() as c:
+        before = (await c.get(f"{BASE}/{vid}", headers=w["h"][ADMIN])).json()
+        confirmed = await c.post(f"{BASE}/{vid}/findings/{fid}/verdict", headers=w["h"][OPERATOR],
+                                 json={"verdict": "CONFIRMED", "note": "  Two men shoving at the gate  "})
+        changed = await c.post(f"{BASE}/{vid}/findings/{fid}/verdict", headers=w["h"][MANAGER],
+                               json={"verdict": "REJECTED", "note": "They were moving a pallet together"})
+        viewer = await c.post(f"{BASE}/{vid}/findings/{fid}/verdict", headers=w["h"][VIEWER], json={"verdict": "CONFIRMED"})
+        not_one = await c.post(f"{BASE}/{vid}/findings/{people}/verdict", headers=w["h"][OPERATOR],
+                               json={"verdict": "CONFIRMED"})
+        wrong = await c.post(f"{BASE}/{vid}/findings/{fid}/verdict", headers=w["h"][OPERATOR], json={"verdict": "ASSAULT"})
+        stranger = await c.post(f"{BASE}/{vid}/findings/{fid}/verdict", headers=x["h"][ADMIN], json={"verdict": "CONFIRMED"})
+        after = (await c.get(f"{BASE}/{vid}", headers=w["h"][ADMIN])).json()
+        listed = (await c.get(f"{BASE}/{vid}/findings", headers=w["h"][VIEWER])).json()
+    assert before["altercations_to_review"] == 1 and after["altercations_to_review"] == 0
+    assert confirmed.status_code == 200 and confirmed.json()["verdict_note"] == "Two men shoving at the gate"
+    assert changed.json() == {"id": fid, "verdict": "REJECTED", "verdict_words": "Not an altercation",
+                              "verdict_note": "They were moving a pallet together"}
+    assert (viewer.status_code, not_one.status_code, wrong.status_code, stranger.status_code) == (403, 409, 422, 404)
+    finding = next(f for f in listed["findings"] if f["kind"] == "ALTERCATION")
+    assert (finding["kind_words"], finding["verdict"], finding["verdict_by_name"]) == (
+        "Possible altercation", "REJECTED", "Role 8 User")
+    assert finding["reasons"]["looked_like"] == "people pushing each other"
+    verdicts = await _audit(w, "footage.verdict")
+    assert [(a["detail"]["verdict"], a["detail"]["was"]) for a in verdicts] == [("CONFIRMED", None), ("REJECTED", "CONFIRMED")]
+    rows = await _run([("SELECT count(*) AS n FROM alerts WHERE tenant_id = :t", {"t": w["tenant"]}),
+                       ("SELECT count(*) AS n FROM incidents WHERE tenant_id = :t", {"t": w["tenant"]})])
+    assert (rows[0][0]["n"], rows[1][0]["n"]) == (0, 0), "a verdict raises nothing"

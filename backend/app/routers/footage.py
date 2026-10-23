@@ -10,8 +10,10 @@ app.services.footage_retention.
 Permissions:
     footage:upload       start an upload, send its parts, finish or cancel one's own
     footage:view         list the videos, read one, search them, see their frames and play them
-    footage:review       have a video analysed again
+    footage:review       have a video analysed again; mark a possible altercation confirmed or not
     footage:delete       delete a video before its 30 days are up, or cancel anybody's upload
+    footage:upload and recording:read
+                         copy a saved recording in to be analysed (POST /from-recording)
     evidence:hold:manage keep a video past its 30 days (with footage:view); a hold is
                          lifted where every hold is, POST /api/v1/evidence-holds/{id}/release
 
@@ -27,11 +29,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from limits import parse
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,11 +59,13 @@ from app.services import intel_audit
 from app.services.audit import write_audit_log
 
 router = APIRouter(prefix="/api/v1/footage", tags=["footage"])
+logger = logging.getLogger(__name__)
 
 _UPLOAD = [Depends(require_permission("footage:upload"))]
 _VIEW = [Depends(require_permission("footage:view"))]
 _DELETE = [Depends(require_permission("footage:delete"))]
 _REVIEW = [Depends(require_permission("footage:review"))]
+_FROM_RECORDING = [Depends(require_permission("footage:upload")), Depends(require_permission("recording:read"))]
 _HOLD = [Depends(require_permission("footage:view")), Depends(require_permission("evidence:hold:manage"))]
 HELD = ("footage:upload", "footage:view", "footage:review", "footage:delete", "evidence:hold:manage")
 
@@ -87,7 +93,9 @@ _VIDEO = """
     v.id, v.source, v.title, v.original_filename, v.content_type, v.size_bytes, v.received_bytes, v.part_size,
     v.site_id, s.name AS site_name, v.place, v.filmed_at, v.duration_seconds, v.width, v.height, v.frame_rate,
     v.status, v.progress, v.error, v.sha256, v.storage_path, v.uploaded_by_user_id, u.full_name AS uploaded_by_name,
-    v.codec, v.frames_indexed, v.index_model, v.playable,
+    v.codec, v.frames_indexed, v.index_model, v.playable, v.recording_id,
+    (SELECT count(*) FROM footage_findings ff
+      WHERE ff.video_id = v.id AND ff.kind = 'ALTERCATION' AND ff.verdict IS NULL) AS altercations_to_review,
     v.created_at, v.updated_at, v.upload_completed_at, v.processed_at, v.expires_at,
     h.id AS hold_id, h.reason AS hold_reason, h.placed_at AS hold_placed_at, hu.full_name AS hold_placed_by_name
 """
@@ -208,6 +216,8 @@ async def send_part(
     """One part of the file, as the request's body, at `offset`. A part at any
     other offset than the one reached is refused with 409 and that offset."""
     v = await _one(db, video_id, allowed, lock=True)
+    if v["source"] != "UPLOAD":
+        raise HTTPException(409, "This video is being copied from a recording.")
     if str(v["uploaded_by_user_id"]) != str(token.user_id):
         raise HTTPException(403, "Only the person who began this upload can add to it.")
     if v["status"] != "UPLOADING":
@@ -257,6 +267,8 @@ async def finish_upload(
 ):
     """The whole file has arrived: join it and queue it to be analysed."""
     v = await _one(db, video_id, allowed, lock=True)
+    if v["source"] != "UPLOAD":
+        raise HTTPException(409, "This video is being copied from a recording.")
     if str(v["uploaded_by_user_id"]) != str(token.user_id):
         raise HTTPException(403, "Only the person who began this upload can finish it.")
     if v["status"] != "UPLOADING":
@@ -293,6 +305,8 @@ async def cancel_upload(
     v = await _one(db, video_id, allowed, lock=True)
     if v["status"] != "UPLOADING":
         raise HTTPException(409, "This upload is finished. A finished video is deleted, not cancelled.")
+    if v["source"] != "UPLOAD":
+        raise HTTPException(409, "This recording is still being copied. Delete it once the copy has finished.")
     if str(v["uploaded_by_user_id"]) != str(token.user_id) and \
             "footage:delete" not in await held_by(db, token.role_id, HELD):
         raise HTTPException(403, "Only the person who began this upload can cancel it.")
@@ -681,3 +695,145 @@ async def video_findings(
     return {"video_id": str(video_id), "status": v["status"], "duration_seconds": v["duration_seconds"],
             "findings": findings, "counts": [[r.second, r.people or 0, r.vehicles or 0] for r in counted],
             "may": _may(held)}
+
+
+# ── a person's verdict on a possible altercation ──────────────────────────────
+
+class VerdictBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["CONFIRMED", "REJECTED"]
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.post("/{video_id:uuid}/findings/{finding_id:uuid}/verdict", dependencies=_REVIEW)
+async def judge_finding(
+    video_id: uuid.UUID,
+    finding_id: uuid.UUID,
+    body: VerdictBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Mark a possible altercation confirmed, or not an altercation, with a note.
+    A verdict may be changed; each one is audited, with what it was before.
+    Verdicts are what the thresholds are tuned against. Nothing else follows
+    from one: no alert, no incident."""
+    v = await _one(db, video_id, allowed)
+    f = (await db.execute(text("""
+        SELECT id, kind, verdict, start_second, end_second FROM footage_findings
+         WHERE id = CAST(:f AS uuid) AND video_id = CAST(:v AS uuid) FOR UPDATE
+    """), {"f": str(finding_id), "v": str(video_id)})).mappings().first()
+    if f is None:
+        raise HTTPException(404, "Finding not found")
+    if f["kind"] != "ALTERCATION":
+        raise HTTPException(409, "Only a possible altercation is given a verdict.")
+    note = (body.note or "").strip() or None
+    await db.execute(text("""
+        UPDATE footage_findings
+           SET verdict = :verdict, verdict_note = :note, verdict_by_user_id = CAST(:who AS uuid), verdict_at = now()
+         WHERE id = CAST(:f AS uuid)
+    """), {"verdict": body.verdict, "note": note, "who": token.user_id, "f": str(finding_id)})
+    await intel_audit.record(db, request, token, "footage.verdict", "footage_finding", finding_id, site_id=v["site_id"],
+                             detail={"video_id": str(video_id), "verdict": body.verdict, "was": f["verdict"],
+                                     "note": note, "start_second": f["start_second"], "end_second": f["end_second"]})
+    answer = {"id": str(finding_id), "verdict": body.verdict, "verdict_words": VERDICT_WORDS[body.verdict],
+              "verdict_note": note}
+    await db.commit()
+    return answer
+
+
+# ── a saved recording, copied in to be analysed ───────────────────────────────
+
+class FromRecordingBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recording_id: uuid.UUID
+    title: str | None = Field(None, max_length=footage.TITLE_LIMIT)
+
+
+@router.post("/from-recording", status_code=202, dependencies=_FROM_RECORDING)
+async def analyse_recording(
+    body: FromRecordingBody,
+    request: Request,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """Copy a finished recording into Footage Review to be analysed. The copy is
+    made after this answer, and the video waits as an upload until it is whole;
+    from then on it is analysed like any other, and kept 30 days. The recording
+    keeps its own retention."""
+    rec = (await db.execute(text("""
+        SELECT r.id, r.status, r.file_path, r.site_id, r.started_at, r.duration_seconds, c.name AS camera_name
+          FROM recordings r LEFT JOIN cameras c ON c.id = r.camera_id
+         WHERE r.id = CAST(:id AS uuid)
+    """), {"id": str(body.recording_id)})).mappings().first()
+    if rec is None or not is_site_allowed(allowed, rec["site_id"]):
+        raise HTTPException(404, "Recording not found")
+    if rec["status"] != "completed" or not rec["file_path"]:
+        raise HTTPException(409, "Only a finished recording can be analysed.")
+    try:
+        source = footage.recording_file(rec["file_path"])
+    except ValueError as exc:
+        raise HTTPException(409, "The recording's file is not where recordings are kept.") from exc
+    if not source.exists():
+        raise HTTPException(409, "The recording's file is no longer kept.")
+    already = (await db.execute(text("""
+        SELECT id FROM footage_videos WHERE recording_id = CAST(:id AS uuid) AND status <> 'FAILED' LIMIT 1
+    """), {"id": str(body.recording_id)})).first()
+    if already is not None:
+        raise HTTPException(409, {"message": "This recording is already in Footage Review.", "video_id": str(already.id)})
+    camera = rec["camera_name"] or "Camera"
+    title = (body.title or "").strip() or f"{camera} recording"
+    video_id = uuid.uuid4()
+    path = footage.original_path(token.tenant_id, video_id, ".mp4")
+    size = source.stat().st_size
+    await db.execute(text("""
+        INSERT INTO footage_videos (id, tenant_id, source, recording_id, title, original_filename, content_type,
+                                    size_bytes, part_size, storage_path, site_id, place, filmed_at,
+                                    uploaded_by_user_id, expires_at)
+        VALUES (:id, current_setting('app.current_tenant')::uuid, 'RECORDING', CAST(:rec AS uuid), :title, :name,
+                'video/mp4', :size, :part, :path, :site, :place, :filmed, CAST(:who AS uuid),
+                now() + make_interval(days => :days))
+    """), {"id": video_id, "rec": str(body.recording_id), "title": title[:footage.TITLE_LIMIT],
+           "name": source.name[:footage.FILENAME_LIMIT], "size": max(size, 1), "part": footage.PART_SIZE,
+           "path": path, "site": rec["site_id"], "place": camera[:footage.PLACE_LIMIT], "filmed": rec["started_at"],
+           "who": token.user_id, "days": footage.RETENTION_DAYS})
+    await intel_audit.record(db, request, token, "footage.from_recording", "footage_video", video_id,
+                             site_id=rec["site_id"], detail={"recording_id": str(body.recording_id), "title": title,
+                                                             "camera": camera, "size_bytes": size})
+    answer = _out(await _one(db, video_id, allowed), datetime.now(timezone.utc))
+    await db.commit()
+    background.add_task(_copy_recording, token.tenant_id, video_id, source, path, max(size, 1),
+                        getattr(request.app.state, "redis", None))
+    return answer
+
+
+async def _copy_recording(tenant_id: str, video_id: uuid.UUID, source, path: str, size: int, redis) -> None:
+    """After the answer: the copy, then the video waits to be analysed - or says it could not be copied."""
+    try:
+        await asyncio.to_thread(footage.copy_in, source, path)
+        copied = True
+    except Exception:  # noqa: BLE001 — said on the video, which stays until a person or the 30 days remove it
+        logger.exception("footage %s: the recording could not be copied", video_id)
+        copied = False
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": tenant_id})
+        if copied:
+            await db.execute(text("""
+                UPDATE footage_videos SET status = 'QUEUED', received_bytes = :size, upload_completed_at = now(),
+                                          updated_at = now()
+                 WHERE id = CAST(:id AS uuid) AND status = 'UPLOADING'
+            """), {"id": str(video_id), "size": size})
+        else:
+            await db.execute(text("""
+                UPDATE footage_videos SET status = 'FAILED', updated_at = now(),
+                                          error = 'The recording could not be copied into Footage Review.'
+                 WHERE id = CAST(:id AS uuid) AND status = 'UPLOADING'
+            """), {"id": str(video_id)})
+        await db.commit()
+    if copied:
+        await footage.announce(redis, tenant_id, video_id)

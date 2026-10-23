@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "footage-abandon-unfinished-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "footage/" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    }
+  ]
+}

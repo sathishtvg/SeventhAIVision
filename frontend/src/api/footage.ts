@@ -29,7 +29,9 @@ export interface FootageMay {
 
 export interface FootageVideo {
   id: string
-  source: 'UPLOAD'
+  source: 'UPLOAD' | 'RECORDING'
+  /** The saved recording a copy was made from, while that recording is kept. */
+  recording_id?: string | null
   title: string
   original_filename: string
   content_type: string | null
@@ -68,6 +70,8 @@ export interface FootageVideo {
   index_model?: string | null
   /** What a browser can play: the original, a copy the worker made, or neither. */
   playable?: 'ORIGINAL' | 'PROXY' | 'NONE' | null
+  /** Possible altercations nobody has given a verdict yet. */
+  altercations_to_review?: number
 }
 
 export interface FootagePage {
@@ -292,3 +296,12 @@ export interface FindingsAnswer {
 
 export const getFindings = (id: string) =>
   apiClient.get<FindingsAnswer>(`/api/v1/footage/${id}/findings`).then((r) => r.data)
+
+/** Mark a possible altercation confirmed, or not an altercation. */
+export const judgeFinding = (videoId: string, findingId: string, verdict: 'CONFIRMED' | 'REJECTED', note: string | null) =>
+  apiClient.post<{ id: string; verdict: string; verdict_words: string; verdict_note: string | null }>(
+    `/api/v1/footage/${videoId}/findings/${findingId}/verdict`, { verdict, note }).then((r) => r.data)
+
+/** Copy a finished camera recording into Footage Review, to be analysed. The copy is made after the answer. */
+export const analyseRecording = (recordingId: string, title: string | null) =>
+  apiClient.post<FootageVideo>('/api/v1/footage/from-recording', { recording_id: recordingId, title }).then((r) => r.data)

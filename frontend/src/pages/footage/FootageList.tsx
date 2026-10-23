@@ -16,6 +16,7 @@ import {
   TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import VideoFileIcon from '@mui/icons-material/VideoFile'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
@@ -23,6 +24,8 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { ErrorState, RefreshingLine } from '@/components/states'
 import { WhyDialog } from '@/components/investigations/InvestigationDialogs'
 import UploadDialog from '@/components/footage/UploadDialog'
+import RecordingDialog from '@/components/footage/RecordingDialog'
+import { usePermission } from '@/hooks/usePermission'
 import { FootageNav } from '@/components/footage/FootageNav'
 import { keptText } from '@/components/footage/footageFormat'
 import { fmt } from '@/components/evidence/evidenceFormat'
@@ -48,6 +51,8 @@ export default function FootageList() {
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState(25)
   const [uploading, setUploading] = useState(false)
+  const [fromRecording, setFromRecording] = useState(false)
+  const readsRecordings = usePermission('recording:read')
   const [resume, setResume] = useState<FootageVideo | null>(null)
   const [holding, setHolding] = useState<FootageVideo | null>(null)
   const [deleting, setDeleting] = useState<FootageVideo | null>(null)
@@ -67,8 +72,13 @@ export default function FootageList() {
       <PageHeader title="Footage Review"
                   subtitle="Videos uploaded to be searched and reviewed. Each is kept 30 days unless it is held."
                   action={may?.upload ? (
-                    <Button variant="contained" startIcon={<CloudUploadIcon />} onClick={() => setUploading(true)}>
-                      Upload a video</Button>) : undefined} />
+                    <Stack direction="row" sx={{ gap: 1 }}>
+                      {readsRecordings && (
+                        <Button variant="outlined" startIcon={<VideoFileIcon />} onClick={() => setFromRecording(true)}>
+                          Analyse a saved recording</Button>)}
+                      <Button variant="contained" startIcon={<CloudUploadIcon />} onClick={() => setUploading(true)}>
+                        Upload a video</Button>
+                    </Stack>) : undefined} />
       <FootageNav />
       <GlassCard sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -109,18 +119,24 @@ export default function FootageList() {
                                 onClick={() => navigate(`/footage/${v.id}`)}>{v.title}</Link>
                         )}
                         <Typography variant="caption" color="text.secondary">
-                          {v.original_filename} · {sizeText(v.size_bytes)}{v.filmed_at ? ` · filmed ${fmt(v.filmed_at)}` : ''}</Typography>
+                          {v.source === 'RECORDING' ? 'From a saved recording' : v.original_filename} · {sizeText(v.size_bytes)}
+                          {v.filmed_at ? ` · filmed ${fmt(v.filmed_at)}` : ''}</Typography>
                       </TableCell>
                       <TableCell>{[v.site_name, v.place].filter(Boolean).join(' · ') || '—'}</TableCell>
                       <TableCell sx={{ minWidth: 180 }}>
                         <Chip size="small" color={STATUS_COLOR[v.status]} label={v.status_label} />
                         {v.status === 'UPLOADING' && (
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {sizeText(v.received_bytes)} of {sizeText(v.size_bytes)} arrived</Typography>)}
+                            {v.source === 'RECORDING' ? 'Copying the recording'
+                              : `${sizeText(v.received_bytes)} of ${sizeText(v.size_bytes)} arrived`}</Typography>)}
                         {v.status === 'PROCESSING' && (
                           <LinearProgress variant="determinate" value={v.progress} sx={{ mt: 0.5, height: 4, borderRadius: 2 }} />)}
                         {v.status === 'FAILED' && v.error && (
                           <Typography variant="caption" color="error" sx={{ display: 'block' }}>{v.error}</Typography>)}
+                        {!!v.altercations_to_review && (
+                          <Chip size="small" color="error" variant="outlined" sx={{ mt: 0.5, display: 'flex', width: 'fit-content' }}
+                                label={v.altercations_to_review === 1 ? '1 possible altercation to review'
+                                  : `${v.altercations_to_review} possible altercations to review`} />)}
                       </TableCell>
                       <TableCell>{fmt(v.created_at)}
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -133,9 +149,9 @@ export default function FootageList() {
                         ) : keptText(v)}
                       </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                        {v.status === 'UPLOADING' && mine && may?.upload && (
+                        {v.status === 'UPLOADING' && v.source === 'UPLOAD' && mine && may?.upload && (
                           <Button size="small" onClick={() => setResume(v)}>Carry on</Button>)}
-                        {v.status === 'UPLOADING' && (mine || may?.delete) && (
+                        {v.status === 'UPLOADING' && v.source === 'UPLOAD' && (mine || may?.delete) && (
                           <Button size="small" color="error" onClick={() => { void cancelUpload(v.id).then(refresh) }}>
                             Cancel</Button>)}
                         {v.status !== 'UPLOADING' && !v.held && may?.hold && (
@@ -159,6 +175,7 @@ export default function FootageList() {
                       onClose={() => { setUploading(false); setResume(null); void refresh() }}
                       onUploaded={() => { void refresh() }} />
       )}
+      <RecordingDialog open={fromRecording} onClose={() => setFromRecording(false)} onStarted={() => { void refresh() }} />
       <WhyDialog open={!!holding} title="Keep this video past its 30 days" label="Why it must be kept" confirm="Hold it" min={5}
                  hint="A held video is not deleted until the hold is lifted, on the Evidence Holds page, with a reason."
                  onClose={() => setHolding(null)}
