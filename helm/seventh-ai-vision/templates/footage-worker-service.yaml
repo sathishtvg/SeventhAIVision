@@ -1,0 +1,21 @@
+{{- if .Values.footageWorker.enabled }}
+# Inside the cluster only: the API asks the footage worker to turn a typed
+# description into a vector (FOOTAGE_WORKER_URL in the config map).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-footage-worker
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: footage-worker
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "seventh-ai-vision.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: footage-worker
+  ports:
+    - name: embed
+      port: 8090
+      targetPort: embed
+      protocol: TCP
+{{- end }}

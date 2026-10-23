@@ -1,0 +1,28 @@
+{{- if and .Values.footageWorker.enabled .Values.footageWorker.networkPolicy.enabled }}
+# Who may reach the footage worker: the API, on 8090, and nothing else. It
+# needs no outbound internet either; outbound, it reaches the database, Redis,
+# DNS and - where the files are in S3 - the S3 endpoint, which the cluster's
+# own egress rules (or a VPC endpoint) decide.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-footage-worker
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: footage-worker
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: footage-worker
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "seventh-ai-vision.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: api
+      ports:
+        - port: 8090
+          protocol: TCP
+{{- end }}

@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TlsOnly",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::<agency bucket>", "arn:aws:s3:::<agency bucket>/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    },
+    {
+      "Sid": "OnlyThroughTheVpcEndpoint",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::<agency bucket>", "arn:aws:s3:::<agency bucket>/*"],
+      "Condition": { "StringNotEquals": { "aws:SourceVpce": "<the S3 VPC endpoint id>" } }
+    }
+  ]
+}

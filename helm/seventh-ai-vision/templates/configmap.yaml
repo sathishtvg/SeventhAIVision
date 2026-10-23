@@ -21,6 +21,8 @@ data:
   S3_ENDPOINT_URL: {{ include "seventh-ai-vision.s3EndpointUrl" . | quote }}
   S3_BUCKET: {{ .Values.config.s3Bucket | quote }}
   S3_PRESIGN_TTL_SECONDS: {{ .Values.config.s3PresignTtlSeconds | quote }}
+  # Where the API asks the footage worker to turn a description into a vector (FOOTAGE_REVIEW.md).
+  FOOTAGE_WORKER_URL: {{ printf "http://%s-footage-worker:8090" (include "seventh-ai-vision.fullname" .) | quote }}
   SMTP_HOST: {{ .Values.config.smtp.host | quote }}
   SMTP_PORT: {{ .Values.config.smtp.port | quote }}
   SMTP_USER: {{ .Values.config.smtp.user | quote }}

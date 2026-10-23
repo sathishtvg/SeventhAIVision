@@ -13,6 +13,7 @@ else has claimed, or that is no longer waiting, is not claimed twice.
 from __future__ import annotations
 
 import os
+import re
 from contextlib import contextmanager
 from datetime import timedelta
 from typing import Iterator, Sequence
@@ -27,7 +28,8 @@ MOST_ATTEMPTS = 3
 
 
 def connect() -> psycopg.Connection:
-    dsn = os.environ.get("DATABASE_URL", "").replace("postgresql+psycopg://", "postgresql://")
+    """The application's own address, whichever driver it names (Compose gives psycopg, the chart asyncpg)."""
+    dsn = re.sub(r"^postgresql\+\w+://", "postgresql://", os.environ.get("DATABASE_URL", ""))
     return psycopg.connect(dsn, autocommit=True)
 
 

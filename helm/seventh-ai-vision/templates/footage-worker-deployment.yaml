@@ -1,0 +1,104 @@
+{{- if .Values.footageWorker.enabled }}
+# The footage worker (FOOTAGE_REVIEW.md): analyses the videos uploaded to Footage
+# Review one at a time, and turns a typed description into a vector for the
+# API's search on port 8090, reached through its own service by the API alone
+# (see footage-worker-networkpolicy.yaml). It raises no alert and no incident.
+#
+# More videos waiting, more replicas: each takes one video at a time from the
+# Redis stream footage_jobs, and the database says which are waiting.
+# Every model is in the image; nothing is fetched when it runs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-footage-worker
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+    app.kubernetes.io/component: footage-worker
+spec:
+  replicas: {{ .Values.footageWorker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "seventh-ai-vision.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: footage-worker
+  template:
+    metadata:
+      labels:
+        {{- include "seventh-ai-vision.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: footage-worker
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "seventh-ai-vision.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: footage-worker
+          image: "{{ .Values.images.footageWorker.repository }}:{{ .Values.images.footageWorker.tag }}"
+          imagePullPolicy: {{ .Values.images.footageWorker.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-config
+            - secretRef:
+                name: {{ include "seventh-ai-vision.fullname" . }}-secret
+          env:
+            - name: FOOTAGE_THREADS
+              value: {{ .Values.footageWorker.threads | quote }}
+            - name: FOOTAGE_MAX_SECONDS
+              value: {{ .Values.footageWorker.maxSeconds | quote }}
+          ports:
+            - name: embed
+              containerPort: 8090
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: embed
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: embed
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if not .Values.minio.enabled }}
+            {{- if eq .Values.config.storageBackend "local" }}
+            - name: evidence
+              mountPath: /data/evidence
+            {{- end }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.footageWorker.resources | nindent 12 }}
+      volumes:
+        # A playable copy of an upload in S3 is made here before it is sent.
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.footageWorker.scratchSize | quote }}
+        {{- if not .Values.minio.enabled }}
+        {{- if eq .Values.config.storageBackend "local" }}
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-evidence
+        {{- end }}
+        {{- end }}
+      {{- with .Values.footageWorker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.footageWorker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

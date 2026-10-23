@@ -1,0 +1,62 @@
+# Footage Review in a Singapore government agency's GCC account on AWS
+# (docs/FOOTAGE_REVIEW_DEPLOYMENT.md, Part B). Prepared, never deployed by us.
+#
+#   helm upgrade --install vision helm/seventh-ai-vision -f helm/seventh-ai-vision/values-gcc.yaml \
+#     --set-file ...   (the agency's own secrets, from its secret store - never in this file)
+#
+# Every <angle-bracketed> value is the agency's to fill in. Nothing here is a real
+# account, address, bucket or key. This file only overrides what differs from
+# values.yaml; read that for everything else.
+
+# Images from the agency's own registry: a GCC network gives the cluster no
+# internet, and every model is already inside its image.
+images:
+  backend:
+    repository: "<account>.dkr.ecr.ap-southeast-1.amazonaws.com/seventh-ai-vision/backend"
+    tag: "<release>"
+  frontend:
+    repository: "<account>.dkr.ecr.ap-southeast-1.amazonaws.com/seventh-ai-vision/frontend"
+    tag: "<release>"
+  aiWorker:
+    repository: "<account>.dkr.ecr.ap-southeast-1.amazonaws.com/seventh-ai-vision/ai-worker"
+    tag: "<release>"
+  footageWorker:
+    repository: "<account>.dkr.ecr.ap-southeast-1.amazonaws.com/seventh-ai-vision/footage-worker"
+    tag: "<release>"
+
+# The agency's managed PostgreSQL 16 with pgvector and pg_partman
+# (see the guide: the superuser jobs need a decision on a managed database).
+postgres:
+  enabled: false
+  externalUrl: "postgresql+asyncpg://svc_app:<password>@<database endpoint>:5432/seventh_ai_vision"
+
+minio:
+  enabled: false
+
+# Footage, evidence and their thumbnails in the agency's S3 bucket in Singapore,
+# encrypted with its KMS key, reached through an S3 VPC endpoint.
+config:
+  storageBackend: s3
+  s3EndpointUrl: "https://s3.ap-southeast-1.amazonaws.com"
+  s3Bucket: "<agency bucket>"
+
+# The pods' AWS identity: a role allowed the bucket and its KMS key (IRSA).
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<account>:role/<role for the bucket and its key>"
+
+footageWorker:
+  enabled: true
+  replicas: 2
+  networkPolicy:
+    enabled: true
+
+# Reached on the agency's network only, over TLS.
+ingress:
+  enabled: true
+  className: "<the agency's internal ingress class>"
+  host: "<the agency's internal host name>"
+  tls:
+    enabled: true
+    secretName: seventh-ai-vision-tls

@@ -144,7 +144,7 @@ def test_the_screen_is_in_the_menu_and_the_route_table():
 
 def test_the_state_of_each_phase_is_said():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", "2": "Built", "3": "Built", "4": "Built", "5": "Built", "6": "Not yet"}
+    assert phases == {str(n): "Built" for n in range(1, 7)}
 
 
 def test_the_two_stages_are_as_the_document_says():
@@ -221,3 +221,59 @@ def test_a_saved_recording_is_as_the_document_says():
     assert 'require_permission("footage:upload")), Depends(require_permission("recording:read"))' in router
     service = (REPO_ROOT / "backend" / "app" / "services" / "footage.py").read_text(encoding="utf-8")
     assert "shutil.copyfile(source, target)" in service and "ffmpeg" not in service, "a plain copy: nothing decoded"
+
+
+GUIDE = REPO_ROOT / "docs" / "FOOTAGE_REVIEW_DEPLOYMENT.md"
+CHART = REPO_ROOT / "helm" / "seventh-ai-vision"
+
+
+def test_the_deployment_package_is_what_the_guide_lists():
+    import json
+
+    import yaml
+
+    guide = GUIDE.read_text(encoding="utf-8")
+    flat = " ".join(guide.split())
+    listed = re.findall(r"^\| `([^`]+)` \| ", guide.split("## Part A", 1)[0], re.M)
+    assert len(listed) == 8 and all((REPO_ROOT / p).exists() for p in listed), listed
+    assert "**It is prepared and has never been run:**" in flat and "**This maps; it does not certify.**" in flat
+    gcc = yaml.safe_load((CHART / "values-gcc.yaml").read_text(encoding="utf-8"))
+    assert gcc["config"]["storageBackend"] == "s3" and gcc["minio"]["enabled"] is False
+    assert "ap-southeast-1" in gcc["config"]["s3EndpointUrl"] and gcc["footageWorker"]["networkPolicy"]["enabled"] is True
+    assert gcc["ingress"]["tls"]["enabled"] is True and "eks.amazonaws.com/role-arn" in gcc["serviceAccount"]["annotations"]
+    assert all("<" in v["repository"] for v in gcc["images"].values()), "the agency's registry, not ours"
+    lifecycle = json.loads((REPO_ROOT / "scripts" / "aws" / "footage" / "s3-lifecycle.json").read_text(encoding="utf-8"))
+    assert [r["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"] for r in lifecycle["Rules"]] == [1]
+    assert not any("Expiration" in r for r in lifecycle["Rules"]), "no bucket rule deletes footage: a hold must keep it"
+    assert "**There is deliberately no lifecycle rule that deletes footage:**" in flat
+    values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
+    assert values["footageWorker"]["enabled"] is True and values["images"]["footageWorker"]["repository"]
+    ingress = (CHART / "templates" / "footage-ingress.yaml").read_text(encoding="utf-8")
+    assert 'proxy-body-size: "17m"' in ingress and "path: /api/v1/footage/" in ingress
+    deployment = (CHART / "templates" / "footage-worker-deployment.yaml").read_text(encoding="utf-8")
+    assert "readOnlyRootFilesystem: true" in deployment and 'drop: ["ALL"]' in deployment and "runAsNonRoot: true" in deployment
+    assert "app.kubernetes.io/component: api" in (CHART / "templates" / "footage-worker-networkpolicy.yaml").read_text(encoding="utf-8")
+    assert "FOOTAGE_WORKER_URL" in (CHART / "templates" / "configmap.yaml").read_text(encoding="utf-8")
+
+
+def test_the_chart_renders_the_worker_both_ways_where_helm_is_installed():
+    import shutil
+    import subprocess
+
+    import yaml
+
+    helm = shutil.which("helm")
+    if helm is None:
+        import pytest
+
+        pytest.skip("helm is not installed here; CI has it")
+    for extra, network_policy, mount in (([], False, True), (["-f", str(CHART / "values-gcc.yaml")], True, False)):
+        out = subprocess.run([helm, "template", "ci", str(CHART), *extra], capture_output=True, text=True, check=True).stdout
+        docs = [d for d in yaml.safe_load_all(out) if d]
+        names = {(d["kind"], d["metadata"]["name"]) for d in docs}
+        assert ("Deployment", "ci-seventh-ai-vision-footage-worker") in names
+        assert ("Ingress", "ci-seventh-ai-vision-footage") in names
+        assert (("NetworkPolicy", "ci-seventh-ai-vision-footage-worker") in names) is network_policy
+        worker = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("footage-worker"))
+        mounts = [m["mountPath"] for m in worker["spec"]["template"]["spec"]["containers"][0]["volumeMounts"]]
+        assert ("/data/evidence" in mounts) is mount

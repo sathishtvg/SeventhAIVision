@@ -28,6 +28,11 @@ images:
     repository: minio/minio
     tag: "latest"
     pullPolicy: IfNotPresent
+  # The footage worker (docker/footage-worker.Dockerfile): ONNX Runtime, ffmpeg and its models.
+  footageWorker:
+    repository: seventh-ai-vision/footage-worker
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 
@@ -143,6 +148,31 @@ intelligenceRunner:
     limits:
       cpu: "500m"
       memory: "512Mi"
+  nodeSelector: {}
+  tolerations: []
+
+# ─── Footage Review's worker (FOOTAGE_REVIEW.md) ──────────────────────────────
+# Analyses uploaded videos one at a time and answers the API's searches. More
+# videos waiting, more replicas. It raises no alert and no incident.
+footageWorker:
+  enabled: true
+  replicas: 1
+  # ONNX Runtime threads per model.
+  threads: 2
+  # The longest video it analyses, in seconds (6 hours).
+  maxSeconds: 21600
+  # Room for a playable copy made before it is sent to S3.
+  scratchSize: "8Gi"
+  # Let only the API reach its port 8090.
+  networkPolicy:
+    enabled: false
+  resources:
+    requests:
+      cpu: "1"
+      memory: "1536Mi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
   nodeSelector: {}
   tolerations: []
 

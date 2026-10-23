@@ -21,7 +21,7 @@ events and checked for possible altercations. Design and the owner's decisions:
 | 3 | Event review: people and vehicles on the timeline | Built |
 | 4 | Fight detection in two stages, and review verdicts | Built |
 | 5 | "Analyse this recording" | Built |
-| 6 | Helm template, the GCC package, the deployment guide and the controls sheet | Not yet |
+| 6 | Helm template, the GCC package, the deployment guide and the controls sheet | Built |
 
 A finished upload waits as **Waiting to be analysed** until the footage worker
 takes it. The worker is not one of the core services: start it while footage
@@ -276,6 +276,18 @@ analysed like an upload. A copy that cannot be made says so.
 - The retention statement (Data Retention) lists the period as
   `FOOTAGE_REVIEW`: 30 days, fixed in the code.
 
+## Deploying it
+
+`docs/FOOTAGE_REVIEW_DEPLOYMENT.md`: SaaS on AWS Singapore (Part A), an agency's
+GCC account (Part B, with `helm/seventh-ai-vision/values-gcc.yaml`), a controls
+sheet against the topics of a government security review (Part C), and what is
+the owner's before it runs on a real bucket (Part D). Prepared, never run;
+nothing has been created in any cloud account.
+
+The chart gains the footage worker (its deployment, service, network policy and
+upload ingress) and `FOOTAGE_WORKER_URL` in its config map; it renders with the
+default values and with the GCC values.
+
 ## Changes to what existed
 
 All approved in the design. Each is an addition:
@@ -291,6 +303,8 @@ All approved in the design. Each is an addition:
 - `docker/nginx.conf` — the upload location.
 - `docker/docker-compose.yml` — the `footage-worker` service, under the profile
   `footage`.
+- `helm/seventh-ai-vision/values.yaml` — the `footageWorker` block and its image;
+  `templates/configmap.yaml` — `FOOTAGE_WORKER_URL`.
 - Migration `0164` — what the worker found out about a video is kept on it:
   `codec`, `frames_indexed`, `index_model`, `playable`, `proxy_path`.
 - `PRIVACY_MASKING.md` — a paragraph saying a copied recording is masked, and an
@@ -313,3 +327,6 @@ All approved in the design. Each is an addition:
 - The Ultralytics licence before any SaaS or GCC sale: the person, vehicle and
   pose detectors are AGPL-3.0.
 - For GCC, an agency to host it.
+- Two changes to existing code before a real S3 bucket can be used (the chart's
+  S3 keys when MinIO is off; the API's S3 client and a pod's IAM role) —
+  `docs/FOOTAGE_REVIEW_DEPLOYMENT.md`, Part D.
