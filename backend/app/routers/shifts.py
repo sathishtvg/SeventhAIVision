@@ -56,6 +56,40 @@ async def _get_liveness_min_score(db: AsyncSession) -> float:
 
 
 
+async def _shift_actor(db: AsyncSession, token: TokenPayload, guard_user_id) -> Literal["manager", "self"]:
+    """Who is acting on this shift: a supervisor (holds shift:manage, any shift) or the guard it belongs to.
+
+    FIXED 23 October 2026: start, end and the breaks used to require shift:manage, which no guard holds, so a
+    guard checking in or out from the phone was refused with "Missing permission: shift:manage". A guard may
+    now act on their OWN shift; anyone else still needs shift:manage, as before."""
+    held = (await db.execute(
+        text(
+            "SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id "
+            "WHERE rp.role_id = :role_id AND p.code = 'shift:manage'"
+        ),
+        {"role_id": token.role_id},
+    )).first()
+    if held is not None:
+        return "manager"
+    if guard_user_id is not None and str(guard_user_id) == str(token.user_id):
+        return "self"
+    await db.rollback()
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "Missing permission: shift:manage - only the guard on this shift, or a supervisor, can do this",
+    )
+
+
+def _require_selfie(actor: str, photo: UploadFile | None, which: str) -> None:
+    """A guard checking themselves in or out sends a selfie, and it is liveness-checked. Only a supervisor's
+    override (shift:manage, on the guard's behalf) may go without one, as before."""
+    if actor == "self" and photo is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"A selfie is required to {which} - take the photo and try again",
+        )
+
+
 async def _process_checkin_photo(
     db: AsyncSession,
     tenant_id: str,
@@ -452,7 +486,7 @@ async def roster_coverage(
     return {"days": days, "shifts": [dict(r._mapping) for r in result]}
 
 
-@router.post("/{shift_id}/start", dependencies=[Depends(require_permission("shift:manage"))])
+@router.post("/{shift_id}/start", dependencies=[Depends(require_permission("shift:read"))])
 async def start_shift(
     shift_id: str,
     request: Request,
@@ -470,6 +504,8 @@ async def start_shift(
     if shift_row is None:
         await db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found or not in scheduled status")
+    actor = await _shift_actor(db, token, shift_row.guard_user_id)
+    _require_selfie(actor, photo, "check in")
 
     # Hard-blocks (mock GPS / liveness) happen before any shift-state write.
     photo_path, liveness_score = await _process_checkin_photo(
@@ -565,7 +601,7 @@ async def start_shift(
     return row_dict
 
 
-@router.post("/{shift_id}/end", dependencies=[Depends(require_permission("shift:manage"))])
+@router.post("/{shift_id}/end", dependencies=[Depends(require_permission("shift:read"))])
 async def end_shift(
     shift_id: str,
     request: Request,
@@ -584,6 +620,8 @@ async def end_shift(
     if shift_row is None:
         await db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found or not active")
+    actor = await _shift_actor(db, token, shift_row.guard_user_id)
+    _require_selfie(actor, photo, "check out")
 
     # Hard-blocks (mock GPS / liveness) happen before any shift-state write.
     photo_path, liveness_score = await _process_checkin_photo(
@@ -703,7 +741,7 @@ async def get_checkin_photo(
 
 # ── Breaks (ShiftSecure Phase 2A) ─────────────────────────────────────────────
 
-@router.post("/{shift_id}/break/start", dependencies=[Depends(require_permission("shift:manage"))])
+@router.post("/{shift_id}/break/start", dependencies=[Depends(require_permission("shift:read"))])
 async def start_break(
     shift_id: str,
     request: Request,
@@ -711,10 +749,11 @@ async def start_break(
     token: TokenPayload = Depends(get_token_payload),
 ):
     shift_row = (await db.execute(
-        text("SELECT status FROM shifts WHERE id = :id"), {"id": shift_id}
+        text("SELECT status, guard_user_id FROM shifts WHERE id = :id"), {"id": shift_id}
     )).first()
     if shift_row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+    await _shift_actor(db, token, shift_row.guard_user_id)
     if shift_row.status != "active":
         raise HTTPException(status.HTTP_409_CONFLICT, "Shift is not active")
     open_break = (await db.execute(
@@ -738,13 +777,19 @@ async def start_break(
     return dict(row._mapping)
 
 
-@router.post("/{shift_id}/break/end", dependencies=[Depends(require_permission("shift:manage"))])
+@router.post("/{shift_id}/break/end", dependencies=[Depends(require_permission("shift:read"))])
 async def end_break(
     shift_id: str,
     request: Request,
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
+    owner = (await db.execute(
+        text("SELECT guard_user_id FROM shifts WHERE id = :id"), {"id": shift_id}
+    )).first()
+    if owner is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+    await _shift_actor(db, token, owner.guard_user_id)
     result = await db.execute(
         text(
             "UPDATE shift_breaks SET break_end = now() "

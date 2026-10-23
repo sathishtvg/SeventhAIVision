@@ -45,12 +45,44 @@ const dayLabel = (iso: string) => {
  * showing nothing — and it is much easier to test than to notice on screen.
  */
 export function shiftForCheckIn(shifts: Shift[], now: Date = new Date()): Shift | null {
-  const active = shifts.find((s) => s.status === 'active')
+  // The newest shift that is really running. FIXED 23 October 2026: this took the first 'active' shift it
+  // found, and a shift from weeks ago that nobody checked out of is 'active' for ever - the card offered
+  // Check Out to a guard who had never checked in.
+  const active = shifts
+    .filter((s) => s.status === 'active' && !isStaleOpenShift(s, now))
+    .sort((a, b) => +new Date(b.scheduled_start) - +new Date(a.scheduled_start))[0]
   if (active) return active
   const upcoming = shifts
     .filter((s) => s.status === 'scheduled' && new Date(s.scheduled_end) >= now)
     .sort((a, b) => +new Date(a.scheduled_start) - +new Date(b.scheduled_start))
   return upcoming[0] ?? null
+}
+
+/** Hours past its scheduled end after which a shift still open was never checked out (a lost phone, a guard
+ *  who went home): it is not "on duty now". Twelve covers any real overtime. */
+export const STALE_OPEN_SHIFT_HOURS = 12
+
+/** A shift still open long after it was due to end. */
+export function isStaleOpenShift(s: Shift, now: Date = new Date()): boolean {
+  return s.status === 'active' && +new Date(s.scheduled_end) + STALE_OPEN_SHIFT_HOURS * 3_600_000 < +now
+}
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], { day: '2-digit', month: 'short' })
+
+/** Tells the guard about a shift left open, so a supervisor can close it - the card no longer offers it. */
+function StaleShiftNote({ shifts }: { shifts: Shift[] }) {
+  const stale = shifts.filter((s) => isStaleOpenShift(s))
+  if (stale.length === 0) return null
+  const days = stale.map((s) => shortDate(s.scheduled_start)).join(', ')
+  return (
+    <View style={styles.noteRow}>
+      <Ionicons name="alert-circle-outline" size={13} color={colors.warning} />
+      <Text style={styles.note}>
+        {stale.length === 1 ? `A shift on ${days} was` : `Shifts on ${days} were`} never checked out. Ask your
+        supervisor to close {stale.length === 1 ? 'it' : 'them'}.
+      </Text>
+    </View>
+  )
 }
 
 export function ShiftCheckInCard() {
@@ -87,6 +119,7 @@ export function ShiftCheckInCard() {
       <View style={styles.card}>
         <Text style={styles.heading}>Attendance</Text>
         <Text style={styles.muted}>No shift to check in to right now.</Text>
+        <StaleShiftNote shifts={shifts} />
       </View>
     )
   }
@@ -126,6 +159,7 @@ export function ShiftCheckInCard() {
         <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
         <Text style={styles.note}>Location and a selfie are recorded with your check-in.</Text>
       </View>
+      <StaleShiftNote shifts={shifts} />
 
       <CheckInPhotoModal
         visible={flow !== null}
