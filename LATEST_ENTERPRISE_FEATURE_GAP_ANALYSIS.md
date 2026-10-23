@@ -1016,3 +1016,14 @@ marked, and a camera's tile that says what it is doing
 (`PAGE_AWARE_ANIMATION_GAP_ANALYSIS.md` is the record of that work). Nothing
 in the desktop shell was changed for it. It is unsigned, with the same app id
 and MSI upgrade code, so it installs over 1.0.7.
+
+### Desktop 1.0.9
+
+Desktop 1.0.9 is the web build of 23 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.8: fleet tracking and geofences (module 30 of the feature reference:
+vehicles archived and never deleted, the providers page, the live map,
+journeys and their playback, geofences and what else the site recorded around
+an entry or exit) and Footage Review (module 31). Nothing in the desktop shell
+was changed for it. It is unsigned, with the same app id and MSI upgrade code,
+so it installs over 1.0.8.
