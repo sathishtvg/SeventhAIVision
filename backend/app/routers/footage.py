@@ -638,3 +638,46 @@ async def play_video(video_id: uuid.UUID, request: Request, token: str = Query(.
                                           "site_id": str(row["site_id"]) if row["site_id"] else None})
             await db.commit()
     return await _serve(path, media_type)
+
+
+# ── what the worker found: events, and the counts behind them ─────────────────
+
+FINDING_WORDS = {"PEOPLE": "People present", "VEHICLES": "Vehicle present", "ALTERCATION": "Possible altercation"}
+VERDICT_WORDS = {"CONFIRMED": "Confirmed", "REJECTED": "Not an altercation"}
+
+
+@router.get("/{video_id:uuid}/findings", dependencies=_VIEW)
+async def video_findings(
+    video_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+    allowed: list[str] | None = Depends(get_allowed_site_ids),
+):
+    """What the worker found in one video: its events, in the order they happen,
+    and for the timeline the seconds in which anything was counted. A count is
+    how many were seen in one frame, never who."""
+    v = await _one(db, video_id, allowed)
+    rows = (await db.execute(text("""
+        SELECT f.id, f.kind, f.start_second, f.end_second, f.best_second, f.score, f.most, f.reasons,
+               f.model_version, f.verdict, f.verdict_note, f.verdict_at, u.full_name AS verdict_by_name, f.created_at
+          FROM footage_findings f LEFT JOIN users u ON u.id = f.verdict_by_user_id
+         WHERE f.video_id = CAST(:id AS uuid)
+         ORDER BY f.start_second, f.kind, f.id
+    """), {"id": str(video_id)})).mappings().all()
+    counted = (await db.execute(text("""
+        SELECT second, people, vehicles FROM footage_frames
+         WHERE video_id = CAST(:id AS uuid) AND (coalesce(people, 0) > 0 OR coalesce(vehicles, 0) > 0)
+         ORDER BY second
+    """), {"id": str(video_id)})).all()
+    findings = []
+    for r in rows:
+        f = dict(r)
+        f["score"] = float(f["score"])
+        f["kind_words"] = FINDING_WORDS[f["kind"]]
+        f["verdict_words"] = VERDICT_WORDS.get(f["verdict"]) if f["verdict"] else None
+        f["at"] = v["filmed_at"] + timedelta(seconds=f["best_second"]) if v["filmed_at"] else None
+        findings.append(f)
+    held = await held_by(db, token.role_id, HELD)
+    return {"video_id": str(video_id), "status": v["status"], "duration_seconds": v["duration_seconds"],
+            "findings": findings, "counts": [[r.second, r.people or 0, r.vehicles or 0] for r in counted],
+            "may": _may(held)}

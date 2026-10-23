@@ -21,6 +21,9 @@ import pytest
 
 MODEL_DIR = Path(os.environ.get("FOOTAGE_MODEL_DIR", "/opt/models/siglip2"))
 HAS_MODEL = (MODEL_DIR / "onnx" / "vision_model_quantized.onnx").exists()
+DETECTOR = Path(os.environ.get("FOOTAGE_DETECTOR", "/opt/models/yolov8s/yolov8s.onnx"))
+HAS_DETECTOR = DETECTOR.exists()
+needs_detector = pytest.mark.skipif(not HAS_DETECTOR, reason="the detector is in the footage worker's image only")
 HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 needs_model = pytest.mark.skipif(not HAS_MODEL, reason="the model is in the footage worker's image only")
 needs_ffmpeg = pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg is in the footage worker's image")
@@ -87,6 +90,58 @@ def test_the_model_is_the_pinned_one(embedder):
         assert (MODEL_DIR / name).stat().st_size == size, name
 
 
+# ─── People and vehicles ─────────────────────────────────────────────────────
+
+def test_seconds_with_someone_in_them_are_joined_into_events_across_short_gaps():
+    from worker.footage import events
+
+    counts = {3: (1, 0.9), 4: (2, 0.8), 7: (1, 0.95), 8: (0, 0.0), 20: (1, 0.6), 30: (3, 0.7)}
+    found = events.stretches("PEOPLE", counts)
+    assert [(e.start, e.end, e.most, e.best, e.seconds) for e in found] == [
+        (3, 7, 2, 4, 3), (20, 20, 1, 20, 1), (30, 30, 3, 30, 1)]
+    assert found[0].reasons == {"seen_in_seconds": 3, "most_at_once": 2}
+    assert events.stretches("VEHICLES", {1: (0, 0.0)}) == []
+
+
+def test_overlapping_boxes_of_one_thing_are_kept_once():
+    from worker.footage import detect
+
+    boxes = np.array([[0, 0, 10, 10], [1, 1, 11, 11], [50, 50, 60, 60]], dtype=np.float32)
+    assert detect.keep_best(boxes, np.array([0.6, 0.9, 0.5])) == [1, 2]
+
+
+def test_the_answer_of_the_detector_is_read_into_people_and_vehicles_in_the_frame_s_own_pixels():
+    from worker.footage import detect
+
+    frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    _, scale, px, py = detect.letterbox(frame)
+    assert (scale, px, py) == (1.0, 0.0, 140.0)
+    out = np.zeros((1, 84, 8400), dtype=np.float32)
+    # A person at (100, 200) 40 x 80 in the frame, twice (overlapping); a car; a dog (not counted); a faint person.
+    for i, (cx, cy, w, h, cls, score) in enumerate([(100, 200, 40, 80, 0, 0.9), (102, 201, 40, 80, 0, 0.7),
+                                                    (400, 250, 120, 60, 2, 0.8), (300, 300, 30, 30, 16, 0.95),
+                                                    (500, 100, 20, 40, 0, 0.2)]):
+        out[0, :4, i] = (cx, cy + py, w, h)
+        out[0, 4 + cls, i] = score
+    found = detect.decode(out, scale, px, py)
+    assert sorted((b.kind, round(b.score, 2)) for b in found) == [("PERSON", 0.9), ("VEHICLE", 0.8)]
+    person = next(b for b in found if b.kind == "PERSON")
+    assert (person.x1, person.y1, person.x2, person.y2) == (80.0, 160.0, 120.0, 240.0)
+
+
+@needs_detector
+def test_the_detector_counts_the_people_and_the_bus_in_a_street_photo():
+    from PIL import Image
+
+    from worker.footage import detect
+
+    photo = Path(__file__).parent / "fixtures" / "bus.jpg"
+    if not photo.exists():
+        pytest.skip("the street photo is not here")
+    people, vehicles, p_score, v_score = detect.Detector(DETECTOR).count(np.asarray(Image.open(photo).convert("RGB")))
+    assert people >= 3 and vehicles >= 1 and p_score > 0.5 and v_score > 0.5, (people, vehicles)
+
+
 # ─── Reading a video ─────────────────────────────────────────────────────────
 
 @needs_ffmpeg
@@ -96,7 +151,7 @@ def test_a_video_is_read_and_sampled_once_a_second(tmp_path):
     clip = _make_video(tmp_path / "clip.mp4", seconds=5)
     info = video.probe(str(clip))
     assert (round(info.duration), info.width, info.height, info.codec) == (5, 320, 240, "h264")
-    assert info.playable and info.thumb_size() == (320, 240)
+    assert info.playable and info.thumb_size() == (320, 240) and info.sample_size() == (320, 240)
     frames = list(video.frames_per_second(str(clip), info))
     assert [s for s, _ in frames] == [0, 1, 2, 3, 4]
     assert frames[0][1].shape == (240, 320, 3) and frames[0][1].dtype == np.uint8
@@ -167,18 +222,26 @@ def test_a_video_goes_from_queued_to_ready_with_a_frame_and_a_vector_a_second(tm
         assert not conn.execute("SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user").fetchone()[0]
         waiting = {row[1] for row in db.waiting(conn)}
         assert set(videos) <= waiting, "the owner's function finds every organisation's waiting videos"
-        assert pipeline.process(conn, embedder, tenants[0], videos[0]) == "READY"
-        assert pipeline.process(conn, embedder, tenants[1], videos[1]) == "READY"
-        assert pipeline.process(conn, embedder, tenants[0], videos[0]) == "SKIPPED", "not claimed twice"
+        detector = None
+        if HAS_DETECTOR:
+            from worker.footage import detect
+
+            detector = detect.Detector(DETECTOR)
+        assert pipeline.process(conn, embedder, tenants[0], videos[0], detector) == "READY"
+        assert pipeline.process(conn, embedder, tenants[1], videos[1], detector) == "READY"
+        assert pipeline.process(conn, embedder, tenants[0], videos[0], detector) == "SKIPPED", "not claimed twice"
         rows = _admin("SELECT id, status, progress, frames_indexed, index_model, playable, proxy_path, codec, sha256 "
                       "FROM footage_videos WHERE id = ANY(%s) ORDER BY codec", (videos,))
         h264, mpeg4 = rows
         assert (h264[1], h264[2], h264[3], h264[4], h264[5], h264[6]) == ("READY", 100, 4, model.VERSION, "ORIGINAL", None)
         assert (mpeg4[5], mpeg4[7]) == ("PROXY", "mpeg4") and (tmp_path / mpeg4[6]).exists()
         assert len(h264[8]) == 64
-        frames = _admin("SELECT video_id, second, thumb_path, vector_dims(embedding), model_version FROM footage_frames "
-                        "WHERE video_id = ANY(%s) ORDER BY video_id, second", (videos,))
+        frames = _admin("SELECT video_id, second, thumb_path, vector_dims(embedding), model_version, people, vehicles "
+                        "FROM footage_frames WHERE video_id = ANY(%s) ORDER BY video_id, second", (videos,))
         assert [(f[1], f[3], f[4]) for f in frames if f[0] == videos[0]] == [(s, 768, model.VERSION) for s in range(4)]
+        if detector is not None:
+            assert {(f[5], f[6]) for f in frames} == {(0, 0)}, "a test pattern has nobody in it"
+            assert _admin("SELECT count(*) FROM footage_findings WHERE video_id = ANY(%s)", (videos,))[0][0] == 0
         assert all((tmp_path / f[2]).exists() for f in frames)
         # Each frame is its own organisation's.
         tenants_of = {row[0]: row[1] for row in _admin(

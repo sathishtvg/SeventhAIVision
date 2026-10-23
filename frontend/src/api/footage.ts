@@ -254,3 +254,41 @@ export function clock(seconds: number): string {
   const rest = String(s % 60).padStart(2, '0')
   return h ? `${h}:${String(m).padStart(2, '0')}:${rest}` : `${m}:${rest}`
 }
+
+// ── phase 3: what the worker found, on the timeline ─────────────────────────
+
+export type FindingKind = 'PEOPLE' | 'VEHICLES' | 'ALTERCATION'
+
+export interface Finding {
+  id: string
+  kind: FindingKind
+  kind_words: string
+  start_second: number
+  end_second: number
+  best_second: number
+  score: number
+  /** How many were seen at once, at most (people and vehicles). */
+  most: number | null
+  reasons: Record<string, unknown>
+  model_version: string
+  verdict: 'CONFIRMED' | 'REJECTED' | null
+  verdict_words: string | null
+  verdict_note: string | null
+  verdict_at: string | null
+  verdict_by_name: string | null
+  /** When the best second was filmed, if the video's start time is known. */
+  at: string | null
+}
+
+export interface FindingsAnswer {
+  video_id: string
+  status: FootageStatus
+  duration_seconds: number | null
+  findings: Finding[]
+  /** [second, people, vehicles] for each second in which anything was counted. */
+  counts: [number, number, number][]
+  may: FootageMay
+}
+
+export const getFindings = (id: string) =>
+  apiClient.get<FindingsAnswer>(`/api/v1/footage/${id}/findings`).then((r) => r.data)
