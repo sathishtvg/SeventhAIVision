@@ -355,3 +355,21 @@ def test_with_minio_off_the_s3_keys_come_from_the_values_and_are_empty_by_defaul
     worker = (REPO_ROOT / "ai-worker" / "worker" / "storage.py").read_text(encoding="utf-8")
     assert "aws_access_key_id=S3_ACCESS_KEY or None" in worker
 
+
+def test_attendance_photos_have_a_claim_the_api_and_the_scheduler_share():
+    """Check-in selfies and registered faces are files the API writes and shows and the scheduler deletes. Until
+    24 October 2026 the chart gave them no volume: they lived in the API pod and differed between its replicas."""
+    pvc = (CHART_DIR / "templates" / "pvc.yaml").read_text(encoding="utf-8")
+    claim = pvc.split("-attendance-photos", 1)[1]
+    assert "{{- if not .Values.minio.enabled }}" not in pvc.split("-recordings", 1)[1], "kept whatever the evidence store is"
+    assert ".Values.persistence.attendancePhotos.accessMode" in claim and ".Values.persistence.attendancePhotos.size" in claim
+    pers = _load_values()["persistence"]["attendancePhotos"]
+    assert pers["accessMode"] == "ReadWriteMany" and pers["size"]
+    for name, writable in (("api-deployment.yaml", True), ("scheduler-deployment.yaml", True)):
+        text = (CHART_DIR / "templates" / name).read_text(encoding="utf-8")
+        mount = text.split("- name: attendance-photos\n              mountPath: /data/attendance_photos", 1)
+        assert len(mount) == 2, name
+        assert mount[1].split("\n", 1)[1].lstrip().startswith("readOnly") is not writable, name
+        assert 'claimName: {{ include "seventh-ai-vision.fullname" . }}-attendance-photos' in text, name
+    from app.core.config import settings
+    assert settings.ATTENDANCE_PHOTOS_ROOT == "/data/attendance_photos"

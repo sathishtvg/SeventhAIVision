@@ -45,6 +45,10 @@ spec:
             - name: recordings
               mountPath: /data/recordings
               readOnly: true
+            # Read-write: the daily cycle deletes the registered face of a deactivated account, photo included
+            # (services/staff_face_retention.py).
+            - name: attendance-photos
+              mountPath: /data/attendance_photos
           resources:
             {{- toYaml .Values.scheduler.resources | nindent 12 }}
       volumes:
@@ -56,6 +60,9 @@ spec:
         - name: recordings
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-recordings
+        - name: attendance-photos
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-attendance-photos
       {{- with .Values.scheduler.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

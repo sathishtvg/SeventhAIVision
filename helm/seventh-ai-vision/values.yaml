@@ -512,6 +512,11 @@ persistence:
     size: 200Gi
     storageClass: ""
     accessMode: ReadWriteMany
+  # Check-in selfies and the faces registered for check-in: the API (every replica) and the scheduler share it.
+  attendancePhotos:
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
 
 # ─── Application runtime configuration (non-sensitive) ───────────────────────
 config:

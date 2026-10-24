@@ -62,6 +62,9 @@ spec:
             # the API plays what the recorder in the ingestion pod wrote.
             - name: recordings
               mountPath: /data/recordings
+            # Check-in selfies and registered faces (ATTENDANCE_PHOTOS_ROOT), shared by every replica.
+            - name: attendance-photos
+              mountPath: /data/attendance_photos
           livenessProbe:
             httpGet:
               path: {{ .Values.api.livenessProbe.path }}
@@ -87,6 +90,9 @@ spec:
         - name: recordings
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-recordings
+        - name: attendance-photos
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-attendance-photos
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
