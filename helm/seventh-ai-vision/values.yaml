@@ -16,9 +16,13 @@ images:
     repository: seventh-ai-vision/frontend
     tag: "1.0.0"
     pullPolicy: IfNotPresent
+  # The project's database image (docker/postgres.Dockerfile): Postgres 16 with pgvector and pg_partman, which
+  # the migrations need, and the first-start scripts that make the restricted app role (svc_app). Plain postgres:16
+  # had neither: on a new cluster the first migration failed. Build and push it with the others:
+  #   docker build -f docker/postgres.Dockerfile -t <registry>/seventh-ai-vision/postgres:1.0.0 .
   postgres:
-    repository: postgres
-    tag: "16"
+    repository: seventh-ai-vision/postgres
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   redis:
     repository: redis

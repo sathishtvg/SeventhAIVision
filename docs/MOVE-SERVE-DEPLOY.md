@@ -477,7 +477,8 @@ renders; it has **never been deployed** to a cluster. Moving to a managed
 Kubernetes service (EKS, AKS or GKE) would also mean:
 
 - A managed database that offers both **pgvector** and **pg_partman**, which
-  the database uses.
+  the database uses. (The chart's own database, `postgres.enabled: true`, runs
+  the project's image with both since 24 October 2026; see `docs/UPGRADE.md`.)
 - Reworking the jobs that run on a superuser database session (partition
   maintenance, retention): managed databases do not give a true superuser.
 - Getting video from the sites. Only Drone Patrol has a site box that sends its

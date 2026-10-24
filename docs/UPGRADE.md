@@ -351,3 +351,51 @@ any route.
 | 0019 | Alert deduplication rules |
 | 0020 | Scheduled reports |
 | 0021 | Drop legacy FLOAT4[] embeddings, add partial HNSW index on face_events.embedding_v |
+
+## The Helm Chart's Volumes and Its Own Database (24 October 2026)
+
+The chart had never been installed on a cluster. Comparing it with
+`docker-compose.yml` while adding staff face registration found these, all
+fixed in the chart; nothing changes for a Docker Compose installation.
+
+**Volumes.** Every folder the application writes now has a claim, all
+`ReadWriteMany` by default (`persistence.*` in `values.yaml`). Before, each of
+these was written into its own pod: lost when the pod was replaced, and a file
+written through one API replica was missing through another.
+
+| Claim | Mounted in | What is on it |
+|---|---|---|
+| `<release>-attendance-photos` | API, scheduler | Check-in selfies and the faces registered for check-in |
+| `<release>-employee-docs` | API | Staff documents, profile photos, leave attachments, SOP files |
+| `<release>-guardhouse` | API | Photos of defects and of lost and found property |
+| `<release>-face-models` | API | The face model; `api.prepareFaceModels` fetches it once, before the API starts (needs egress to GitHub's release downloads, or load it yourself) |
+| `<release>-backups` | API, scheduler | The daily and on-demand database backups |
+
+The API and the scheduler now also get `PGPASSWORD`, which `pg_dump` needs: a
+cluster's backup failed without it.
+
+**The database (`postgres.enabled: true`).**
+
+- It runs the project's image, `seventh-ai-vision/postgres:1.0.0`, built from
+  `docker/postgres.Dockerfile`: Postgres 16 with **pgvector** and
+  **pg_partman**, and the first-start scripts that make the restricted app role.
+  Plain `postgres:16`, which the chart named before, has neither extension, so
+  the first migration failed. Build it and push it to your registry with the
+  other images:
+
+  ```bash
+  docker build -f docker/postgres.Dockerfile -t <registry>/seventh-ai-vision/postgres:1.0.0 .
+  docker push <registry>/seventh-ai-vision/postgres:1.0.0
+  ```
+
+  The Dockerfile pins `linux/amd64`: nodes must be x86-64.
+- The app role (`postgres.username`, svc_app) is created with
+  `postgres.password`, which is what the API connects with. It was created with
+  the superuser's password, so the two had to be the same.
+- The data lives in `/var/lib/postgresql/data/pgdata`, a folder of its own on
+  the claim: Postgres refuses to start in a non-empty folder, and a new
+  volume's root often holds `lost+found`.
+- The dev-only test database is not created (`CREATE_TEST_DB=0`).
+
+**With an external database (`postgres.enabled: false`)** none of the above
+applies; the database must offer pgvector and pg_partman itself.
