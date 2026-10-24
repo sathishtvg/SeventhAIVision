@@ -81,7 +81,7 @@ def test_without_minio_the_three_pods_are_given_what_they_were_given_before():
     # Since 24 October 2026 the API and the scheduler also share the attendance photos claim (check-in selfies and
     # registered faces); the recorder's pod is given exactly what it was.
     # The API alone is also given the staff files, the guardhouse photos and the face model.
-    photos = {"/data/attendance_photos": "attendance-photos"}
+    photos = {"/data/attendance_photos": "attendance-photos", "/data/backups": "backups"}
     api_only = {"/data/employee_docs": "employee-docs", "/data/guardhouse": "guardhouse",
                 "/home/appuser/.insightface": "face-models"}
     for template, extra in (("api-deployment.yaml", {**photos, **api_only}), ("ingestion-deployment.yaml", {}),
@@ -162,10 +162,8 @@ def test_every_folder_the_api_writes_has_a_claim_whatever_the_evidence_store(min
     compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]["api"]["volumes"]
     for entry in compose:
         source, path = entry.split(":")[:2]
-        if source in ("evidence_data", "backups_data"):
-            # Evidence: test A above (a claim only without MinIO). The database backups: the chart has no volume for
-            # them in any pod - on a cluster they are the database service's matter, flagged to the owner 24 Oct 2026.
-            continue
+        if source == "evidence_data":
+            continue  # test A above: a claim only without MinIO
         assert path in mounts, f"{path} ({source}) has no volume in the chart's API"
         assert volumes[mounts[path][0]] in claims and not mounts[path][1], path
 
@@ -184,3 +182,23 @@ def test_the_face_model_is_fetched_once_before_the_api_starts_and_can_be_left_to
     pod = _render("api-deployment.yaml", off)[0]["spec"]["template"]["spec"]
     assert [c["name"] for c in pod["initContainers"]] == ["alembic-migrate"]
     assert "/home/appuser/.insightface" in {m["mountPath"] for m in pod["containers"][0]["volumeMounts"]}
+
+
+def test_the_backups_share_a_claim_and_pg_dump_is_given_its_password():
+    """The scheduler takes the daily backup, the API an on-demand one and lists them: one disk. pg_dump reads
+    PGPASSWORD (it runs with --no-password); the secret calls it POSTGRES_PASSWORD."""
+    values = _values()
+    claims = {d["metadata"]["name"] for d in _render("pvc.yaml", values)}
+    assert f"{NAME}-backups" in claims
+    for template in ("api-deployment.yaml", "scheduler-deployment.yaml"):
+        mounts, volumes = _workload(template, values)
+        assert volumes[mounts["/data/backups"][0]] == f"{NAME}-backups" and not mounts["/data/backups"][1], template
+        (deployment,) = _render(template, values)
+        env = {e["name"]: e for e in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["PGPASSWORD"]["valueFrom"]["secretKeyRef"] == {"name": f"{NAME}-secret", "key": "POSTGRES_PASSWORD"}
+        assert env["BACKUP_ROOT"]["value"] == "/data/backups"
+        assert env["BACKUP_KEEP_DAILY"]["value"] == str(values["persistence"]["backups"]["keepDaily"])
+    backup = (BACKEND / "core" / "backup.py").read_text(encoding="utf-8")
+    assert '"--no-password"' in backup and 'os.environ.get("BACKUP_ROOT", "/data/backups")' in backup
+    secret = (TEMPLATES / "secret.yaml").read_text(encoding="utf-8")
+    assert "POSTGRES_PASSWORD:" in secret

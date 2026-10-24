@@ -116,3 +116,23 @@ spec:
   {{- if .Values.persistence.faceModels.storageClass }}
   storageClassName: {{ .Values.persistence.faceModels.storageClass | quote }}
   {{- end }}
+---
+# The database backups (app/core/backup.py): the scheduler's daily pg_dump, and the
+# API's on-demand one and its list (System > Backups). Without this claim each
+# was written into its own pod - lost on a restart, and the API listed none of
+# the scheduler's. Found 24 October 2026.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-backups
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.backups.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.backups.size | quote }}
+  {{- if .Values.persistence.backups.storageClass }}
+  storageClassName: {{ .Values.persistence.backups.storageClass | quote }}
+  {{- end }}

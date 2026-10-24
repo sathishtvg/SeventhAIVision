@@ -33,6 +33,18 @@ spec:
                 name: {{ include "seventh-ai-vision.fullname" . }}-config
             - secretRef:
                 name: {{ include "seventh-ai-vision.fullname" . }}-secret
+          # pg_dump (app/core/backup.py) reads the superuser's password from PGPASSWORD; the secret names it
+          # POSTGRES_PASSWORD. compose gives it as PGPASSWORD; without it a cluster's backup failed: "no password".
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "seventh-ai-vision.fullname" . }}-secret
+                  key: POSTGRES_PASSWORD
+            - name: BACKUP_ROOT
+              value: /data/backups
+            - name: BACKUP_KEEP_DAILY
+              value: {{ .Values.persistence.backups.keepDaily | quote }}
           volumeMounts:
             {{- if not .Values.minio.enabled }}
             - name: evidence
@@ -49,6 +61,9 @@ spec:
             # (services/staff_face_retention.py).
             - name: attendance-photos
               mountPath: /data/attendance_photos
+            # The daily database backup, and its rotation.
+            - name: backups
+              mountPath: /data/backups
           resources:
             {{- toYaml .Values.scheduler.resources | nindent 12 }}
       volumes:
@@ -63,6 +78,9 @@ spec:
         - name: attendance-photos
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-attendance-photos
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-backups
       {{- with .Values.scheduler.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
