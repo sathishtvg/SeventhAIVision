@@ -16,6 +16,12 @@ where the snapshot was lost look identical to one where the camera was never
 reached — and a report that hides a gap in its own evidence is worse than one
 that admits it.
 
+TIMES ARE PRINTED IN THE SCHEDULE'S ZONE, AND THE REPORT SAYS WHICH. The
+database hands back UTC, so a 22:00 Singapore patrol printed straight from it
+reads 14:00. The zone is the schedule's own (migration 0116), with the same
+Asia/Singapore fallback the scheduler uses when the schedule is gone or its
+zone is unknown -- so the report shows the time the patrol was set for.
+
 reportlab is imported lazily and guarded, matching routers/payroll.py and
 routers/reports.py: a container built without it should fail with a sentence
 somebody can act on rather than an ImportError at startup.
@@ -27,11 +33,13 @@ import io
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services.vpatrol_scheduler import _zone
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +57,30 @@ def _check_reportlab():
 
 
 async def load_session_for_report(db: AsyncSession, session_id: str) -> dict:
-    """Everything the report needs, read only from session tables."""
+    """Everything the report needs, read only from session tables.
+
+    The one exception is the time zone, which the session does not keep: it
+    comes from the schedule the session was created from. LEFT JOIN, because
+    schedule_id is set to NULL when a schedule is deleted, and a patrol's report
+    must still render after that (in Asia/Singapore, as the scheduler would).
+    """
     session = (await db.execute(text("""
         SELECT s.id, s.patrol_number, s.schedule_name, s.scheduled_for,
                s.started_at, s.completed_at, s.status, s.camera_count,
                s.completed_camera_count, s.notes,
                si.name AS site_name,
-               u.full_name AS officer_name
+               u.full_name AS officer_name,
+               sc.timezone AS schedule_timezone
           FROM virtual_patrol_sessions s
           JOIN sites si ON si.id = s.site_id
           LEFT JOIN users u ON u.id = s.officer_user_id
+          LEFT JOIN virtual_patrol_schedules sc ON sc.id = s.schedule_id
          WHERE s.id = CAST(:id AS uuid)
     """), {"id": session_id})).mappings().first()
     if session is None:
         raise ValueError("Patrol session not found")
+    session = dict(session)
+    tz = _zone(session.pop("schedule_timezone"))
 
     cameras = (await db.execute(text("""
         SELECT id, sequence_no, camera_name, camera_code, status,
@@ -91,14 +109,27 @@ async def load_session_for_report(db: AsyncSession, session_id: str) -> dict:
     for a in answers:
         grouped.setdefault(str(a["session_camera_id"]), []).append(a)
 
-    return {"session": dict(session),
+    return {"session": session,
             "cameras": [dict(c) for c in cameras],
-            "answers": grouped}
+            "answers": grouped,
+            "timezone": tz.key}
 
 
-def _fmt(value, fallback: str = "—") -> str:
+def _report_zone(data: dict) -> ZoneInfo:
+    """The zone the report prints in. Data built without one (older callers,
+    tests) gets the scheduler's default rather than UTC."""
+    return _zone(data.get("timezone"))
+
+
+def _fmt(value, fallback: str = "—", *, tz: ZoneInfo | None = None) -> str:
     if value is None:
         return fallback
+    if isinstance(value, datetime) and tz is not None:
+        # Every column printed here is TIMESTAMPTZ, so a naive value can only
+        # come from a hand-built dict; it is read as the UTC the database keeps.
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        value = value.astimezone(tz)
     if hasattr(value, "strftime"):
         return value.strftime("%Y-%m-%d %H:%M")
     return str(value)
@@ -159,6 +190,11 @@ def render_pdf(data: dict) -> bytes:
     )
 
     session = data["session"]
+    tz = _report_zone(data)
+
+    def when(value, fallback: str = "—") -> str:
+        return _fmt(value, fallback, tz=tz)
+
     styles = getSampleStyleSheet()
     title = ParagraphStyle("vpTitle", parent=styles["Title"], fontSize=16, spaceAfter=2)
     sub = ParagraphStyle("vpSub", parent=styles["Normal"], fontSize=9,
@@ -173,6 +209,7 @@ def render_pdf(data: dict) -> bytes:
         Paragraph("SEVENTH AI VISION", title),
         Paragraph("Virtual Patrol Report", styles["Heading2"]),
         Paragraph(session["patrol_number"], sub),
+        Paragraph(f"All times are {tz.key}.", sub),
         Spacer(1, 6),
         HRFlowable(width="100%", color=colors.HexColor("#999999")),
         Spacer(1, 8),
@@ -180,10 +217,10 @@ def render_pdf(data: dict) -> bytes:
 
     facts = [
         ["Site", session["site_name"], "Patrol", session["schedule_name"]],
-        ["Scheduled", _fmt(session["scheduled_for"]),
+        ["Scheduled", when(session["scheduled_for"]),
          "Duty Officer", session["officer_name"] or "Unassigned"],
-        ["Started", _fmt(session["started_at"], "Not started"),
-         "Completed", _fmt(session["completed_at"], "Not completed")],
+        ["Started", when(session["started_at"], "Not started"),
+         "Completed", when(session["completed_at"], "Not completed")],
         ["Status", session["status"].replace("_", " ").title(),
          "Cameras", f"{session['completed_camera_count']} of {session['camera_count']}"],
     ]
@@ -207,7 +244,7 @@ def render_pdf(data: dict) -> bytes:
             Paragraph(heading, styles["Heading3"]),
             Paragraph(
                 f"Status: {camera['status'].replace('_', ' ').title()} &nbsp;•&nbsp; "
-                f"Snapshot: {_fmt(camera['snapshot_taken_at'], 'none')}", sub),
+                f"Snapshot: {when(camera['snapshot_taken_at'], 'none')}", sub),
             Spacer(1, 4),
             _snapshot_flowable(camera, styles),
             Spacer(1, 6),
@@ -292,6 +329,15 @@ def render_xlsx(data: dict) -> bytes:
     from openpyxl.utils import get_column_letter
 
     session = data["session"]
+    tz = _report_zone(data)
+
+    def when(value, fallback: str = "—") -> str:
+        return _fmt(value, fallback, tz=tz)
+
+    # The zone is in each time column's heading as well as on Summary: the
+    # Exceptions sheet is often the only one opened, and a bare "22:00" there
+    # does not say whose 22:00 it is.
+    in_zone = f"({tz.key})"
     header_font = Font(bold=True)
     header_fill = PatternFill("solid", fgColor="EEEEEE")
     exception_fill = PatternFill("solid", fgColor="FDE7E7")
@@ -320,10 +366,11 @@ def render_xlsx(data: dict) -> bytes:
         ("Site", session["site_name"]),
         ("Patrol", session["schedule_name"]),
         ("Patrol number", session["patrol_number"]),
-        ("Scheduled", _fmt(session["scheduled_for"])),
+        ("Times are", tz.key),
+        ("Scheduled", when(session["scheduled_for"])),
         ("Duty officer", session["officer_name"] or "Unassigned"),
-        ("Started", _fmt(session["started_at"], "Not started")),
-        ("Completed", _fmt(session["completed_at"], "Not completed")),
+        ("Started", when(session["started_at"], "Not started")),
+        ("Completed", when(session["completed_at"], "Not completed")),
         ("Status", session["status"].replace("_", " ").title()),
         ("Cameras inspected", f"{done} of {total}"),
         # Stored as text, not a float: 66.67% invites somebody to average two
@@ -335,37 +382,38 @@ def render_xlsx(data: dict) -> bytes:
 
     # ── Camera Inspection ──
     ws = sheet("Camera Inspection",
-               ["#", "Camera", "Location", "Status", "Snapshot taken",
+               ["#", "Camera", "Location", "Status", f"Snapshot taken {in_zone}",
                 "Officer notes"])
     for cam in data["cameras"]:
         ws.append([
             cam["sequence_no"], cam["camera_name"], cam["location"] or "",
             cam["status"].replace("_", " ").title(),
-            _fmt(cam["snapshot_taken_at"], "none"),
+            when(cam["snapshot_taken_at"], "none"),
             cam["officer_notes"] or "",
         ])
-    autosize(ws, [5, 26, 20, 20, 20, 50])
+    autosize(ws, [5, 26, 20, 20, 30, 50])
 
     # ── Questions & Answers ──
     ws = sheet("Questions & Answers",
                ["Camera", "#", "Question", "Answer", "Answered by",
-                "Answered at", "Exception"])
+                f"Answered at {in_zone}", "Exception"])
     for cam in data["cameras"]:
         for a in data["answers"].get(str(cam["id"]), []):
             ws.append([
                 cam["camera_name"], a["sequence_no"], a["question_text"],
                 _answer_display(a), a["answered_by"] or "",
-                _fmt(a.get("answered_at"), ""),
+                when(a.get("answered_at"), ""),
                 "Yes" if a["is_exception"] else "",
             ])
             if a["is_exception"]:
                 for cell in ws[ws.max_row]:
                     cell.fill = exception_fill
-    autosize(ws, [24, 5, 52, 20, 20, 18, 12])
+    autosize(ws, [24, 5, 52, 20, 20, 30, 12])
 
     # ── Exceptions ──
     ws = sheet("Exceptions",
-               ["Camera", "Question", "Answer", "Reason", "Incident", "Answered at"])
+               ["Camera", "Question", "Answer", "Reason", "Incident",
+                f"Answered at {in_zone}"])
     found = 0
     for cam in data["cameras"]:
         for a in data["answers"].get(str(cam["id"]), []):
@@ -376,14 +424,14 @@ def render_xlsx(data: dict) -> bytes:
                 cam["camera_name"], a["question_text"], _answer_display(a),
                 a["exception_reason"] or "",
                 str(a["incident_id"]) if a["incident_id"] else "No incident raised",
-                _fmt(a.get("answered_at"), ""),
+                when(a.get("answered_at"), ""),
             ])
     if not found:
         # An empty sheet reads as "the export is broken". This reads as the
         # good news it actually is.
         ws.append(["No exceptions were raised on this patrol.", "", "", "", "", ""])
         ws["A2"].alignment = Alignment(horizontal="left")
-    autosize(ws, [24, 52, 20, 40, 38, 18])
+    autosize(ws, [24, 52, 20, 40, 38, 30])
 
     import io as _io
     buf = _io.BytesIO()
