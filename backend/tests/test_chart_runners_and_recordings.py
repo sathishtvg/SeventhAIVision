@@ -78,10 +78,17 @@ def test_the_recorder_the_player_and_the_verifier_share_one_recordings_disk(temp
 
 
 def test_without_minio_the_three_pods_are_given_what_they_were_given_before():
-    for template in ("api-deployment.yaml", "ingestion-deployment.yaml", "scheduler-deployment.yaml"):
+    # Since 24 October 2026 the API and the scheduler also share the attendance photos claim (check-in selfies and
+    # registered faces); the recorder's pod is given exactly what it was.
+    photos = {"/data/attendance_photos"}
+    for template, extra in (("api-deployment.yaml", photos), ("ingestion-deployment.yaml", set()),
+                            ("scheduler-deployment.yaml", photos)):
         mounts, volumes = _workload(template, _with_minio(False))
-        assert set(mounts) == {"/data/evidence", "/data/recordings"}, template
-        assert volumes == {"evidence": f"{NAME}-evidence", "recordings": f"{NAME}-recordings"}, template
+        assert set(mounts) == {"/data/evidence", "/data/recordings"} | extra, template
+        expected = {"evidence": f"{NAME}-evidence", "recordings": f"{NAME}-recordings"}
+        if extra:
+            expected["attendance-photos"] = f"{NAME}-attendance-photos"
+        assert volumes == expected, template
 
 
 # ─── B. The drone runner ─────────────────────────────────────────────────────

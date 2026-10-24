@@ -168,7 +168,9 @@ def test_the_stand_in_renders_the_schedulers_long_deployed_template():
     container = document["spec"]["template"]["spec"]["containers"][0]
     assert document["kind"] == "Deployment" and container["command"] == ["python", "-m", "app.scheduler_main"]
     assert container["resources"] == _values()["scheduler"]["resources"]
-    assert {m["mountPath"] for m in container["volumeMounts"]} == {"/data/evidence", "/data/recordings"}
+    # The attendance photos claim since 24 October 2026: the daily cycle deletes a deactivated account's face.
+    assert {m["mountPath"] for m in container["volumeMounts"]} == {"/data/evidence", "/data/recordings",
+                                                                   "/data/attendance_photos"}
 
 
 def test_the_runners_template_renders_to_one_deployment_with_nothing_it_could_act_with():
