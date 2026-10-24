@@ -537,6 +537,14 @@ persistence:
     size: 2Gi
     storageClass: ""
     accessMode: ReadWriteMany
+  # Database backups: the scheduler's daily pg_dump and the API's on-demand one, gzipped. keepDaily is how many
+  # days are kept (the newest of each day). Size it at about keepDaily x the database's gzipped dump. With an
+  # external database (postgres.enabled: false) the provider's own backups are usually the ones to rely on.
+  backups:
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
+    keepDaily: 7
 
 # ─── Application runtime configuration (non-sensitive) ───────────────────────
 config:

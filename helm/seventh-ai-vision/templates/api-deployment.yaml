@@ -77,6 +77,18 @@ spec:
                 name: {{ include "seventh-ai-vision.fullname" . }}-config
             - secretRef:
                 name: {{ include "seventh-ai-vision.fullname" . }}-secret
+          # pg_dump (app/core/backup.py) reads the superuser's password from PGPASSWORD; the secret names it
+          # POSTGRES_PASSWORD. compose gives it as PGPASSWORD; without it a cluster's backup failed: "no password".
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "seventh-ai-vision.fullname" . }}-secret
+                  key: POSTGRES_PASSWORD
+            - name: BACKUP_ROOT
+              value: /data/backups
+            - name: BACKUP_KEEP_DAILY
+              value: {{ .Values.persistence.backups.keepDaily | quote }}
           volumeMounts:
             {{- if not .Values.minio.enabled }}
             - name: evidence
@@ -97,6 +109,9 @@ spec:
             # insightface keeps its models in ~/.insightface; the image runs as appuser.
             - name: face-models
               mountPath: /home/appuser/.insightface
+            # Lists the scheduler's backups and writes an on-demand one (System > Backups).
+            - name: backups
+              mountPath: /data/backups
           livenessProbe:
             httpGet:
               path: {{ .Values.api.livenessProbe.path }}
@@ -134,6 +149,9 @@ spec:
         - name: face-models
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-face-models
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-backups
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
