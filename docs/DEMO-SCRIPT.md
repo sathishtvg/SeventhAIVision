@@ -11,12 +11,32 @@ more than these — assets and maintenance, risk and advice, the operations
 board, workforce readings, cases, data retention — and those screens work but
 are empty in this organisation.
 
-The sample data is loaded by `scripts/ops/demo_showcase.py`. It only adds, and
-it can be run again at any time: what is already there is left alone.
+The sample data is loaded by two scripts. `scripts/ops/demo_history.py` writes
+the last month — roster and attendance, guard patrols, the occurrence book,
+visitors, plate reads at Gate 1, AI alerts with their pictures and the incidents
+they opened, camera health, and virtual patrols with their reports — up to the
+moment it runs, and never into the future. `scripts/ops/demo_showcase.py` tells
+the morning's story on top of it. Both only add, and both can be run again at
+any time: the history fills only the time since it last ran.
+
+**Reset on 24 October 2026.** Everything older in the organisation — alerts and
+incidents included — was deleted at the owner's request; the users, settings,
+sites, cameras and zones were kept. The database as it was is in
+`backups/demo-reset-20261024/full_before_reset.dump`, and the old pictures are
+set aside in the evidence volume (`_set-aside/demo-before-reset-20261024`).
 
 ---
 
 ## 1. On the day
+
+**First** — bring the history up to now (it fills the days since it last ran,
+so no day before the demo is empty). Once per container, copy the sample videos
+in, then run it:
+
+```bash
+docker cp docker/mediamtx/videos/. docker-api-1:/tmp/demo-videos
+docker exec -i docker-api-1 python - < scripts/ops/demo_history.py
+```
 
 **An hour before** — today's shifts, visits, occurrence book and a guard's
 finished response:
@@ -146,7 +166,7 @@ plate reads and the guard's own entry are filed in it, in the order they
 happened, with a note of what was concluded.
 
 **8. Evidence Packages** *(Investigate)* — one **sealed** package
-(`EVP-…-0002`) and one empty draft. Open the sealed one: the manifest, the
+(`EVP-…-0001`). Open it: the manifest, the
 checksum, *intact*, the hold that stops it being purged, and the chain of
 custody — including the fact that you have just opened it.
 
@@ -168,7 +188,9 @@ himself — you can.
   door**, outside what she was authorised for. Say: this is something for a
   person to look at, not a finding. Record that it was in order.
 
-**If there is time** — *Virtual Patrol* (22 past patrols with their reports),
+**If there is time** — *Virtual Patrol* (a month of past patrols on two
+schedules, each with its PDF and Excel report — the report prints its times in
+UTC, eight hours behind Singapore, until that is fixed),
 *Roster* then *Auto-Schedule* (run a month and show the draft's warnings),
 *Attendance*, *Payroll*, *Live Wall* (live video from the cameras).
 
@@ -183,8 +205,8 @@ himself — you can.
 - **Do not open Drone Patrol.** The organisation has no drone licence and no
   drone was set up for this demo.
 - **Do not wait for a live detection.** No AI worker is running on this machine.
-  *Detections* holds about 39,900 past detections, each with its picture: show
-  those.
+  *Detections* holds a month of past detections — about 200 from the AI, each
+  with its picture, and about 770 plate reads at Gate 1: show those.
 - **Do not run tests or rebuild containers during the demo.** Screens that
   normally answer in a second take five to ten while the machine is busy.
 
@@ -197,8 +219,8 @@ takes seconds and sign-in takes ten.
 - **Continuous recording stays off.** Recording three cameras re-encodes their
   video inside the API and takes about five cores. It was switched off on Lobby
   Entrance, Loading Bay and Car Park Ramp (Cameras, the stream's *continuous
-  recording* setting, to turn it back on). The 10,800 past recordings are still
-  there to show.
+  recording* setting, to turn it back on). There are no past recordings in this
+  organisation.
 - **The sample-video container now encodes three pictures, not nine**
   (`docker/mediamtx/mediamtx.yml`): about one core. All nine cameras are live.
 - **No tests, no image builds, no container restarts while presenting.** The API
@@ -263,6 +285,6 @@ takes seconds and sign-in takes ten.
 | Incidents | One answered by a guard, one unanswered. An older unanswered one made by the loader is resolved when a new one is made |
 | Alerts | Two, marked in their text as samples, which the intelligence layer relates into a situation |
 | Investigation | One, with the plate reads and the guard's entry |
-| Evidence | One sealed package (one frame, under a hold) and one empty draft |
+| Evidence | One sealed package (one frame, under a hold) |
 
 No visitor has an ID number, and no procedure, alert or plate is a real one.
