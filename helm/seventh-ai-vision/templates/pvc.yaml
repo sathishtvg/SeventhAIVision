@@ -60,3 +60,59 @@ spec:
   {{- if .Values.persistence.attendancePhotos.storageClass }}
   storageClassName: {{ .Values.persistence.attendancePhotos.storageClass | quote }}
   {{- end }}
+---
+# Staff files the API keeps on disk (EMPLOYEE_DOCS_ROOT): employment documents, profile photos, leave
+# attachments and the SOP library's files. Without this claim they were written into the API pod: lost on a
+# restart, and a file uploaded through one replica was not there through another. Found 24 October 2026.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-employee-docs
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.employeeDocs.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.employeeDocs.size | quote }}
+  {{- if .Values.persistence.employeeDocs.storageClass }}
+  storageClassName: {{ .Values.persistence.employeeDocs.storageClass | quote }}
+  {{- end }}
+---
+# Photos of defects and of lost and found property (GUARDHOUSE_PHOTOS_ROOT), kept by the API. Without this
+# claim they lived in the API pod, as the staff files did.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-guardhouse
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.guardhouse.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.guardhouse.size | quote }}
+  {{- if .Values.persistence.guardhouse.storageClass }}
+  storageClassName: {{ .Values.persistence.guardhouse.storageClass | quote }}
+  {{- end }}
+---
+# The face model the check-in liveness check and face registration load (insightface buffalo_l, about
+# 330 MB). Without this claim every new API pod downloaded it at its first face check - during a guard's
+# check-in, longer than the phone waits. api.prepareFaceModels fetches it once, before the API starts.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-face-models
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.faceModels.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.faceModels.size | quote }}
+  {{- if .Values.persistence.faceModels.storageClass }}
+  storageClassName: {{ .Values.persistence.faceModels.storageClass | quote }}
+  {{- end }}

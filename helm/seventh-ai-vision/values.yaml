@@ -47,6 +47,11 @@ podSecurityContext: {}
 # ─── API (FastAPI backend) ────────────────────────────────────────────────────
 api:
   replicas: 2
+  # Fetch the face model into persistence.faceModels before the API starts (an init container), so a guard's
+  # first check-in after a new pod never waits for a 280 MB download. Needs egress to GitHub's release downloads,
+  # once per cluster. Turn it off where the cluster has no egress and load the claim yourself
+  # (models/buffalo_l/ under it, as insightface lays it out).
+  prepareFaceModels: true
   autoscaling:
     enabled: true
     minReplicas: 2
@@ -515,6 +520,21 @@ persistence:
   # Check-in selfies and the faces registered for check-in: the API (every replica) and the scheduler share it.
   attendancePhotos:
     size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
+  # Staff files: employment documents, profile photos, leave attachments, SOP files (the API only).
+  employeeDocs:
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
+  # Photos of defects and of lost and found property (the API only).
+  guardhouse:
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
+  # The face model (insightface buffalo_l, ~330 MB unpacked, its ~280 MB download kept beside it until done).
+  faceModels:
+    size: 2Gi
     storageClass: ""
     accessMode: ReadWriteMany
 
