@@ -1027,3 +1027,13 @@ journeys and their playback, geofences and what else the site recorded around
 an entry or exit) and Footage Review (module 31). Nothing in the desktop shell
 was changed for it. It is unsigned, with the same app id and MSI upgrade code,
 so it installs over 1.0.8.
+
+### Desktop 1.0.10
+
+Desktop 1.0.10 is the web build of 24 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.9: staff face registration (the Face button on Users, where a supervisor
+or an admin registers, replaces or deletes a face from a photo, and the
+check-in face checks panel on Attendance, with times in the organisation's
+zone). Nothing in the desktop shell was changed for it. It is unsigned, with
+the same app id and MSI upgrade code, so it installs over 1.0.9.
