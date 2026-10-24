@@ -38,3 +38,25 @@ spec:
   {{- if .Values.persistence.recordings.storageClass }}
   storageClassName: {{ .Values.persistence.recordings.storageClass | quote }}
   {{- end }}
+---
+# Check-in and check-out selfies, and the faces registered for check-in
+# (app/services/staff_faces.py), are files whatever the evidence store is. The
+# API writes and shows them; the scheduler's daily cycle deletes the face of an
+# account that was deactivated. Without this claim they were written into the
+# API pod itself: lost when it restarted, and a selfie taken through one API
+# replica could not be shown through another. Found 24 October 2026.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-attendance-photos
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.attendancePhotos.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.attendancePhotos.size | quote }}
+  {{- if .Values.persistence.attendancePhotos.storageClass }}
+  storageClassName: {{ .Values.persistence.attendancePhotos.storageClass | quote }}
+  {{- end }}
