@@ -6,6 +6,13 @@
 # only the per-database grant setup against the new database.
 set -e
 
+# The Helm chart runs this same image as a cluster's database, where there is no test suite: it sets
+# CREATE_TEST_DB=0. docker-compose sets nothing, so the dev box keeps its test database as before.
+if [ "${CREATE_TEST_DB:-1}" = "0" ]; then
+    echo "create-test-db: CREATE_TEST_DB=0, no test database"
+    exit 0
+fi
+
 TEST_DB="${POSTGRES_TEST_DB:-${POSTGRES_DB}_test}"
 
 DB_EXISTS=$(psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \

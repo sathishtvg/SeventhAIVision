@@ -39,11 +39,19 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_APP_USER
               value: {{ .Values.postgres.username | quote }}
+            # The app role's own password - what DATABASE_URL connects with (it was the superuser's).
             - name: POSTGRES_APP_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "seventh-ai-vision.fullname" . }}-secret
-                  key: POSTGRES_PASSWORD
+                  key: POSTGRES_APP_PASSWORD
+            # A folder of its own on the claim: initdb refuses a non-empty folder, and a new volume's root
+            # often holds lost+found.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            # The image's dev-only first-start script makes a test database unless told not to.
+            - name: CREATE_TEST_DB
+              value: "0"
           ports:
             - name: postgres
               containerPort: 5432
