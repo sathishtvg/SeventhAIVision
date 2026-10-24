@@ -290,6 +290,8 @@ async def test_a_deactivated_persons_face_is_removed_at_night_and_the_removal_au
         "SELECT user_id::text FROM staff_faces WHERE tenant_id = CAST(:t AS uuid)", {"t": p["_tenant"]})}
     assert left == {p["guard2"]["id"]}
     assert not (model["root"] / path).exists()
+    assert not (model["root"] / path).parent.exists(), "the person's empty folder goes with the photo"
+    assert (model["root"] / "faces" / p["_tenant"]).exists(), "the organisation's folder stays while guard2's face is in it"
     removed = await _admin_db("SELECT detail FROM audit_logs WHERE tenant_id = CAST(:t AS uuid) AND action = 'face.removed'",
                               {"t": p["_tenant"]})
     assert len(removed) == 1 and staff_face_retention.WHY in str(removed[0]["detail"])

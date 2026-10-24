@@ -120,12 +120,24 @@ def write_photo(relative_path: str, jpeg: bytes) -> None:
 
 
 def remove_photo(relative_path: str | None) -> None:
+    """Delete a face photo, and the person's and the organisation's folders under faces/ once they are empty (found
+    in the flow test of 24 October 2026: a deleted face left an empty folder named after the person)."""
     if not relative_path:
         return
+    path = photos_root() / relative_path
     try:
-        (photos_root() / relative_path).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
     except OSError:
         logger.warning("could not remove face photo %s", relative_path, exc_info=True)
+        return
+    faces_dir = photos_root() / "faces"
+    for folder in (path.parent, path.parent.parent):
+        if folder == faces_dir or faces_dir not in folder.parents:
+            break
+        try:
+            folder.rmdir()  # only an empty folder can go
+        except OSError:
+            break
 
 
 # ── Records ──────────────────────────────────────────────────────────────────

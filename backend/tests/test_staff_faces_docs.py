@@ -78,6 +78,8 @@ def test_the_clients_ask_for_what_the_server_serves():
     for path in ("'/api/v1/faces'", "`/api/v1/faces/${userId}`", "'/api/v1/faces/checks'",
                  "/api/v1/faces/${userId}/photo?token="):
         assert path in web, path
+    panel = (WEB / "components" / "faces" / "FaceChecksPanel.tsx").read_text(encoding="utf-8")
+    assert "useTenantTimeZone()" in panel and "timeZone })" in panel, "the review panel says times in the organisation's zone"
     menu = (PHONE / "screens" / "MoreMenuScreen.tsx").read_text(encoding="utf-8")
     assert "screen: 'MyFace'" in menu and "permission: 'face:register_self'" in menu
 
