@@ -382,6 +382,10 @@ services:
       # recorded files. Without this the scheduler saw an empty directory and
       # marked every recording it checked as missing.
       - recordings_data:/data/recordings:ro
+      # The nightly removal of a deactivated person's registered face (services/staff_face_retention.py) deletes
+      # its photo here, beside the check-in photos. Without this the scheduler saw an empty directory: the face's
+      # record went and its photo stayed.
+      - attendance_photos_data:/data/attendance_photos
     restart: unless-stopped
 
   # The drone runner: carries out queued flight commands, launches and advances

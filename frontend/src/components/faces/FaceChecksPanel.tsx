@@ -16,10 +16,16 @@ import { checkinPhotoUrl } from '@/api/attendance'
 import { GlassCard } from '@/components/common/GlassCard'
 import Stack from '@/components/common/Stack'
 import { ErrorState } from '@/components/states'
+import { useTenantTimeZone } from '@/lib/tenantTime'
 
-const when = (iso: string) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+/** In the organisation's own zone, passed in so the panel draws again when it arrives: the app-wide default is set
+ *  only once the organisation's settings have loaded, and a list drawn before that kept the browser's zone. */
+const when = (iso: string, timeZone?: string) =>
+  new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short', timeZone })
 
-function CompareDialog({ check, token, onClose }: { check: FaceCheck; token: string | null; onClose: () => void }) {
+function CompareDialog({ check, token, timeZone, onClose }: {
+  check: FaceCheck; token: string | null; timeZone?: string; onClose: () => void
+}) {
   const selfie = checkinPhotoUrl(check.shift_id, check.which, token)
   const onFile = check.face_on_file && check.guard_user_id ? facePhotoUrl(check.guard_user_id, token) : null
   return (
@@ -40,7 +46,7 @@ function CompareDialog({ check, token, onClose }: { check: FaceCheck; token: str
           {check.reason}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-          {check.site_name ?? 'No site'} · {when(check.created_at)}
+          {check.site_name ?? 'No site'} · {when(check.created_at, timeZone)}
         </Typography>
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
@@ -51,6 +57,7 @@ function CompareDialog({ check, token, onClose }: { check: FaceCheck; token: str
 export function FaceChecksPanel({ token }: { token: string | null }) {
   const [show, setShow] = useState<'review' | 'all'>('review')
   const [open, setOpen] = useState<FaceCheck | null>(null)
+  const timeZone = useTenantTimeZone()
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['face-checks', show],
     queryFn: () => getFaceChecks({ outcome: show === 'review' ? 'review' : undefined, days: 7 }),
@@ -87,7 +94,7 @@ export function FaceChecksPanel({ token }: { token: string | null }) {
                   {c.guard_name ?? c.guard_email ?? 'Guard'} · {c.which === 'check_in' ? 'check-in' : 'check-out'}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {c.site_name ?? 'No site'} · {when(c.created_at)}
+                  {c.site_name ?? 'No site'} · {when(c.created_at, timeZone)}
                   {c.similarity != null ? ` · similarity ${c.similarity.toFixed(2)}` : ''}
                 </Typography>
               </Box>
@@ -95,7 +102,7 @@ export function FaceChecksPanel({ token }: { token: string | null }) {
           ))}
         </Stack>
       )}
-      {open && <CompareDialog check={open} token={token} onClose={() => setOpen(null)} />}
+      {open && <CompareDialog check={open} token={token} timeZone={timeZone} onClose={() => setOpen(null)} />}
     </GlassCard>
   )
 }
