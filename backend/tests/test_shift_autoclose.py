@@ -160,7 +160,11 @@ async def test_an_automatic_close_pays_only_approved_overtime_on_the_new_rule(mo
     await _sweep([org], monkeypatch)
     assert (await _shift(approved))["overtime_minutes"] == 120, "approved 2 h, worked 5 h past the end"
     assert (await _shift(nothing_asked))["overtime_minutes"] == 0, "nothing approved, nothing paid as overtime"
-    assert (await _shift(old_rule))["overtime_minutes"] == 3 * 60 + 5 - 15, "a shift from before keeps its rule"
+    # A shift from before the approval rule is, once the system closes it, paid on the approval rule too: nobody
+    # checked out, so the 3 h it stayed open past its end are not overtime worked.
+    old = await _rows("SELECT overtime_minutes, overtime_needs_approval FROM shifts WHERE id = CAST(:i AS uuid)",
+                      {"i": old_rule})
+    assert (old[0]["overtime_minutes"], old[0]["overtime_needs_approval"]) == (0, True)
     open_breaks = await _rows("SELECT 1 FROM shift_breaks WHERE shift_id = CAST(:s AS uuid) AND break_end IS NULL",
                               {"s": nothing_asked})
     assert open_breaks == [], "an open break is closed with the shift"

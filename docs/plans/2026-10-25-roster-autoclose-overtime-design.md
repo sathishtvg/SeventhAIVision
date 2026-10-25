@@ -52,7 +52,9 @@ For a shift that uses the new rule, paid time is check-in to the planned end plu
 approved overtime, and approved overtime is never more than the time actually
 worked past the planned end. Time past the end with no approval is shown as
 "unapproved extra time", not paid. A shift closed by the system pays its planned
-hours plus approved overtime.
+hours plus approved overtime, whichever rule it was checked in under: the system's
+close puts it on the approval rule (found before the first deploy: three demo
+shifts open 27 hours would otherwise have carried 14 hours of overtime each).
 
 Shifts checked in before the release keep today's rule (overtime counted
 automatically): `shifts.overtime_needs_approval`, set at check-in, says which rule

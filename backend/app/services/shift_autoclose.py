@@ -93,12 +93,15 @@ async def sweep(db: AsyncSession, redis=None, now: datetime | None = None,
                 site = r["site_name"] or "your site"
                 data = {"type": "shift_auto_close", "shift_id": str(r["id"])}
                 if now >= close_at:
-                    ot = overtime_minutes(needs_approval=r["overtime_needs_approval"], scheduled_end=r["scheduled_end"],
+                    # A shift the system closes is paid its planned hours plus approved overtime, whichever rule it
+                    # was checked in under (design, section 5): nobody checked out, so the time it stayed open is
+                    # not time worked. The old rule would have counted all of it past the planned end as overtime.
+                    ot = overtime_minutes(needs_approval=True, scheduled_end=r["scheduled_end"],
                                           actual_end=now, approved_minutes=float(r["approved_hours"]) * 60,
                                           threshold_minutes=threshold)
                     closed = (await db.execute(text("""
                         UPDATE shifts SET status = 'completed', actual_end = :now, auto_closed_at = :now,
-                               overtime_minutes = :ot
+                               overtime_minutes = :ot, overtime_needs_approval = TRUE
                          WHERE id = :id AND status = 'active'
                         RETURNING id
                     """), {"now": now, "ot": ot, "id": r["id"]})).first()
