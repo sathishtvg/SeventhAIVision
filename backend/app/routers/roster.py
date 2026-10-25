@@ -20,7 +20,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
 from app.realtime.redis_listener import _send_expo_push
-from app.services.roster_autoschedule import generate_draft
+from app.services.roster_autoschedule import NothingToPlan, generate_draft
 
 router = APIRouter(prefix="/api/v1/roster", tags=["guard-ops"])
 
@@ -104,9 +104,14 @@ async def auto_schedule(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "shift_pattern must be rotation, day_only or night_only",
             )
-    batch_id = await generate_draft(
-        db, token.user_id, body.site_id, body.period_start, body.period_end, rules,
-    )
+    try:
+        batch_id = await generate_draft(
+            db, token.user_id, body.site_id, body.period_start, body.period_end, rules,
+        )
+    except NothingToPlan as exc:
+        # No empty draft: the planner is told why (owner's report, 25 October 2026).
+        await db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return await _get_batch_detail(db, batch_id)
 
 

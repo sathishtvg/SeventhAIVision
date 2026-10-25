@@ -15,11 +15,21 @@ A shift pattern is a POST, not a person: a site staffed for three day
 officers produces three draft shifts from one pattern. That count comes
 from sites.day_guards_required / night_guards_required, picked by the
 pattern's inferred shift type.
+
+Since 25 October 2026 (docs/plans/2026-10-25-roster-autoclose-overtime-design.md,
+section 1): a site with NO active pattern is planned from the organisation's
+active shift definitions (Day, Night) and the same two headcounts, every day -
+the owner found Auto-Schedule made an empty draft for an organisation that had
+both and no pattern. Times are the organisation's own (tenants.timezone), as in
+the rest of the roster; they were taken as UTC here, so a 07:00 pattern became
+15:00 in Singapore. Past days are not planned, and nothing to plan is refused
+with the reason rather than saved as an empty draft.
 """
 from __future__ import annotations
 
 import json
 from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +68,29 @@ DEFAULT_RULES: dict = {
     # destructive at the wrong moment.
     "overwrite_existing": False,
 }
+
+
+class NothingToPlan(ValueError):
+    """Auto-Schedule found nothing it could plan; the message says why, in words for the planner."""
+
+
+EVERY_DAY = [0, 1, 2, 3, 4, 5, 6]
+
+
+def slots_from_shift_definitions(sites: list[dict], definitions: list[dict]) -> list[dict]:
+    """Posts for the sites that have no pattern: each active shift definition, every day, at the site's own
+    day or night strength. Shaped like a pattern row so the planner treats them the same."""
+    out = []
+    for site in sites:
+        for d in definitions:
+            out.append({
+                "site_id": site["id"], "days_of_week": EVERY_DAY, "start_time": d["start_time"],
+                "duration_minutes": d["duration_minutes"],
+                "day_guards_required": site["day_guards_required"],
+                "night_guards_required": site["night_guards_required"],
+                "shift_type": d["shift_type"] if d["shift_type"] in ("day", "night") else None,
+            })
+    return out
 
 
 def infer_shift_type(start_time: time) -> str:
@@ -190,6 +223,20 @@ async def generate_draft(
     if min_rest_hours is None:
         min_rest_hours = await _get_roster_setting(db, "roster.min_rest_hours")
 
+    # The organisation's own clock, as the rest of the roster uses (services/roster.py, routers/roster.py).
+    tz_name = (await db.execute(text(
+        "SELECT COALESCE(timezone, 'UTC') FROM tenants WHERE id = current_setting('app.current_tenant')::uuid"
+    ))).scalar() or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:  # noqa: BLE001 - an unknown zone name falls back to UTC rather than failing the run
+        tz, tz_name = timezone.utc, "UTC"
+    today = datetime.now(tz).date()
+    if period_end < today:
+        raise NothingToPlan("The whole period is in the past. Choose dates from today on.")
+    # Days already gone are not planned: a shift for yesterday is nobody's roster.
+    planned_from = max(period_start, today)
+
     site_clause = "AND p.site_id = CAST(:site_id AS uuid)" if site_id else ""
     patterns = [dict(r) for r in (await db.execute(
         text(f"""
@@ -201,11 +248,34 @@ async def generate_draft(
         {"site_id": site_id} if site_id else {},
     )).mappings().all()]
 
+    # Sites with no active pattern are planned from the shift definitions and their own headcounts.
+    pattern_sites = {str(p["site_id"]) for p in patterns}
+    definitions = [dict(r) for r in (await db.execute(text(
+        "SELECT shift_type, start_time, duration_minutes FROM shift_definitions "
+        "WHERE is_active = TRUE ORDER BY shift_type, start_time"
+    ))).mappings().all()]
+    open_sites = [dict(r) for r in (await db.execute(
+        text("SELECT id, day_guards_required, night_guards_required FROM sites "
+             "WHERE is_active = TRUE" + (" AND id = CAST(:site_id AS uuid)" if site_id else "")),
+        {"site_id": site_id} if site_id else {},
+    )).mappings().all() if str(r["id"]) not in pattern_sites]
+    from_definitions = slots_from_shift_definitions(open_sites, definitions)
+    if not patterns and not from_definitions:
+        if not definitions:
+            raise NothingToPlan(
+                "Nothing to plan from: there are no roster patterns and no active shift definitions. "
+                "Add the Day and Night shift definitions (or a roster pattern) first.")
+        raise NothingToPlan("There is no active site to plan." if not site_id
+                            else "This site is not active.")
+    patterns = patterns + from_definitions
+
     guard_rows = [dict(r) for r in (await db.execute(
         text("SELECT id, role_id FROM users WHERE role_id = ANY(:roles) AND is_active = TRUE"),
         {"roles": list(GUARD_ROLE_IDS)},
     )).mappings().all()]
     guard_ids = [str(g["id"]) for g in guard_rows]
+    if not guard_ids:
+        raise NothingToPlan("There are no active guards, operators or supervisors to put on the roster.")
     supervisor_ids = {str(g["id"]) for g in guard_rows if g["role_id"] in SUPERVISOR_ROLE_IDS}
     manager_ids = {str(g["id"]) for g in guard_rows if g["role_id"] in MANAGER_ROLE_IDS}
 
@@ -240,10 +310,10 @@ async def generate_draft(
     }
 
     draft_rows: list[dict] = []
-    total_days = (period_end - period_start).days + 1
+    total_days = (period_end - planned_from).days + 1
 
     for day_index in range(total_days):
-        current_date = period_start + timedelta(days=day_index)
+        current_date = planned_from + timedelta(days=day_index)
         weekday = current_date.weekday()  # 0=Mon..6=Sun, matches shift_patterns.days_of_week
 
         day_slots = [p for p in patterns if weekday in (p["days_of_week"] or [])]
@@ -256,7 +326,7 @@ async def generate_draft(
         # site that already runs a morning and an afternoon pattern.
         groups: dict[tuple[str, str], list[dict]] = {}
         for slot in day_slots:
-            key = (str(slot["site_id"]), infer_shift_type(slot["start_time"]))
+            key = (str(slot["site_id"]), slot.get("shift_type") or infer_shift_type(slot["start_time"]))
             groups.setdefault(key, []).append(slot)
 
         for (site_id_str, shift_type), group_slots in groups.items():
@@ -286,7 +356,7 @@ async def generate_draft(
             # gets two on the first and one on the second rather than all
             # three stacked on whichever pattern was read first.
             for slot in posts_for_group(group_slots, required):
-                slot_start = datetime.combine(current_date, slot["start_time"], tzinfo=timezone.utc)
+                slot_start = datetime.combine(current_date, slot["start_time"], tzinfo=tz)
                 slot_end = slot_start + timedelta(minutes=slot["duration_minutes"])
 
                 candidates = []
@@ -374,6 +444,11 @@ async def generate_draft(
                 for r in site_day_rows:
                     r["warnings"].append("no_manager_present")
 
+    if not draft_rows:
+        raise NothingToPlan(
+            "Nothing to plan for these choices: every site needs 0 guards for the shifts chosen. "
+            "Set the day and night guards each site needs (Sites), or change the shift choice.")
+
     unfilled = sum(1 for r in draft_rows if r["guard_user_id"] is None)
     coverage_shortfalls = sum(1 for r in draft_rows if "below_min_coverage" in r["warnings"])
     missing_supervisor_days = len({
@@ -399,6 +474,12 @@ async def generate_draft(
         # one produced the roster somebody is looking at — or to reproduce it.
         "rules": {**rules, "min_rest_hours": min_rest_hours,
                   "max_consecutive_days": max_consecutive},
+        # What it was planned from, and from when, so the page can say so.
+        "planned_from": planned_from.isoformat(),
+        "requested_from": period_start.isoformat(),
+        "time_zone": tz_name,
+        "sites_from_patterns": len(pattern_sites),
+        "sites_from_shift_definitions": len(open_sites) if definitions else 0,
     }
 
     batch_row = (await db.execute(
@@ -408,7 +489,7 @@ async def generate_draft(
             VALUES (current_setting('app.current_tenant')::uuid, CAST(:site_id AS uuid), :ps, :pe, CAST(:uid AS uuid), CAST(:summary AS jsonb))
             RETURNING id
         """),
-        {"site_id": site_id, "ps": period_start, "pe": period_end, "uid": user_id, "summary": json.dumps(rules_summary)},
+        {"site_id": site_id, "ps": planned_from, "pe": period_end, "uid": user_id, "summary": json.dumps(rules_summary)},
     )).first()
     batch_id = str(batch_row.id)
 

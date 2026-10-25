@@ -96,6 +96,11 @@ export interface RosterBatch {
     coverage_shortfalls: number
     missing_supervisor_days: number
     missing_manager_days: number
+    /** Since 25 Oct 2026: the first day actually planned (past days are skipped), and what the posts came from. */
+    planned_from?: string
+    requested_from?: string
+    sites_from_patterns?: number
+    sites_from_shift_definitions?: number
   } | null
   generated_at: string
   published_at: string | null
