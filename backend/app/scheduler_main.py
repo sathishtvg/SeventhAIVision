@@ -979,6 +979,8 @@ VPATROL_INTERVAL = int(os.environ.get("VPATROL_INTERVAL_SECONDS", "120"))  # 2 m
 # an outage shorter than this can do).
 DEVICE_HEALTH_INTERVAL = int(os.environ.get("DEVICE_HEALTH_INTERVAL_SECONDS", "300"))  # 5 min
 NO_SHOW_CHECK_INTERVAL   = int(os.environ.get("NO_SHOW_CHECK_INTERVAL_SECONDS", "900"))         # 15 min
+# Shift auto-close and its warning (services/shift_autoclose.py): often enough that a 15-minute warning arrives.
+SHIFT_AUTO_CLOSE_INTERVAL = int(os.environ.get("SHIFT_AUTO_CLOSE_INTERVAL_SECONDS", "300"))  # 5 min
 
 
 async def check_contractor_expiry(
@@ -1430,6 +1432,7 @@ async def main() -> None:
     last_compliance = _NOT_YET
     last_contractor = _NOT_YET
     last_no_show = _NOT_YET
+    last_auto_close = _NOT_YET
     last_certification = _NOT_YET
     last_overtime = _NOT_YET
     last_integrity = _NOT_YET
@@ -1664,6 +1667,19 @@ async def main() -> None:
                 except Exception:
                     logger.exception("check_no_show_shifts failed")
                 last_no_show = now
+
+            # Shift auto-close (docs/plans/2026-10-25-roster-autoclose-overtime-design.md): warn the guard, then
+            # close a shift nobody checked out of.
+            if now - last_auto_close >= SHIFT_AUTO_CLOSE_INTERVAL:
+                try:
+                    from app.services import shift_autoclose
+                    async with AsyncSessionLocal() as db:
+                        counts = await shift_autoclose.sweep(db, redis)
+                        if counts["reminded"] or counts["closed"]:
+                            logger.info("shift auto-close: %s", counts)
+                except Exception:
+                    logger.exception("shift auto-close failed")
+                last_auto_close = now
 
             # Device health and maintenance (every 5 min): read what every
             # device reports, keep the state of each when it has changed, and

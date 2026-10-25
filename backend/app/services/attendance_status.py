@@ -27,6 +27,10 @@ ATTENDANCE_DEFAULTS = {
     "attendance.geofence_radius_meters": 200,
     "attendance.late_grace_minutes": 10,
     "attendance.overtime_threshold_minutes": 15,
+    # Shift auto-close (docs/plans/2026-10-25-roster-autoclose-overtime-design.md, section 2): a shift still open
+    # this many hours after check-in is closed by the system, and the guard is warned this many minutes before.
+    "attendance.auto_close_hours": 15,
+    "attendance.auto_close_reminder_minutes": 15,
 }
 
 

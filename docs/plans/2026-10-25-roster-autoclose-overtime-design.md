@@ -63,7 +63,7 @@ a shift follows. Payroll runs and timesheets already made are not recalculated.
 - New table `overtime_requests` (shift, guard, hours asked, reason, status, who
   decided, when, why), row-level secured per organisation.
 - New columns on `shifts`: `auto_closed_at`, `checked_out_away_from_site`,
-  `overtime_needs_approval`, `auto_close_reminded_at`.
+  `overtime_needs_approval`, `auto_close_reminded_for` (the closing time the guard was warned about).
 - New settings keys: `attendance.auto_close_hours`, `attendance.auto_close_reminder_minutes`.
 
 ## 7. Existing files this changes
@@ -72,8 +72,8 @@ a shift follows. Payroll runs and timesheets already made are not recalculated.
 `backend/app/routers/shifts.py` (check-out: geofence flag, overtime from
 approvals, the new rule's marker at check-in), `backend/app/routers/payroll.py`
 (the two hour sums), `backend/app/scheduler_main.py` (the sweep),
-`backend/app/core/config_keys.py` (the settings), `backend/app/main.py` (the new
-router), `frontend/src/pages/Roster.tsx`, `frontend/src/pages/Attendance.tsx`,
+`backend/app/core/config_keys.py` (the settings), `backend/app/services/attendance_status.py`
+(their defaults), `backend/app/main.py` (the new router), `frontend/src/pages/Roster.tsx`, `frontend/src/pages/Attendance.tsx`,
 `frontend/src/pages/Settings.tsx`, `mobile/src/components/ShiftCheckInCard.tsx`.
 
 ## 8. Build order

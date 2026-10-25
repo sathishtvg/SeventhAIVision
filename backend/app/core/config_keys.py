@@ -26,6 +26,16 @@ def _whole_days_validator(lo: int, hi: int) -> Callable[[Any], None]:
     return _validate
 
 
+def _whole_number_validator(lo: int, hi: int, unit: str) -> Callable[[Any], None]:
+    """A whole number of some unit within bounds, e.g. hours after check-in."""
+
+    def _validate(v: Any) -> None:
+        if not isinstance(v, int) or isinstance(v, bool) or not (lo <= v <= hi):
+            raise ValueError(f"must be a whole number of {unit} from {lo} to {hi}")
+
+    return _validate
+
+
 def _positive_int_validator(v: Any) -> None:
     if not isinstance(v, int) or isinstance(v, bool) or v < 0:
         raise ValueError("must be a non-negative integer")
@@ -137,6 +147,9 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "attendance.liveness_min_score": _range_validator(0.0, 1.0),
     # Staff face registration - how alike a check-in selfie and the face on file must be (services/staff_faces.py)
     "attendance.face_match_min_similarity": _range_validator(0.0, 1.0),
+    # Shift auto-close (services/shift_autoclose.py): hours after check-in, and the warning before it
+    "attendance.auto_close_hours": _whole_number_validator(4, 48, "hours"),
+    "attendance.auto_close_reminder_minutes": _whole_number_validator(5, 120, "minutes"),
     # ShiftSecure Phase 2B — roster auto-scheduler
     "roster.max_consecutive_days": _positive_int_validator,
     "roster.min_rest_hours": _positive_int_validator,

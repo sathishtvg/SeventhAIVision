@@ -84,7 +84,32 @@ function SettingKnob({ label, description, settingKey, min, max, step, currentVa
   )
 }
 
-const SETTING_SECTIONS = [
+const SETTING_SECTIONS: {
+  title: string
+  defs: { label: string; description: string; key: string; min: number; max: number; step: number
+    formatValue?: (v: number) => string; defaultValue?: number }[]
+}[] = [
+  {
+    // Shift auto-close (docs/plans/2026-10-25-roster-autoclose-overtime-design.md): the server's defaults are shown
+    // until the organisation sets its own.
+    title: 'Attendance',
+    defs: [
+      {
+        label: 'Close a Shift Automatically After',
+        description: 'Hours after check-in. A shift still open then is closed by the system and marked so; overtime the guard asked for is added.',
+        key: 'attendance.auto_close_hours',
+        min: 4, max: 48, step: 1, defaultValue: 15,
+        formatValue: (v: number) => `${v} h`,
+      },
+      {
+        label: 'Warn the Guard Before Closing',
+        description: "Minutes before the automatic close that the guard's phone is told to check out or ask for overtime.",
+        key: 'attendance.auto_close_reminder_minutes',
+        min: 5, max: 120, step: 5, defaultValue: 15,
+        formatValue: (v: number) => `${v} min`,
+      },
+    ],
+  },
   {
     title: 'Core AI Tuning',
     defs: [
@@ -453,7 +478,7 @@ export default function Settings() {
                   min={def.min}
                   max={def.max}
                   step={def.step}
-                  currentValue={getValue(def.key)}
+                  currentValue={getValue(def.key) ?? def.defaultValue}
                   isLoading={isLoading}
                   onSave={(key, value) => save({ key, value })}
                   isSaving={isPending}
