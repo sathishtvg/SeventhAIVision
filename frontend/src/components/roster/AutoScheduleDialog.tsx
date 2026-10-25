@@ -13,6 +13,7 @@ import {
   type AutoScheduleRules, type RosterBatch, type ShiftPatternMode,
 } from '@/api/roster'
 import { getSites } from '@/api/sites'
+import { errorText } from '@/components/states'
 
 const PATTERN_MODES: { value: ShiftPatternMode; label: string }[] = [
   { value: 'rotation', label: 'Day/Night Rotation' },
@@ -159,8 +160,9 @@ export function AutoScheduleDialog({ open, onClose, onGenerated }: {
     onSuccess: (batch) => { onGenerated(batch); onClose() },
   })
 
-  const message = (error as { response?: { data?: { detail?: unknown } } } | null)
-    ?.response?.data?.detail
+  // Every failure says what happened (owner's report, 25 Oct 2026). It used to say nothing unless the server sent
+  // a sentence: no connection, a server fault or a sign-in that had run out left the button just as it was.
+  const message = error ? errorText(error) : null
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -183,9 +185,9 @@ export function AutoScheduleDialog({ open, onClose, onGenerated }: {
       </Tabs>
 
       <DialogContent sx={{ pt: 2 }}>
-        {message != null && (
+        {message && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            {typeof message === 'string' ? message : 'Those rules were rejected — check the values.'}
+            {`No draft was made. ${message}`}
           </Alert>
         )}
 

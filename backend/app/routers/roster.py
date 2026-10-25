@@ -144,6 +144,35 @@ async def _get_batch_detail(db: AsyncSession, batch_id: str) -> dict:
     return {**dict(batch_row._mapping), "draft_shifts": [dict(r) for r in shift_rows]}
 
 
+@router.get("/batches", dependencies=[Depends(require_permission("roster:autoschedule"))])
+async def list_batches(
+    db: AsyncSession = Depends(get_db_with_tenant),
+    batch_status: str = Query("draft", alias="status", pattern="^(draft|published|discarded)$"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Drafts (or published / discarded batches), newest first, with how many posts each has and how many are
+    filled. Added 25 October 2026: a draft was shown only right after it was made, so after a reload it could not
+    be found, reviewed or discarded (owner's report)."""
+    rows = (await db.execute(
+        text("""
+            SELECT b.id, b.site_id, s.name AS site_name, b.period_start, b.period_end, b.status,
+                   b.generated_at, b.published_at, u.full_name AS generated_by,
+                   (SELECT count(*) FROM roster_draft_shifts d WHERE d.batch_id = b.id) AS posts,
+                   (SELECT count(*) FROM roster_draft_shifts d
+                     WHERE d.batch_id = b.id AND d.guard_user_id IS NOT NULL) AS filled
+            FROM roster_batches b
+            LEFT JOIN sites s ON s.id = b.site_id
+            LEFT JOIN users u ON u.id = b.generated_by_user_id
+            WHERE b.tenant_id = current_setting('app.current_tenant')::uuid
+              AND b.status = :status
+            ORDER BY b.generated_at DESC
+            LIMIT :limit
+        """),
+        {"status": batch_status, "limit": limit},
+    )).mappings().all()
+    return [dict(r) for r in rows]
+
+
 @router.get("/batches/{batch_id}", dependencies=[Depends(require_permission("roster:autoschedule"))])
 async def get_batch(batch_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
     return await _get_batch_detail(db, batch_id)
