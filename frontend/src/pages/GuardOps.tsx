@@ -158,6 +158,13 @@ function ShiftsTab() {
                     color={s.status === 'active' ? 'success' : s.status === 'completed' ? 'default' : 'primary'}
                     size="small"
                   />
+                  {/* docs/plans/2026-10-25-roster-autoclose-overtime-design.md: closed by the system, checked out off site */}
+                  {s.auto_closed_at && (
+                    <Chip label="Closed by the system - no check-out" size="small" color="warning" variant="outlined" sx={{ ml: 0.5 }} />
+                  )}
+                  {s.checked_out_away_from_site && (
+                    <Chip label="Checked out away from site" size="small" color="warning" variant="outlined" sx={{ ml: 0.5 }} />
+                  )}
                 </TableCell>
                 {canManage && (
                   <TableCell>

@@ -25,6 +25,7 @@ from app.services.geofence import is_within_site
 from app.services.handover import gather_site_position, snapshot_checklist
 from app.services.liveness import check_liveness_sync
 from app.services.staff_faces import check_at_checkin as _face_check
+from app.services.overtime_rules import overtime_minutes as _overtime_minutes, request_hours as _overtime_request_hours
 from app.services.violations import VIOLATION_POINTS, create_violation
 
 from app.services.sos import raise_guard_sos
@@ -55,6 +56,26 @@ async def _get_liveness_min_score(db: AsyncSession) -> float:
     return _LIVENESS_MIN_SCORE_DEFAULT
 
 
+
+
+async def _outside_site(db: AsyncSession, site_id, latitude: float | None, longitude: float | None) -> bool | None:
+    """True when a known location is outside the site's geofence, False inside, None when either is unknown.
+    The same rule check-in applies (is_within_site: a drawn boundary wins over the radius)."""
+    if latitude is None or longitude is None or not site_id:
+        return None
+    site_row = (await db.execute(
+        text("SELECT latitude, longitude, geofence_radius_meters, geofence_polygon FROM sites WHERE id = :sid"),
+        {"sid": site_id},
+    )).first()
+    if site_row is None:
+        return None
+    inside = is_within_site(
+        latitude, longitude, site_lat=site_row.latitude, site_lon=site_row.longitude,
+        radius_meters=site_row.geofence_radius_meters or await _get_attendance_setting(
+            db, "attendance.geofence_radius_meters"),
+        polygon=site_row.geofence_polygon,
+    )
+    return None if inside is None else not inside
 
 
 async def _shift_actor(db: AsyncSession, token: TokenPayload, guard_user_id) -> Literal["manager", "self"]:
@@ -244,6 +265,7 @@ async def list_shifts(
         SELECT sh.id, sh.guard_user_id, sh.site_id, sh.scheduled_start, sh.scheduled_end,
                sh.actual_start, sh.actual_end, sh.status, sh.handover_notes,
                sh.is_late, sh.late_minutes, sh.overtime_minutes, sh.is_within_geofence,
+               sh.auto_closed_at, sh.checked_out_away_from_site, sh.overtime_needs_approval,
                EXISTS(SELECT 1 FROM shift_breaks b WHERE b.shift_id = sh.id AND b.break_end IS NULL) AS on_break,
                u.full_name AS guard_name, u.email AS guard_email,
                s.name AS site_name
@@ -577,7 +599,7 @@ async def start_shift(
     result = await db.execute(
         text(
             """
-            UPDATE shifts SET status = 'active', actual_start = now(),
+            UPDATE shifts SET status = 'active', actual_start = now(), overtime_needs_approval = TRUE,
                    check_in_lat = :lat, check_in_lon = :lon,
                    is_within_geofence = :geo, is_late = :late, late_minutes = :late_min,
                    check_in_photo_path = :photo_path, check_in_liveness_score = :liveness,
@@ -620,7 +642,8 @@ async def end_shift(
     token: TokenPayload = Depends(get_token_payload),
 ):
     shift_row = (await db.execute(
-        text("SELECT scheduled_end, site_id, guard_user_id FROM shifts WHERE id = :id AND status = 'active'"),
+        text("SELECT scheduled_end, site_id, guard_user_id, overtime_needs_approval FROM shifts "
+             "WHERE id = :id AND status = 'active'"),
         {"id": shift_id},
     )).first()
     if shift_row is None:
@@ -640,13 +663,22 @@ async def end_shift(
     if shift_row.scheduled_end is not None:
         threshold = await _get_attendance_setting(db, "attendance.overtime_threshold_minutes")
         over_minutes = (now - shift_row.scheduled_end).total_seconds() / 60
-        if over_minutes > threshold:
-            overtime_minutes = max(0, round(over_minutes - threshold))
+        # One rule for check-out, the automatic close and an approval (services/overtime_rules.py): a shift on the
+        # approval rule carries only approved overtime, up to the time worked; one from before keeps its own.
+        _, approved_hours = await _overtime_request_hours(db, shift_id)
+        overtime_minutes = _overtime_minutes(
+            needs_approval=bool(shift_row.overtime_needs_approval), scheduled_end=shift_row.scheduled_end,
+            actual_end=now, approved_minutes=approved_hours * 60, threshold_minutes=threshold,
+        )
         # Same per-site grace that decided lateness on the way in — a site
         # given a wider allowance at the start of a shift gets it at the end
         # too, or an early-departure violation contradicts the site's policy.
         grace_minutes = await _get_site_grace_minutes(db, shift_row.site_id)
         is_early_departure = -over_minutes > grace_minutes
+
+    # Checked out away from the site: allowed, and flagged, as an off-site check-in is (the owner's choice,
+    # 25 October 2026). Unknown without a location.
+    away_from_site = await _outside_site(db, shift_row.site_id, latitude, longitude) is True
 
     # Safety net: auto-close a break the guard forgot to end.
     await db.execute(
@@ -675,14 +707,14 @@ async def end_shift(
             UPDATE shifts SET status = 'completed', actual_end = now(), handover_notes = :notes,
                    check_out_lat = :lat, check_out_lon = :lon, overtime_minutes = :ot,
                    check_out_photo_path = :photo_path, check_out_liveness_score = :liveness,
-                   check_out_is_mock_location = :is_mock
+                   check_out_is_mock_location = :is_mock, checked_out_away_from_site = :away
             WHERE id = :id AND status = 'active'
-            RETURNING id, status, actual_end, site_id, overtime_minutes
+            RETURNING id, status, actual_end, site_id, overtime_minutes, checked_out_away_from_site
             """
         ),
         {
             "id": shift_id, "notes": handover_notes, "lat": latitude, "lon": longitude, "ot": overtime_minutes,
-            "photo_path": photo_path, "liveness": liveness_score, "is_mock": is_mock_location,
+            "photo_path": photo_path, "liveness": liveness_score, "is_mock": is_mock_location, "away": away_from_site,
         },
     )
     row = result.first()

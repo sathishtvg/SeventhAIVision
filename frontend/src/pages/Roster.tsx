@@ -213,6 +213,15 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
         </Typography>
         <Chip label={batch.status} size="small" color={batch.status === 'draft' ? 'warning' : 'success'} />
       </Stack>
+      {summary && (summary.sites_from_shift_definitions || (summary.planned_from && summary.requested_from
+        && summary.planned_from > summary.requested_from)) ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          {summary.planned_from && summary.requested_from && summary.planned_from > summary.requested_from
+            && `Planned from ${new Date(summary.planned_from + 'T00:00:00').toLocaleDateString()}: earlier days have passed. `}
+          {!!summary.sites_from_shift_definitions
+            && `${summary.sites_from_shift_definitions} site(s) with no roster pattern were planned from your shift definitions and each site's day/night guard numbers.`}
+        </Typography>
+      ) : null}
       {hasWarnings && (
         <Typography variant="caption" color="warning.main" sx={{ display: 'block', mb: 1.5 }}>
           {summary!.unfilled_slots > 0 && `${summary!.unfilled_slots} unfilled slot(s). `}
@@ -836,7 +845,7 @@ export function RosterPage() {
                 <TableRow>
                   <TableCell colSpan={7}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                      No roster patterns yet — add one, then generate the week.
+                      No roster patterns yet. Auto-Schedule plans from your shift definitions and each site's guard numbers; a pattern is a guard's own repeating shift, for Generate next 7 days.
                     </Typography>
                   </TableCell>
                 </TableRow>

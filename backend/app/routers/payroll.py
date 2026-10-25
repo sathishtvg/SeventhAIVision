@@ -144,7 +144,7 @@ async def create_payroll_run(
         hours_row = (await db.execute(
             text("""
                 SELECT
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (actual_end - actual_start)) / 3600.0), 0) AS total_hours,
+                    COALESCE(SUM(GREATEST(EXTRACT(EPOCH FROM (CASE WHEN overtime_needs_approval AND scheduled_end IS NOT NULL THEN LEAST(actual_end, scheduled_end + make_interval(mins => COALESCE(overtime_minutes, 0))) ELSE actual_end END - actual_start)), 0) / 3600.0), 0) AS total_hours,
                     COALESCE(SUM(overtime_minutes), 0) / 60.0 AS ot_hours,
                     COUNT(DISTINCT actual_start::date) AS days_worked
                 FROM shifts
@@ -558,8 +558,11 @@ class TimesheetReview(BaseModel):
     review_notes: str | None = None
 
 
+# Paid hours: a shift on the overtime-approval rule (0168) counts to its planned end plus the overtime it
+# carries - approved, up to the time worked; unapproved extra time is not paid. Shifts from before count
+# check-in to check-out, as they always did. The payroll run above uses the same expression.
 _TIMESHEET_HOURS_SQL = """
-    SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (actual_end - actual_start)) / 3600.0), 0) AS total_hours,
+    SELECT COALESCE(SUM(GREATEST(EXTRACT(EPOCH FROM (CASE WHEN overtime_needs_approval AND scheduled_end IS NOT NULL THEN LEAST(actual_end, scheduled_end + make_interval(mins => COALESCE(overtime_minutes, 0))) ELSE actual_end END - actual_start)), 0) / 3600.0), 0) AS total_hours,
            COALESCE(SUM(overtime_minutes), 0) / 60.0 AS ot_hours,
            COUNT(DISTINCT actual_start::date) AS days_worked,
            COUNT(*) AS shift_count

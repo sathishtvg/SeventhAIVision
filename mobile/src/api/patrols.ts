@@ -86,6 +86,10 @@ export interface Shift {
   on_break: boolean
   guard_name: string | null
   site_name: string | null
+  /** Since 25 Oct 2026 (docs/plans/2026-10-25-roster-autoclose-overtime-design.md): closed by the system because
+   *  there was no check-out; checked out outside the site's geofence. */
+  auto_closed_at?: string | null
+  checked_out_away_from_site?: boolean
 }
 
 /**

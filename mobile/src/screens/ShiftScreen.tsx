@@ -13,6 +13,8 @@ import {
 } from '@/api/patrols'
 import { Card } from '@/components/Card'
 import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
+import { OvertimeRequestSheet } from '@/components/OvertimeRequestSheet'
+import { canAskOvertime } from '@/api/overtime'
 import { useShiftCheckIn } from '@/hooks/useShiftCheckIn'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
@@ -30,6 +32,8 @@ export function ShiftScreen() {
   const navigation = useNavigation<NavProp>()
   const qc = useQueryClient()
   const [handoverShiftId, setHandoverShiftId] = useState<string | null>(null)
+  // Overtime for a shift on now, or one that ended in the last 48 hours (design 2026-10-25, section 3).
+  const [overtimeShiftId, setOvertimeShiftId] = useState<string | null>(null)
   const [handoverNotes, setHandoverNotes] = useState('')
   const [handoverResult, setHandoverResult] = useState<any | null>(null)
   const [briefingShiftId, setBriefingShiftId] = useState<string | null>(null)
@@ -378,6 +382,9 @@ export function ShiftScreen() {
                 <Text style={[styles.badgeText, { color: STATUS_COLOR[s.status] }]}>{s.status}</Text>
               </View>
             </View>
+            {s.auto_closed_at ? (
+              <Text style={styles.shiftTime}>Closed by the system: no check-out.</Text>
+            ) : null}
 
             <View style={styles.shiftActions}>
               {s.status === 'scheduled' && (
@@ -446,6 +453,14 @@ export function ShiftScreen() {
                   </Pressable>
 
                   <Pressable
+                    style={[styles.actionBtn, { backgroundColor: '#B8860B' }]}
+                    onPress={() => setOvertimeShiftId(s.id)}
+                  >
+                    <Ionicons name="time-outline" size={14} color="#fff" />
+                    <Text style={styles.actionBtnText}>Overtime</Text>
+                  </Pressable>
+
+                  <Pressable
                     style={[styles.actionBtn, { backgroundColor: colors.warning }]}
                     onPress={() => RNAlert.alert('End Shift', 'End your current shift?', [
                       { text: 'Cancel', style: 'cancel' },
@@ -457,10 +472,22 @@ export function ShiftScreen() {
                   </Pressable>
                 </>
               )}
+
+              {s.status === 'completed' && canAskOvertime(s) && (
+                <Pressable
+                  style={[styles.actionBtn, { backgroundColor: '#B8860B' }]}
+                  onPress={() => setOvertimeShiftId(s.id)}
+                >
+                  <Ionicons name="time-outline" size={14} color="#fff" />
+                  <Text style={styles.actionBtnText}>Ask for overtime</Text>
+                </Pressable>
+              )}
             </View>
           </Card>
         )}
       />
+
+      <OvertimeRequestSheet shiftId={overtimeShiftId} onClose={() => setOvertimeShiftId(null)} />
 
       <CheckInPhotoModal
         visible={checkinFlow !== null}

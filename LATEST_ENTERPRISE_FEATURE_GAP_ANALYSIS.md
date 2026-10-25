@@ -1037,3 +1037,14 @@ or an admin registers, replaces or deletes a face from a photo, and the
 check-in face checks panel on Attendance, with times in the organisation's
 zone). Nothing in the desktop shell was changed for it. It is unsigned, with
 the same app id and MSI upgrade code, so it installs over 1.0.9.
+
+### Desktop 1.0.11
+
+Desktop 1.0.11 is the web build of 25 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.10: Auto-Schedule planning sites with no roster pattern from the shift
+definitions, the Attendance settings for closing a shift automatically, the
+Overtime requests panel on Attendance, and the markers on Guard Ops for a shift
+closed by the system or checked out away from its site. Nothing in the desktop
+shell was changed for it. It is unsigned, with the same app id and MSI upgrade
+code, so it installs over 1.0.10.
