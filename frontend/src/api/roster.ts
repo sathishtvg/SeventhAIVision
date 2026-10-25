@@ -101,6 +101,8 @@ export interface RosterBatch {
     requested_from?: string
     sites_from_patterns?: number
     sites_from_shift_definitions?: number
+    /** Since 25 Oct 2026 (later drafts only): how many people the planner could roster. */
+    people_available?: number
   } | null
   generated_at: string
   published_at: string | null
@@ -117,6 +119,25 @@ export const autoSchedule = (data: {
 
 export const getBatch = (id: string) =>
   apiClient.get<RosterBatch>(`/api/v1/roster/batches/${id}`).then((r) => r.data)
+
+/** A saved draft (or published / discarded batch) as the list shows it: since 25 Oct 2026 drafts can be found
+ *  again after a reload. */
+export interface RosterBatchListItem {
+  id: string
+  site_id: string | null
+  site_name: string | null
+  period_start: string
+  period_end: string
+  status: 'draft' | 'published' | 'discarded'
+  generated_at: string
+  published_at: string | null
+  generated_by: string | null
+  posts: number
+  filled: number
+}
+
+export const listBatches = (status: 'draft' | 'published' | 'discarded' = 'draft') =>
+  apiClient.get<RosterBatchListItem[]>('/api/v1/roster/batches', { params: { status } }).then((r) => r.data)
 
 export const updateDraftShift = (id: string, data: { guard_user_id?: string; scheduled_start?: string; scheduled_end?: string }) =>
   apiClient.put(`/api/v1/roster/draft-shifts/${id}`, data).then((r) => r.data)

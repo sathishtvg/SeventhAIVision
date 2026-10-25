@@ -480,6 +480,8 @@ async def generate_draft(
         "time_zone": tz_name,
         "sites_from_patterns": len(pattern_sites),
         "sites_from_shift_definitions": len(open_sites) if definitions else 0,
+        # How many people the planner could roster, so the page can say why posts are open (25 Oct 2026).
+        "people_available": len(guard_ids),
     }
 
     batch_row = (await db.execute(

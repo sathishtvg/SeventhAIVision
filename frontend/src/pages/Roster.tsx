@@ -41,9 +41,12 @@ import {
   createLeaveBlock, createShiftPattern, deleteLeaveBlock, deleteShiftPattern,
   assignCover, discardBatch, dismissCover, generateRoster, getBatch, getCoverRequests,
   getLeaveBlocks, getRestDayCompliance, getRosterCoverage,
-  listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
+  listBatches, listShiftPatterns, publishBatch, updateDraftShift, updateShift, updateShiftPattern,
   type CoverageShift, type DraftShift,
 } from '@/api/roster'
+import {
+  draftExplanation, draftListNote, generatedMessage, publishedMessage, type Said,
+} from '@/components/roster/draftMessages'
 import { getSites } from '@/api/sites'
 import { getUsers } from '@/api/users'
 import { approveLeaveRequest, listLeaveRequests, rejectLeaveRequest } from '@/api/leave'
@@ -54,7 +57,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx } from '@/lib/motion'
-import { DetailSkeleton, ErrorState } from '@/components/states'
+import { DetailSkeleton, ErrorState, errorText } from '@/components/states'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 // Manual-assignment guard pickers include Manager(8) — an admin can put a
@@ -158,24 +161,40 @@ function PatternDialog({ open, onClose }: { open: boolean; onClose: () => void }
   )
 }
 
-function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved: () => void }) {
+function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved: (said?: Said) => void }) {
   const qc = useQueryClient()
   const { data: batch, isLoading, isLoadingError: batchFailed, error: batchError, refetch: refetchBatch } = useQuery({ queryKey: ['roster-batch', batchId], queryFn: () => getBatch(batchId) })
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
   const guards = users.filter((u) => GUARD_ROLES.has(u.role_id) && u.is_active)
 
-  const { mutate: reassign } = useMutation({
+  // Each of these says when it did not work (owner's report, 25 Oct 2026); they used to fail without a word.
+  const { mutate: reassign, error: reassignError } = useMutation({
     mutationFn: ({ id, guardUserId }: { id: string; guardUserId: string }) => updateDraftShift(id, { guard_user_id: guardUserId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['roster-batch', batchId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['roster-batch', batchId] })
+      qc.invalidateQueries({ queryKey: ['roster-batches'] })
+    },
   })
-  const { mutate: publish, isPending: publishing } = useMutation({
+  const { mutate: publish, isPending: publishing, error: publishError } = useMutation({
     mutationFn: () => publishBatch(batchId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['roster-coverage'] }); onResolved() },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['roster-coverage'] })
+      qc.invalidateQueries({ queryKey: ['roster-grid'] })
+      qc.invalidateQueries({ queryKey: ['roster-batches'] })
+      onResolved(publishedMessage(res.shifts_created))
+    },
   })
-  const { mutate: discard, isPending: discarding } = useMutation({
+  const { mutate: discard, isPending: discarding, error: discardError } = useMutation({
     mutationFn: () => discardBatch(batchId),
-    onSuccess: () => onResolved(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['roster-batches'] })
+      onResolved({ tone: 'info', text: 'Draft discarded. Nothing was added to the roster.' })
+    },
   })
+  const actionError = publishError ? `Not published. ${errorText(publishError)}`
+    : discardError ? `Not discarded. ${errorText(discardError)}`
+    : reassignError ? `That post was not changed. ${errorText(reassignError)}`
+    : null
 
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
   const fmtDate = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
@@ -200,6 +219,8 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
   }
 
   const summary = batch.rules_summary
+  const explained = draftExplanation(summary, batch.draft_shifts)
+  const nothingFilled = !batch.draft_shifts.some((s) => s.guard_user_id)
   const hasWarnings = !!summary && (
     summary.unfilled_slots + summary.coverage_shortfalls +
     summary.missing_supervisor_days + summary.missing_manager_days > 0
@@ -211,8 +232,14 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           Draft Roster — {new Date(batch.period_start).toLocaleDateString()} to {new Date(batch.period_end).toLocaleDateString()}
         </Typography>
-        <Chip label={batch.status} size="small" color={batch.status === 'draft' ? 'warning' : 'success'} />
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Chip label={batch.status} size="small" color={batch.status === 'draft' ? 'warning' : 'success'} />
+          <Button size="small" onClick={() => onResolved()}>Close</Button>
+        </Stack>
       </Stack>
+      {batch.status === 'draft' && (
+        <Alert severity={explained.tone} sx={{ mb: 1.5 }}>{explained.text}</Alert>
+      )}
       {summary && (summary.sites_from_shift_definitions || (summary.planned_from && summary.requested_from
         && summary.planned_from > summary.requested_from)) ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
@@ -263,16 +290,90 @@ function DraftReviewPanel({ batchId, onResolved }: { batchId: string; onResolved
           </Box>
         ))}
       </Stack>
+      {/* Beside the buttons that failed, not at the top of a long list of posts. */}
+      {actionError && <Alert severity="error" sx={{ mt: 2 }}>{actionError}</Alert>}
       {batch.status === 'draft' && (
         <Stack direction="row" spacing={1} sx={{ mt: 2, justifyContent: 'flex-end' }}>
           <Button size="small" color="error" variant="outlined" disabled={discarding} onClick={() => discard()}>
             Discard
           </Button>
-          <Button size="small" color="success" variant="contained" disabled={publishing} onClick={() => publish()}>
+          <Button size="small" color="success" variant="contained" disabled={publishing || nothingFilled}
+                  onClick={() => publish()}>
             {publishing ? 'Publishing…' : 'Publish & Notify'}
           </Button>
         </Stack>
       )}
+    </GlassCard>
+  )
+}
+
+/**
+ * Drafts not yet published or discarded. Added 25 Oct 2026: a draft was shown only right after it was made, so
+ * after a reload it could not be found again (owner's report). Shown only when there is at least one.
+ */
+function DraftsWaiting({ activeId, onReview, onSaid }: {
+  activeId: string | null
+  onReview: (id: string | null) => void
+  onSaid: (said: Said) => void
+}) {
+  const qc = useQueryClient()
+  const { data: drafts = [], isError, error, refetch } = useQuery({
+    queryKey: ['roster-batches', 'draft'], queryFn: () => listBatches('draft'),
+  })
+  const { mutate: discard, isPending: discarding, variables: discardingId, error: discardError } = useMutation({
+    mutationFn: (id: string) => discardBatch(id),
+    onSuccess: (_res, id) => {
+      qc.invalidateQueries({ queryKey: ['roster-batches'] })
+      if (id === activeId) onReview(null)
+      onSaid({ tone: 'info', text: 'Draft discarded. Nothing was added to the roster.' })
+    },
+  })
+
+  if (isError) return <ErrorState error={error} onRetry={refetch} />
+  if (drafts.length === 0) return null
+  const day = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' })
+
+  return (
+    <GlassCard sx={{ p: 2, mb: 2 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+        Drafts waiting ({drafts.length})
+      </Typography>
+      {discardError && (
+        <Alert severity="error" sx={{ mb: 1 }}>{`Not discarded. ${errorText(discardError)}`}</Alert>
+      )}
+      <Stack spacing={0.75}>
+        {drafts.map((d) => {
+          const note = draftListNote(d, drafts)
+          return (
+            <Box key={d.id} sx={{
+              display: 'flex', alignItems: 'center', gap: 1, p: 1, borderRadius: '8px', flexWrap: 'wrap',
+              backgroundColor: d.id === activeId ? 'rgba(108,99,255,0.12)' : 'rgba(255,255,255,0.04)',
+            }}>
+              <Box sx={{ flex: 1, minWidth: 220 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {day(d.period_start)} – {day(d.period_end)} · {d.site_name ?? 'Every site'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {d.posts} post{d.posts === 1 ? '' : 's'}, {d.filled} filled · made {new Date(d.generated_at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {d.generated_by ? ` by ${d.generated_by}` : ''}
+                </Typography>
+                {note && (
+                  <Typography variant="caption" sx={{ display: 'block', color: `${note.tone}.main` }}>
+                    {note.text}
+                  </Typography>
+                )}
+              </Box>
+              <Button size="small" variant="outlined" disabled={d.id === activeId} onClick={() => onReview(d.id)}>
+                {d.id === activeId ? 'Open above' : 'Review'}
+              </Button>
+              <Button size="small" color="error" disabled={discarding && discardingId === d.id}
+                      onClick={() => discard(d.id)}>
+                Discard
+              </Button>
+            </Box>
+          )
+        })}
+      </Stack>
     </GlassCard>
   )
 }
@@ -717,7 +818,8 @@ function CoverRequestsCard() {
 export function RosterPage() {
   const qc = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [genResult, setGenResult] = useState<number | null>(null)
+  // What the last roster action did, or why it did nothing (owner's report, 25 Oct 2026).
+  const [notice, setNotice] = useState<Said | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'site' | 'employee'>('grid')
   const [autoScheduleOpen, setAutoScheduleOpen] = useState(false)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
@@ -739,9 +841,11 @@ export function RosterPage() {
   const { mutate: generate, isPending: generating } = useMutation({
     mutationFn: () => generateRoster(7),
     onSuccess: (res) => {
-      setGenResult(res.created)
+      setNotice(generatedMessage(res.created, patterns.filter((p) => p.is_active).length))
       qc.invalidateQueries({ queryKey: ['roster-coverage'] })
+      qc.invalidateQueries({ queryKey: ['roster-grid'] })
     },
+    onError: (err) => setNotice({ tone: 'error', text: `No shifts were added. ${errorText(err)}` }),
   })
 
   const { mutate: toggleActive } = useMutation({
@@ -797,9 +901,20 @@ export function RosterPage() {
     <Box>
       <PageHeader pageKey="roster" />
 
-      {activeBatchId && (
-        <DraftReviewPanel batchId={activeBatchId} onResolved={() => setActiveBatchId(null)} />
+      {notice && (
+        <Alert severity={notice.tone} sx={{ mb: 2 }} onClose={() => setNotice(null)}>{notice.text}</Alert>
       )}
+
+      {activeBatchId && (
+        <DraftReviewPanel batchId={activeBatchId} onResolved={(said) => {
+          setActiveBatchId(null)
+          if (said) setNotice(said)
+        }} />
+      )}
+
+      <PermissionGuard permission="roster:autoschedule">
+        <DraftsWaiting activeId={activeBatchId} onReview={setActiveBatchId} onSaid={setNotice} />
+      </PermissionGuard>
 
       <Stack direction="row" spacing={1.5} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <PermissionGuard permission="shift:manage">
@@ -818,11 +933,6 @@ export function RosterPage() {
             Auto-Schedule
           </Button>
         </PermissionGuard>
-        {genResult !== null && (
-          <Typography variant="caption" color="text.secondary">
-            {genResult} shift{genResult === 1 ? '' : 's'} created
-          </Typography>
-        )}
       </Stack>
 
       {/* Patterns table */}
@@ -980,7 +1090,11 @@ export function RosterPage() {
         <AutoScheduleDialog
           open
           onClose={() => setAutoScheduleOpen(false)}
-          onGenerated={(batch) => setActiveBatchId(batch.id)}
+          onGenerated={(batch) => {
+            setActiveBatchId(batch.id)
+            setNotice(null)
+            qc.invalidateQueries({ queryKey: ['roster-batches'] })
+          }}
         />
       )}
       <EditShiftDialog
