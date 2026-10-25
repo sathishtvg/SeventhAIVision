@@ -16,13 +16,15 @@
  * it outright, and the selfie is liveness-checked server-side. Someone asked to
  * photograph themselves deserves to know what is being recorded.
  */
-import { useMemo } from 'react'
+import React, { useMemo } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigation } from '@react-navigation/native'
 
 import { getMyFace } from '@/api/faces'
+import { getMyOvertimeRequests, overtimeStatusLine } from '@/api/overtime'
+import { OvertimeRequestSheet } from '@/components/OvertimeRequestSheet'
 import { getMyShifts, type Shift } from '@/api/patrols'
 import { CheckInPhotoModal } from '@/components/CheckInPhotoModal'
 import { useShiftCheckIn } from '@/hooks/useShiftCheckIn'
@@ -108,6 +110,33 @@ function RegisterFaceLink() {
   )
 }
 
+/** While on duty: ask for overtime, and what became of the last request (design 2026-10-25, section 3). */
+function OvertimeRow({ shiftId }: { shiftId: string }) {
+  const [open, setOpen] = React.useState(false)
+  const { data } = useQuery({ queryKey: ['overtime', shiftId], queryFn: () => getMyOvertimeRequests(shiftId) })
+  const line = overtimeStatusLine(data)
+  const waiting = data?.[0]?.status === 'pending'
+  return (
+    <>
+      {line && (
+        <View style={styles.noteRow}>
+          <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+          <Text style={styles.note}>{line}</Text>
+        </View>
+      )}
+      {!waiting && (
+        <Pressable style={styles.registerRow} onPress={() => setOpen(true)} accessibilityRole="button"
+                   accessibilityLabel="Tell the app you are working overtime">
+          <Ionicons name="time-outline" size={15} color={colors.primary} />
+          <Text style={styles.registerText}>Working overtime</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+        </Pressable>
+      )}
+      <OvertimeRequestSheet shiftId={open ? shiftId : null} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
 export function ShiftCheckInCard() {
   const userId = useAuthStore((s) => s.user?.id)
   const roleId = useAuthStore((s) => s.user?.roleId)
@@ -182,6 +211,7 @@ export function ShiftCheckInCard() {
         <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
         <Text style={styles.note}>Location and a selfie are recorded with your check-in.</Text>
       </View>
+      {onDuty && <OvertimeRow shiftId={shift.id} />}
       <StaleShiftNote shifts={shifts} />
       <RegisterFaceLink />
 

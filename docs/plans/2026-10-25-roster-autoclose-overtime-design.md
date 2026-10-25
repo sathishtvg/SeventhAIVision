@@ -73,7 +73,8 @@ a shift follows. Payroll runs and timesheets already made are not recalculated.
 approvals, the new rule's marker at check-in), `backend/app/routers/payroll.py`
 (the two hour sums), `backend/app/scheduler_main.py` (the sweep),
 `backend/app/core/config_keys.py` (the settings), `backend/app/services/attendance_status.py`
-(their defaults), `backend/app/main.py` (the new router), `frontend/src/pages/Roster.tsx`, `frontend/src/pages/Attendance.tsx`,
+(their defaults), `backend/app/main.py` (the new router), `frontend/src/pages/Roster.tsx`, `frontend/src/pages/Attendance.tsx`, `frontend/src/pages/GuardOps.tsx` (the shift
+list's markers), `frontend/src/api/roster.ts`,
 `frontend/src/pages/Settings.tsx`, `mobile/src/components/ShiftCheckInCard.tsx`.
 
 ## 8. Build order

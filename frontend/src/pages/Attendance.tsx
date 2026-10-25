@@ -70,6 +70,7 @@ import { useAuthStore } from '@/store/auth'
 import { useKioskToggle } from '@/hooks/useKioskToggle'
 import { ErrorState } from '@/components/states'
 import { FaceChecksPanel } from '@/components/faces/FaceChecksPanel'
+import { OvertimeRequestsPanel } from '@/components/attendance/OvertimeRequestsPanel'
 
 // ── Status vocabulary ────────────────────────────────────────────────────────
 
@@ -967,6 +968,13 @@ export function AttendancePage() {
 
       {/* Check-in face checks (docs/plans/2026-10-23-staff-face-registration-design.md): allow but flag, so the
           check-ins whose selfie did not match are reviewed here. */}
+      {/* Overtime requests (docs/plans/2026-10-25-roster-autoclose-overtime-design.md): approve or reject. */}
+      {!kiosk && (
+        <PermissionGuard permission="attendance:manage">
+          <OvertimeRequestsPanel />
+        </PermissionGuard>
+      )}
+
       {!kiosk && (
         <PermissionGuard permission="face:manage">
           <FaceChecksPanel token={token} />
