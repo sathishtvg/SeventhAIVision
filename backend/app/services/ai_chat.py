@@ -86,7 +86,8 @@ class ToolBox:
     """Runs the two tools for one person, inside the server, through the app itself."""
 
     def __init__(self, *, token: str, held: set[str], client_ip: str, mask_results: bool,
-                 on_change: Callable[[ai_functions.Function, str, dict, dict], Awaitable[str]] | None = None):
+                 on_change: Callable[[ai_functions.Function, str, dict, dict, dict], Awaitable[tuple[str, bool]]]
+                 | None = None):
         self.token, self.held, self.client_ip, self.mask_results = token, held, client_ip, mask_results
         self.on_change = on_change
 
@@ -132,7 +133,7 @@ class ToolBox:
             if self.on_change is None:
                 return json.dumps({"error": "Nothing was changed. Making changes from the assistant is not "
                                             "switched on yet: tell the person which screen to use."}), True
-            return await self.on_change(f, path, query, body or {}), False
+            return await self.on_change(f, path, args.get("path_params") or {}, query, body or {})
         status, payload = await call_app("GET", path, token=self.token, client_ip=self.client_ip, query=query)
         if status >= 400:
             return json.dumps({"error": f"The app answered {status}", "detail": payload}), True

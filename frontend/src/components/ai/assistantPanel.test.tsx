@@ -6,7 +6,8 @@ import { AssistantButton, AssistantPanel } from './AssistantPanel'
 
 vi.mock('@/api/aiAssistant', async (orig) => {
   const real = await orig<typeof import('@/api/aiAssistant')>()
-  return { ...real, streamChat: vi.fn(), getAssistantUsage: vi.fn(), getConversations: vi.fn(), getConversation: vi.fn() }
+  return { ...real, streamChat: vi.fn(), getAssistantUsage: vi.fn(), getConversations: vi.fn(), getConversation: vi.fn(),
+           confirmAction: vi.fn(), cancelAction: vi.fn(), getActions: vi.fn() }
 })
 vi.mock('@/api/ai', async (orig) => {
   const real = await orig<typeof import('@/api/ai')>()
@@ -72,6 +73,35 @@ describe('the assistant panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(await screen.findByText("This month's 500 assistant replies have been used.", {}, PATIENT)).toBeInTheDocument()
     await waitFor(() => expect(assistant.streamChat).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('a change the assistant prepared', () => {
+  const card = {
+    id: 'a1', conversation_id: 'c1', title: 'Create User: Ravi Kumar', method: 'POST' as const, path: '/api/v1/users',
+    fields: [{ name: 'full_name', value: 'Ravi Kumar' }, { name: 'password', value: 'a temporary password, shown to you once after Confirm' }],
+    status: 'PENDING' as const, result: null, created_at: '', expires_at: '', decided_at: null,
+  }
+  it('shows exactly what will be sent, and sends it only on Confirm, showing a made password once', async () => {
+    vi.mocked(assistant.streamChat).mockImplementation(async (_b, onEvent) => {
+      onEvent({ kind: 'conversation', data: { conversation_id: 'c1' } })
+      onEvent({ kind: 'confirm', data: { action: card } })
+      onEvent({ kind: 'done', data: { conversation_id: 'c1', message_id: 'm', text: 'Confirm it on the card.', stop: 'end', used: [] } })
+    })
+    vi.mocked(assistant.confirmAction).mockResolvedValue({ ...card, status: 'CONFIRMED', result: { status: 201, answer: {} },
+                                                           temporary_password: 'Xy7kQ2pLm9Wr4aA7!' })
+    render(<AssistantPanel open onClose={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Message to the assistant'), { target: { value: 'Add Ravi as a guard' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    const shown = await screen.findByTestId('assistant-card-a1', {}, PATIENT)
+    expect(shown).toHaveTextContent('Create User: Ravi Kumar')
+    expect(shown).toHaveTextContent('Ravi Kumar')
+    expect(assistant.confirmAction).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled(), PATIENT)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(assistant.confirmAction).toHaveBeenCalledWith('a1'), PATIENT)
+    expect(await screen.findByText('Done.', {}, PATIENT)).toBeInTheDocument()
+    expect(screen.getByTestId('assistant-card-a1')).toHaveTextContent('Xy7kQ2pLm9Wr4aA7!')
   })
 })
 

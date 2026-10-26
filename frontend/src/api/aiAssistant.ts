@@ -22,6 +22,7 @@ export type AssistantEvent =
   | { kind: 'delta'; data: { text: string } }
   | { kind: 'done'; data: AssistantDone }
   | { kind: 'error'; data: { message: string } }
+  | { kind: 'confirm'; data: { action: AssistantAction } }
 
 export interface ConversationSummary {
   id: string
@@ -111,3 +112,31 @@ export const getConversation = (id: string) =>
 
 export const getAssistantUsage = () =>
   apiClient.get<AssistantUsage>('/api/v1/ai/assistant/usage').then((r) => r.data)
+
+// ── Confirm cards (phase 7) ──
+
+export interface AssistantAction {
+  id: string
+  conversation_id: string
+  title: string
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  path: string
+  fields: Array<{ name: string; value: unknown }>
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' | 'EXPIRED'
+  result: { status: number; answer: unknown } | null
+  created_at: string
+  expires_at: string
+  decided_at: string | null
+  /** Only on the answer to a Confirm that made one: shown to the person this once, never stored. */
+  temporary_password?: string
+}
+
+export const getActions = (conversationId: string) =>
+  apiClient.get<{ items: AssistantAction[] }>('/api/v1/ai/assistant/actions', { params: { conversation_id: conversationId } })
+    .then((r) => r.data.items)
+
+export const confirmAction = (id: string) =>
+  apiClient.post<AssistantAction>(`/api/v1/ai/assistant/actions/${id}/confirm`).then((r) => r.data)
+
+export const cancelAction = (id: string) =>
+  apiClient.post<AssistantAction>(`/api/v1/ai/assistant/actions/${id}/cancel`).then((r) => r.data)

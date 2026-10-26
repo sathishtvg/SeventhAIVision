@@ -8,7 +8,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 |---|---|
 | Licence | Its own, per organisation, granted by the Super Admin (`ai_module_licenses`) |
 | Controls | The organisation's admin, per feature (`ai_feature_settings`) |
-| Migrations | `0170`, `0171`, `0172` |
+| Migrations | `0170`, `0171`, `0172`, `0173` |
 | Web | AI Insights (`/ai-insights`), AI Settings (`/ai-settings`); Manage Licenses > AI Assistant & Learning (Super Admin) |
 | Runs | The scheduler, every hour (`AI_MODULE_INTERVAL_SECONDS`, default 3600): `services/ai_runner.py` |
 
@@ -22,7 +22,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | 4 | Roster suggestions; best patrol times; missed-patrol warnings; guard work trends | Built |
 | 5 | Incident helper; payroll check | Built |
 | 6 | The assistant: free and hosted models, conversations, asking across the whole app | Built |
-| 7 | The assistant's actions behind Confirm cards; what it is never offered | Not yet |
+| 7 | The assistant's actions behind Confirm cards; what it is never offered | Built |
 | 8 | Reading an IC; the guided new-user flow | Not yet |
 | 9 | The assistant on the phone, for guards | Not yet |
 
@@ -233,8 +233,22 @@ one), licences, roles and permissions, API keys, the AI module's own settings, f
 data, and deleting evidence, footage or recordings; changing someone's role is refused even through an allowed
 function. A test holds each rule to a real route (`NEVER_OFFERED` in `services/ai_functions.py`).
 
-In this phase it **reads only**: a function that would change something answers "nothing was changed". Changes behind
-Confirm cards are phase 7.
+### Changes: the Confirm card
+
+`services/ai_actions.py`, `ai_pending_actions`. A change the model asks for is **prepared, not made**: the person sees
+a card with exactly what will be sent, and nothing happens until they press **Confirm**. Then it is sent with their
+sign-in at that moment, through the same in-process call, and written to the audit log as `ai.assistant.action`
+(confirmed by that person). Cancel drops it. A card not decided within **30 minutes** expires.
+
+- Missing required details are not guessed: the model is told which, and asks for them one at a time.
+- Checked again at Confirm: the never-offered list, the person's permissions then, that the card is theirs, and that
+  the reply which prepared it has finished (otherwise the note of what happened would be inserted before that reply,
+  and the history must stay append-only).
+- **Passwords never pass through the model.** One it sends is dropped; a function that needs one gets a temporary
+  password made by the app, shown once to the person who confirms, and removed from the stored card.
+- What became of a card (confirmed, refused by the app, cancelled, expired) is added to the conversation as a note,
+  so the model knows on the next turn.
+- Creating someone with a role is allowed; **changing** a person's role (a `role_id` in a PUT or PATCH) is not.
 
 ### Conversations, privacy and limits
 
@@ -283,6 +297,9 @@ sign-in.
 | `GET` | `/ai/assistant/conversations` | `ai:assistant:use` |
 | `GET` | `/ai/assistant/conversations/{conversation_id}` | `ai:assistant:use` |
 | `GET` | `/ai/assistant/usage` | `ai:assistant:use` |
+| `GET` | `/ai/assistant/actions` | `ai:assistant:use` |
+| `POST` | `/ai/assistant/actions/{action_id}/confirm` | `ai:assistant:use` |
+| `POST` | `/ai/assistant/actions/{action_id}/cancel` | `ai:assistant:use` |
 | `GET` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 | `PUT` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 
