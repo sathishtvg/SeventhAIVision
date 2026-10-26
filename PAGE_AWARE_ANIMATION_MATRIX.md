@@ -7,15 +7,16 @@ it fails when this file and the code disagree. To write it again after a page ch
 `yes` it has it. `-` it does not apply (a page that fetches nothing has no failed state; a page with no
 filtered list keeps no rows). `NO` it applies and is not there.
 
-- 127 files under `src/pages`; 118 are a page with an address of their own, the rest are parts of one.
-- 115 pages inside the shell have a scene of their own; 0 have none.
-- 119 fetch; 118 say so when a request failed; 1 do not.
-- 119 have a placeholder; 43 keep a list's rows while a changed filter is fetched; 8 mark what arrives.
+- 128 files under `src/pages`; 119 are a page with an address of their own, the rest are parts of one.
+- 116 pages inside the shell have a scene of their own; 0 have none.
+- 120 fetch; 119 say so when a request failed; 1 do not.
+- 120 have a placeholder; 43 keep a list's rows while a changed filter is fetched; 8 mark what arrives.
 
 | Page | Address | Scene | Arrives as | Says when a request failed | Placeholder | Lists that keep their rows | Marks what arrives | Its own states |
 |---|---|---|---|---|---|---|---|---|
 | `AccessControl.tsx` | /access | gate | table | yes | yes | 1 | - | - |
 | `ActionCenter.tsx` | /action-center | ledger (never covered) | operational | yes | yes | - | yes | figures count to real values; cards take turns |
+| `ai/AiSettings.tsx` | /ai-settings | sliders | table | yes | yes | - | - | - |
 | `Alarms.tsx` | /alarms | bell (never covered) | operational | yes | yes | 1 | - | - |
 | `AlertDedup.tsx` | /alert-dedup | bell | table | yes | yes | - | - | - |
 | `AlertRules.tsx` | /alert-rules | bell | table | yes | yes | - | - | - |

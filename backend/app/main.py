@@ -63,6 +63,8 @@ from app.routers import (
     fleet_evidence,
     footage,
     staff_faces,
+    ai,
+    platform_ai_licenses,
     overtime_requests,
     handover,
     i18n,
@@ -489,6 +491,9 @@ app.include_router(fleet_geofences.router)
 app.include_router(fleet_evidence.router)
 app.include_router(footage.router)
 app.include_router(staff_faces.router)
+# The AI module (migration 0170): the company's controls, and the Super Admin's licence.
+app.include_router(ai.router)
+app.include_router(platform_ai_licenses.router)
 app.include_router(overtime_requests.router)
 app.include_router(i18n.router)
 app.include_router(contractors.router)

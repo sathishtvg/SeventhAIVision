@@ -163,6 +163,9 @@ const ALL_PERMISSIONS = [
   // Staff faces for check-in (migration 0167). Everyone who checks in registers their own once; a supervisor,
   // manager or admin changes one. The platform owner and the client role hold neither.
   'face:register_self', 'face:manage',
+  // The AI module (migration 0170). The platform owner and the client role hold none; the admin's controls are the
+  // admin's and the manager's.
+  'ai:configure', 'ai:insights:read', 'ai:insights:decide', 'ai:assistant:use',
 ]
 
 /** The platform operator's whole job (migration 0102). Super Admin used to hold
@@ -289,6 +292,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'retention:read', // Data retention (0156): reads the statement; asks about nobody
     'footage:upload', 'footage:view', 'footage:review', // Footage Review (0163): uploads, watches, reviews; deletes nothing
     'face:register_self', 'face:manage', // Staff faces (0167): their own once; a guard's or an operator's face
+    'ai:insights:read', 'ai:insights:decide', 'ai:assistant:use', // The AI module (0170): reads and decides; talks to it
   ],
   4: [ // operator
     'camera:read',
@@ -347,6 +351,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'case:read', 'case:work', // Cases (0155): reads; works the cases they are on
     'footage:upload', 'footage:view', 'footage:review', // Footage Review (0163): uploads, watches, reviews; deletes nothing
     'face:register_self', // Staff faces (0167): their own, once
+    'ai:insights:read', 'ai:assistant:use', // The AI module (0170): reads its warnings; talks to it
   ],
   5: [ // security_guard
     'camera:read',
@@ -389,6 +394,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     // What a guard does from the phone (0169, the owner's choice 26 Oct 2026). Not handover:create: a guard writes
     // the handover of their own shift without it (the occurrence book reads it as "every guard's handover").
     'incident:update', 'visitor:register',
+    'ai:assistant:use', // The AI module (0170): talks to the assistant, if the admin lets guards
   ],
   6: [ // viewer
     'camera:read',
@@ -434,6 +440,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'case:read', // Cases (0155): reads
     'retention:read', // Data retention (0156): reads the statement
     'footage:view', // Footage Review (0163): watches and searches
+    'ai:assistant:use', // The AI module (0170): talks to the assistant, if the admin lets viewers
   ],
   7: [ // client — building owner / third-party, read-only portal
     'alert:read',
