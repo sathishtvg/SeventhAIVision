@@ -15,7 +15,9 @@ switched it on, and the caller's role is one the admin chose.
 
 THE REPLY STREAMS as server-sent events: `status` (what it is doing: "Reading
 shifts"), `delta` (words as they are written), then `done` or `error`. It starts
-at once, before the model has finished thinking.
+at once, before the model has finished thinking. The phone asks for it whole
+instead (`stream: false`): one JSON answer with the reply, what it did and any
+Confirm cards, because React Native cannot read a stream as it arrives.
 
 THE MONTHLY LIMIT is the Super Admin's (ai_module_licenses.monthly_reply_limit):
 each assistant reply counts, in the organisation's own calendar month. At the
@@ -35,7 +37,8 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +64,8 @@ class ChatBody(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: uuid.UUID | None = None
     channel: Literal["WEB", "PHONE"] = "WEB"
+    #: False: the reply comes back whole, as JSON (the phone).
+    stream: bool = True
 
 
 async def _gate(db: AsyncSession, token: TokenPayload) -> dict:
@@ -159,17 +164,17 @@ async def chat(request: Request, body: ChatBody, db: AsyncSession = Depends(get_
                 if provider_name == "LOCAL":
                     history = history[-LOCAL_HISTORY:]
                 if (conversation["provider"], conversation["model"]) != (provider_name, model):
-                    yield _sse("status", {"text": "The chat model was changed; earlier messages are not carried over."})
+                    yield "status", {"text": "The chat model was changed; earlier messages are not carried over."}
                     await s.execute(text("UPDATE ai_conversations SET provider = :p, model = :m WHERE id = :c"),
                                     {"p": provider_name, "m": model, "c": cid})
             await s.commit()
-        yield _sse("conversation", {"conversation_id": str(cid)})
+        yield "conversation", {"conversation_id": str(cid)}
 
         # Events are sent as the model produces them: a queue between the model's callbacks and this generator.
         queue: asyncio.Queue = asyncio.Queue()
 
         async def emit_now(kind: str, data: dict) -> None:
-            await queue.put(_sse(kind, data))
+            await queue.put((kind, data))
 
         async def on_change(f, path, path_values, query, change):
             """A change becomes a Confirm card; nothing is sent until the person confirms it."""
@@ -209,11 +214,11 @@ async def chat(request: Request, body: ChatBody, db: AsyncSession = Depends(get_
         try:
             result = await task
         except ai_chat.AssistantUnavailable as e:
-            yield _sse("error", {"message": str(e)})
+            yield "error", {"message": str(e)}
             return
         except Exception:
             logger.exception("assistant: the turn failed")
-            yield _sse("error", {"message": "Something went wrong while answering. Try again."})
+            yield "error", {"message": "Something went wrong while answering. Try again."}
             return
 
         reply = result.text.strip()
@@ -240,11 +245,33 @@ async def chat(request: Request, body: ChatBody, db: AsyncSession = Depends(get_
                    "ti": result.tokens_in, "to": result.tokens_out})).scalar_one()
             await s.execute(text("UPDATE ai_conversations SET updated_at = now() WHERE id = :c"), {"c": cid})
             await s.commit()
-        yield _sse("done", {"conversation_id": str(cid), "message_id": str(mid), "text": reply,
-                            "stop": result.stop, "used": result.used})
+        yield "done", {"conversation_id": str(cid), "message_id": str(mid), "text": reply,
+                       "stop": result.stop, "used": result.used}
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    if body.stream:
+        async def sse():
+            async for kind, data in stream():
+                yield _sse(kind, data)
+        return StreamingResponse(sse(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return JSONResponse(jsonable_encoder(await _whole(stream())))
+
+
+async def _whole(events) -> dict:
+    """The reply in one answer, for the phone: what it did, the Confirm cards it made, and the words."""
+    out: dict = {"conversation_id": None, "statuses": [], "actions": []}
+    async for kind, data in events:
+        if kind == "conversation":
+            out["conversation_id"] = data["conversation_id"]
+        elif kind == "status":
+            out["statuses"].append(data["text"])
+        elif kind == "confirm":
+            out["actions"].append(data["action"])
+        elif kind == "done":
+            out.update(data)
+        elif kind == "error":
+            raise HTTPException(503, data["message"])
+    return out
 
 
 @router.get("/conversations", dependencies=[_USE])

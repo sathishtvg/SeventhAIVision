@@ -10,6 +10,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | Controls | The organisation's admin, per feature (`ai_feature_settings`) |
 | Migrations | `0170`, `0171`, `0172`, `0173`, `0174` |
 | Web | AI Insights (`/ai-insights`), AI Settings (`/ai-settings`); Manage Licenses > AI Assistant & Learning (Super Admin) |
+| Phone | More > AI Assistant (`mobile/src/screens/AssistantScreen.tsx`) |
 | Runs | The scheduler, every hour (`AI_MODULE_INTERVAL_SECONDS`, default 3600): `services/ai_runner.py` |
 
 ## What is built
@@ -24,7 +25,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | 6 | The assistant: free and hosted models, conversations, asking across the whole app | Built |
 | 7 | The assistant's actions behind Confirm cards; what it is never offered | Built |
 | 8 | Reading an IC; the guided new-user flow | Built |
-| 9 | The assistant on the phone, for guards | Not yet |
+| 9 | The assistant on the phone, for guards | Built |
 
 ## The AI suggests; a person decides
 
@@ -283,7 +284,21 @@ assistant's panel (the card icon) for people who may create staff (`user:create`
   photos are not kept anywhere, and its full number never reaches either model (above).
 - Each reply counts towards the organisation's **monthly limit** (its own calendar month). At the limit the assistant
   says so. A person may send at most **20** messages a minute.
-- It replies in the person's account language (English, Malay, Tamil or Chinese).
+- It replies in the language the person writes in; when that is unclear, in their account language (English,
+  Malay, Tamil or Chinese).
+
+### On the phone
+
+`mobile/src/screens/AssistantScreen.tsx`, `mobile/src/api/aiAssistant.ts`. **More > AI Assistant**, offered only when
+the assistant is the person's (the licence, the admin's switch and their role; a guard sees it once the admin chooses
+guards in AI Settings). A guard types in their own language and the reply comes in the same language.
+
+- The reply comes back **whole**, not streamed (`stream: false`): React Native cannot read a stream as it arrives.
+  The phone shows "Thinking" until the answer is in, then what the assistant did, its cards and its words. A reply
+  may take up to **120 seconds** before the phone gives up.
+- Changes are the same **Confirm cards** as on the web: nothing changes until the person presses Confirm; a
+  temporary password is shown once; **Carry on** lets the assistant go on after a card is decided.
+- The conversation is kept as a phone one (`channel` `PHONE`). Reading an IC is on the web only.
 
 ## The admin's controls
 
@@ -346,4 +361,7 @@ Additions only:
   that four tabs share the drawer's width.
 - `frontend/src/hooks/usePermission.ts`: the four permissions.
 - `frontend/src/motion/conversion.test.ts`: the page count (129 pages, 121 that fetch).
+- `mobile/src/navigation/index.tsx`, `mobile/src/motion/scenes.ts`: the AI Assistant screen and its scene.
+- `mobile/src/screens/MoreMenuScreen.tsx`: the AI Assistant row, shown only when `/ai/status` says the assistant
+  is the person's; `mobile/__tests__/phoneLoadingRules.test.ts` lists the menu as fetching only to decide that.
 - `PAGE_AWARE_ANIMATION_MATRIX.md`: written again.

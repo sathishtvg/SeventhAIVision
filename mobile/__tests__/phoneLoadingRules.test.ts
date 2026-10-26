@@ -44,6 +44,8 @@ const OWN_FAILURE = [
 const NOTHING_TO_FAIL: Record<string, string> = {
   // The counts above the leave list; the list itself (`LeaveTab`) says when it could not be read.
   LeaveScreen: 'a summary of the list below it',
+  // Whether to offer the AI Assistant row; when it cannot be read the row stays hidden.
+  MoreMenuScreen: 'whether the AI Assistant row is offered',
 }
 
 /** A spinner that fills a screen, where the screen is waiting for something other than data. */

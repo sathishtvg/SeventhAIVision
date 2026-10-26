@@ -100,7 +100,7 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {**{str(n): "Built" for n in range(1, 9)}, "9": "Not yet"}
+    assert phases == {str(n): "Built" for n in range(1, 10)}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
@@ -244,3 +244,47 @@ def test_reading_an_ic_is_as_the_document_says():
                                  "country_of_birth", "address"}
     panel = (WEB / "components" / "ai" / "AssistantPanel.tsx").read_text(encoding="utf-8")
     assert "usePermission('user:create')" in panel and "f.key === 'ic_reading' && f.mine" in panel
+
+
+def test_every_ai_call_the_web_and_the_phone_make_is_served():
+    """A path renamed on one side is a button that does nothing on the other (the client drift audit)."""
+    from app.routers.ai_assistant import ChatBody
+    from tests.test_drone_clients import _served as served
+    from tests.test_drone_clients import client_calls
+
+    spec = app.openapi()
+    clients = {WEB / "api" / "aiAssistant.ts": 8, WEB / "api" / "ai.ts": 7, WEB / "api" / "platformAiLicense.ts": 2,
+               REPO_ROOT / "mobile" / "src" / "api" / "aiAssistant.ts": 5}
+    for client, at_least in clients.items():
+        calls = client_calls(client)
+        assert len(calls) >= at_least, f"only {len(calls)} calls found in {client}"
+        assert all(p.startswith("/api/v1/") for _, p in calls), calls
+        assert not [c for c in calls if not served(*c, spec)], client
+    # The web reads the reply as a stream with fetch; its path is written out in full.
+    web = (WEB / "api" / "aiAssistant.ts").read_text(encoding="utf-8")
+    assert "/api/v1/ai/assistant/chat`" in web and served("POST", "/api/v1/ai/assistant/chat", spec)
+    # The phone asks for the reply whole, and sends only what the chat takes.
+    phone = (REPO_ROOT / "mobile" / "src" / "api" / "aiAssistant.ts").read_text(encoding="utf-8")
+    sent = re.search(r"'/api/v1/ai/assistant/chat', \{(.*?)\}, \{ timeout", phone, re.S).group(1)
+    names = set(re.findall(r"(\w+)(?=[,:\s])", sent.replace("...(conversationId ? { conversation_id: conversationId } : {})", "conversation_id")))
+    assert {"message", "channel", "stream", "conversation_id"} <= names
+    assert {"message", "channel", "stream", "conversation_id"} <= set(ChatBody.model_fields)
+    assert "stream: false" in phone and "channel: 'PHONE'" in phone
+
+
+def test_the_phone_is_as_the_document_says():
+    from app.services import ai_chat
+    doc = " ".join(_doc().split())
+    mobile = REPO_ROOT / "mobile" / "src"
+    client = (mobile / "api" / "aiAssistant.ts").read_text(encoding="utf-8")
+    assert "export const ASSISTANT_TIMEOUT_MS = 120_000" in client and "up to **120 seconds**" in doc
+    assert "(`stream: false`)" in doc and "`channel` `PHONE`" in doc
+    nav = (mobile / "navigation" / "index.tsx").read_text(encoding="utf-8")
+    assert '<MoreStack.Screen name="Assistant"' in nav
+    assert "  Assistant: scene(" in (mobile / "motion" / "scenes.ts").read_text(encoding="utf-8")
+    menu = (mobile / "screens" / "MoreMenuScreen.tsx").read_text(encoding="utf-8")
+    assert "permission: 'ai:assistant:use'" in menu and "i.screen !== 'Assistant' || assistantIsMine(ai.data)" in menu
+    prompt = ai_chat.system_prompt(name=None, role="guard", organisation="X", locale="ms", tz="Asia/Singapore",
+                                   now=__import__("datetime").datetime(2026, 10, 26), can_change=True)
+    assert "Reply in the language the person writes in; when that is unclear, in Malay." in prompt
+    assert "It replies in the language the person writes in" in doc
