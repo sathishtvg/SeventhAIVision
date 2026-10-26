@@ -81,7 +81,7 @@ FEATURES: dict[str, Feature] = {f.key: f for f in (
             (2, 8), (2, 8), 5, ready=True),
     Feature("assistant", "AI assistant", ASSISTANT,
             "Ask anything about the app and its data; it prepares changes for you to confirm.",
-            ASSISTANT_ROLES, (2, 8, 3), 6),
+            ASSISTANT_ROLES, (2, 8, 3), 6, ready=True),
     Feature("ic_reading", "IC reading", ASSISTANT,
             "Reads IC front and back photos to fill in a new staff member's details.",
             (2, 8), (2, 8), 8),

@@ -294,9 +294,9 @@ async def test_a_feature_not_in_the_licence_cannot_be_switched_on_but_can_be_swi
 
 @pytest.mark.asyncio
 async def test_a_feature_not_built_yet_cannot_be_switched_on():
-    w = await _world(features=["assistant"])
+    w = await _world(features=["ic_reading"])
     async with _client() as c:
-        r = await c.put("/api/v1/ai/settings/assistant", headers=w["h"][ADMIN],
+        r = await c.put("/api/v1/ai/settings/ic_reading", headers=w["h"][ADMIN],
                         json={"enabled": True, "role_ids": [2]})
     assert r.status_code == 422 and "not available yet" in r.json()["detail"]
 

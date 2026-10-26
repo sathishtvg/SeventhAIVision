@@ -8,7 +8,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 |---|---|
 | Licence | Its own, per organisation, granted by the Super Admin (`ai_module_licenses`) |
 | Controls | The organisation's admin, per feature (`ai_feature_settings`) |
-| Migrations | `0170`, `0171` |
+| Migrations | `0170`, `0171`, `0172` |
 | Web | AI Insights (`/ai-insights`), AI Settings (`/ai-settings`); Manage Licenses > AI Assistant & Learning (Super Admin) |
 | Runs | The scheduler, every hour (`AI_MODULE_INTERVAL_SECONDS`, default 3600): `services/ai_runner.py` |
 
@@ -21,7 +21,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | 3 | False-alarm learning; device failure warnings | Built |
 | 4 | Roster suggestions; best patrol times; missed-patrol warnings; guard work trends | Built |
 | 5 | Incident helper; payroll check | Built |
-| 6 | The assistant: free and hosted models, conversations, asking across the whole app | Not yet |
+| 6 | The assistant: free and hosted models, conversations, asking across the whole app | Built |
 | 7 | The assistant's actions behind Confirm cards; what it is never offered | Not yet |
 | 8 | Reading an IC; the guided new-user flow | Not yet |
 | 9 | The assistant on the phone, for guards | Not yet |
@@ -203,6 +203,51 @@ On AI Insights a supervisor accepts or dismisses an open warning, with a note. O
 once; the decision is written to the audit log as `ai.insight.decide`. A decided warning is never reopened by a later
 run. Accepting changes nothing by itself. A supervisor limited to some sites sees only their sites' warnings.
 
+## The assistant
+
+`services/ai_chat.py`, `services/ai_functions.py`, `routers/ai_assistant.py`; the web's button and panel are
+`components/ai/AssistantPanel.tsx`, on every page for the people it is switched on for.
+
+### The two models
+
+The Super Admin chooses per organisation, in the licence:
+
+| | Free built-in (`LOCAL`) | Hosted (`HOSTED`) |
+|---|---|---|
+| What | An open model served by Ollama on our own server | Claude, through Anthropic's official Python SDK (`anthropic`, 1.x) |
+| Set by | `OLLAMA_URL` (default `http://ollama:11434`), `AI_LOCAL_MODEL` (default `qwen2.5:7b-instruct`) | `ANTHROPIC_API_KEY`, `AI_HOSTED_MODEL` (default `claude-opus-5-5`), `AI_HOSTED_EFFORT` (default `medium`) |
+| Cost | The server's | Per reply; the monthly limit applies |
+| Refusals | Said in words | Re-run server-side on Anthropic's recommended model (`fallbacks: "default"`) |
+
+Without the model running (no Ollama, or no key), the assistant says so in words; nothing else is affected.
+
+### Reaching the whole app
+
+Two tools rather than 1,100: **find_functions** searches the app's own function list (built from its API description
+at start-up, about 1,100 functions) and offers only those the person's role holds; **use_function** calls one **inside
+the server, with the person's own sign-in**, so permissions, row-level security, site limits, rate limits and the
+audit log apply as when they click. Functions that answer with a file, a picture or a video are not offered.
+
+**Never offered**: Super Admin functions, sign-in and passwords, two-factor sign-in, organisations (including deleting
+one), licences, roles and permissions, API keys, the AI module's own settings, finalising payroll, erasing a person's
+data, and deleting evidence, footage or recordings; changing someone's role is refused even through an allowed
+function. A test holds each rule to a real route (`NEVER_OFFERED` in `services/ai_functions.py`).
+
+In this phase it **reads only**: a function that would change something answers "nothing was changed". Changes behind
+Confirm cards are phase 7.
+
+### Conversations, privacy and limits
+
+- The reply streams (`status`, `delta`, `done`), so it starts at once. At most **8** rounds of tool use per reply.
+- Conversations are kept in our database (`ai_conversations`, `ai_messages`) for as long as the company exists, and go
+  with the person's account if it is deleted. A person reads only their own.
+- Each turn is stored exactly as the model produced it and replayed unchanged: the history is append-only, as the
+  hosted model requires. After the Super Admin switches the model, a conversation starts its context again.
+- Sent to the hosted model, NRIC/FIN, passport and bank numbers are shortened to their last four characters.
+- Each reply counts towards the organisation's **monthly limit** (its own calendar month). At the limit the assistant
+  says so. A person may send at most **20** messages a minute.
+- It replies in the person's account language (English, Malay, Tamil or Chinese).
+
 ## The admin's controls
 
 On AI Settings, for each licensed feature: on or off; which roles use it; every
@@ -234,6 +279,10 @@ sign-in.
 | `GET` | `/ai/learning` | `ai:insights:read` |
 | `POST` | `/ai/learning/{feature_key}/run` | `ai:configure` |
 | `POST` | `/ai/incident-helper` | `ai:insights:read` |
+| `POST` | `/ai/assistant/chat` | `ai:assistant:use` |
+| `GET` | `/ai/assistant/conversations` | `ai:assistant:use` |
+| `GET` | `/ai/assistant/conversations/{conversation_id}` | `ai:assistant:use` |
+| `GET` | `/ai/assistant/usage` | `ai:assistant:use` |
 | `GET` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 | `PUT` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 
@@ -241,7 +290,10 @@ sign-in.
 
 Additions only:
 
-- `backend/app/main.py`: the three routers registered.
+- `backend/app/main.py`: the four routers registered.
+- `backend/pyproject.toml`, `backend/requirements-lock.txt`: `anthropic>=1.17,<2` (Anthropic's official SDK, for
+  the hosted model) and what it brings.
+- `frontend/src/components/layout/AppShell.tsx`: the assistant's button.
 - `backend/app/scheduler_main.py`: the hourly pass (`AI_MODULE_INTERVAL`, one block).
 - `frontend/src/App.tsx`, `components/layout/Sidebar.tsx`, `motion/scenes.ts`: the AI Insights and AI Settings pages,
   their menu entries and their scenes.

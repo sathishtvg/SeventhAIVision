@@ -64,6 +64,7 @@ from app.routers import (
     footage,
     staff_faces,
     ai,
+    ai_assistant,
     ai_insights,
     platform_ai_licenses,
     overtime_requests,
@@ -495,6 +496,7 @@ app.include_router(staff_faces.router)
 # The AI module (migration 0170): the company's controls, and the Super Admin's licence.
 app.include_router(ai.router)
 app.include_router(ai_insights.router)
+app.include_router(ai_assistant.router)
 app.include_router(platform_ai_licenses.router)
 app.include_router(overtime_requests.router)
 app.include_router(i18n.router)

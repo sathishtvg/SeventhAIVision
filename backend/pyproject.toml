@@ -36,6 +36,9 @@ dependencies = [
     "stripe>=7.0",
     "python3-saml>=1.16",
     "ldap3>=2.9",
+    # The AI module's hosted chat model (Claude), through Anthropic's official SDK. 1.x is the line the
+    # code was written and checked against; a 2.x upgrade is a change of its own.
+    "anthropic>=1.17,<2",
 ]
 
 [project.optional-dependencies]
