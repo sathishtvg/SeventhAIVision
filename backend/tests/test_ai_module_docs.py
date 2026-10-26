@@ -100,18 +100,19 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", **{str(n): "Not yet" for n in range(2, 10)}}
+    assert phases == {"1": "Built", "2": "Built", **{str(n): "Not yet" for n in range(3, 10)}}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
 
 def test_the_screens_are_in_the_menu_and_the_route_table():
     sidebar = (WEB / "components" / "layout" / "Sidebar.tsx").read_text(encoding="utf-8")
-    assert re.findall(r"path: '(/ai-[^']*)',.*permission: '([a-z:]+)'", sidebar) == [("/ai-settings", "ai:configure")]
+    assert re.findall(r"path: '(/ai-[^']*)',.*permission: '([a-z:]+)'", sidebar) == [
+        ("/ai-insights", "ai:insights:read"), ("/ai-settings", "ai:configure")]
     routes = (WEB / "App.tsx").read_text(encoding="utf-8")
-    assert 'path="ai-settings"' in routes
+    assert 'path="ai-settings"' in routes and 'path="ai-insights"' in routes
     scenes = (WEB / "motion" / "scenes.ts").read_text(encoding="utf-8")
-    assert "'/ai-settings': scene(" in scenes
+    assert "'/ai-settings': scene(" in scenes and "'/ai-insights': scene(" in scenes
     tenants = (WEB / "pages" / "Tenants.tsx").read_text(encoding="utf-8")
     assert '<Tab label="AI Assistant & Learning" />' in tenants and "<AiLicensePanel" in tenants
 
@@ -119,4 +120,27 @@ def test_the_screens_are_in_the_menu_and_the_route_table():
 def test_no_table_is_called_security_and_no_path_mentions_drone():
     migration = MIGRATION.read_text(encoding="utf-8")
     assert re.findall(r"CREATE TABLE (\w+)", migration) == ["ai_module_licenses", "ai_feature_settings"]
+    learning = (MIGRATION.parent / "0171_ai_learning.py").read_text(encoding="utf-8")
+    assert re.findall(r"CREATE TABLE (\w+)", learning) == ["ai_models", "ai_suggestions"]
     assert all("drone" not in p for _, p in _served())
+
+
+def test_the_numbers_in_the_document_are_the_codes():
+    from app.services import ai_late_risk, ai_learning, ai_overtime_fatigue, ai_runner
+    doc = " ".join(_doc().split())
+    assert ai_learning.BASE_THRESHOLD == {"HIGH": 0.25, "MEDIUM": 0.40, "LOW": 0.60}
+    assert "**25%** (High), **40%** (Medium) or **60%** (Low)" in doc
+    assert (ai_learning.MIN_DECISIONS, ai_learning.DECISION_WINDOW) == (8, 20)
+    assert "at least **8** decided warnings, the last **20**" in doc
+    assert (ai_learning.MAX_RAISE, ai_learning.MAX_LOWER) == (0.20, 0.10)
+    assert ai_runner.RETRAIN_AFTER.total_seconds() == 20 * 3600 and "more than **20 hours** old" in doc
+    assert ai_late_risk.HISTORY.days == 180 and "the last **180 days**" in doc
+    assert ai_late_risk.AHEAD.total_seconds() == 36 * 3600 and "next **36 hours**" in doc
+    assert (ai_late_risk.MIN_ROWS, ai_late_risk.MIN_LATE, ai_late_risk.MIN_ON_TIME) == (30, 5, 5)
+    assert "It needs **30** finished shifts, **5** late or missed and **5** on time" in doc
+    assert ai_overtime_fatigue.HISTORY.days == 90 and ai_overtime_fatigue.MIN_SHIFTS == 20
+    assert ai_overtime_fatigue.BASES == {"HIGH": 0.80, "MEDIUM": 0.90, "LOW": 1.00}
+    assert "**80%**, **90%** or **100%** of the **72-hour** monthly limit" in doc
+    assert ai_overtime_fatigue.ROSTER_DEFAULTS == {"roster.min_rest_hours": 11, "roster.max_consecutive_days": 6}
+    sched = (REPO_ROOT / "backend" / "app" / "scheduler_main.py").read_text(encoding="utf-8")
+    assert 'AI_MODULE_INTERVAL = int(os.environ.get("AI_MODULE_INTERVAL_SECONDS", "3600"))' in sched

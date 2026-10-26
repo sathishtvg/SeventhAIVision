@@ -51,10 +51,10 @@ class Feature:
 FEATURES: dict[str, Feature] = {f.key: f for f in (
     Feature("late_risk", "Late and no-show warnings", LEARNING,
             "Shifts in the next 36 hours likely to start late or be missed, so a standby can be lined up.",
-            INSIGHT_ROLES, (2, 8, 3), 2),
+            INSIGHT_ROLES, (2, 8, 3), 2, ready=True),
     Feature("overtime_fatigue", "Overtime and fatigue forecast", LEARNING,
             "Guards heading over their monthly overtime or working too long without rest.",
-            INSIGHT_ROLES, (2, 8, 3), 2),
+            INSIGHT_ROLES, (2, 8, 3), 2, ready=True),
     Feature("false_alarm", "False-alarm learning", LEARNING,
             "Alerts likely to be false alarms, and cameras and hours worth a sensitivity review.",
             INSIGHT_ROLES, (2, 8, 3, 4), 3),
@@ -131,7 +131,7 @@ async def load_settings(db: AsyncSession) -> dict[str, dict]:
     rows = (await db.execute(text(
         "SELECT feature_key, enabled, role_ids, site_ids, sensitivity, learning_enabled, "
         "       updated_by_user_id, updated_at "
-        "  FROM ai_feature_settings"
+        "  FROM ai_feature_settings WHERE tenant_id = current_setting('app.current_tenant')::uuid"
     ))).mappings().all()
     return {r["feature_key"]: dict(r) for r in rows}
 

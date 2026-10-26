@@ -103,6 +103,7 @@ import Situation from '@/pages/intel/Situation'
 import SituationDecisions from '@/pages/intel/Decisions'
 import IntelSetup from '@/pages/intel/IntelSetup'
 import AiSettings from '@/pages/ai/AiSettings'
+import AiInsights from '@/pages/ai/AiInsights'
 import SecurityInsight from '@/pages/intel/Insight'
 import SecurityFeedback from '@/pages/intel/Feedback'
 import InvestigationSearch from '@/pages/investigations/InvestigationSearch'
@@ -293,6 +294,7 @@ export default function App() {
         <Route path="intelligence-setup" element={<IntelSetup />} />
         {/* The AI module (migration 0170): the admin's controls. */}
         <Route path="ai-settings" element={<AiSettings />} />
+        <Route path="ai-insights" element={<AiInsights />} />
         {/* Smart Investigation: search across sources, and the investigations kept from it. */}
         <Route path="investigate" element={<InvestigationSearch />} />
         <Route path="investigations" element={<Investigations />} />

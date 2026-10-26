@@ -105,8 +105,8 @@ async def _super_admin(*, enrolled: bool = True) -> dict:
 
 @pytest.fixture
 def late_risk_ready(monkeypatch):
-    """Phase 1 ships no feature that does anything yet; a test that needs one switched
-    on marks late_risk as built for its own duration."""
+    """A test that needs a feature switched on makes sure late_risk counts as built,
+    whatever the release (it is built from phase 2)."""
     monkeypatch.setitem(ai_module.FEATURES, "late_risk",
                         dataclasses.replace(ai_module.FEATURES["late_risk"], ready=True))
 
@@ -131,9 +131,9 @@ def test_switching_off_is_always_allowed_and_switching_on_needs_all_three():
         f, enabled=True, role_ids=[3], sensitivity="MEDIUM", licensed=set())
     assert "at least one role" in ai_module.setting_problem(
         f, enabled=True, role_ids=[], sensitivity="MEDIUM", licensed={"late_risk"})
-    not_built = ai_module.FEATURES["late_risk"]
+    not_built = dataclasses.replace(ai_module.FEATURES["false_alarm"], ready=False)
     assert "not available yet" in ai_module.setting_problem(
-        not_built, enabled=True, role_ids=[3], sensitivity="MEDIUM", licensed={"late_risk"})
+        not_built, enabled=True, role_ids=[3], sensitivity="MEDIUM", licensed={"false_alarm"})
     assert ai_module.setting_problem(f, enabled=True, role_ids=[3], sensitivity="MEDIUM",
                                      licensed={"late_risk"}) is None
 
@@ -154,7 +154,7 @@ def test_a_person_uses_a_feature_only_when_every_gate_is_open():
     assert ai_module.usable_by(f, on, {"late_risk"}, 4) is False, "role not chosen"
     assert ai_module.usable_by(f, on, set(), 3) is False, "not licensed"
     assert ai_module.usable_by(f, {**on, "enabled": False}, {"late_risk"}, 3) is False, "switched off"
-    assert ai_module.usable_by(ai_module.FEATURES["late_risk"], on, {"late_risk"}, 3) is False, "not built"
+    assert ai_module.usable_by(dataclasses.replace(f, ready=False), on, {"late_risk"}, 3) is False, "not built"
 
 
 # ─── B. The Super Admin's licence ────────────────────────────────────────────
