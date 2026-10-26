@@ -18,7 +18,7 @@ import { Alert as RNAlert } from 'react-native'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Location from 'expo-location'
 
-import { startShift, endShift } from '@/api/patrols'
+import { savedMessage, sendStep, type StepResult } from '@/api/checkInOutcome'
 import { faceCheckMessage, getMyFaceChecks } from '@/api/faces'
 
 export type CheckInAction = 'start' | 'end'
@@ -71,28 +71,30 @@ export function useShiftCheckIn(onDone?: () => void) {
   }
 
   const mutation = useMutation({
-    mutationFn: (photoUri: string) => {
+    // sendStep asks the server whether the step was saved when the answer is lost, before calling it a failure
+    // (owner's phone test, 26 Oct 2026: a saved check-in was shown as "Failed to submit check-in").
+    mutationFn: (photoUri: string): Promise<StepResult> => {
       const { shiftId, action, latitude, longitude } = flow!
-      return action === 'start'
-        ? startShift(shiftId, photoUri, false, latitude, longitude)
-        : endShift(shiftId, photoUri, false, latitude, longitude)
+      return sendStep(action, shiftId, photoUri, latitude, longitude)
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       const done = flow
       qc.invalidateQueries({ queryKey: ['my-shifts'] })
       setFlow(null)
       onDone?.()
+      if (!done) return
+      const saved = result.recovered ? savedMessage(done.action) : null
       // The check-in went through whatever the face check found (allow but flag); the guard is told if it did
-      // not match, or if no face is registered. Best effort: a failed read says nothing.
-      if (done) {
-        getMyFaceChecks(done.shiftId)
-          .then((checks) => {
-            const which = done.action === 'start' ? 'check_in' : 'check_out'
-            const said = faceCheckMessage(checks.filter((c) => c.which === which).pop())
-            if (said) RNAlert.alert(said.title, said.body)
-          })
-          .catch(() => undefined)
-      }
+      // not match, or if no face is registered. Best effort: a failed read says nothing more.
+      getMyFaceChecks(done.shiftId)
+        .then((checks) => {
+          const which = done.action === 'start' ? 'check_in' : 'check_out'
+          const said = faceCheckMessage(checks.filter((c) => c.which === which).pop())
+          if (saved && said) RNAlert.alert(saved.title, `${saved.body}\n\n${said.title}: ${said.body}`)
+          else if (saved) RNAlert.alert(saved.title, saved.body)
+          else if (said) RNAlert.alert(said.title, said.body)
+        })
+        .catch(() => { if (saved) RNAlert.alert(saved.title, saved.body) })
     },
     onError: (err: any) => {
       const status = err?.response?.status
