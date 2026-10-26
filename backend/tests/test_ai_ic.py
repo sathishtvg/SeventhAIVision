@@ -2,7 +2,7 @@
 
 Sections:
   A — Reading the card's text (4 tests)
-  B — The endpoints, and where the number goes (4 tests)
+  B — The endpoints, and where the number goes (5 tests)
   C — The real reader, where it is installed (1 test)
 """
 from __future__ import annotations
@@ -11,13 +11,14 @@ import importlib.util
 import io
 import json
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 
 from app.main import app  # noqa: F401
 from app.services import ai_ic
 from tests.test_ai_assistant import _assistant_world, _chat, _op, scripted  # noqa: F401  (the fixture)
-from tests.test_ai_learning import ADMIN, OPERATOR, _client, _run, _sql
+from tests.test_ai_learning import ADMIN, OPERATOR, _admin_session_run, _client, _run, _sql
 
 #: What RapidOCR returned for a printed NRIC (front and back), spaces dropped as it does.
 FRONT = ["REPUBLICOFSINGAPORE", "IDENTITYCARDN0.S1234567D", "Name", "TANAHKOW", "Race", "CHINESE", "Dateofbirth",
@@ -148,6 +149,19 @@ async def test_only_people_who_may_create_staff_and_whose_role_is_chosen_read_an
     assert manager.status_code == 403 and "not switched on for your role" in manager.json()["detail"]
     assert supervisor.status_code == 403
     assert canned == [], "a photo was read for someone not allowed"
+
+
+@pytest.mark.asyncio
+async def test_a_reading_not_used_within_the_hour_is_removed_by_the_hourly_pass(canned):
+    w = await _ic_world()
+    async with _client() as c:
+        old = (await c.post("/api/v1/ai/assistant/ic", headers=w["h"][ADMIN], files=_photos())).json()
+        fresh = (await c.post("/api/v1/ai/assistant/ic", headers=w["h"][ADMIN], files=_photos())).json()
+    await _run([("UPDATE ai_ic_drafts SET expires_at = now() - interval '1 minute' WHERE id = CAST(:d AS uuid)",
+                 {"d": old["draft_id"]})])
+    await _admin_session_run(w, now=datetime.now(timezone.utc))
+    left = await _sql("SELECT id::text AS id FROM ai_ic_drafts WHERE tenant_id = :t", {"t": w["tenant"]})
+    assert [r["id"] for r in left] == [fresh["draft_id"]]
 
 
 # ─── C. The real reader ──────────────────────────────────────────────────────

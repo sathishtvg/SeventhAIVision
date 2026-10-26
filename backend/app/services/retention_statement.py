@@ -110,6 +110,10 @@ PERIODS: tuple[Period, ...] = (
            "when the person's account is deactivated", staff_face_retention.REMOVED_BY,
            "The face code and its photo are deleted. The record of the person's consent stays", None, None, None,
            True),
+    # The AI module's IC reading (AI_MODULE.md, migration 0174): the text read from the card, never its photos.
+    Period("IC_READINGS", "What was read from an IC for a new staff member", ("ai_ic_drafts",),
+           "when the card was read", "The AI module's hourly pass, or at once when the new staff member is confirmed",
+           "The text read from the card is deleted. Its photos were never kept", None, None, None, True),
     Period("AUDIT", "The audit log", ("audit_logs",),
            "when the entry was written", "The scheduler, once a day",
            "Moved out of the log into a file, a month at a time, once every entry of that month is old enough. "
@@ -205,6 +209,7 @@ async def read(db: AsyncSession, allowed: list[str] | None) -> dict:
         "FOOTAGE_REVIEW": {"amount": footage.RETENTION_DAYS, "unit": "days", "source": "FIXED", "set_at": None},
         # Removed by the first daily cycle after the account is deactivated.
         "STAFF_FACES": {"amount": 1, "unit": "days", "source": "FIXED", "set_at": None},
+        "IC_READINGS": {"amount": 1, "unit": "hours", "source": "FIXED", "set_at": None},
         "AUDIT": {"amount": settings.AUDIT_RETENTION_YEARS, "unit": "years", "source": "INSTALLATION",
                   "set_at": None},
     }

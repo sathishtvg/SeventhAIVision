@@ -269,7 +269,8 @@ assistant's panel (the card icon) for people who may create staff (`user:create`
    for the rest one question at a time (site, pay, preferred shift and so on) and prepares the new staff member as a
    Confirm card. The full number is held on our server in a draft (the text only) for **60 minutes**, belongs to the
    person who scanned the card, and is filled into the card only when they press Confirm; the draft is then deleted.
-   An unused draft is deleted when it runs out.
+   One not used by then is deleted by the hourly pass. The data-retention statement names this period
+   (`IC_READINGS`).
 
 ### Conversations, privacy and limits
 
@@ -338,6 +339,9 @@ Additions only:
 - `backend/app/scheduler_main.py`: the hourly pass (`AI_MODULE_INTERVAL`, one block).
 - `frontend/src/App.tsx`, `components/layout/Sidebar.tsx`, `motion/scenes.ts`: the AI Insights and AI Settings pages,
   their menu entries and their scenes.
+- `backend/app/services/retention_statement.py`, `ENTERPRISE_SECURITY_HARDENING.md`: what is read from an IC is a
+  ninth kind of record with a period (`IC_READINGS`, an hour); `frontend/src/api/dataGovernance.ts` reads a period in
+  hours.
 - `frontend/src/pages/Tenants.tsx`: the AI Assistant & Learning tab in Manage Licenses; the tab bar scrolls, now
   that four tabs share the drawer's width.
 - `frontend/src/hooks/usePermission.ts`: the four permissions.

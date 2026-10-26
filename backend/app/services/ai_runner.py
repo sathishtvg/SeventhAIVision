@@ -58,6 +58,10 @@ async def run_tenant(db: AsyncSession, tenant_id: str, *, now: datetime | None =
     """One organisation's pass, inside the caller's transaction (the caller commits)."""
     now = now or datetime.now(timezone.utc)
     await db.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": str(tenant_id)})
+    # What was read from an IC is held an hour (routers/ai_assistant.py); one not used by then goes here, licensed
+    # or not. The retention statement names this period (IC_READINGS).
+    await db.execute(text("DELETE FROM ai_ic_drafts WHERE tenant_id = current_setting('app.current_tenant')::uuid "
+                          "AND expires_at <= :now"), {"now": now})
     licensed = ai_module.licensed_features(await ai_module.load_licence(db), now)
     settings = await ai_module.load_settings(db)
     out: dict = {}

@@ -21,7 +21,7 @@ export interface PeriodInForce {
   label: string
   tables: string[]
   names_people: boolean
-  period: { amount: number; unit: 'days' | 'years'; source: Source; source_words: string; set_at: string | null; note: string | null }
+  period: { amount: number; unit: 'hours' | 'days' | 'years'; source: Source; source_words: string; set_at: string | null; note: string | null }
   setting_key: string | null
   counted_from: string
   removed_by: string
