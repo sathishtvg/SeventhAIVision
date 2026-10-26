@@ -8,7 +8,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 |---|---|
 | Licence | Its own, per organisation, granted by the Super Admin (`ai_module_licenses`) |
 | Controls | The organisation's admin, per feature (`ai_feature_settings`) |
-| Migrations | `0170`, `0171`, `0172`, `0173` |
+| Migrations | `0170`, `0171`, `0172`, `0173`, `0174` |
 | Web | AI Insights (`/ai-insights`), AI Settings (`/ai-settings`); Manage Licenses > AI Assistant & Learning (Super Admin) |
 | Runs | The scheduler, every hour (`AI_MODULE_INTERVAL_SECONDS`, default 3600): `services/ai_runner.py` |
 
@@ -23,7 +23,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | 5 | Incident helper; payroll check | Built |
 | 6 | The assistant: free and hosted models, conversations, asking across the whole app | Built |
 | 7 | The assistant's actions behind Confirm cards; what it is never offered | Built |
-| 8 | Reading an IC; the guided new-user flow | Not yet |
+| 8 | Reading an IC; the guided new-user flow | Built |
 | 9 | The assistant on the phone, for guards | Not yet |
 
 ## The AI suggests; a person decides
@@ -249,6 +249,27 @@ sign-in at that moment, through the same in-process call, and written to the aud
 - What became of a card (confirmed, refused by the app, cancelled, expired) is added to the conversation as a note,
   so the model knows on the next turn.
 - Creating someone with a role is allowed; **changing** a person's role (a `role_id` in a PUT or PATCH) is not.
+- After a card is decided the assistant waits; **Carry on** under the conversation tells it to go on to the next
+  question.
+
+### Reading an IC (`ic_reading`)
+
+`services/ai_ic.py`, `ai_ic_drafts`; the web's dialog is `components/ai/IcScanDialog.tsx`, opened from the
+assistant's panel (the card icon) for people who may create staff (`user:create`) and whose role the admin chose.
+
+1. The person takes or chooses a photo of the front of the NRIC or FIN card, and the back for the address.
+2. **Read on our own server** by RapidOCR (`rapidocr-onnxruntime`, Apache-2.0, its models inside the package, nothing
+   downloaded when it runs). **The photos are never kept**: read in memory and dropped, never written to disk or the
+   database, never sent to any model, hosted or not.
+3. What is read: NRIC/FIN, name, date of birth, sex, race or nationality, country of birth, and the address. The
+   number is checked against its **check letter** (S, T, F and G series); a number that fails is shown, marked, for the
+   person to look again. The reader tends to drop spaces between words; they are put back where letters stand clearly
+   apart, and **the person checks and corrects every field** before anything is used.
+4. The checked details are given to the assistant **with the NRIC/FIN shortened to its last four characters**; it asks
+   for the rest one question at a time (site, pay, preferred shift and so on) and prepares the new staff member as a
+   Confirm card. The full number is held on our server in a draft (the text only) for **60 minutes**, belongs to the
+   person who scanned the card, and is filled into the card only when they press Confirm; the draft is then deleted.
+   An unused draft is deleted when it runs out.
 
 ### Conversations, privacy and limits
 
@@ -257,7 +278,8 @@ sign-in at that moment, through the same in-process call, and written to the aud
   with the person's account if it is deleted. A person reads only their own.
 - Each turn is stored exactly as the model produced it and replayed unchanged: the history is append-only, as the
   hosted model requires. After the Super Admin switches the model, a conversation starts its context again.
-- Sent to the hosted model, NRIC/FIN, passport and bank numbers are shortened to their last four characters.
+- Sent to the hosted model, NRIC/FIN, passport and bank numbers are shortened to their last four characters. An IC's
+  photos are not kept anywhere, and its full number never reaches either model (above).
 - Each reply counts towards the organisation's **monthly limit** (its own calendar month). At the limit the assistant
   says so. A person may send at most **20** messages a minute.
 - It replies in the person's account language (English, Malay, Tamil or Chinese).
@@ -300,6 +322,8 @@ sign-in.
 | `GET` | `/ai/assistant/actions` | `ai:assistant:use` |
 | `POST` | `/ai/assistant/actions/{action_id}/confirm` | `ai:assistant:use` |
 | `POST` | `/ai/assistant/actions/{action_id}/cancel` | `ai:assistant:use` |
+| `POST` | `/ai/assistant/ic` | `ai:assistant:use`, and may create staff |
+| `PUT` | `/ai/assistant/ic/{draft_id}` | `ai:assistant:use`, and may create staff |
 | `GET` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 | `PUT` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 
@@ -309,7 +333,7 @@ Additions only:
 
 - `backend/app/main.py`: the four routers registered.
 - `backend/pyproject.toml`, `backend/requirements-lock.txt`: `anthropic>=1.17,<2` (Anthropic's official SDK, for
-  the hosted model) and what it brings.
+  the hosted model) and `rapidocr-onnxruntime>=1.4,<2` (the IC reader), and what they bring.
 - `frontend/src/components/layout/AppShell.tsx`: the assistant's button.
 - `backend/app/scheduler_main.py`: the hourly pass (`AI_MODULE_INTERVAL`, one block).
 - `frontend/src/App.tsx`, `components/layout/Sidebar.tsx`, `motion/scenes.ts`: the AI Insights and AI Settings pages,

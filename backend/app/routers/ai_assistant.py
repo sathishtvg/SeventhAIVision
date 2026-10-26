@@ -7,6 +7,8 @@
   GET  /api/v1/ai/assistant/actions              ai:assistant:use   the Confirm cards of one of your conversations
   POST /api/v1/ai/assistant/actions/{id}/confirm ai:assistant:use   send the prepared change, as you, now
   POST /api/v1/ai/assistant/actions/{id}/cancel  ai:assistant:use   drop it; nothing is changed
+  POST /api/v1/ai/assistant/ic                   ai:assistant:use + user:create   read an IC (photos not kept)
+  PUT  /api/v1/ai/assistant/ic/{id}              ai:assistant:use + user:create   correct what was read
 
 ALL THREE GATES (services/ai_module): the licence includes `assistant`, the admin
 switched it on, and the caller's role is one the admin chose.
@@ -32,19 +34,20 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.limiter import limiter
+from app.core.uploads import MAX_IMAGE_UPLOAD_BYTES, read_upload_limited
 from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.rate_limit import caller_of
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
-from app.services import ai_actions, ai_chat, ai_functions, ai_module
+from app.services import ai_actions, ai_chat, ai_functions, ai_ic, ai_module
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ai/assistant", tags=["ai-assistant"])
@@ -335,3 +338,84 @@ async def cancel_action(action_id: uuid.UUID, db: AsyncSession = Depends(get_db_
     out = await ai_actions.cancel(db, row)
     await db.commit()
     return out
+
+
+# ── Reading an IC (phase 8) ──────────────────────────────────────────────────
+
+IC_DRAFT_LIFE_MINUTES = 60
+
+
+class IcFields(BaseModel):
+    nric_fin: str | None = Field(None, max_length=9)
+    full_name: str | None = Field(None, max_length=200)
+    date_of_birth: str | None = Field(None, max_length=10)
+    sex: str | None = Field(None, max_length=1)
+    race: str | None = Field(None, max_length=60)
+    nationality: str | None = Field(None, max_length=60)
+    country_of_birth: str | None = Field(None, max_length=60)
+    address: str | None = Field(None, max_length=300)
+
+
+async def _ic_gate(db: AsyncSession, token: TokenPayload) -> None:
+    """IC reading is its own feature, and only for people who may create staff."""
+    lic = await ai_module.load_licence(db)
+    feature = ai_module.FEATURES["ic_reading"]
+    setting = (await ai_module.load_settings(db)).get("ic_reading") or {}
+    if not ai_module.usable_by(feature, setting, ai_module.licensed_features(lic), token.role_id):
+        raise HTTPException(403, "IC reading is not switched on for your role.")
+    if "user:create" not in await ai_functions.held_permissions(db, token.role_id):
+        raise HTTPException(403, "Reading an IC is for people who may create staff.")
+
+
+def _ic_out(draft_id, fields: dict, check: bool | None) -> dict:
+    nric = fields.get("nric_fin")
+    shown = {k: v for k, v in fields.items() if k != "nric_fin"}
+    words = [f"{k.replace('_', ' ')}: {v}" for k, v in shown.items() if v]
+    if nric:
+        words.insert(0, f"NRIC/FIN: {ai_ic.masked(nric)}")
+    return {
+        "draft_id": str(draft_id), "fields": fields, "check_letter_ok": check,
+        "unread": [f for f in ai_ic.FIELDS if not fields.get(f)],
+        # What is sent to the assistant: the number shortened. The full one stays here, in the draft.
+        "message": ("I scanned the IC of a new staff member. " + "; ".join(words) + ". Please create them as a "
+                    "new staff member: ask me for anything else you need, one question at a time."),
+    }
+
+
+@router.post("/ic", dependencies=[_USE])
+async def read_ic(front: UploadFile = File(...), back: UploadFile | None = File(None),
+                  db: AsyncSession = Depends(get_db_with_tenant), token: TokenPayload = Depends(get_token_payload)):
+    """Read an IC's photos on this server. The photos are read in memory and not kept anywhere."""
+    await _ic_gate(db, token)
+    front_bytes = await read_upload_limited(front, MAX_IMAGE_UPLOAD_BYTES)
+    back_bytes = await read_upload_limited(back, MAX_IMAGE_UPLOAD_BYTES) if back is not None else None
+    try:
+        reading = await ai_ic.read(front_bytes, back_bytes)
+    except ImportError as e:
+        raise HTTPException(503, "The IC reader is not installed on this server.") from e
+    finally:
+        del front_bytes, back_bytes
+    await db.execute(text(f"DELETE FROM ai_ic_drafts WHERE tenant_id = {T} AND expires_at <= now()"))
+    draft_id = (await db.execute(text(f"""
+        INSERT INTO ai_ic_drafts (tenant_id, user_id, fields, expires_at)
+        VALUES ({T}, CAST(:u AS uuid), CAST(:f AS jsonb), now() + make_interval(mins => :m)) RETURNING id
+    """), {"u": token.user_id, "f": json.dumps(reading.fields), "m": IC_DRAFT_LIFE_MINUTES})).scalar_one()
+    await db.commit()
+    return _ic_out(draft_id, reading.fields, reading.check_letter_ok)
+
+
+@router.put("/ic/{draft_id}", dependencies=[_USE])
+async def correct_ic(draft_id: uuid.UUID, body: IcFields, db: AsyncSession = Depends(get_db_with_tenant),
+                     token: TokenPayload = Depends(get_token_payload)):
+    """The person corrects what was read, before it goes anywhere."""
+    await _ic_gate(db, token)
+    fields = {k: (v.strip().upper() if k == "nric_fin" and v else v) for k, v in body.model_dump().items() if v}
+    row = (await db.execute(text(f"""
+        UPDATE ai_ic_drafts SET fields = CAST(:f AS jsonb)
+         WHERE id = :d AND user_id = CAST(:u AS uuid) AND tenant_id = {T} AND expires_at > now() RETURNING id
+    """), {"f": json.dumps(fields), "d": draft_id, "u": token.user_id})).first()
+    if row is None:
+        raise HTTPException(404, "That reading has expired; scan the IC again.")
+    await db.commit()
+    nric = fields.get("nric_fin")
+    return _ic_out(draft_id, fields, ai_ic.check_letter_ok(nric) if nric else None)

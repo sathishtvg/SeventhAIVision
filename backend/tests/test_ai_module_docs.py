@@ -100,7 +100,7 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {**{str(n): "Built" for n in range(1, 8)}, **{str(n): "Not yet" for n in range(8, 10)}}
+    assert phases == {**{str(n): "Built" for n in range(1, 9)}, "9": "Not yet"}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
@@ -223,3 +223,24 @@ def test_the_confirm_card_is_as_the_document_says():
     assert ai_functions.never_offered("POST", "/api/v1/users", {"role_id": 5}) is None
     assert ai_functions.never_offered("PATCH", "/api/v1/users/x", {"role_id": 5}) == "changing someone's role"
     assert "`ai.assistant.action`" in doc
+
+
+def test_reading_an_ic_is_as_the_document_says():
+    from app.routers import ai_assistant
+    from app.services import ai_ic
+    doc = " ".join(_doc().split())
+    assert ai_assistant.IC_DRAFT_LIFE_MINUTES == 60 and "for **60 minutes**" in doc
+    assert "**The photos are never kept**" in doc and "`ai_ic_drafts`" in doc
+    pyproject = (REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"rapidocr-onnxruntime>=1.4,<2"' in pyproject and "`rapidocr-onnxruntime>=1.4,<2`" in doc
+    lock = (REPO_ROOT / "backend" / "requirements-lock.txt").read_text(encoding="utf-8")
+    assert "rapidocr-onnxruntime==1.4.4" in lock
+    src = (REPO_ROOT / "backend" / "app" / "routers" / "ai_assistant.py").read_text(encoding="utf-8")
+    assert '"user:create" not in await ai_functions.held_permissions' in src, "the doc says: may create staff"
+    # The photos are never written anywhere: the reader has no file or database write.
+    reader = (REPO_ROOT / "backend" / "app" / "services" / "ai_ic.py").read_text(encoding="utf-8")
+    assert not any(w in reader for w in ("open(", "write_bytes", "INSERT", "tempfile", "save("))
+    assert set(ai_ic.FIELDS) == {"nric_fin", "full_name", "date_of_birth", "sex", "race", "nationality",
+                                 "country_of_birth", "address"}
+    panel = (WEB / "components" / "ai" / "AssistantPanel.tsx").read_text(encoding="utf-8")
+    assert "usePermission('user:create')" in panel and "f.key === 'ic_reading' && f.mine" in panel
