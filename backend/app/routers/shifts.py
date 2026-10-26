@@ -112,6 +112,29 @@ def _require_selfie(actor: str, photo: UploadFile | None, which: str) -> None:
         )
 
 
+# A check-in or check-out that went through but whose answer never reached the phone. Owner's phone test,
+# 26 October 2026: the first check-in was saved (selfie matched), the phone's connection dropped before the answer,
+# and every retry was refused as "not found", which the phone shows as "Failed to submit check-in". The same guard
+# sending the same step again this soon after it went through is told it is done, with the shift as it is: nothing
+# is written again and the new photo is not kept.
+REPEAT_WINDOW_MINUTES = 10
+
+
+async def _already_done(db: AsyncSession, shift_id: str, user_id: str, step: Literal["start", "end"]) -> dict | None:
+    """The shift as it is, when `user_id` is its guard and `step` went through within REPEAT_WINDOW_MINUTES."""
+    if step == "start":
+        sql = ("SELECT id, status, actual_start, site_id, is_late, late_minutes, is_within_geofence FROM shifts "
+               "WHERE id = :id AND guard_user_id = CAST(:uid AS uuid) AND status = 'active' "
+               "AND actual_start > now() - make_interval(mins => :mins)")
+    else:
+        # A shift the system closed was not checked out by the guard, so a late check-out is not "already done".
+        sql = ("SELECT id, status, actual_end, site_id, overtime_minutes, checked_out_away_from_site FROM shifts "
+               "WHERE id = :id AND guard_user_id = CAST(:uid AS uuid) AND status = 'completed' "
+               "AND auto_closed_at IS NULL AND actual_end > now() - make_interval(mins => :mins)")
+    row = (await db.execute(text(sql), {"id": shift_id, "uid": user_id, "mins": REPEAT_WINDOW_MINUTES})).first()
+    return {**dict(row._mapping), "already_done": True} if row is not None else None
+
+
 async def _process_checkin_photo(
     db: AsyncSession,
     tenant_id: str,
@@ -530,7 +553,10 @@ async def start_shift(
         {"id": shift_id},
     )).first()
     if shift_row is None:
+        done = await _already_done(db, shift_id, token.user_id, "start")
         await db.rollback()
+        if done is not None:
+            return done
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found or not in scheduled status")
     actor = await _shift_actor(db, token, shift_row.guard_user_id)
     _require_selfie(actor, photo, "check in")
@@ -616,7 +642,11 @@ async def start_shift(
     )
     row = result.first()
     if row is None:
+        # The same check-in sent twice at once: the other one went through while this one was checking its photo.
+        done = await _already_done(db, shift_id, token.user_id, "start")
         await db.rollback()
+        if done is not None:
+            return done
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found or not in scheduled status")
     row_dict = dict(row._mapping)
     site_id = str(row_dict.get("site_id") or "") or None
@@ -647,7 +677,10 @@ async def end_shift(
         {"id": shift_id},
     )).first()
     if shift_row is None:
+        done = await _already_done(db, shift_id, token.user_id, "end")
         await db.rollback()
+        if done is not None:
+            return done
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found or not active")
     actor = await _shift_actor(db, token, shift_row.guard_user_id)
     _require_selfie(actor, photo, "check out")
@@ -719,7 +752,11 @@ async def end_shift(
     )
     row = result.first()
     if row is None:
+        # The same check-out sent twice at once: the other one went through while this one was checking its photo.
+        done = await _already_done(db, shift_id, token.user_id, "end")
         await db.rollback()
+        if done is not None:
+            return done
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found or not active")
     row_dict = dict(row._mapping)
     site_id = str(row_dict.get("site_id") or "") or None
