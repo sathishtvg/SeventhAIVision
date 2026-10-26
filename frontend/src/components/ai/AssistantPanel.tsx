@@ -3,6 +3,9 @@
  *
  * Shown only to people the assistant is switched on for (AssistantButton asks /ai/status). It reads the app with
  * the person's own permissions; it never changes anything by itself.
+ *
+ * People who may create staff, and for whom IC reading is switched on, can scan a new staff member's IC
+ * (IcScanDialog); the details they checked are then given to the assistant, which asks for the rest.
  */
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -13,6 +16,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloseIcon from '@mui/icons-material/Close'
 import HistoryIcon from '@mui/icons-material/History'
 import AddCommentIcon from '@mui/icons-material/AddComment'
+import BadgeIcon from '@mui/icons-material/Badge'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { getAiStatus } from '@/api/ai'
@@ -21,6 +25,8 @@ import {
 } from '@/api/aiAssistant'
 import type { AssistantAction, AssistantEvent } from '@/api/aiAssistant'
 import { apiError } from '@/api/platformDroneLicense'
+import { usePermission } from '@/hooks/usePermission'
+import IcScanDialog from './IcScanDialog'
 
 interface Line { role: 'user' | 'assistant' | 'card'; text: string; pending?: boolean; action?: AssistantAction }
 
@@ -76,7 +82,7 @@ function ActionCard({ action, busy, onDecided }: { action: AssistantAction; busy
   )
 }
 
-export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AssistantPanel({ open, onClose, canReadIc = false }: { open: boolean; onClose: () => void; canReadIc?: boolean }) {
   const qc = useQueryClient()
   const [lines, setLines] = useState<Line[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -85,6 +91,9 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  // After a card is decided the assistant waits; this lets the person tell it to carry on in one press.
+  const [carryOn, setCarryOn] = useState(false)
   const end = useRef<HTMLDivElement>(null)
   const usage = useQuery({ queryKey: ['ai-assistant-usage'], queryFn: getAssistantUsage, enabled: open, retry: false })
   const history = useQuery({ queryKey: ['ai-assistant-conversations'], queryFn: getConversations,
@@ -92,7 +101,9 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
 
   useEffect(() => { end.current?.scrollIntoView?.({ block: 'end' }) }, [lines, status])
 
-  const fresh = () => { setLines([]); setConversationId(null); setError(null); setStatus(null); setShowHistory(false) }
+  const fresh = () => {
+    setLines([]); setConversationId(null); setError(null); setStatus(null); setShowHistory(false); setCarryOn(false)
+  }
 
   const reopen = async (id: string) => {
     const [c, actions] = await Promise.all([getConversation(id), getActions(id)])
@@ -103,11 +114,12 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
     setError(null)
   }
 
-  const send = async () => {
-    const message = draft.trim()
+  const send = async (text?: string) => {
+    const message = (text ?? draft).trim()
     if (!message || busy) return
-    setDraft('')
+    if (text === undefined) setDraft('')
     setError(null)
+    setCarryOn(false)
     setBusy(true)
     setLines((l) => [...l, { role: 'user', text: message }, { role: 'assistant', text: '', pending: true }])
     const onEvent = (e: AssistantEvent) => {
@@ -146,6 +158,11 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
       <Stack direction="row" sx={{ alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
         <AutoAwesomeIcon color="primary" />
         <Typography variant="h6" sx={{ flex: 1 }}>AI assistant</Typography>
+        {canReadIc && (
+          <Tooltip title="Scan a new staff member's IC">
+            <IconButton aria-label="Scan an IC" onClick={() => setScanning(true)} disabled={busy}><BadgeIcon /></IconButton>
+          </Tooltip>
+        )}
         <Tooltip title="Earlier conversations">
           <IconButton aria-label="Earlier conversations" onClick={() => setShowHistory((v) => !v)}><HistoryIcon /></IconButton>
         </Tooltip>
@@ -174,7 +191,10 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
           )}
           {lines.map((l, i) => (l.role === 'card' && l.action ? (
             <ActionCard key={l.action.id} action={l.action} busy={busy}
-                        onDecided={(a) => setLines((all) => all.map((x) => (x.action?.id === a.id ? { ...x, action: a } : x)))} />
+                        onDecided={(a) => {
+                          setLines((all) => all.map((x) => (x.action?.id === a.id ? { ...x, action: a } : x)))
+                          setCarryOn(true)
+                        }} />
           ) : (
             <Box key={i} sx={{ display: 'flex', justifyContent: l.role === 'user' ? 'flex-end' : 'flex-start', mb: 1 }}>
               <Box sx={{ maxWidth: '85%', px: 1.5, py: 1, borderRadius: 2, whiteSpace: 'pre-wrap',
@@ -190,6 +210,9 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
       )}
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
         {error && <Alert severity="warning" sx={{ mb: 1 }}>{error}</Alert>}
+        {carryOn && !busy && (
+          <Button size="small" variant="outlined" sx={{ mb: 1 }} onClick={() => void send('Carry on.')}>Carry on</Button>
+        )}
         <Stack direction="row" sx={{ gap: 1, alignItems: 'flex-end' }}>
           <TextField fullWidth multiline maxRows={5} size="small" placeholder="Ask anything about your work"
                      value={draft} onChange={(e) => setDraft(e.target.value)}
@@ -203,6 +226,9 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
           </Typography>
         )}
       </Box>
+      {canReadIc && (
+        <IcScanDialog open={scanning} onClose={() => setScanning(false)} onUse={(message) => void send(message)} />
+      )}
     </Drawer>
   )
 }
@@ -212,6 +238,8 @@ export function AssistantButton() {
   const [open, setOpen] = useState(false)
   const status = useQuery({ queryKey: ['ai-status'], queryFn: getAiStatus, retry: false, staleTime: 60_000 })
   const mine = status.data?.features.some((f) => f.key === 'assistant' && f.mine)
+  const mayCreateStaff = usePermission('user:create')
+  const canReadIc = mayCreateStaff && !!status.data?.features.some((f) => f.key === 'ic_reading' && f.mine)
   if (!mine) return null
   return (
     <>
@@ -221,7 +249,7 @@ export function AssistantButton() {
           <AutoAwesomeIcon />
         </Fab>
       </Tooltip>
-      <AssistantPanel open={open} onClose={() => setOpen(false)} />
+      <AssistantPanel open={open} onClose={() => setOpen(false)} canReadIc={canReadIc} />
     </>
   )
 }

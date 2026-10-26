@@ -162,7 +162,7 @@ async def test_it_reads_the_app_as_the_person_and_the_reply_streams(scripted):
     assert other["site_a"] not in {s["id"] for s in sites}
     done = events[-1][1]
     assert done["text"] == "You have two sites: Jurong and Tuas."
-    assert "Reply in English" in model.seen[0]["system"] and "Role 2" in model.seen[0]["system"]
+    assert "when that is unclear, in English" in model.seen[0]["system"] and "Role 2" in model.seen[0]["system"]
 
 
 @pytest.mark.asyncio

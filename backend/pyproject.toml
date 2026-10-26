@@ -39,6 +39,8 @@ dependencies = [
     # The AI module's hosted chat model (Claude), through Anthropic's official SDK. 1.x is the line the
     # code was written and checked against; a 2.x upgrade is a change of its own.
     "anthropic>=1.17,<2",
+    # The AI module's IC reading: a free text reader on the onnxruntime above, its models inside the package.
+    "rapidocr-onnxruntime>=1.4,<2",
 ]
 
 [project.optional-dependencies]

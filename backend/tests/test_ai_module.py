@@ -293,7 +293,10 @@ async def test_a_feature_not_in_the_licence_cannot_be_switched_on_but_can_be_swi
 
 
 @pytest.mark.asyncio
-async def test_a_feature_not_built_yet_cannot_be_switched_on():
+async def test_a_feature_not_built_yet_cannot_be_switched_on(monkeypatch):
+    # Every feature is built now; one is marked unbuilt for this test, as a future one would be.
+    monkeypatch.setitem(ai_module.FEATURES, "ic_reading",
+                        dataclasses.replace(ai_module.FEATURES["ic_reading"], ready=False))
     w = await _world(features=["ic_reading"])
     async with _client() as c:
         r = await c.put("/api/v1/ai/settings/ic_reading", headers=w["h"][ADMIN],

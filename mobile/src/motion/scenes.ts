@@ -118,6 +118,7 @@ export const SCREEN_SCENES: Record<string, ScreenSceneDef> = {
   Briefings: scene('newspaper-variant-outline', 'Daily Briefings', 'Loading briefings'),
   MyWorkOrders: scene('hammer-wrench', 'My Work Orders', 'Loading your work orders', 'swing'),
   MyCaseTasks: scene('briefcase-check-outline', 'My Case Tasks', 'Loading your tasks'),
+  Assistant: scene('robot-happy-outline', 'AI Assistant', 'Starting the assistant'),
   SituationCameraLive: LIVE_VIEW,
 }
 

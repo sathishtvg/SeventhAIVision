@@ -100,7 +100,7 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {**{str(n): "Built" for n in range(1, 8)}, **{str(n): "Not yet" for n in range(8, 10)}}
+    assert phases == {str(n): "Built" for n in range(1, 10)}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
@@ -223,3 +223,68 @@ def test_the_confirm_card_is_as_the_document_says():
     assert ai_functions.never_offered("POST", "/api/v1/users", {"role_id": 5}) is None
     assert ai_functions.never_offered("PATCH", "/api/v1/users/x", {"role_id": 5}) == "changing someone's role"
     assert "`ai.assistant.action`" in doc
+
+
+def test_reading_an_ic_is_as_the_document_says():
+    from app.routers import ai_assistant
+    from app.services import ai_ic
+    doc = " ".join(_doc().split())
+    assert ai_assistant.IC_DRAFT_LIFE_MINUTES == 60 and "for **60 minutes**" in doc
+    assert "**The photos are never kept**" in doc and "`ai_ic_drafts`" in doc
+    pyproject = (REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"rapidocr-onnxruntime>=1.4,<2"' in pyproject and "`rapidocr-onnxruntime>=1.4,<2`" in doc
+    lock = (REPO_ROOT / "backend" / "requirements-lock.txt").read_text(encoding="utf-8")
+    assert "rapidocr-onnxruntime==1.4.4" in lock
+    src = (REPO_ROOT / "backend" / "app" / "routers" / "ai_assistant.py").read_text(encoding="utf-8")
+    assert '"user:create" not in await ai_functions.held_permissions' in src, "the doc says: may create staff"
+    # The photos are never written anywhere: the reader has no file or database write.
+    reader = (REPO_ROOT / "backend" / "app" / "services" / "ai_ic.py").read_text(encoding="utf-8")
+    assert not any(w in reader for w in ("open(", "write_bytes", "INSERT", "tempfile", "save("))
+    assert set(ai_ic.FIELDS) == {"nric_fin", "full_name", "date_of_birth", "sex", "race", "nationality",
+                                 "country_of_birth", "address"}
+    panel = (WEB / "components" / "ai" / "AssistantPanel.tsx").read_text(encoding="utf-8")
+    assert "usePermission('user:create')" in panel and "f.key === 'ic_reading' && f.mine" in panel
+
+
+def test_every_ai_call_the_web_and_the_phone_make_is_served():
+    """A path renamed on one side is a button that does nothing on the other (the client drift audit)."""
+    from app.routers.ai_assistant import ChatBody
+    from tests.test_drone_clients import _served as served
+    from tests.test_drone_clients import client_calls
+
+    spec = app.openapi()
+    clients = {WEB / "api" / "aiAssistant.ts": 8, WEB / "api" / "ai.ts": 7, WEB / "api" / "platformAiLicense.ts": 2,
+               REPO_ROOT / "mobile" / "src" / "api" / "aiAssistant.ts": 5}
+    for client, at_least in clients.items():
+        calls = client_calls(client)
+        assert len(calls) >= at_least, f"only {len(calls)} calls found in {client}"
+        assert all(p.startswith("/api/v1/") for _, p in calls), calls
+        assert not [c for c in calls if not served(*c, spec)], client
+    # The web reads the reply as a stream with fetch; its path is written out in full.
+    web = (WEB / "api" / "aiAssistant.ts").read_text(encoding="utf-8")
+    assert "/api/v1/ai/assistant/chat`" in web and served("POST", "/api/v1/ai/assistant/chat", spec)
+    # The phone asks for the reply whole, and sends only what the chat takes.
+    phone = (REPO_ROOT / "mobile" / "src" / "api" / "aiAssistant.ts").read_text(encoding="utf-8")
+    sent = re.search(r"'/api/v1/ai/assistant/chat', \{(.*?)\}, \{ timeout", phone, re.S).group(1)
+    names = set(re.findall(r"(\w+)(?=[,:\s])", sent.replace("...(conversationId ? { conversation_id: conversationId } : {})", "conversation_id")))
+    assert {"message", "channel", "stream", "conversation_id"} <= names
+    assert {"message", "channel", "stream", "conversation_id"} <= set(ChatBody.model_fields)
+    assert "stream: false" in phone and "channel: 'PHONE'" in phone
+
+
+def test_the_phone_is_as_the_document_says():
+    from app.services import ai_chat
+    doc = " ".join(_doc().split())
+    mobile = REPO_ROOT / "mobile" / "src"
+    client = (mobile / "api" / "aiAssistant.ts").read_text(encoding="utf-8")
+    assert "export const ASSISTANT_TIMEOUT_MS = 120_000" in client and "up to **120 seconds**" in doc
+    assert "(`stream: false`)" in doc and "`channel` `PHONE`" in doc
+    nav = (mobile / "navigation" / "index.tsx").read_text(encoding="utf-8")
+    assert '<MoreStack.Screen name="Assistant"' in nav
+    assert "  Assistant: scene(" in (mobile / "motion" / "scenes.ts").read_text(encoding="utf-8")
+    menu = (mobile / "screens" / "MoreMenuScreen.tsx").read_text(encoding="utf-8")
+    assert "permission: 'ai:assistant:use'" in menu and "i.screen !== 'Assistant' || assistantIsMine(ai.data)" in menu
+    prompt = ai_chat.system_prompt(name=None, role="guard", organisation="X", locale="ms", tz="Asia/Singapore",
+                                   now=__import__("datetime").datetime(2026, 10, 26), can_change=True)
+    assert "Reply in the language the person writes in; when that is unclear, in Malay." in prompt
+    assert "It replies in the language the person writes in" in doc

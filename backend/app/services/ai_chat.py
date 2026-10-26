@@ -195,7 +195,9 @@ def system_prompt(*, name: str | None, role: str, organisation: str, locale: str
               "which screen to use.")
     return (f"{RULES}\n- {change}\n\nYou are talking to {name or 'a member of staff'} ({role}) of {organisation}. "
             # The date, not the minute: the prompt stays the same all day, so the hosted model can cache it.
-            f"Reply in {language}. The organisation's time zone is {tz}; today is {now:%A %d %B %Y}.")
+            # Guards type in their own language: the reply follows it, the account's language when unclear.
+            f"Reply in the language the person writes in; when that is unclear, in {language}. "
+            f"The organisation's time zone is {tz}; today is {now:%A %d %B %Y}.")
 
 
 # ── The two models ───────────────────────────────────────────────────────────

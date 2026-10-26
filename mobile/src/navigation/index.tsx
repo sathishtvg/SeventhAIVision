@@ -65,6 +65,7 @@ import { MyReadingScreen }             from '@/screens/MyReadingScreen'
 import { BriefingsScreen }             from '@/screens/BriefingsScreen'
 import { MyWorkOrdersScreen }          from '@/screens/MyWorkOrdersScreen'
 import { MyCaseTasksScreen }           from '@/screens/MyCaseTasksScreen'
+import { AssistantScreen }             from '@/screens/AssistantScreen'
 import { useAuthStore }                from '@/store/auth'
 import { colors }                      from '@/theme'
 import { sceneLayout }                 from '@/motion/ScreenScene'
@@ -147,6 +148,8 @@ export type MoreStackParamList = {
   Briefings:           undefined
   MyWorkOrders:        undefined
   MyCaseTasks:         undefined
+  /** The AI assistant, for the people it is switched on for (AI_MODULE.md). */
+  Assistant:           undefined
   SituationCameraLive: { cameraId: string; streamId: string; cameraName: string }
 }
 
@@ -275,6 +278,7 @@ function MoreNavigator() {
       <MoreStack.Screen name="Briefings"           component={BriefingsScreen}       options={{ title: 'Daily Briefings' }} />
       <MoreStack.Screen name="MyWorkOrders"        component={MyWorkOrdersScreen}    options={{ title: 'My Work Orders' }} />
       <MoreStack.Screen name="MyCaseTasks"         component={MyCaseTasksScreen}     options={{ title: 'My Case Tasks' }} />
+      <MoreStack.Screen name="Assistant"           component={AssistantScreen}       options={{ title: 'AI Assistant' }} />
       <MoreStack.Screen name="SituationCameraLive" component={CameraLiveScreen}      options={{ title: 'Live View', headerBackTitle: 'Back' }} />
     </MoreStack.Navigator>
   )

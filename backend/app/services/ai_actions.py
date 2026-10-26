@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import ai_chat, ai_functions
+from app.services import ai_chat, ai_functions, ai_ic
 from app.services.audit import write_audit_log
 
 LIFETIME = timedelta(minutes=30)
@@ -62,14 +62,38 @@ def missing_fields(f: ai_functions.Function, body: dict) -> list[str]:
             if x["required"] and not _PASSWORD.search(x["name"]) and body.get(x["name"]) in (None, "")]
 
 
-def shown_fields(path_values: dict, query: dict, body: dict) -> list[dict]:
-    """What the card shows: every value that will be sent, a password as dots."""
+def shown_fields(path_values: dict, query: dict, body: dict, from_ic: set[str] | None = None) -> list[dict]:
+    """What the card shows: every value that will be sent, a password as words, an IC number shortened."""
     out = [{"name": k, "value": v} for k, v in (path_values or {}).items()]
     out += [{"name": k, "value": v} for k, v in (query or {}).items() if v is not None]
     for k, v in (body or {}).items():
-        out.append({"name": k, "value": "a temporary password, shown to you once after Confirm"
-                    if _PASSWORD.search(k) else v})
+        if _PASSWORD.search(k):
+            v = "a temporary password, shown to you once after Confirm"
+        elif k in (from_ic or set()):
+            v = f"{'*' * (len(str(v)) - 4)}{str(v)[-4:]} (from the IC you scanned)"
+        out.append({"name": k, "value": v})
     return out
+
+
+async def fill_from_ic(db: AsyncSession, user_id: str, body: dict) -> tuple[dict, set[str]]:
+    """A shortened NRIC/FIN the model passed on, replaced by the full one from this person's own IC draft.
+    The model never had the full number; the person scanned it a moment ago."""
+    wanted = {k: v for k, v in body.items() if isinstance(v, str) and MASKED.match(v)}
+    if not wanted:
+        return body, set()
+    drafts = (await db.execute(text(f"""
+        SELECT fields FROM ai_ic_drafts
+         WHERE tenant_id = {T} AND user_id = CAST(:u AS uuid) AND expires_at > now() ORDER BY created_at DESC
+    """), {"u": user_id})).scalars().all()
+    out, filled = dict(body), set()
+    for key, shown in wanted.items():
+        for fields in drafts:
+            full = fields.get("nric_fin")
+            if isinstance(full, str) and len(full) == len(shown) and full.endswith(shown[-4:]):
+                out[key] = full
+                filled.add(key)
+                break
+    return out, filled
 
 
 def title_of(f: ai_functions.Function, body: dict) -> str:
@@ -82,6 +106,7 @@ async def prepare(db: AsyncSession, *, conversation_id, user_id: str, f: ai_func
                   path_values: dict, query: dict, body: dict) -> dict:
     """A Confirm card, stored. The caller commits."""
     clean, made = prepare_body(f, body)
+    clean, from_ic = await fill_from_ic(db, user_id, clean)
     row = (await db.execute(text("""
         INSERT INTO ai_pending_actions (tenant_id, conversation_id, user_id, operation_id, method, path, query, body,
                                         title, fields, expires_at)
@@ -90,7 +115,7 @@ async def prepare(db: AsyncSession, *, conversation_id, user_id: str, f: ai_func
         RETURNING *
     """), {"c": conversation_id, "u": user_id, "op": f.operation_id, "m": f.method, "p": path,
            "q": json.dumps(query or {}), "b": json.dumps(clean, default=str), "title": title_of(f, clean),
-           "fields": json.dumps(shown_fields(path_values, query, clean), default=str),
+           "fields": json.dumps(shown_fields(path_values, query, clean, from_ic), default=str),
            "exp": datetime.now(timezone.utc) + LIFETIME})).mappings().first()
     return card(dict(row)) | {"temporary_password_made": made}
 
@@ -145,9 +170,18 @@ async def confirm(db: AsyncSession, row: dict, *, token: str, client_ip: str, us
         ok = 200 <= code < 300
         result = {"status": code, "answer": answer}
         status = "CONFIRMED" if ok else "FAILED"
-        words = (f"the person confirmed \"{row['title']}\" and the app accepted it ({code})" if ok else
+        words = (f"the person confirmed \"{row['title']}\" and the app accepted it ({code}): "
+                 f"{_brief(answer)}" if ok else
                  f"the person confirmed \"{row['title']}\" but the app refused it ({code}): "
-                 f"{json.dumps(answer, default=str)[:300]}")
+                 f"{ai_functions.shorten(ai_functions.mask(answer), limit=300)}")
+    if status == "CONFIRMED":
+        # The IC draft has done its job once its number is saved.
+        numbers = [v for v in (row["body"] or {}).values() if isinstance(v, str) and ai_ic.NRIC.fullmatch(v)]
+        if numbers:
+            await db.execute(text(f"""
+                DELETE FROM ai_ic_drafts WHERE tenant_id = {T} AND user_id = CAST(:u AS uuid)
+                   AND fields->>'nric_fin' = ANY(:n)
+            """), {"u": user_id, "n": numbers})
     made = {k: v for k, v in (row["body"] or {}).items() if _PASSWORD.search(k)}
     scrubbed = {k: ("[given once to the person]" if k in made else v) for k, v in (row["body"] or {}).items()}
     await db.execute(text("""
@@ -166,6 +200,14 @@ async def confirm(db: AsyncSession, row: dict, *, token: str, client_ip: str, us
         # Shown to the person who confirmed, this once. Never to the model, never stored.
         out["temporary_password"] = next(iter(made.values()))
     return out
+
+
+def _brief(answer) -> str:
+    """The app's answer, short, for the model's next turn: ids and names, never a password or a full NRIC."""
+    if isinstance(answer, dict):
+        keep = {k: v for k, v in answer.items() if k in ("id", "name", "full_name", "email", "status", "title")}
+        answer = keep or answer
+    return ai_functions.shorten(ai_functions.mask(answer), limit=300)
 
 
 async def cancel(db: AsyncSession, row: dict) -> dict:

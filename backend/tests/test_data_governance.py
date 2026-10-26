@@ -75,7 +75,7 @@ async def test_the_statement_gives_every_period_as_the_job_that_applies_it_reads
         first = (await c.get(f"{BASE}/retention", headers=w["h"][ADMIN])).json()
     by = {p["key"]: p for p in first["periods"]}
     assert list(by) == ["EVIDENCE", "RECORDINGS", "DRONE_FOOTAGE", "DRONE_TRACKS", "DRONE_RECEIPTS", "FOOTAGE_REVIEW",
-                        "STAFF_FACES", "AUDIT"]
+                        "STAFF_FACES", "IC_READINGS", "AUDIT"]
     # Nothing set: each falls back to the installation's default, and says that the job's own is the one in force.
     assert (by["EVIDENCE"]["period"]["amount"], by["EVIDENCE"]["period"]["unit"]) == (settings.EVIDENCE_RETENTION_DAYS, "days")
     assert by["RECORDINGS"]["period"]["amount"] == continuous_recording.DEFAULT_RETENTION_DAYS
@@ -92,13 +92,17 @@ async def test_the_statement_gives_every_period_as_the_job_that_applies_it_reads
     # Staff faces (0167): gone the night after the account is deactivated.
     assert (by["STAFF_FACES"]["period"]["amount"], by["STAFF_FACES"]["period"]["source"],
             by["STAFF_FACES"]["counted_from"]) == (1, "FIXED", "when the person's account is deactivated")
+    # What was read from an IC (0174): an hour, or at once when the new staff member is confirmed.
+    assert (by["IC_READINGS"]["period"]["amount"], by["IC_READINGS"]["period"]["unit"],
+            by["IC_READINGS"]["period"]["source"]) == (1, "hours", "FIXED")
+    assert "photos were never kept" in by["IC_READINGS"]["how"]
     assert (by["AUDIT"]["period"]["amount"], by["AUDIT"]["period"]["unit"], by["AUDIT"]["per_organisation"]) == (
         settings.AUDIT_RETENTION_YEARS, "years", False)
     assert "Not deleted" in by["AUDIT"]["how"] and all(by[k]["per_organisation"] for k in by if k != "AUDIT")
     # What a hold stops is what the jobs ask about, in the jobs' own words.
     assert {k: p["hold_stops_it"] for k, p in by.items()} == {
         "EVIDENCE": True, "RECORDINGS": True, "DRONE_FOOTAGE": True, "DRONE_TRACKS": False, "DRONE_RECEIPTS": False,
-        "FOOTAGE_REVIEW": True, "STAFF_FACES": False, "AUDIT": False}
+        "FOOTAGE_REVIEW": True, "STAFF_FACES": False, "IC_READINGS": False, "AUDIT": False}
     held = {p.key: p.hold for p in statement.PERIODS}
     assert (held["EVIDENCE"], held["RECORDINGS"], held["DRONE_FOOTAGE"], held["FOOTAGE_REVIEW"]) == (
         evidence_hold.FRAMES_AND_CLIPS, evidence_hold.RECORDINGS, evidence_hold.DRONE_MEDIA, evidence_hold.FOOTAGE)

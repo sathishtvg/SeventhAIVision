@@ -140,3 +140,37 @@ export const confirmAction = (id: string) =>
 
 export const cancelAction = (id: string) =>
   apiClient.post<AssistantAction>(`/api/v1/ai/assistant/actions/${id}/cancel`).then((r) => r.data)
+
+// ── Reading an IC (phase 8) ──
+
+/** What was read from the card. The photos are read on the server and not kept anywhere. */
+export interface IcFields {
+  nric_fin?: string
+  full_name?: string
+  date_of_birth?: string
+  sex?: string
+  race?: string
+  nationality?: string
+  country_of_birth?: string
+  address?: string
+}
+
+export interface IcReading {
+  draft_id: string
+  fields: IcFields
+  /** True or false for S/T/F/G numbers; null when there is no number, or for the M series. */
+  check_letter_ok: boolean | null
+  unread: Array<keyof IcFields>
+  /** What to send to the assistant: the number shortened to its last four characters. */
+  message: string
+}
+
+export const readIc = (front: File, back: File | null) => {
+  const form = new FormData()
+  form.append('front', front)
+  if (back) form.append('back', back)
+  return apiClient.post<IcReading>('/api/v1/ai/assistant/ic', form, { timeout: 120_000 }).then((r) => r.data)
+}
+
+export const correctIc = (draftId: string, fields: IcFields) =>
+  apiClient.put<IcReading>(`/api/v1/ai/assistant/ic/${draftId}`, fields).then((r) => r.data)

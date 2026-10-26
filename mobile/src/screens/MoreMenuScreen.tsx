@@ -3,9 +3,11 @@ import {
   Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
+import { useQuery } from '@tanstack/react-query'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth'
+import { assistantIsMine, getAiStatus } from '@/api/aiAssistant'
 import { Card } from '@/components/Card'
 import { canSee, type Gated } from '@/lib/access'
 import { colors, fontSize, radius, spacing } from '@/theme'
@@ -32,6 +34,7 @@ interface MenuItem extends Gated {
  */
 
 const MENU_ITEMS: MenuItem[] = [
+  { screen: 'Assistant',     label: 'AI Assistant',       description: 'Ask about your work, in your own language', icon: 'sparkles-outline', color: colors.primary, permission: 'ai:assistant:use' },
   { screen: 'MyRecord',      label: 'My Record',          description: 'Your violations and leave requests', icon: 'document-text-outline',    color: colors.warning, permission: 'violation:read' },
   { screen: 'MyFace',        label: 'My Face',            description: 'Register your face for check-in, once', icon: 'happy-outline', color: colors.success, permission: 'face:register_self' },
   { screen: 'MyReading',     label: 'My Reading',         description: 'What is recorded of your own work. Counts, not an appraisal', icon: 'reader-outline', color: colors.info, permission: 'workforce:own' },
@@ -73,7 +76,11 @@ export function MoreMenuScreen() {
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
   const permissions = useAuthStore((s) => s.permissions)
+  // The assistant's row needs more than the permission: the licence and the admin's choice of roles. Until the
+  // answer is in, or if it cannot be read, the row stays hidden rather than opening onto "not switched on".
+  const ai = useQuery({ queryKey: ['ai-status'], queryFn: getAiStatus, staleTime: 60_000, retry: false })
   const items = MENU_ITEMS.filter((i) => canSee(i, permissions, user?.roleId))
+    .filter((i) => i.screen !== 'Assistant' || assistantIsMine(ai.data))
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>

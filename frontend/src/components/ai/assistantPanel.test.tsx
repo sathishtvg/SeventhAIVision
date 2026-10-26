@@ -102,6 +102,23 @@ describe('a change the assistant prepared', () => {
     await waitFor(() => expect(assistant.confirmAction).toHaveBeenCalledWith('a1'), PATIENT)
     expect(await screen.findByText('Done.', {}, PATIENT)).toBeInTheDocument()
     expect(screen.getByTestId('assistant-card-a1')).toHaveTextContent('Xy7kQ2pLm9Wr4aA7!')
+    // The assistant waits after a card; one press tells it to carry on with the next question.
+    vi.mocked(assistant.streamChat).mockImplementation(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Carry on' }))
+    await waitFor(() => expect(assistant.streamChat).toHaveBeenLastCalledWith(
+      { message: 'Carry on.', conversation_id: 'c1' }, expect.any(Function)), PATIENT)
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Carry on' })).not.toBeInTheDocument(), PATIENT)
+  })
+})
+
+describe('scanning an IC from the panel', () => {
+  it('is offered only when IC reading is switched on for the person', () => {
+    const first = render(<AssistantPanel open onClose={() => {}} />)
+    expect(screen.queryByRole('button', { name: 'Scan an IC' })).not.toBeInTheDocument()
+    first.unmount()
+    render(<AssistantPanel open onClose={() => {}} canReadIc />)
+    fireEvent.click(screen.getByRole('button', { name: 'Scan an IC' }))
+    expect(screen.getByText("Scan a new staff member's IC")).toBeInTheDocument()
   })
 })
 
