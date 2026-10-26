@@ -18,7 +18,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 |---|---|---|
 | 1 | The licence, the company controls, the permissions | Built |
 | 2 | The learning engine; late and no-show warnings; overtime and fatigue forecast; AI Insights | Built |
-| 3 | False-alarm learning; device failure warnings | Not yet |
+| 3 | False-alarm learning; device failure warnings | Built |
 | 4 | Roster suggestions; best patrol times; missed-patrol warnings; guard work trends | Not yet |
 | 5 | Incident helper; payroll check | Not yet |
 | 6 | The assistant: free and hosted models, conversations, asking across the whole app | Not yet |
@@ -118,6 +118,31 @@ needs **20** completed shifts.
 
 Fatigue is said as a rule, not a prediction: in the next 7 days, a shift with less rest before it than
 `roster.min_rest_hours` (default 11), or more working days in a row than `roster.max_consecutive_days` (default 6).
+
+### False-alarm learning (`false_alarm`)
+
+From the verdicts operators already give in the last **90 days**: an alert marked `false_positive` against one
+`resolved` or `acknowledged` (`dismissed` says neither and is left out). Six factors from the alerts before each one:
+how often the camera's alerts were false in the 60 days before, how often that kind of alert was false here, night,
+severity, how many alerts the camera raised in the hour before, and the same alert again within 10 minutes. It needs
+**40** alerts with a verdict, **8** false and **8** real.
+
+It looks at alerts still open from the last 24 hours. Its bar starts high, **60%**, **75%** or **90%** (High, Medium,
+Low), because calling a real alert false is the costly mistake. **It never closes, hides or changes an alert**: the
+warning says to look at the picture first, and the alert stays in the queue until an operator decides. The
+operator's verdict is then written on the warning as what happened.
+
+A camera whose alerts this month were mostly false (at least **10** decided, **70%** or more false) is put forward
+for a person to review its zones or sensitivity. Nothing on the camera is changed.
+
+### Device failure warnings (`device_failure`)
+
+From the state changes kept for every device (`device_health_changes`) and, for cameras, stream drops
+(`camera_health_events`). For each device and each day of the last **120 days**: given its history to that morning,
+did it go down in the next **7 days**? Six factors: times it went down in the last 7 and 30 days, times it ran
+degraded in the last 7, days since it last went down, degraded now, and a camera's stream drops in the last 7 days.
+A device already down or switched off is not predicted. It needs **60** device-days, **5** that went down and **5**
+that did not. It suggests a check; **no work order is raised by itself** (the maintenance module is not touched).
 
 ### Deciding
 

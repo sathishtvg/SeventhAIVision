@@ -30,7 +30,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
-from app.services import ai_late_risk, ai_module, ai_runner, ai_store
+from app.services import ai_module, ai_runner, ai_store
 from app.services.audit import write_audit_log
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
@@ -140,13 +140,13 @@ async def decide_insight(
 
 
 def _learned(key: str, model: dict | None) -> list[dict]:
-    """What the model has learned matters most, in words, largest first."""
-    if key != ai_late_risk.KEY:
-        return []
-    fitted = ai_store.fitted_of(model)
+    """What the model has learned matters most, in words, largest first. Only a feature that fits weights
+    (not the overtime forecast, which learns each guard's own overrun) has any to show."""
+    titles = getattr(ai_runner.FEATURES[key][0], "FACTOR_TITLES", None)
+    fitted = ai_store.fitted_of(model) if titles else None
     if fitted is None:
         return []
-    out = [{"factor": f, "title": ai_late_risk.FACTOR_TITLES.get(f, f), "weight": round(w, 3),
+    out = [{"factor": f, "title": titles.get(f, f), "weight": round(w, 3),
             "raises": w > 0} for f, w in zip(fitted.factors, fitted.weights)]
     out.sort(key=lambda x: abs(x["weight"]), reverse=True)
     return out

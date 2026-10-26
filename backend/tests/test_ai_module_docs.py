@@ -100,7 +100,7 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {"1": "Built", "2": "Built", **{str(n): "Not yet" for n in range(3, 10)}}
+    assert phases == {**{str(n): "Built" for n in range(1, 4)}, **{str(n): "Not yet" for n in range(4, 10)}}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
@@ -144,3 +144,21 @@ def test_the_numbers_in_the_document_are_the_codes():
     assert ai_overtime_fatigue.ROSTER_DEFAULTS == {"roster.min_rest_hours": 11, "roster.max_consecutive_days": 6}
     sched = (REPO_ROOT / "backend" / "app" / "scheduler_main.py").read_text(encoding="utf-8")
     assert 'AI_MODULE_INTERVAL = int(os.environ.get("AI_MODULE_INTERVAL_SECONDS", "3600"))' in sched
+
+
+def test_the_numbers_of_the_alert_and_device_features_are_the_codes():
+    from app.services import ai_device_failure, ai_false_alarm
+    doc = " ".join(_doc().split())
+    assert ai_false_alarm.HISTORY.days == 90 and ai_false_alarm.OPEN_WINDOW.total_seconds() == 24 * 3600
+    assert (ai_false_alarm.MIN_ROWS, ai_false_alarm.MIN_FALSE, ai_false_alarm.MIN_REAL) == (40, 8, 8)
+    assert "It needs **40** alerts with a verdict, **8** false and **8** real" in doc
+    assert ai_false_alarm.BASES == {"HIGH": 0.60, "MEDIUM": 0.75, "LOW": 0.90}
+    assert "**60%**, **75%** or **90%** (High, Medium, Low)" in doc
+    assert (ai_false_alarm.REVIEW_MIN, ai_false_alarm.REVIEW_AT) == (10, 0.70)
+    assert "at least **10** decided, **70%** or more false" in doc
+    assert ai_false_alarm.FALSE == ("false_positive",) and ai_false_alarm.REAL == ("resolved", "acknowledged")
+    assert ai_device_failure.HISTORY.days == 120 and ai_device_failure.AHEAD.days == 7
+    assert (ai_device_failure.MIN_ROWS, ai_device_failure.MIN_DOWN, ai_device_failure.MIN_UP) == (60, 5, 5)
+    assert "It needs **60** device-days, **5** that went down and **5** that did not" in doc
+    for module in (ai_false_alarm, ai_device_failure):
+        assert set(module.FACTOR_TITLES) == set(module.FACTORS)
