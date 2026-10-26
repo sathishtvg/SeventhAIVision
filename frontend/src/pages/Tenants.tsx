@@ -19,6 +19,7 @@ import {
 } from '@/api/platform_licenses'
 import type { TenantProduct } from '@/api/platform_licenses'
 import { DroneLicensePanel } from '@/components/platform/DroneLicensePanel'
+import { AiLicensePanel } from '@/components/platform/AiLicensePanel'
 import type { Tenant } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
 import { ErrorState, ListSkeleton, TableErrorRow } from '@/components/states'
@@ -317,11 +318,14 @@ function ManageLicensesDrawer({ tenant, initialTab = 0, onClose }: ManageLicense
             <Tabs
               value={tab}
               onChange={(_, v) => setTab(v)}
+              variant="scrollable"
+              scrollButtons="auto"
               sx={{ borderBottom: 1, borderColor: 'divider', mx: -3, px: 3 }}
             >
               <Tab label="AI Modules" />
               <Tab label="Platform Products" />
               <Tab label="Drone Patrol" />
+              <Tab label="AI Assistant & Learning" />
             </Tabs>
           </Box>
 
@@ -330,6 +334,7 @@ function ManageLicensesDrawer({ tenant, initialTab = 0, onClose }: ManageLicense
             {tab === 0 && <AiModulesPanel tenant={tenant} />}
             {tab === 1 && <PlatformProductsPanel tenant={tenant} />}
             {tab === 2 && <DroneLicensePanel tenantId={tenant.id} />}
+            {tab === 3 && <AiLicensePanel tenantId={tenant.id} />}
           </Box>
         </>
       )}

@@ -10,6 +10,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import GroupsIcon from '@mui/icons-material/Groups'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import NotificationsIcon from '@mui/icons-material/Notifications'
@@ -288,6 +289,13 @@ const NAV_SECTIONS: {
       { label: 'Feedback',           path: '/security-feedback',   icon: <RateReviewIcon fontSize="small" />, permission: 'intel:read' },
       { label: 'Risk & Advice',      path: '/risk-advice',         icon: <QueryStatsIcon fontSize="small" />, permission: 'advice:read' },
       { label: 'Intelligence Setup', path: '/intelligence-setup',  icon: <SecurityIcon fontSize="small" />, permission: 'intel:manage' },
+    ],
+  },
+  {
+    // The AI module (migration 0170): learning from work activity, and the assistant.
+    title: 'AI Assistant & Learning',
+    items: [
+      { label: 'AI Settings', path: '/ai-settings', icon: <AutoAwesomeIcon fontSize="small" />, permission: 'ai:configure' },
     ],
   },
   {

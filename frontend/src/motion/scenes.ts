@@ -106,6 +106,9 @@ export const PAGE_SCENES: Record<string, PageScene> = {
   '/risk-advice': scene('chart', 'Risk & Advice', 'Loading risk and advice'),
   '/intelligence-setup': scene('sliders', 'Intelligence Setup', 'Loading the setup'),
 
+  // The AI module
+  '/ai-settings': scene('sliders', 'AI Settings', 'Loading the AI settings'),
+
   // Drones
   '/drones': scene('drone', 'Drone Fleet', 'Loading the fleet'),
   '/drone-missions': scene('route', 'Drone Missions', 'Loading missions'),
