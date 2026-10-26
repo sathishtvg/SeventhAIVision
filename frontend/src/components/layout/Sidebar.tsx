@@ -295,6 +295,7 @@ const NAV_SECTIONS: {
     // The AI module (migration 0170): learning from work activity, and the assistant.
     title: 'AI Assistant & Learning',
     items: [
+      { label: 'AI Insights', path: '/ai-insights', icon: <InsightsIcon fontSize="small" />, permission: 'ai:insights:read' },
       { label: 'AI Settings', path: '/ai-settings', icon: <AutoAwesomeIcon fontSize="small" />, permission: 'ai:configure' },
     ],
   },

@@ -981,6 +981,9 @@ DEVICE_HEALTH_INTERVAL = int(os.environ.get("DEVICE_HEALTH_INTERVAL_SECONDS", "3
 NO_SHOW_CHECK_INTERVAL   = int(os.environ.get("NO_SHOW_CHECK_INTERVAL_SECONDS", "900"))         # 15 min
 # Shift auto-close and its warning (services/shift_autoclose.py): often enough that a 15-minute warning arrives.
 SHIFT_AUTO_CLOSE_INTERVAL = int(os.environ.get("SHIFT_AUTO_CLOSE_INTERVAL_SECONDS", "300"))  # 5 min
+# The AI module (services/ai_runner.py): train what is due, score what is coming. Hourly is often enough for
+# shifts 36 hours ahead; a model is refitted only when it is more than 20 hours old.
+AI_MODULE_INTERVAL = int(os.environ.get("AI_MODULE_INTERVAL_SECONDS", "3600"))  # 1 h
 
 
 async def check_contractor_expiry(
@@ -1438,6 +1441,7 @@ async def main() -> None:
     last_integrity = _NOT_YET
     last_vpatrol = _NOT_YET
     last_device_health = _NOT_YET
+    last_ai_module = _NOT_YET
 
     try:
         while True:
@@ -1695,6 +1699,18 @@ async def main() -> None:
                 except Exception:
                     logger.exception("device health and maintenance pass failed")
                 last_device_health = now
+
+            # The AI module (migrations 0170-0171): suggestions only, for a person to accept or dismiss. It
+            # changes no shift, roster or alert. Each organisation is its own session and transaction inside.
+            if now - last_ai_module >= AI_MODULE_INTERVAL:
+                try:
+                    from app.services import ai_runner
+                    done = await ai_runner.run_all(AsyncSessionLocal)
+                    if done:
+                        logger.info("ai module: %s", done)
+                except Exception:
+                    logger.exception("ai module pass failed")
+                last_ai_module = now
 
             # Fleet tracking: every iteration. A tracked vehicle the clock has made stale or offline is recorded
             # as such, once, and the screens are told which vehicles changed (not where they are).
