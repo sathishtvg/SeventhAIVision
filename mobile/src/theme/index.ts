@@ -13,6 +13,10 @@ export const colors = {
   surface:    'rgba(255,255,255,0.06)',
   card:       'rgba(255,255,255,0.10)',
   cardBorder: 'rgba(255,255,255,0.18)',
+  // A pop-up panel drawn over the screen is SOLID, never one of the glass tints above: 26 Oct 2026, the overtime
+  // sheet used `surface` and the shift list showed through its words. The colour the Dispatch and Visitors pop-ups
+  // already used.
+  sheet:      '#0D1B2E',
 
   // Brand
   primary:        '#6C63FF',

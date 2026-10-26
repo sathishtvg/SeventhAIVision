@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   plainBtnText: { color: colors.primary, fontWeight: '700', fontSize: fontSize.sm },
   disabled: { opacity: 0.5 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: spacing.lg },
-  sheet: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.lg, gap: spacing.sm },
+  sheet: { backgroundColor: colors.sheet, borderRadius: radius.md, padding: spacing.lg, gap: spacing.sm },
   sheetTitle: { color: colors.text, fontSize: fontSize.md, fontWeight: '700' },
   input: { borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.sm, backgroundColor: colors.background,
            color: colors.text, fontSize: fontSize.sm, padding: spacing.md, minHeight: 90, lineHeight: 20 },

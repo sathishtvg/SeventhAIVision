@@ -47,7 +47,7 @@ const ALL_PERMISSIONS = [
   // Dispatch / SLA (migration 0009)
   'sla:manage',
   // Visitor management (migration 0010)
-  'visitor:read', 'visitor:manage', 'visitor:checkin',
+  'visitor:read', 'visitor:manage', 'visitor:checkin', 'visitor:register',
   // Privacy / PDPA (migration 0010)
   'privacy:manage', 'pdpa:admin', 'pdpa:read',
   // Advanced AI (migration 0011)
@@ -231,7 +231,7 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'training:read', 'training:write',
     'sla:manage',
     'barrier:read', 'barrier:operate',
-    'visitor:read', 'visitor:manage', 'visitor:checkin',
+    'visitor:read', 'visitor:manage', 'visitor:checkin', 'visitor:register',
     'privacy:manage', 'pdpa:admin', 'pdpa:read',
     'tampering:read', 'abandoned:read', 'fall:read',
     'access:ingest',
@@ -386,6 +386,9 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks at the gate; records the ID seen
     'workforce:own', // Workforce readings (0154): their own reading, nobody else's
     'face:register_self', // Staff faces (0167): their own, once, on the phone
+    // What a guard does from the phone (0169, the owner's choice 26 Oct 2026). Not handover:create: a guard writes
+    // the handover of their own shift without it (the occurrence book reads it as "every guard's handover").
+    'incident:update', 'visitor:register',
   ],
   6: [ // viewer
     'camera:read',

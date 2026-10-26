@@ -22,6 +22,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { IncidentsStackParamList } from '@/navigation'
 import { DetailSkeleton, ErrorState, isNotFound } from '@/components/states'
+import { useCan } from '@/hooks/useCan'
 
 type RoutePropType = RouteProp<IncidentsStackParamList, 'IncidentDetail'>
 type NavProp = NativeStackNavigationProp<IncidentsStackParamList>
@@ -49,6 +50,8 @@ export function IncidentDetailScreen() {
   const { params } = useRoute<RoutePropType>()
   const navigation = useNavigation<NavProp>()
   const qc = useQueryClient()
+  // A note and a status change need incident:update (guards since 0169); a viewer or a client only reads.
+  const can = useCan()
   const [note, setNote] = useState('')
   const [sosSending, setSosSending] = useState(false)
 
@@ -209,7 +212,7 @@ export function IncidentDetailScreen() {
       </Card>
 
       {/* Status action */}
-      {nextStatus && (
+      {nextStatus && can('incident:update') && (
         <Pressable
           style={[styles.statusBtn, changingStatus && styles.btnDisabled]}
           onPress={() => changeStatus(nextStatus)}
@@ -258,6 +261,7 @@ export function IncidentDetailScreen() {
       </View>
 
       {/* Add note */}
+      {can('incident:update') && (
       <Card style={styles.gap}>
         <Text style={styles.sectionTitle}>Add Note</Text>
         <TextInput
@@ -280,6 +284,7 @@ export function IncidentDetailScreen() {
           }
         </Pressable>
       </Card>
+      )}
     </ScrollView>
   )
 }

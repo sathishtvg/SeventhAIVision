@@ -143,8 +143,10 @@ async def list_visitors(
     return await paginate(db, data_sql, count_sql, params, limit, offset)
 
 
+# visitor:register since 26 Oct 2026 (migration 0169): every visitor:manage role holds it too, and so do guards, by
+# the owner's choice. Deleting a visitor and the form fields stay with visitor:manage.
 @router.post("", status_code=status.HTTP_201_CREATED,
-             dependencies=[Depends(require_permission("visitor:manage"))])
+             dependencies=[Depends(require_permission("visitor:register"))])
 async def create_visitor(
     body: VisitorCreate,
     db: AsyncSession = Depends(get_db_with_tenant),
@@ -418,7 +420,7 @@ async def upcoming_visitors(
 
 # ── Send QR by email ──────────────────────────────────────────────────────────
 
-@router.post("/{visitor_id}/send-qr", dependencies=[Depends(require_permission("visitor:manage"))])
+@router.post("/{visitor_id}/send-qr", dependencies=[Depends(require_permission("visitor:register"))])
 async def send_qr_email(
     visitor_id: str,
     request: Request,

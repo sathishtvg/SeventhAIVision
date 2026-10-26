@@ -882,7 +882,10 @@ async def end_break(
     return dict(row._mapping)
 
 
-@router.post("/{shift_id}/handover", dependencies=[Depends(require_permission("handover:create"))])
+# The guard on a shift writes its handover (owner's choice, 26 Oct 2026); anyone else's needs handover:create. Not by
+# granting guards handover:create: the occurrence book reads that permission as "may read and draft every guard's
+# handover" (routers/occurrence_book.py), which the owner did not choose.
+@router.post("/{shift_id}/handover", dependencies=[Depends(require_permission("shift:read"))])
 async def generate_handover(
     shift_id: str,
     incoming_guard_id: str | None = None,
@@ -901,6 +904,20 @@ async def generate_handover(
     )).first()
     if shift_row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Shift not found")
+    own = shift_row.guard_user_id is not None and str(shift_row.guard_user_id) == str(token.user_id)
+    if not own:
+        holds = (await db.execute(
+            text("SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id "
+                 "WHERE rp.role_id = :role_id AND p.code = 'handover:create'"),
+            {"role_id": token.role_id},
+        )).first()
+        if holds is None:
+            await db.rollback()
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Missing permission: handover:create - only the guard on this shift, or a supervisor, can write its "
+                "handover",
+            )
 
     site_id = shift_row.site_id
 

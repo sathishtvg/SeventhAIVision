@@ -15,6 +15,7 @@ import { Card } from '@/components/Card'
 import { VisitStanding } from '@/components/VisitorAuthCards'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
+import { useCan } from '@/hooks/useCan'
 
 // Status values from the DB: pending | arrived | departed | cancelled | expired
 const STATUS_COLOR: Record<string, string> = {
@@ -124,6 +125,7 @@ const LIST_FILTERS = [
 
 function ListTab() {
   const qc = useQueryClient()
+  const can = useCan()
   const [statusFilter, setStatusFilter] = useState<string | undefined>('arrived')
   const [refreshing, setRefreshing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -194,9 +196,12 @@ function ListTab() {
             </Pressable>
           ))}
         </ScrollView>
-        <Pressable style={styles.addBtn} onPress={() => setShowAdd(true)}>
-          <Ionicons name="person-add-outline" size={18} color={colors.primary} />
-        </Pressable>
+        {/* Pre-registering needs visitor:register (0169): guards and up, not operators or viewers. */}
+        {can('visitor:register') && (
+          <Pressable style={styles.addBtn} onPress={() => setShowAdd(true)}>
+            <Ionicons name="person-add-outline" size={18} color={colors.primary} />
+          </Pressable>
+        )}
       </View>
 
       {!isLoading && !visitorsPageFailed && visitorsTotal > 0 && (
