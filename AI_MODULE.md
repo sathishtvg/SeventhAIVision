@@ -20,7 +20,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | 2 | The learning engine; late and no-show warnings; overtime and fatigue forecast; AI Insights | Built |
 | 3 | False-alarm learning; device failure warnings | Built |
 | 4 | Roster suggestions; best patrol times; missed-patrol warnings; guard work trends | Built |
-| 5 | Incident helper; payroll check | Not yet |
+| 5 | Incident helper; payroll check | Built |
 | 6 | The assistant: free and hosted models, conversations, asking across the whole app | Not yet |
 | 7 | The assistant's actions behind Confirm cards; what it is never offered | Not yet |
 | 8 | Reading an IC; the guided new-user flow | Not yet |
@@ -178,6 +178,25 @@ two-proportion test (z of at least 1.64, 1.96 or 2.58 by sensitivity). **It is n
 is changed or kept against them, nothing per guard is stored in the model, and the guard is not told by the platform.
 Response times are not measured yet.
 
+### Incident helper (`incident_helper`)
+
+From the organisation's own incidents of the last **365 days**: the words of their titles and descriptions (word
+weights, TF-IDF), the severity they were given, and the last note written on them (what was done). A new incident is
+compared with each past one by those weights; the most similar are shown with what was done, and their severities,
+weighted by how similar they are, suggest a severity. It needs **20** incidents with words. Hourly, it speaks about
+incidents opened in the last **24 hours** whose recorded severity differs from the suggested one when **50%**, **60%**
+or **75%** of the similar incidents' weight agrees (High, Medium, Low). It also answers on request, for words not yet
+saved (`POST /ai/incident-helper`), for the incident form and the assistant. **No incident is changed.**
+
+### Payroll check (`payroll_check`)
+
+Each guard's own payslips in finalised payroll runs (the last **12**): the usual gross pay, regular hours, overtime
+hours and pay per hour worked (the median), and how much that guard's pay normally varies (the median absolute
+deviation). A payslip in a **draft** run is put forward when a figure is **2.5**, **3.5** or **4.5** deviations from the
+guard's own normal (High, Medium, Low), with at least **4** finalised payslips behind it. Seen only by the roles chosen
+(Admin and Manager can be). **Nothing in the payroll run or the payslip is changed**; once the run is finalised, the
+warning closes.
+
 ### Deciding
 
 On AI Insights a supervisor accepts or dismisses an open warning, with a note. Only an open warning can be decided,
@@ -214,6 +233,7 @@ sign-in.
 | `POST` | `/ai/insights/{suggestion_id}/decide` | `ai:insights:decide` |
 | `GET` | `/ai/learning` | `ai:insights:read` |
 | `POST` | `/ai/learning/{feature_key}/run` | `ai:configure` |
+| `POST` | `/ai/incident-helper` | `ai:insights:read` |
 | `GET` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 | `PUT` | `/platform/tenants/{tenant_id}/ai-license` | `license:manage` |
 

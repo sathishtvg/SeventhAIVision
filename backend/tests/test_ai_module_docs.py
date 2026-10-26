@@ -100,7 +100,7 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {**{str(n): "Built" for n in range(1, 5)}, **{str(n): "Not yet" for n in range(5, 10)}}
+    assert phases == {**{str(n): "Built" for n in range(1, 6)}, **{str(n): "Not yet" for n in range(6, 10)}}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
@@ -182,3 +182,16 @@ def test_the_numbers_of_the_roster_and_patrol_features_are_the_codes():
     assert "z of at least 1.64, 1.96 or 2.58 by sensitivity" in doc
     for module in (ai_patrol_miss,):
         assert set(module.FACTOR_TITLES) == set(module.FACTORS)
+
+
+def test_the_numbers_of_the_incident_and_payroll_features_are_the_codes():
+    from app.services import ai_incident_helper, ai_payroll_check
+    doc = " ".join(_doc().split())
+    assert ai_incident_helper.HISTORY.days == 365 and ai_incident_helper.MIN_INCIDENTS == 20
+    assert ai_incident_helper.OPEN_WINDOW.total_seconds() == 24 * 3600
+    assert ai_incident_helper.BASES == {"HIGH": 0.50, "MEDIUM": 0.60, "LOW": 0.75}
+    assert "**50%**, **60%** or **75%** of the similar incidents' weight agrees" in doc
+    assert "It needs **20** incidents with words" in doc
+    assert ai_payroll_check.HISTORY_SLIPS == 12 and ai_payroll_check.MIN_HISTORY == 4
+    assert ai_payroll_check.BASES == {"HIGH": 0.25, "MEDIUM": 0.35, "LOW": 0.45}
+    assert "**2.5**, **3.5** or **4.5** deviations" in doc and "at least **4** finalised payslips" in doc

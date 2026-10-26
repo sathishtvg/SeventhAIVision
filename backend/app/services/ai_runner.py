@@ -26,8 +26,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import (
-    ai_device_failure, ai_false_alarm, ai_guard_trends, ai_late_risk, ai_learning, ai_module, ai_overtime_fatigue,
-    ai_patrol_miss, ai_patrol_timing, ai_roster_fit, ai_store,
+    ai_device_failure, ai_false_alarm, ai_guard_trends, ai_incident_helper, ai_late_risk, ai_learning, ai_module,
+    ai_overtime_fatigue, ai_patrol_miss, ai_patrol_timing, ai_payroll_check, ai_roster_fit, ai_store,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,8 @@ FEATURES = {
     ai_patrol_timing.KEY: (ai_patrol_timing, ai_patrol_timing.BASES, 0.6),
     ai_patrol_miss.KEY: (ai_patrol_miss, None, 0.9),
     ai_guard_trends.KEY: (ai_guard_trends, ai_guard_trends.BASES, 0.4),
+    ai_incident_helper.KEY: (ai_incident_helper, ai_incident_helper.BASES, 0.95),
+    ai_payroll_check.KEY: (ai_payroll_check, ai_payroll_check.BASES, 0.8),
 }
 RETRAIN_AFTER = timedelta(hours=20)
 
