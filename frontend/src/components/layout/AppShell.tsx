@@ -14,6 +14,7 @@ import { useFocusModeStore } from '@/store/focusMode'
 import { pageEnterClass } from '@/motion'
 import { LiveAnnouncer, LoadFailureNotice } from '@/components/states'
 import { PageScene } from '@/components/scenes/PageScene'
+import { AssistantButton } from '@/components/ai/AssistantPanel'
 
 const PAGE_TITLES: Record<string, string> = {
   '/':                   'Dashboard',
@@ -207,6 +208,8 @@ export function AppShell() {
       <ToastContainer />
       <LoadFailureNotice />
       <LiveAnnouncer />
+      {/* The AI module (phase 6): the assistant's button, for the people it is switched on for. */}
+      <AssistantButton />
     </Box>
   )
 }

@@ -61,7 +61,7 @@ function Form({ tenantId, licence }: { tenantId: string; licence: AiLicense }) {
                                  slotProps={{ input: { 'aria-label': f.title } }} />}
               label={
                 <Box sx={{ pt: 0.75 }}>
-                  <Typography variant="body2">{f.title}{!f.ready && (
+                  <Typography variant="body2" component="div">{f.title}{!f.ready && (
                     <Chip size="small" variant="outlined" label="Coming" sx={{ ml: 1, height: 18 }} />)}</Typography>
                   <Typography variant="caption" color="text.secondary">{f.description}</Typography>
                 </Box>} />
