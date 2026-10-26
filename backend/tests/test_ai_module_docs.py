@@ -100,7 +100,7 @@ def test_the_features_table_is_the_catalogue():
 
 def test_the_state_of_each_phase_is_said_and_matches_what_is_ready():
     phases = dict(re.findall(r"^\| (\d) \| [^|]+\| (Built|Not yet) \|$", _doc(), re.M))
-    assert phases == {**{str(n): "Built" for n in range(1, 7)}, **{str(n): "Not yet" for n in range(7, 10)}}
+    assert phases == {**{str(n): "Built" for n in range(1, 8)}, **{str(n): "Not yet" for n in range(8, 10)}}
     for f in ai_module.FEATURES.values():
         assert f.ready == (phases[str(f.phase)] == "Built"), f.key
 
@@ -214,3 +214,12 @@ def test_the_assistant_is_as_the_document_says():
     lock = (REPO_ROOT / "backend" / "requirements-lock.txt").read_text(encoding="utf-8")
     assert "anthropic==1.17.0" in lock
     assert len(ai_functions.NEVER_OFFERED) == 11 and ai_assistant.LOCAL_HISTORY == 12
+
+
+def test_the_confirm_card_is_as_the_document_says():
+    from app.services import ai_actions, ai_functions
+    doc = " ".join(_doc().split())
+    assert ai_actions.LIFETIME.total_seconds() == 30 * 60 and "within **30 minutes** expires" in doc
+    assert ai_functions.never_offered("POST", "/api/v1/users", {"role_id": 5}) is None
+    assert ai_functions.never_offered("PATCH", "/api/v1/users/x", {"role_id": 5}) == "changing someone's role"
+    assert "`ai.assistant.action`" in doc

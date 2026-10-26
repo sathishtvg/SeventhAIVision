@@ -50,7 +50,8 @@ NEVER_OFFERED: tuple[tuple[frozenset, re.Pattern, str], ...] = tuple(
 FILE_FUNCTIONS = re.compile(
     r"(/pdf|/xlsx|/csv|/file|/image|/photo|/video|/frames|/download|/live|/stream|/hls|/overlay|/thumbnail"
     r"|/qr\.png|\.(jpg|jpeg|png|pdf|mp4|m3u8|csv|xlsx))(/|$)")
-#: In a body sent to change a person: changing a role stays manual even where the function is allowed.
+#: In a body sent to CHANGE someone (PUT/PATCH): changing a role stays manual even where the function is
+#: allowed. Creating a person with a role is not changing one.
 FORBIDDEN_BODY_FIELDS = {"role_id": "changing someone's role"}
 
 
@@ -59,7 +60,7 @@ def never_offered(method: str, path: str, body: dict | None = None) -> str | Non
     for methods, pattern, why in NEVER_OFFERED:
         if ("*" in methods or method.upper() in methods) and pattern.search(path):
             return why
-    if method.upper() != "GET" and isinstance(body, dict):
+    if method.upper() in ("PUT", "PATCH") and isinstance(body, dict):
         for name, why in FORBIDDEN_BODY_FIELDS.items():
             if name in body:
                 return why

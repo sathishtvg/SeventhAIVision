@@ -4,6 +4,9 @@
   GET  /api/v1/ai/assistant/conversations        ai:assistant:use   your own conversations
   GET  /api/v1/ai/assistant/conversations/{id}   ai:assistant:use   one of them, message by message
   GET  /api/v1/ai/assistant/usage                ai:assistant:use   this month's replies against the limit
+  GET  /api/v1/ai/assistant/actions              ai:assistant:use   the Confirm cards of one of your conversations
+  POST /api/v1/ai/assistant/actions/{id}/confirm ai:assistant:use   send the prepared change, as you, now
+  POST /api/v1/ai/assistant/actions/{id}/cancel  ai:assistant:use   drop it; nothing is changed
 
 ALL THREE GATES (services/ai_module): the licence includes `assistant`, the admin
 switched it on, and the caller's role is one the admin chose.
@@ -41,7 +44,7 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.rate_limit import caller_of
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
-from app.services import ai_chat, ai_functions, ai_module
+from app.services import ai_actions, ai_chat, ai_functions, ai_module
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ai/assistant", tags=["ai-assistant"])
@@ -129,7 +132,7 @@ async def chat(request: Request, body: ChatBody, db: AsyncSession = Depends(get_
     tenant_id, user_id = token.tenant_id, token.user_id
     system = ai_chat.system_prompt(
         name=who.get("full_name"), role=who.get("role") or "staff", organisation=who.get("organisation") or "the organisation",
-        locale=who.get("locale"), tz=tz.key, now=datetime.now(tz), can_change=False)
+        locale=who.get("locale"), tz=tz.key, now=datetime.now(tz), can_change=True)
 
     async def stream():
         provider = ai_chat.provider_for(provider_name)
@@ -159,13 +162,33 @@ async def chat(request: Request, body: ChatBody, db: AsyncSession = Depends(get_
             await s.commit()
         yield _sse("conversation", {"conversation_id": str(cid)})
 
-        tools = ai_chat.ToolBox(token=raw_token, held=held, client_ip=client_ip,
-                                mask_results=provider_name == "HOSTED")
         # Events are sent as the model produces them: a queue between the model's callbacks and this generator.
         queue: asyncio.Queue = asyncio.Queue()
 
         async def emit_now(kind: str, data: dict) -> None:
             await queue.put(_sse(kind, data))
+
+        async def on_change(f, path, path_values, query, change):
+            """A change becomes a Confirm card; nothing is sent until the person confirms it."""
+            missing = ai_actions.missing_fields(f, change)
+            if missing:
+                return json.dumps({"error": f"Not prepared yet. Ask the person for: {', '.join(missing)} "
+                                            "(one at a time), then call use_function again."}), True
+            async with AsyncSessionLocal() as s:
+                await s.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": tenant_id})
+                prepared = await ai_actions.prepare(s, conversation_id=cid, user_id=user_id, f=f, path=path,
+                                                    path_values=path_values, query=query, body=change)
+                await s.commit()
+            await emit_now("confirm", {"action": prepared})
+            note = ("A Confirm card now shows the person exactly these values. Nothing has changed yet: say in one "
+                    "sentence what will change and that they confirm it on the card.")
+            if prepared["temporary_password_made"]:
+                note += (" The app makes a temporary password and shows it to the person once after they confirm; "
+                         "never mention or invent a password.")
+            return json.dumps({"prepared": True, "action_id": prepared["id"], "note": note}), False
+
+        tools = ai_chat.ToolBox(token=raw_token, held=held, client_ip=client_ip,
+                                mask_results=provider_name == "HOSTED", on_change=on_change)
 
         async def run():
             try:
@@ -254,3 +277,61 @@ async def conversation(conversation_id: uuid.UUID, db: AsyncSession = Depends(ge
 async def assistant_usage(db: AsyncSession = Depends(get_db_with_tenant),
                           token: TokenPayload = Depends(get_token_payload)):
     return await usage(db, await _gate(db, token))
+
+
+# ── Confirm cards ────────────────────────────────────────────────────────────
+
+@router.get("/actions", dependencies=[_USE])
+async def actions(conversation_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                  token: TokenPayload = Depends(get_token_payload)):
+    """The Confirm cards of one of your own conversations."""
+    await _gate(db, token)
+    rows = (await db.execute(text(f"""
+        SELECT * FROM ai_pending_actions
+         WHERE conversation_id = :c AND user_id = CAST(:u AS uuid) AND tenant_id = {T} ORDER BY created_at
+    """), {"c": conversation_id, "u": token.user_id})).mappings().all()
+    return {"items": [ai_actions.card(dict(r)) for r in rows]}
+
+
+async def _decidable(db: AsyncSession, action_id: uuid.UUID, token: TokenPayload) -> dict:
+    row = await ai_actions.load_mine(db, action_id, token.user_id)
+    if row is None:
+        raise HTTPException(404, "Change not found")
+    if row["status"] != "PENDING":
+        raise HTTPException(409, f"This change is already {row['status'].lower()}.")
+    if row["expires_at"] <= datetime.now(row["expires_at"].tzinfo):
+        await ai_actions.expire(db, row)
+        await db.commit()
+        raise HTTPException(409, "This change expired without being confirmed; nothing was changed. Ask again.")
+    # The reply that prepared the card must be stored first, or the note of what happened would land before
+    # that reply in the history, which the hosted model refuses (append-only).
+    finished = (await db.execute(text("""
+        SELECT 1 FROM ai_messages WHERE conversation_id = :c AND role = 'assistant' AND created_at >= :at LIMIT 1
+    """), {"c": row["conversation_id"], "at": row["created_at"]})).first()
+    if finished is None:
+        raise HTTPException(409, "Wait for the assistant to finish its reply, then confirm.")
+    return row
+
+
+@router.post("/actions/{action_id}/confirm", dependencies=[_USE])
+async def confirm_action(action_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db_with_tenant),
+                         token: TokenPayload = Depends(get_token_payload)):
+    """Send the change, as you, now. Your permissions at this moment are the ones that count."""
+    await _gate(db, token)
+    row = await _decidable(db, action_id, token)
+    out = await ai_actions.confirm(
+        db, row, token=request.headers.get("Authorization", "").removeprefix("Bearer ").strip(),
+        client_ip=_client_ip(request), user_id=token.user_id, tenant_id=token.tenant_id,
+        held=await ai_functions.held_permissions(db, token.role_id))
+    await db.commit()
+    return out
+
+
+@router.post("/actions/{action_id}/cancel", dependencies=[_USE])
+async def cancel_action(action_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_tenant),
+                        token: TokenPayload = Depends(get_token_payload)):
+    await _gate(db, token)
+    row = await _decidable(db, action_id, token)
+    out = await ai_actions.cancel(db, row)
+    await db.commit()
+    return out

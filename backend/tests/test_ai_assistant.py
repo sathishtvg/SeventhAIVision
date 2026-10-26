@@ -166,7 +166,7 @@ async def test_it_reads_the_app_as_the_person_and_the_reply_streams(scripted):
 
 
 @pytest.mark.asyncio
-async def test_what_stays_manual_is_refused_and_changes_wait_for_the_next_release(scripted):
+async def test_an_unknown_function_is_refused_and_a_change_only_prepares_a_card(scripted):
     w = await _assistant_world()
     model = scripted([
         {"tool": "use_function", "args": {"operation_id": "payroll_finalize_anything"}},
@@ -177,7 +177,7 @@ async def test_what_stays_manual_is_refused_and_changes_wait_for_the_next_releas
         await _chat(c, w, ADMIN, "Finalise payroll and add a site")
     missing, write, no_param = model.results
     assert missing[1] and "No such function" in missing[0]
-    assert write[1] and "Nothing was changed" in write[0]
+    assert not write[1] and json.loads(write[0])["prepared"] is True, "a change becomes a Confirm card (phase 7)"
     assert no_param[1] and "path parameters: site_id" in no_param[0]
     sites = await _sql("SELECT count(*) AS n FROM sites WHERE tenant_id = :t", {"t": w["tenant"]})
     assert sites[0]["n"] == 2, "a site was created"

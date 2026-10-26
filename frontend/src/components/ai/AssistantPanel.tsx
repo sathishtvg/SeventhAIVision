@@ -16,10 +16,65 @@ import AddCommentIcon from '@mui/icons-material/AddComment'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { getAiStatus } from '@/api/ai'
-import { getAssistantUsage, getConversation, getConversations, streamChat } from '@/api/aiAssistant'
-import type { AssistantEvent } from '@/api/aiAssistant'
+import {
+  cancelAction, confirmAction, getActions, getAssistantUsage, getConversation, getConversations, streamChat,
+} from '@/api/aiAssistant'
+import type { AssistantAction, AssistantEvent } from '@/api/aiAssistant'
+import { apiError } from '@/api/platformDroneLicense'
 
-interface Line { role: 'user' | 'assistant'; text: string; pending?: boolean }
+interface Line { role: 'user' | 'assistant' | 'card'; text: string; pending?: boolean; action?: AssistantAction }
+
+const shown = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
+
+/** A change the assistant prepared: exactly what will be sent, and nothing until Confirm. */
+function ActionCard({ action, busy, onDecided }: { action: AssistantAction; busy: boolean; onDecided: (a: AssistantAction) => void }) {
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const decide = async (how: 'confirm' | 'cancel') => {
+    setWorking(true)
+    setError(null)
+    try {
+      onDecided(how === 'confirm' ? await confirmAction(action.id) : await cancelAction(action.id))
+    } catch (e) {
+      setError(apiError(e))
+    } finally {
+      setWorking(false)
+    }
+  }
+  const done = action.status !== 'PENDING'
+  return (
+    <Box sx={{ border: 1, borderColor: done ? 'divider' : 'primary.main', borderRadius: 2, p: 1.5, mb: 1 }}
+         data-testid={`assistant-card-${action.id}`}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{action.title}</Typography>
+      <Box component="dl" sx={{ m: 0, mt: 0.5, display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 1.5, rowGap: 0.25 }}>
+        {action.fields.map((f) => (
+          <Box key={f.name} sx={{ display: 'contents' }}>
+            <Typography component="dt" variant="caption" color="text.secondary">{f.name}</Typography>
+            <Typography component="dd" variant="caption" sx={{ m: 0, wordBreak: 'break-word' }}>{shown(f.value)}</Typography>
+          </Box>
+        ))}
+      </Box>
+      {action.temporary_password && (
+        <Alert severity="info" sx={{ mt: 1 }}>
+          Temporary password, shown this once: <b>{action.temporary_password}</b>. Give it to the person; it is not kept.
+        </Alert>
+      )}
+      {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
+      {done ? (
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 1 }}>
+          {action.status === 'CONFIRMED' ? 'Done.' : action.status === 'CANCELLED' ? 'Cancelled; nothing was changed.'
+            : action.status === 'EXPIRED' ? 'Expired; nothing was changed.'
+              : `Not done: ${shown((action.result as { answer?: unknown } | null)?.answer)}`}
+        </Typography>
+      ) : (
+        <Stack direction="row" sx={{ gap: 1, mt: 1 }}>
+          <Button size="small" variant="contained" disabled={busy || working} onClick={() => void decide('confirm')}>Confirm</Button>
+          <Button size="small" disabled={busy || working} onClick={() => void decide('cancel')}>Cancel</Button>
+        </Stack>
+      )}
+    </Box>
+  )
+}
 
 export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
@@ -40,9 +95,10 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
   const fresh = () => { setLines([]); setConversationId(null); setError(null); setStatus(null); setShowHistory(false) }
 
   const reopen = async (id: string) => {
-    const c = await getConversation(id)
+    const [c, actions] = await Promise.all([getConversation(id), getActions(id)])
     setConversationId(id)
-    setLines(c.messages.map((m) => ({ role: m.role, text: m.text })))
+    setLines([...c.messages.map((m) => ({ role: m.role, text: m.text })),
+              ...actions.filter((a) => a.status === 'PENDING').map((a) => ({ role: 'card' as const, text: '', action: a }))])
     setShowHistory(false)
     setError(null)
   }
@@ -57,6 +113,10 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
     const onEvent = (e: AssistantEvent) => {
       if (e.kind === 'conversation') setConversationId(e.data.conversation_id)
       else if (e.kind === 'status') setStatus(e.data.text)
+      else if (e.kind === 'confirm') {
+        // The card goes before the reply that is still being written about it.
+        setLines((l) => [...l.slice(0, -1), { role: 'card', text: '', action: e.data.action }, l[l.length - 1]])
+      }
       else if (e.kind === 'delta') {
         setStatus(null)
         setLines((l) => l.map((x, i) => (i === l.length - 1 ? { ...x, text: x.text + e.data.text } : x)))
@@ -108,10 +168,14 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
           {lines.length === 0 && (
             <Typography variant="body2" color="text.secondary">
               Ask about your work in the app: who is on shift tonight, open incidents at a site, a guard&apos;s overtime.
-              It reads with your own permissions and never changes anything by itself.
+              It works with your own permissions. When you ask for a change it shows you a card, and nothing
+              changes until you press Confirm.
             </Typography>
           )}
-          {lines.map((l, i) => (
+          {lines.map((l, i) => (l.role === 'card' && l.action ? (
+            <ActionCard key={l.action.id} action={l.action} busy={busy}
+                        onDecided={(a) => setLines((all) => all.map((x) => (x.action?.id === a.id ? { ...x, action: a } : x)))} />
+          ) : (
             <Box key={i} sx={{ display: 'flex', justifyContent: l.role === 'user' ? 'flex-end' : 'flex-start', mb: 1 }}>
               <Box sx={{ maxWidth: '85%', px: 1.5, py: 1, borderRadius: 2, whiteSpace: 'pre-wrap',
                          bgcolor: l.role === 'user' ? 'primary.main' : 'action.hover',
@@ -119,7 +183,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
                 <Typography variant="body2">{l.text || (l.pending ? '…' : '')}</Typography>
               </Box>
             </Box>
-          ))}
+          )))}
           {status && <Chip size="small" label={status} sx={{ mb: 1 }} data-testid="assistant-status" />}
           <div ref={end} />
         </Box>
