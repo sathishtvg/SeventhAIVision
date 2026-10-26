@@ -43,9 +43,9 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "23 October 2026"
-EDITION = "Edition 17"
-HEAD = "0167"
+GENERATED = "26 October 2026"
+EDITION = "Edition 18"
+HEAD = "0174"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -129,6 +129,8 @@ EDITIONS = [
      "Windows app 1.0.9. A real S3 bucket is reached with the pods' role (module 31)."],
     ["Edition 17", "23 October 2026", "0167",
      "Face registration, and each check-in selfie matched to it (module 06)."],
+    ["Edition 18", "26 October 2026", "0174",
+     "Module 32, the AI assistant and learning; overtime approval."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -313,13 +315,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("296", "DATABASE TABLES"), ("1,108", "API OPERATIONS"), ("114", "API MODULES"),
-        ("122", "WEB ROUTES"), ("57", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
+        ("307", "DATABASE TABLES"), ("1,142", "API OPERATIONS"), ("120", "API MODULES"),
+        ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("220", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("166", "MIGRATIONS"),
-        ("6,670", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("174", "MIGRATIONS"),
+        ("6,908", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -362,7 +364,8 @@ story += [
 ]
 story.append(data_table(
     ["Edition", "Date", "Platform at", "What it covers"],
-    EDITIONS, widths=[22 * mm, 30 * mm, 22 * mm, 96 * mm]))
+    # The text column takes what the others do not need, so the table grows slowly as editions are added.
+    EDITIONS, widths=[20 * mm, 27 * mm, 19 * mm, 104 * mm]))
 # Kept together: the table above gains a row with every edition, and a list
 # split across the page leaves a few of its lines alone on the next.
 story += [Spacer(1, 8), KeepTogether([
@@ -371,9 +374,9 @@ story += [Spacer(1, 8), KeepTogether([
     "<b>At a glance</b> — one page for the person who signs.",
     "<b>Part 1, modules 01 to 13</b> — the platform as the first edition described "
     "it, brought up to date.",
-    "<b>Part 2, modules 14 to 32</b> — what has been added since: patrols from a "
+    "<b>Part 2, modules 14 to 33</b> — what has been added since: patrols from a "
     "screen and from the air, security intelligence, the enterprise expansion — "
-    "from investigation to cases — the fleet, and footage review.",
+    "from investigation to cases — the fleet, footage review, AI.",
     "<b>Where AI is used, and where a person decides</b> — every place a model or a "
     "rule does work, what it is trusted with, and what stays a person's. "
     "<b>AI capabilities added or upgraded later are recorded here.</b>",
@@ -439,10 +442,10 @@ story.append(data_table(
     widths=[46 * mm, 48 * mm, 76 * mm]))
 story += [
     Spacer(1, 8),
-    Paragraph("The platform in thirty-two lines", S["h2"]),
+    Paragraph("The platform in thirty-three lines", S["h2"]),
 ]
 story += bullets([
-    "<b>Identity and access</b> — 8 roles, 220 permissions, SSO, 2FA, audit log, "
+    "<b>Identity and access</b> — 8 roles, 227 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
     "playback, privacy zones painted out of the picture, NVR.",
@@ -494,6 +497,8 @@ story += bullets([
     "person appears in the records.",
     "<b>Fleet</b> — vehicles, Traccar trackers, journeys played back, and geofences "
     "a wobbling fix does not trip.",
+    "<b>AI assistant and learning</b> — ask in your own language, changes wait on "
+    "Confirm; twelve features learn from the organisation's own work.",
     "<b>Platform console</b> — the vendor's own: customers, pricing, invoicing, "
     "errors, support sessions.",
 ])
@@ -529,12 +534,12 @@ story += module(
         "only, and the application's database role cannot empty a table.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 220 permission codes.",
+        "per tenant, across 227 permission codes.",
         "<b>Site scope.</b> A user can be held to particular sites; every list, "
         "search and record honours it.",
         "<b>The platform operator is not a customer's administrator.</b> Super "
         "Admin runs the platform from a tenant of its own and holds none of a "
-        "customer's day-to-day permissions (module 32).",
+        "customer's day-to-day permissions (module 33).",
         "<b>Single sign-on and SCIM</b> for automated user provisioning and "
         "de-provisioning from the customer's own directory.",
         "<b>Two-factor authentication (TOTP)</b> — required, not optional, for "
@@ -671,7 +676,11 @@ story += module(
         "<b>Guard shift preferences</b> — preferred shift type and off days, "
         "set on the guard's own record and honoured by the scheduler.",
         "<b>Draft rosters</b> reviewed and edited before publishing, with warnings "
-        "for unfilled posts, coverage shortfalls and missing supervisors.",
+        "for unfilled posts, coverage shortfalls and missing supervisors. Drafts are "
+        "listed until published or discarded.",
+        "<b>Planned from shift definitions</b> where a site has no patterns: its day "
+        "and night shifts and strengths, in the organisation's own time zone. Days "
+        "already past are skipped, and a roster that cannot be planned says why.",
         "<b>Schedules a whole calendar month in one action</b>, or any range up to "
         "62 days, with the rules configured per run rather than read out of the "
         "source.",
@@ -702,6 +711,10 @@ story += module(
         "<b>Escalation ordering</b> — sites with guards due and nobody reported "
         "sort to the top under a no-guard-on-site banner.",
         "<b>Correction queue</b> for supervisor-approved amendments.",
+        "<b>A shift left open is closed by the system</b> a set number of hours "
+        "after check-in (15 unless the admin sets otherwise), with a reminder to the "
+        "guard 15 minutes before; the record says the system closed it. A check-out "
+        "away from the site is allowed and flagged.",
     ])
 
 story += module(
@@ -717,6 +730,9 @@ story += module(
         "there is a record of who read what. Versioned, approved procedures are "
         "module 22.",
         "<b>Violations</b> raised against a guard, with review.",
+        "<b>What the phone offers a guard is what the server allows:</b> their own "
+        "patrols started and finished, a note on an incident, a visitor "
+        "pre-registered. A button the server would refuse is not shown.",
         "<b>GPS tracking</b> and geofence entry/exit events. The fleet's vehicles, "
         "trackers, journeys and geofences are module 30.",
         "<b>SOS panic button</b> — writes a critical occurrence entry, raises an "
@@ -831,6 +847,9 @@ story += module(
         "per tenant, holiday pay, and named allowances attached to a shift type.",
         "<b>Overtime cap.</b> Hours beyond the 72-hour monthly statutory limit are "
         "flagged on the run rather than paid silently.",
+        "<b>Overtime asked and approved.</b> A guard asks from the phone to work past "
+        "the shift; a supervisor approves, or refuses with a note. Only approved "
+        "overtime is paid. Payroll runs already made are not recalculated.",
         "<b>PWM grade and wage floors.</b> The grade is on the officer record "
         "across the seven-grade ladder, and pay is checked against a floor: the "
         "statutory one, held once for every customer, or a company's own, which "
@@ -855,7 +874,7 @@ story += module(
         "<b>Client portal</b> — the customer signs in and sees their own sites, "
         "incidents and invoices, and nothing else.",
         "<b>What the vendor charges the agency</b> — plans, module prices, "
-        "subscriptions and the vendor's own invoices — is module 32.",
+        "subscriptions and the vendor's own invoices — is module 33.",
     ])
 
 story += module(
@@ -1568,7 +1587,54 @@ story += module(
     tag="ADDED IN EDITION 15 · MIGRATIONS 0163 TO 0166")
 
 story += module(
-    "32", "Platform operations — the vendor's console",
+    "32", "The AI assistant and learning",
+    "An assistant that reads and works the whole application as the person using "
+    "it, and twelve features that learn from the organisation's own work. A licence "
+    "of its own: the AI suggests and prepares, and a person decides.",
+    [
+        "<b>Its own licence</b>, granted per organisation by the platform owner: the "
+        "features, until when, the assistant's model and a monthly reply limit.",
+        "<b>The organisation's admin</b> switches each feature on, and chooses the "
+        "roles, the sites and how sure a warning must be.",
+        "<b>The assistant</b> on the web, the desktop app and the phone. Ask in your "
+        "own language and it replies in it. It reaches the application's own "
+        "functions, about 1,100, with the person's own sign-in, so their "
+        "permissions, their sites and the audit log apply as when they click.",
+        "<b>A change waits on a Confirm card</b> showing exactly what will be sent. "
+        "Nothing changes until the person presses Confirm, and it is audited as "
+        "theirs. Passwords never pass through the model. Deleting an organisation, "
+        "finalising payroll, deleting evidence, changing a role and switching off "
+        "two-factor sign-in are never offered: they stay manual.",
+        "<b>Two models, chosen per organisation by the platform owner:</b> a free one "
+        "on the organisation's own server (Ollama), or Claude (Anthropic), paid per "
+        "reply and held to the limit. NRIC/FIN, passport and bank numbers reach the "
+        "hosted model shortened to their last four characters.",
+        "<b>A new staff member from their IC.</b> The front and back are read on the "
+        "platform's own server (RapidOCR) and the photos are not kept; the number is "
+        "checked against its check letter; the person corrects every field; the "
+        "assistant asks the rest one question at a time. The full number never "
+        "reaches either model.",
+        "<b>Learning from the organisation's own work:</b> late and no-show "
+        "warnings, overtime and fatigue, false alarms, device failures, roster "
+        "suggestions, missed patrols, best patrol times, guard work trends, an "
+        "incident helper and a payroll check. Simple models fitted to its own "
+        "records, refitted about once a day, each warning with the factors that "
+        "raised it, measured on history it did not see; the bar it must reach moves "
+        "with what people accept and dismiss.",
+        "<b>Conversations are kept</b> in the platform's own database; each person "
+        "reads only their own.",
+        "<i>By design:</i> nothing in the module acts on its own. A warning changes "
+        "no roster, alert or payslip, and the assistant saves nothing without "
+        "Confirm. <i>Documented limitations:</i> neither model runs on the "
+        "development system yet, so the assistant is tested with a scripted one; "
+        "the phone's assistant has not run on a device; the desktop app gains it "
+        "at its next build; the IC reader is tested on printed cards, not photos of "
+        "real ones; a feature warns only once there is enough history.",
+    ],
+    tag="ADDED IN EDITION 18 · MIGRATIONS 0170 TO 0174")
+
+story += module(
+    "33", "Platform operations — the vendor's console",
     "Seventh AI sells this to security companies, so the vendor and the "
     "customer are different businesses and do not share a login, a permission "
     "set or a bill.",
@@ -1729,32 +1795,44 @@ story.append(data_table(
          "a pose model looks for people within reach and a fast arm. Not yet "
          "measured",
          "Marks each one confirmed or not an altercation. No alert, no incident"],
+        ["The AI assistant (module 32)",
+         "<b>Edition 18:</b> a language model (Claude, or a free one on the "
+         "organisation's server) reads the application as the person and "
+         "writes the answer. A change becomes a Confirm card",
+         "Presses Confirm or Cancel. Nothing changes without it"],
+        ["Reading an IC (module 32)",
+         "Text recognition on the platform's own server; the photos are not kept",
+         "Checks and corrects every field"],
+        ["Learning from the organisation's work (module 32)",
+         "Simple models fitted to its own records; each warning names its "
+         "factors, and its bar moves with people's decisions",
+         "Accepts or dismisses each warning, and changes nothing by it"],
     ],
     widths=[44 * mm, 72 * mm, 54 * mm]))
-story += [
-    Spacer(1, 8),
+story += [Spacer(1, 8), KeepTogether([
     Paragraph("What the platform does not do today", S["h2"]),
-]
-story += bullets([
-    "<b>No language model that writes or answers.</b> Nothing is sent to an "
-    "outside AI service. A typed question is parsed, not understood; a summary is "
-    "a template, not prose. The one model that reads words, Footage Review's "
-    "SigLIP 2 (module 31), only ranks frames, inside the platform.",
+] + bullets([
+    "<b>A language model answers only in the assistant (module 32)</b>, and it "
+    "saves nothing by itself: a change waits for the person's Confirm. Only the "
+    "hosted model is outside the platform, and only where the platform owner "
+    "chose it. Elsewhere a typed question is parsed, not understood, and a summary "
+    "is a template; Footage Review's SigLIP 2 (module 31) only ranks frames.",
     "<b>Nothing decides for a person.</b> No part of the platform dispatches a "
     "guard, opens or closes an incident, flies a drone to an unplanned place, "
     "operates a door, admits or refuses a visitor, raises maintenance work, "
     "publishes a briefing, assigns a course, opens or closes a case, or changes "
     "a roster on a recommendation alone. No record of modules 17 to 28 is "
     "removed unless a person set the period for it.",
-    "<b>Nothing learns by itself.</b> A person's feedback on a situation is kept "
-    "as a dataset; no model or rule is trained on it automatically. A rule or a "
-    "weight changes only as a tenant setting or as released code.",
+    "<b>Learning is stated and bounded.</b> Only module 32's features learn: each "
+    "fits a simple model to the organisation's own records and moves its bar by "
+    "people's decisions, within stated limits. Elsewhere a rule or a weight "
+    "changes only as a tenant setting or as released code.",
     "<b>Nobody is accused by a rule.</b> A face that matched nobody is "
     "<i>unknown</i>. An unidentified person is not followed across cameras. A "
-    "prediction is a count over history, shown with the count under it. A "
+    "prediction says what it rests on: a count, or the factors behind it. A "
     "reading of a guard's work scores and ranks nobody, and being named in a "
     "case is not an accusation.",
-])
+]))]
 story.append(PageBreak())
 
 # ── In progress and planned ─────────────────────────────────────────────────
@@ -1822,14 +1900,13 @@ story += [
 ]
 story += bullets([
     "<b>A phone build and a device pass.</b> The phone parts of guard response, "
-    "handover notes, procedures and visitor authorisation — the four screens "
-    "added in edition 7: a person's own reading, published briefings, work "
-    "orders and case tasks given to them — and privacy zones drawn and deleted "
-    "on the phone (edition 9) are type-checked and tested against the server, "
+    "handover notes, procedures and visitor authorisation, the four screens "
+    "added in edition 7, privacy zones on the phone (edition 9) and the AI "
+    "assistant (edition 18) are type-checked and tested against the server, "
     "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.9 is built and carries every "
-    "screen of this edition. Its installer is not code-signed, so Windows warns "
+    "<b>A code-signing certificate.</b> Desktop 1.0.11 is built; the AI assistant "
+    "reaches it at the next build. Its installer is not code-signed, so Windows warns "
     "before it runs - and where Smart App Control is on, may refuse a newly "
     "built installer for some minutes before it allows it.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
@@ -1839,6 +1916,8 @@ story += bullets([
     "<b>Footage Review (module 31).</b> A first run on a real S3 bucket; "
     "Ultralytics' licence for SaaS; and footage of real altercations, to measure "
     "the check against.",
+    "<b>The assistant's models (module 32):</b> the free model's server, or a "
+    "Claude key.",
 ])
 story.append(PageBreak())
 
@@ -1849,20 +1928,19 @@ story.append(Spacer(1, 8))
 story.append(data_table(
     ["Application", "Platform", "Scale", "Notes"],
     [
-        ["Web console", "Browser (React)", "122 routes",
+        ["Web console", "Browser (React)", "124 routes",
          "The full platform. Every module, every administrative surface."],
-        ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "57 screens",
+        ["Mobile app", "iOS and Android (React Native, Expo SDK 57)", "59 screens",
          "Built for the guard on shift: check-in, patrol scanning, occurrence "
          "book, handover, post orders, incidents and the response to them, "
          "situations, drone events, SOS — and, for whoever is signed in, their own "
          "reading, published briefings, and the work orders and case tasks given "
-         "to them. Whoever manages privacy draws and deletes a camera's privacy "
-         "zones. Offline outbox queues actions taken with "
-         "no signal and sends them when it returns. Each screen has its own "
-         "entrance and loading."],
+         "to them, and the AI assistant. Whoever manages privacy draws and deletes "
+         "a camera's privacy zones. Offline outbox queues actions taken with "
+         "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.9, which installs over 1.0.8. It is a copy of the web "
+         "Version 1.0.11, which installs over 1.0.10. It is a copy of the web "
          "console taken when it is built: a fix to the web reaches it in the "
          "next build."],
     ],
@@ -1873,7 +1951,7 @@ story.append(Paragraph("How the web console moves, waits and fails", S["h1"]))
 story.append(rule(thickness=2))
 story.append(Spacer(1, 8))
 story.append(Paragraph(
-    "One set of rules for all 122 routes, kept in one place in the code, so the "
+    "One set of rules for all 124 routes, kept in one place in the code, so the "
     "same thing looks and reads the same wherever it happens. What each page has "
     "is listed page by page in <font face='Courier'>PAGE_AWARE_ANIMATION_MATRIX.md</font>, "
     "which is written from the pages and checked against them by a test.", S["body"]))
@@ -1988,9 +2066,9 @@ story += bullets([
     "<b>Drone Patrol has flown only in a simulator.</b>",
     "<b>Access control and alarm panels</b> have no real hardware behind them on "
     "the development system.",
-    "<b>No language model writes or answers:</b> questions are parsed by rules, "
-    "summaries are templates. Footage Review's search and altercation check are "
-    "<b>not yet measured</b> on real footage.",
+    "<b>The assistant has met only a scripted model;</b> its models do not run "
+    "here yet. Footage Review's search and altercation check are <b>not yet "
+    "measured</b> on real footage.",
     "<b>An unidentified person cannot be followed across cameras.</b> A plate "
     "can; a watchlist entry can.",
     "<b>Guards are not tracked continuously.</b> A guard's position is the last "
@@ -2043,10 +2121,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 166 "
-    "database migrations, 296 tables, 114 API modules serving 1,108 operations, 125 backend "
-    "services, 122 web routes and 57 phone screens, covered by 6,670 automated tests "
-    "(backend 4,141, repository inspection 1,371, web 767, phone 391). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 174 "
+    "database migrations, 307 tables, 120 API modules serving 1,142 operations, 147 backend "
+    "services, 124 web routes and 59 phone screens, covered by 6,908 automated tests "
+    "(backend 4,282, repository inspection 1,404, web 799, phone 423). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
