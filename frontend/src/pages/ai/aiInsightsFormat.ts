@@ -11,6 +11,8 @@ export function howSure(i: Pick<AiInsight, 'subject_type' | 'score'>): string {
     case 'camera_month': return `${pct}% of its alerts were false`
     case 'site_month': return `${pct} points more problems than patrols`
     case 'guard_trend': return 'A clear drop'
+    case 'incident': return `${pct}% of similar incidents agree`
+    case 'payslip': return `${(i.score * 10).toFixed(1)} deviations from usual`
     default: return `${pct}% chance`
   }
 }
@@ -20,6 +22,8 @@ export function barWords(l: Pick<AiLearning, 'key' | 'threshold'>): string {
   const pct = Math.round(l.threshold * 100)
   if (l.key === 'overtime_fatigue') return `Warns at ${pct}% of the monthly overtime limit`
   if (l.key === 'patrol_timing') return `Warns at a gap of ${pct} points between problems and patrols`
+  if (l.key === 'incident_helper') return `Speaks when ${pct}% of similar past incidents agree`
+  if (l.key === 'payroll_check') return `Warns at ${(l.threshold * 10).toFixed(1)} deviations from a guard's usual pay`
   if (l.key === 'guard_trends') return `Warns at a drop of 15 points or more that is unlikely to be chance (test ${(l.threshold * 10).toFixed(2)})`
   return `Warns at a ${pct}% chance or more`
 }

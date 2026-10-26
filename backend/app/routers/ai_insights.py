@@ -4,6 +4,7 @@
   POST /api/v1/ai/insights/{id}/decide         ai:insights:decide  accept or dismiss one
   GET  /api/v1/ai/learning                     ai:insights:read    what each feature has learned, and its bar
   POST /api/v1/ai/learning/{feature}/run       ai:configure        learn now and score now
+  POST /api/v1/ai/incident-helper              ai:insights:read    similar past incidents for some words
 
 WHO SEES A WARNING. All three gates (services/ai_module.usable_by): the licence,
 the admin's switch, and the caller's role among the feature's roles. A
@@ -30,13 +31,18 @@ from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
-from app.services import ai_module, ai_runner, ai_store
+from app.services import ai_incident_helper, ai_module, ai_runner, ai_store
 from app.services.audit import write_audit_log
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
 _READ = Depends(require_permission("ai:insights:read"))
 _DECIDE = Depends(require_permission("ai:insights:decide"))
 _CONFIGURE = Depends(require_permission("ai:configure"))
+
+
+class IncidentWords(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=10_000)
 
 
 class DecisionBody(BaseModel):
@@ -198,3 +204,18 @@ async def learn_now(feature_key: str, request: Request,
                           detail={"feature": feature_key, **result[feature_key]})
     await db.commit()
     return result[feature_key]
+
+
+@router.post("/incident-helper", dependencies=[_READ])
+async def incident_helper(body: IncidentWords, db: AsyncSession = Depends(get_db_with_tenant),
+                          token: TokenPayload = Depends(get_token_payload)):
+    """Similar past incidents, what was done, and the severity they suggest, for words not yet saved as an
+    incident. Read-only: nothing is stored."""
+    if ai_incident_helper.KEY not in await _my_features(db, token.role_id):
+        raise HTTPException(403, "The incident helper is not switched on for your role.")
+    model = await ai_store.latest_model(db, ai_incident_helper.KEY)
+    found = await ai_incident_helper.suggest(db, model, body.title, body.description, datetime.now(timezone.utc))
+    if found is None:
+        return {"ready": False, "note": model["note"] if model else "Not trained yet.", "severity": None,
+                "sure": 0.0, "similar": []}
+    return {"ready": True, "note": None, **found}
