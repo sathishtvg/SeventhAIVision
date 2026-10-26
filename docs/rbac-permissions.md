@@ -72,7 +72,7 @@
 | `dob:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | `guard:sos` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | `session:manage` | ✓ | ✓ | — | — | — | — | — |
-| `handover:create` | ✓ | ✓ | ✓ | — | ✓ | — | — |
+| `handover:create` | ✓ | ✓ | ✓ | — | — | — | — |
 | `handover:read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | `scan:create` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | **Visitor Management** | | | | | | | |
@@ -89,7 +89,9 @@
 
 **What a guard does from the phone (26 October 2026, migration 0169).** An audit of every call the phone makes
 against the guard role found buttons the server refused. Guards now start and finish their own patrol with
-`patrol:scan` (finishing someone else's needs `patrol:manage`), and the owner granted guards `handover:create`,
+`patrol:scan` (finishing someone else's needs `patrol:manage`), and write the handover of their own shift
+(someone else's needs `handover:create`, which guards do not hold: the occurrence book reads it as "may read and
+draft every guard's handover"; this table said guards held it, the database never did). The owner granted guards
 `incident:update` and the new `visitor:register` (pre-register a visitor and send the QR code; every
 `visitor:manage` role holds it too; deleting a visitor and the visitor form's fields stay with `visitor:manage`).
 Guards do not send emergency broadcasts (`broadcast:send`); the phone hides that form from them.

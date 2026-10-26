@@ -1,9 +1,11 @@
 """What a guard may do from the phone (migration 0169, the owner's choice on 26 October 2026).
 
 An audit of every call the phone makes against the guard role found buttons the server refused. The owner chose:
-guards write the shift handover (handover:create), add notes to an incident and move its status (incident:update),
-and pre-register a visitor and send the QR (the new, narrower visitor:register - not visitor:manage, so deleting a
-visitor and the visitor form's fields stay with supervisors). Guards do not send emergency broadcasts.
+guards write the handover of their own shift (without handover:create, which the occurrence book reads as "every
+guard's handover" - the first version granted it and two occurrence book tests caught that), add notes to an incident
+and move its status (incident:update), and pre-register a visitor and send the QR (the new, narrower visitor:register
+- not visitor:manage, so deleting a visitor and the visitor form's fields stay with supervisors). Guards do not send
+emergency broadcasts.
 """
 from __future__ import annotations
 
@@ -66,7 +68,8 @@ def _client(token: str) -> AsyncClient:
 @pytest.mark.asyncio
 async def test_who_holds_what_after_0169():
     held = await _holders()
-    assert {"handover:create", "incident:update", "visitor:register"} <= {c for c, roles in held.items() if 5 in roles}
+    assert {"incident:update", "visitor:register"} <= {c for c, roles in held.items() if 5 in roles}
+    assert 5 not in held.get("handover:create", set()), "the occurrence book reads it as every guard's handover"
     assert 5 not in held.get("visitor:manage", set()), "guards do not delete visitors or edit the visitor form"
     assert 5 not in held.get("broadcast:send", set()), "guards do not send emergency broadcasts"
     assert held["visitor:register"] == held["visitor:manage"] | {5}, "everyone who could pre-register still can"
@@ -104,15 +107,21 @@ async def test_a_guard_adds_a_note_to_an_incident_and_moves_its_status_and_a_vie
 
 
 @pytest.mark.asyncio
-async def test_a_guard_writes_the_handover_at_the_end_of_their_shift():
+async def test_a_guard_writes_the_handover_of_their_own_shift_and_not_of_anyone_elses():
     org = await _seed()
+    shifts = {}
     async with _client(org["tokens"]["admin"]) as a:
-        r = await a.post("/api/v1/shifts", json={
-            "guard_user_id": org["ids"]["guard"], "site_id": org["site"],
-            "scheduled_start": "2026-10-26T00:00:00+00:00", "scheduled_end": "2026-10-26T12:00:00+00:00",
-        })
-        assert r.status_code == 200, r.text
-        shift_id = r.json()["id"]
+        for who in ("guard", "operator"):
+            r = await a.post("/api/v1/shifts", json={
+                "guard_user_id": org["ids"][who], "site_id": org["site"],
+                "scheduled_start": "2026-10-26T00:00:00+00:00", "scheduled_end": "2026-10-26T12:00:00+00:00",
+            })
+            assert r.status_code == 200, r.text
+            shifts[who] = r.json()["id"]
     async with _client(org["tokens"]["guard"]) as g:
-        r = await g.post(f"/api/v1/shifts/{shift_id}/handover", params={"outgoing_notes": "All quiet."})
+        r = await g.post(f"/api/v1/shifts/{shifts['guard']}/handover", params={"outgoing_notes": "All quiet."})
         assert r.status_code == 200, r.text
+        r = await g.post(f"/api/v1/shifts/{shifts['operator']}/handover")
+        assert r.status_code == 403 and "handover:create" in r.json()["detail"]
+    async with _client(org["tokens"]["admin"]) as a:
+        assert (await a.post(f"/api/v1/shifts/{shifts['operator']}/handover")).status_code == 200

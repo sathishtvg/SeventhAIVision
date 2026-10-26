@@ -1,9 +1,11 @@
-"""What a guard may do from the phone: handover notes, incident notes and status, visitor pre-registration.
+"""What a guard may do from the phone: incident notes and status, visitor pre-registration.
 
 Owner's decision, 26 October 2026, after an audit of every call the phone makes against the guard role (role 5):
 the phone showed guards four buttons the server refused. The owner chose to ALLOW three and hide the fourth:
 
-* handover:create (POST /shifts/{id}/handover, the end-of-shift handover notes) - granted to guards.
+* the end-of-shift handover (POST /shifts/{id}/handover): NOT by granting handover:create - the occurrence book reads
+  that permission as "may read and draft every guard's handover" (routers/occurrence_book.py). The guard on a shift
+  writes its handover instead (routers/shifts.py); anyone else's still needs handover:create. No change here.
 * incident:update (notes on an incident, its status, and the bulk status change) - granted to guards.
 * visitor:register - NEW, narrower than visitor:manage: pre-register a visitor and send them their QR code. Granted to
   guards and to every role that already holds visitor:manage, so nobody loses anything. Deleting a visitor and the
@@ -22,7 +24,7 @@ branch_labels = None
 depends_on = None
 
 GUARD = 5
-GUARD_GRANTS = ("handover:create", "incident:update", "visitor:register")
+GUARD_GRANTS = ("incident:update", "visitor:register")
 
 
 def upgrade() -> None:
@@ -53,7 +55,7 @@ def downgrade() -> None:
     op.execute(f"""
         DELETE FROM role_permissions
          WHERE role_id = {GUARD}
-           AND permission_id IN (SELECT id FROM permissions WHERE code IN ('handover:create', 'incident:update'))
+           AND permission_id IN (SELECT id FROM permissions WHERE code = 'incident:update')
     """)
     op.execute("DELETE FROM role_permissions WHERE permission_id IN "
                "(SELECT id FROM permissions WHERE code = 'visitor:register')")

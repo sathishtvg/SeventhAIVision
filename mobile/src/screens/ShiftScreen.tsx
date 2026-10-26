@@ -20,6 +20,7 @@ import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
 import { ErrorState, ListSkeleton } from '@/components/states'
 import { useCan } from '@/hooks/useCan'
+import { useAuthStore } from '@/store/auth'
 
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
 
@@ -32,7 +33,9 @@ const STATUS_COLOR: Record<string, string> = {
 export function ShiftScreen() {
   const navigation = useNavigation<NavProp>()
   const qc = useQueryClient()
-  const can = useCan() // the handover report needs handover:create (guards since 0169)
+  // The guard on a shift writes its handover; anyone else's needs handover:create (server: routers/shifts.py).
+  const can = useCan()
+  const userId = useAuthStore((st) => st.user?.id)
   const [handoverShiftId, setHandoverShiftId] = useState<string | null>(null)
   // Overtime for a shift on now, or one that ended in the last 48 hours (design 2026-10-25, section 3).
   const [overtimeShiftId, setOvertimeShiftId] = useState<string | null>(null)
@@ -446,7 +449,7 @@ export function ShiftScreen() {
                     <Text style={styles.actionBtnText}>DOB Log</Text>
                   </Pressable>
 
-                  {can('handover:create') && (
+                  {(s.guard_user_id === userId || can('handover:create')) && (
                   <Pressable
                     style={[styles.actionBtn, { backgroundColor: colors.secondary }]}
                     onPress={() => { setHandoverShiftId(s.id); setHandoverNotes(''); setHandoverResult(null) }}

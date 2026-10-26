@@ -386,8 +386,9 @@ const ROLE_PERMISSIONS: Record<number, string[]> = {
     'visitorauth:read', 'visitorauth:write', // Visitor authorisation (0149): asks at the gate; records the ID seen
     'workforce:own', // Workforce readings (0154): their own reading, nobody else's
     'face:register_self', // Staff faces (0167): their own, once, on the phone
-    // What a guard does from the phone (0169, the owner's choice 26 Oct 2026)
-    'handover:create', 'incident:update', 'visitor:register',
+    // What a guard does from the phone (0169, the owner's choice 26 Oct 2026). Not handover:create: a guard writes
+    // the handover of their own shift without it (the occurrence book reads it as "every guard's handover").
+    'incident:update', 'visitor:register',
   ],
   6: [ // viewer
     'camera:read',

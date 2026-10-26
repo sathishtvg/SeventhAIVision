@@ -21,8 +21,10 @@ test('a note or a status change on an incident needs incident:update', () => {
   expect(src).toMatch(/can\('incident:update'\) && \(\s*<Card style=\{styles\.gap\}>\s*<Text style=\{styles\.sectionTitle\}>Add Note/)
 })
 
-test('the shift handover needs handover:create', () => {
-  expect(screen('ShiftScreen')).toMatch(/can\('handover:create'\) && \(\s*<Pressable[\s\S]{0,600}?>Handover</)
+test("the shift handover is the guard's own, or needs handover:create", () => {
+  expect(screen('ShiftScreen')).toMatch(
+    /\(s\.guard_user_id === userId \|\| can\('handover:create'\)\) && \(\s*<Pressable[\s\S]{0,600}?>Handover</,
+  )
 })
 
 test('the emergency Send tab is only for the roles that send broadcasts', () => {
