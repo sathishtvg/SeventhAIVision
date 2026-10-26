@@ -81,7 +81,7 @@ async def _zone(db: AsyncSession) -> ZoneInfo:
         return ZoneInfo("Asia/Singapore")
 
 
-async def load_shifts(db: AsyncSession, now: datetime) -> list[dict]:
+async def load_shifts(db: AsyncSession, now: datetime, ahead: timedelta = AHEAD) -> list[dict]:
     """The organisation's shifts from 180 days ago to 36 hours ahead, oldest first, with what happened."""
     rows = (await db.execute(text("""
         SELECT s.id, s.guard_user_id, s.site_id, s.scheduled_start, s.scheduled_end, s.actual_start,
@@ -95,7 +95,7 @@ async def load_shifts(db: AsyncSession, now: datetime) -> list[dict]:
            AND s.scheduled_start >= :since AND s.scheduled_start < :until
            AND s.status IN ('scheduled', 'active', 'completed')
          ORDER BY s.scheduled_start, s.id
-    """), {"since": now - HISTORY, "until": now + AHEAD})).mappings().all()
+    """), {"since": now - HISTORY, "until": now + ahead})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -111,36 +111,41 @@ def outcome_of(s: dict, now: datetime) -> bool | None:
     return None
 
 
-def build_rows(shifts: list[dict], tz: ZoneInfo, now: datetime) -> list[dict]:
-    """Each shift with its factors (from what came before it) and, when known, what happened."""
-    known = [outcome_of(s, now) for s in shifts]
-    finished = [k for k, s in zip(known, shifts) if k is not None and s["scheduled_start"] < now]
-    base = (sum(finished) + 1) / (len(finished) + 2)  # the organisation's own rate, never 0 or 1
-    by_guard: dict = defaultdict(lambda: deque(maxlen=GUARD_WINDOW))
-    guard_total: dict = defaultdict(int)
-    guard_last_end: dict = {}
-    guard_hours: dict = defaultdict(deque)  # (start, hours) of recent shifts
-    site_hist: dict = defaultdict(deque)    # (start, late) of finished shifts
-    out = []
-    for s, k in zip(shifts, known):
-        start, g, site = s["scheduled_start"], s["guard_user_id"], s["site_id"]
-        hist = by_guard[g]
+class History:
+    """What is known of every guard and site at a moment, built shift by shift, oldest first.
+
+    values_for() gives the factors of a shift starting then for any guard, the
+    one rostered or another (roster suggestions ask that); add() records a shift
+    once it is behind the moment being looked at.
+    """
+
+    def __init__(self, base: float, tz: ZoneInfo):
+        self.base, self.tz = base, tz
+        self.by_guard: dict = defaultdict(lambda: deque(maxlen=GUARD_WINDOW))
+        self.guard_total: dict = defaultdict(int)
+        self.guard_last_end: dict = {}
+        self.guard_hours: dict = defaultdict(deque)  # (start, hours) of recent shifts
+        self.site_hist: dict = defaultdict(deque)    # (start, late) of finished shifts
+
+    def values_for(self, g, site, start: datetime) -> tuple[dict, dict]:
+        hist = self.by_guard[g]
         n, late = len(hist), sum(hist)
-        hrs = guard_hours[g]
+        hrs = self.guard_hours[g]
         while hrs and hrs[0][0] < start - timedelta(days=7):
             hrs.popleft()
-        sh = site_hist[site]
+        sh = self.site_hist[site]
         while sh and sh[0][0] < start - SITE_WINDOW:
             sh.popleft()
         site_n, site_late = len(sh), sum(x for _, x in sh)
-        local = start.astimezone(tz)
-        rest = (start - guard_last_end[g]).total_seconds() / 3600 if g in guard_last_end else 48.0
-        e = {"guard_n": n, "guard_late": late, "guard_total": guard_total[g],
-             "site_rate": (site_late + PRIOR_WEIGHT * base) / (site_n + PRIOR_WEIGHT),
+        local = start.astimezone(self.tz)
+        last_end = self.guard_last_end.get(g)
+        rest = (start - last_end).total_seconds() / 3600 if last_end is not None else 48.0
+        e = {"guard_n": n, "guard_late": late, "guard_total": self.guard_total[g],
+             "site_rate": (site_late + PRIOR_WEIGHT * self.base) / (site_n + PRIOR_WEIGHT),
              "hours_7d": sum(h for _, h in hrs), "rest": max(0.0, min(48.0, rest))}
         values = {
-            "guard_late_rate": (late + PRIOR_WEIGHT * base) / (n + PRIOR_WEIGHT),
-            "guard_experience": math.log1p(guard_total[g]),
+            "guard_late_rate": (late + PRIOR_WEIGHT * self.base) / (n + PRIOR_WEIGHT),
+            "guard_experience": math.log1p(self.guard_total[g]),
             "site_late_rate": e["site_rate"],
             "night": 1.0 if local.hour >= 19 or local.hour < 6 else 0.0,
             "early": 1.0 if 5 <= local.hour < 8 else 0.0,
@@ -148,16 +153,41 @@ def build_rows(shifts: list[dict], tz: ZoneInfo, now: datetime) -> list[dict]:
             "hours_last_7d": e["hours_7d"],
             "rest_hours": e["rest"],
         }
-        out.append({"shift": s, "values": values, "evidence": e, "outcome": k,
-                    "finished": k is not None and start < now})
-        # What this shift adds to the history of the ones after it.
-        hours = (s["scheduled_end"] - start).total_seconds() / 3600
-        hrs.append((start, hours))
-        guard_last_end[g] = max(guard_last_end.get(g, s["scheduled_end"]), s["scheduled_end"])
-        if k is not None and start < now:
-            hist.append(1 if k else 0)
-            guard_total[g] += 1
-            sh.append((start, 1 if k else 0))
+        return values, e
+
+    def add(self, s: dict, finished_outcome: bool | None) -> None:
+        """What a shift adds to the history of the ones after it. Its outcome only once it is finished."""
+        g, start = s["guard_user_id"], s["scheduled_start"]
+        self.guard_hours[g].append((start, (s["scheduled_end"] - start).total_seconds() / 3600))
+        self.guard_last_end[g] = max(self.guard_last_end.get(g, s["scheduled_end"]), s["scheduled_end"])
+        if finished_outcome is not None:
+            self.by_guard[g].append(1 if finished_outcome else 0)
+            self.guard_total[g] += 1
+            self.site_hist[s["site_id"]].append((start, 1 if finished_outcome else 0))
+
+
+def base_rate(shifts: list[dict], now: datetime) -> float:
+    """The organisation's own rate of late or missed shifts, never 0 or 1."""
+    finished = [k for k in (outcome_of(s, now) for s in shifts if s["scheduled_start"] < now) if k is not None]
+    return (sum(finished) + 1) / (len(finished) + 2)
+
+
+def build_rows(shifts: list[dict], tz: ZoneInfo, now: datetime, *, on_each=None) -> list[dict]:
+    """Each shift with its factors (from what came before it) and, when known, what happened.
+
+    `on_each(shift, history)` is called for each shift before it is added, so a
+    caller can ask the history about other guards at that moment.
+    """
+    history = History(base_rate(shifts, now), tz)
+    out = []
+    for s in shifts:
+        k = outcome_of(s, now)
+        finished = k is not None and s["scheduled_start"] < now
+        values, e = history.values_for(s["guard_user_id"], s["site_id"], s["scheduled_start"])
+        if on_each is not None:
+            on_each(s, history)
+        out.append({"shift": s, "values": values, "evidence": e, "outcome": k, "finished": finished})
+        history.add(s, k if finished else None)
     return out
 
 
@@ -167,12 +197,12 @@ def reasons_of(parts: list[dict], evidence: dict) -> list[dict]:
             for p in parts if p["push"] > 0.05][:3]
 
 
-async def train(db: AsyncSession, *, sensitivity: str, now: datetime) -> dict:
+async def train(db: AsyncSession, *, sensitivity: str, now: datetime, key: str = KEY) -> dict:
     tz = await _zone(db)
     rows = [r for r in build_rows(await load_shifts(db, now), tz, now) if r["finished"]]
     y = np.array([1 if r["outcome"] else 0 for r in rows], dtype=float)
     late, on_time = int(y.sum()), int(len(y) - y.sum())
-    threshold, why = ai_learning.threshold_for(sensitivity, await ai_store.recent_decisions(db, KEY))
+    threshold, why = ai_learning.threshold_for(sensitivity, await ai_store.recent_decisions(db, key))
     if len(rows) < MIN_ROWS or late < MIN_LATE or on_time < MIN_ON_TIME:
         need = []
         if len(rows) < MIN_ROWS:
@@ -182,14 +212,14 @@ async def train(db: AsyncSession, *, sensitivity: str, now: datetime) -> dict:
         if on_time < MIN_ON_TIME:
             need.append(f"{MIN_ON_TIME - on_time} more shifts that started on time")
         return await ai_store.save_model(
-            db, KEY, status="LEARNING", rows_used=len(rows), positives=late, fitted=None,
+            db, key, status="LEARNING", rows_used=len(rows), positives=late, fitted=None,
             metrics={"rows": len(rows), "positives": late}, threshold=threshold, threshold_reason=why,
             note="Still learning: it needs " + ", ".join(need) + ".")
     X = np.array([[r["values"][f] for f in FACTORS] for r in rows], dtype=float)
     fitted = ai_learning.fit_logistic(FACTORS, X, y)
     metrics = ai_learning.evaluate(FACTORS, X, y)
     return await ai_store.save_model(
-        db, KEY, status="READY", rows_used=len(rows), positives=late, fitted=fitted.as_json(),
+        db, key, status="READY", rows_used=len(rows), positives=late, fitted=fitted.as_json(),
         metrics=metrics, threshold=threshold, threshold_reason=why,
         note=f"Learned from {len(rows)} finished shifts, {late} of them late or missed.")
 
