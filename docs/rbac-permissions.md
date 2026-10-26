@@ -45,7 +45,7 @@
 | **Incidents** | | | | | | | |
 | `incident:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `incident:create` | ✓ | ✓ | ✓ | ✓ | — | — | — |
-| `incident:update` | ✓ | ✓ | ✓ | ✓ | — | — | — |
+| `incident:update` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | `incident:resolve` | ✓ | ✓ | ✓ | ✓ | — | — | — |
 | `incident:assign` | ✓ | ✓ | ✓ | — | — | — | — |
 | `incident:dispatch` | ✓ | ✓ | ✓ | ✓ | — | — | — |
@@ -77,6 +77,7 @@
 | `scan:create` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | **Visitor Management** | | | | | | | |
 | `visitor:manage` | ✓ | ✓ | ✓ | — | — | — | — |
+| `visitor:register` | ✓ | ✓ | ✓ | — | ✓ | — | — |
 | `visitor:read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | `visitor:checkin` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | **Privacy & Compliance** | | | | | | | |
@@ -85,6 +86,13 @@
 | `pdpa:read` | ✓ | ✓ | ✓ | — | — | — | — |
 | **SLA** | | | | | | | |
 | `sla:manage` | ✓ | ✓ | — | — | — | — | — |
+
+**What a guard does from the phone (26 October 2026, migration 0169).** An audit of every call the phone makes
+against the guard role found buttons the server refused. Guards now start and finish their own patrol with
+`patrol:scan` (finishing someone else's needs `patrol:manage`), and the owner granted guards `handover:create`,
+`incident:update` and the new `visitor:register` (pre-register a visitor and send the QR code; every
+`visitor:manage` role holds it too; deleting a visitor and the visitor form's fields stay with `visitor:manage`).
+Guards do not send emergency broadcasts (`broadcast:send`); the phone hides that form from them.
 
 ---
 

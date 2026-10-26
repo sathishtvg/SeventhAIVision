@@ -19,6 +19,7 @@ import { useShiftCheckIn } from '@/hooks/useShiftCheckIn'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { PatrolStackParamList } from '@/navigation'
 import { ErrorState, ListSkeleton } from '@/components/states'
+import { useCan } from '@/hooks/useCan'
 
 type NavProp = NativeStackNavigationProp<PatrolStackParamList>
 
@@ -31,6 +32,7 @@ const STATUS_COLOR: Record<string, string> = {
 export function ShiftScreen() {
   const navigation = useNavigation<NavProp>()
   const qc = useQueryClient()
+  const can = useCan() // the handover report needs handover:create (guards since 0169)
   const [handoverShiftId, setHandoverShiftId] = useState<string | null>(null)
   // Overtime for a shift on now, or one that ended in the last 48 hours (design 2026-10-25, section 3).
   const [overtimeShiftId, setOvertimeShiftId] = useState<string | null>(null)
@@ -444,6 +446,7 @@ export function ShiftScreen() {
                     <Text style={styles.actionBtnText}>DOB Log</Text>
                   </Pressable>
 
+                  {can('handover:create') && (
                   <Pressable
                     style={[styles.actionBtn, { backgroundColor: colors.secondary }]}
                     onPress={() => { setHandoverShiftId(s.id); setHandoverNotes(''); setHandoverResult(null) }}
@@ -451,6 +454,7 @@ export function ShiftScreen() {
                     <Ionicons name="clipboard" size={14} color="#fff" />
                     <Text style={styles.actionBtnText}>Handover</Text>
                   </Pressable>
+                  )}
 
                   <Pressable
                     style={[styles.actionBtn, { backgroundColor: '#B8860B' }]}
