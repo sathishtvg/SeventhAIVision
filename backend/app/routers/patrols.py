@@ -137,8 +137,22 @@ async def add_checkpoint(
 
 
 # ── Patrol Sessions ───────────────────────────────────────────────────────────
+#
+# FIXED 26 October 2026 (owner's phone test: "Failed to start patrol session", 403): starting and finishing a patrol
+# required patrol:manage, which no guard holds, so a guard could scan checkpoints (patrol:scan) but never start the
+# patrol to scan them in. The person walking the patrol needs patrol:scan; a patrol is always started for the person
+# starting it, and finishing someone else's patrol still needs patrol:manage. Same rule as check-in (shifts.py,
+# _shift_actor, 23 October 2026).
 
-@router.post("/routes/{route_id}/sessions", dependencies=[Depends(require_permission("patrol:manage"))])
+async def _holds(db: AsyncSession, role_id: int, code: str) -> bool:
+    return (await db.execute(
+        text("SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id "
+             "WHERE rp.role_id = :role_id AND p.code = :code"),
+        {"role_id": role_id, "code": code},
+    )).first() is not None
+
+
+@router.post("/routes/{route_id}/sessions", dependencies=[Depends(require_permission("patrol:scan"))])
 async def start_session(
     route_id: str,
     db: AsyncSession = Depends(get_db_with_tenant),
@@ -168,12 +182,22 @@ async def start_session(
     return dict(row._mapping)
 
 
-@router.post("/sessions/{session_id}/complete", dependencies=[Depends(require_permission("patrol:manage"))])
+@router.post("/sessions/{session_id}/complete", dependencies=[Depends(require_permission("patrol:scan"))])
 async def complete_session(
     session_id: str,
     db: AsyncSession = Depends(get_db_with_tenant),
     token: TokenPayload = Depends(get_token_payload),
 ):
+    owner = (await db.execute(
+        text("SELECT guard_user_id FROM patrol_sessions WHERE id = :sid"), {"sid": session_id},
+    )).first()
+    if (owner is not None and str(owner.guard_user_id) != str(token.user_id)
+            and not await _holds(db, token.role_id, "patrol:manage")):
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Missing permission: patrol:manage - only the guard on this patrol, or a supervisor, can finish it",
+        )
     result = await db.execute(
         text(
             """
