@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', padding: spacing.lg,
   },
   resultCard: {
-    backgroundColor: colors.surface, borderRadius: radius.lg,
+    backgroundColor: colors.sheet, borderRadius: radius.lg,
     padding: spacing.lg, alignItems: 'center', gap: spacing.xs, width: '100%',
   },
   resultScore: { color: colors.text, fontSize: 40, fontWeight: '800' },

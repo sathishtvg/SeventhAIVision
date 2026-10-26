@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   overlayCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.sheet,
     borderRadius: radius.md,
     padding: spacing.lg,
     width: '88%',

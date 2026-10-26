@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.sheet,
     borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
     padding: spacing.lg, gap: spacing.sm,
     maxHeight: '90%',

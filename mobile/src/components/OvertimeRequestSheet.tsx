@@ -80,7 +80,7 @@ export function OvertimeRequestSheet({ shiftId, onClose }: { shiftId: string | n
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
-    backgroundColor: colors.surface, padding: spacing.lg, borderTopLeftRadius: radius.lg,
+    backgroundColor: colors.sheet, padding: spacing.lg, borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg, gap: spacing.sm,
   },
   title: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
