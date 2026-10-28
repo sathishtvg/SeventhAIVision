@@ -43,8 +43,8 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "26 October 2026"
-EDITION = "Edition 18"
+GENERATED = "28 October 2026"
+EDITION = "Edition 19"
 HEAD = "0174"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -131,6 +131,8 @@ EDITIONS = [
      "Face registration, and each check-in selfie matched to it (module 06)."],
     ["Edition 18", "26 October 2026", "0174",
      "Module 32, the AI assistant and learning; overtime approval."],
+    ["Edition 19", "28 October 2026", "0174",
+     "The small free model runs, helped (module 32); Windows 1.0.12."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -182,6 +184,13 @@ S = {
     "cellb": ParagraphStyle(
         "cellb", parent=styles["Normal"], fontName="Helvetica-Bold",
         fontSize=8.5, leading=12, textColor=INK),
+    # The edition history: a row is added with every edition, so it is set smaller than the other tables.
+    "cells": ParagraphStyle(
+        "cells", parent=styles["Normal"], fontName="Helvetica",
+        fontSize=7.8, leading=10.4, textColor=INK_MID),
+    "cellsb": ParagraphStyle(
+        "cellsb", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=7.8, leading=10.4, textColor=INK),
     "num": ParagraphStyle(
         "num", parent=styles["Normal"], fontName="Helvetica-Bold",
         fontSize=17, leading=20, textColor=ACCENT, alignment=TA_CENTER),
@@ -247,11 +256,12 @@ def stat_strip(pairs):
     return t
 
 
-def data_table(header, rows, widths):
-    data = [[Paragraph(h, S["cellb"]) for h in header]]
+def data_table(header, rows, widths, small=False):
+    data = [[Paragraph(h, S["cellsb" if small else "cellb"]) for h in header]]
     for r in rows:
-        data.append([Paragraph(str(c), S["cell"]) for c in r])
+        data.append([Paragraph(str(c), S["cells" if small else "cell"]) for c in r])
     t = Table(data, colWidths=widths, repeatRows=1)
+    pad = 3.5 if small else 5
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BAND),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, RULE),
@@ -259,8 +269,8 @@ def data_table(header, rows, widths):
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 7),
         ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), pad),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
         ("BOX", (0, 0), (-1, -1), 0.5, RULE),
     ]))
     return t
@@ -321,7 +331,7 @@ story += [
     Spacer(1, 6),
     stat_strip([
         ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("174", "MIGRATIONS"),
-        ("6,908", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,925", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -365,7 +375,7 @@ story += [
 story.append(data_table(
     ["Edition", "Date", "Platform at", "What it covers"],
     # The text column takes what the others do not need, so the table grows slowly as editions are added.
-    EDITIONS, widths=[20 * mm, 27 * mm, 19 * mm, 104 * mm]))
+    EDITIONS, widths=[20 * mm, 27 * mm, 19 * mm, 104 * mm], small=True))
 # Kept together: the table above gains a row with every edition, and a list
 # split across the page leaves a few of its lines alone on the next.
 story += [Spacer(1, 8), KeepTogether([
@@ -1625,11 +1635,12 @@ story += module(
         "reads only their own.",
         "<i>By design:</i> nothing in the module acts on its own. A warning changes "
         "no roster, alert or payslip, and the assistant saves nothing without "
-        "Confirm. <i>Documented limitations:</i> neither model runs on the "
-        "development system yet, so the assistant is tested with a scripted one; "
-        "the phone's assistant has not run on a device; the desktop app gains it "
-        "at its next build; the IC reader is tested on printed cards, not photos of "
-        "real ones; a feature warns only once there is enough history.",
+        "Confirm. <i>Documented limitations:</i> the development PC runs a small "
+        "free model (1.5B), helped to answer 12 of 15 everyday questions right; it "
+        "can still state a detail wrongly, so real use wants the 7B one on a server, "
+        "or the hosted one. The phone's assistant has not run on a device; the IC "
+        "reader is tested on printed cards, not photos of real ones; a feature warns "
+        "only once there is enough history.",
     ],
     tag="ADDED IN EDITION 18 · MIGRATIONS 0170 TO 0174")
 
@@ -1798,7 +1809,8 @@ story.append(data_table(
         ["The AI assistant (module 32)",
          "<b>Edition 18:</b> a language model (Claude, or a free one on the "
          "organisation's server) reads the application as the person and "
-         "writes the answer. A change becomes a Confirm card",
+         "writes the answer. A change becomes a Confirm card. <b>Edition 19:</b> "
+         "a small model is handed the few functions that fit, read first",
          "Presses Confirm or Cancel. Nothing changes without it"],
         ["Reading an IC (module 32)",
          "Text recognition on the platform's own server; the photos are not kept",
@@ -1905,8 +1917,8 @@ story += bullets([
     "assistant (edition 18) are type-checked and tested against the server, "
     "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.11 is built; the AI assistant "
-    "reaches it at the next build. Its installer is not code-signed, so Windows warns "
+    "<b>A code-signing certificate.</b> Desktop 1.0.12 is built and carries the AI "
+    "module. Its installer is not code-signed, so Windows warns "
     "before it runs - and where Smart App Control is on, may refuse a newly "
     "built installer for some minutes before it allows it.",
     "<b>Real hardware.</b> A physical drone, access-control controllers and "
@@ -1916,7 +1928,7 @@ story += bullets([
     "<b>Footage Review (module 31).</b> A first run on a real S3 bucket; "
     "Ultralytics' licence for SaaS; and footage of real altercations, to measure "
     "the check against.",
-    "<b>The assistant's models (module 32):</b> the free model's server, or a "
+    "<b>The assistant's model (module 32):</b> a server for the 7B free one, or a "
     "Claude key.",
 ])
 story.append(PageBreak())
@@ -1940,7 +1952,7 @@ story.append(data_table(
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.11, which installs over 1.0.10. It is a copy of the web "
+         "Version 1.0.12, which installs over 1.0.11. It is a copy of the web "
          "console taken when it is built: a fix to the web reaches it in the "
          "next build."],
     ],
@@ -2066,8 +2078,8 @@ story += bullets([
     "<b>Drone Patrol has flown only in a simulator.</b>",
     "<b>Access control and alarm panels</b> have no real hardware behind them on "
     "the development system.",
-    "<b>The assistant has met only a scripted model;</b> its models do not run "
-    "here yet. Footage Review's search and altercation check are <b>not yet "
+    "<b>The assistant's small test model can state a detail wrongly</b> (12 of 15 "
+    "right). Footage Review's search and altercation check are <b>not yet "
     "measured</b> on real footage.",
     "<b>An unidentified person cannot be followed across cameras.</b> A plate "
     "can; a watchlist entry can.",
@@ -2123,8 +2135,8 @@ story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 174 "
     "database migrations, 307 tables, 120 API modules serving 1,142 operations, 147 backend "
-    "services, 124 web routes and 59 phone screens, covered by 6,908 automated tests "
-    "(backend 4,282, repository inspection 1,404, web 799, phone 423). Capability counts "
+    "services, 124 web routes and 59 phone screens, covered by 6,925 automated tests "
+    "(backend 4,297, repository inspection 1,406, web 799, phone 423). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
