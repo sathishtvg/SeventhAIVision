@@ -114,6 +114,14 @@ services:
       GIT_SHA: "${GIT_SHA:-dev}"
       BUILD_DATE: "${BUILD_DATE:-dev}"
       BACKUP_ROOT: "/data/backups"
+      # The AI module's chat models (AI_MODULE.md), chosen per organisation by the Super Admin. The free one is
+      # the ollama service below (profile ai); a small machine sets a small AI_LOCAL_MODEL. The hosted one is
+      # Claude: with no ANTHROPIC_API_KEY the assistant says it is not set up, and nothing else is affected.
+      OLLAMA_URL: "${OLLAMA_URL:-http://ollama:11434}"
+      AI_LOCAL_MODEL: "${AI_LOCAL_MODEL:-qwen2.5:7b-instruct}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      AI_HOSTED_MODEL: "${AI_HOSTED_MODEL:-claude-opus-5-5}"
+      AI_HOSTED_EFFORT: "${AI_HOSTED_EFFORT:-medium}"
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       PGPASSWORD: "${POSTGRES_PASSWORD:-change_me_dev_only}"
       POSTGRES_DB: "${POSTGRES_DB:-seventh_ai_vision}"
@@ -442,6 +450,28 @@ services:
     mem_limit: 1536m
     restart: unless-stopped
 
+  # The AI module's free built-in chat model (AI_MODULE.md): Ollama, on this server, reached only by the api
+  # (no published port). Opt-in, like the footage worker:
+  #   docker compose -f docker/docker-compose.yml --profile ai up -d --no-deps ollama
+  #   docker compose -f docker/docker-compose.yml exec ollama ollama pull <AI_LOCAL_MODEL>
+  # One model loaded at a time, answering one person at a time; it unloads after OLLAMA_KEEP_ALIVE idle. The
+  # memory limit keeps a model too big for the machine from taking the rest of it down: raise it on a server
+  # that runs the 7B default, lower it on a small one.
+  ollama:
+    profiles: ["ai"]
+    image: ollama/ollama:0.40.4
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "${OLLAMA_CONTEXT_LENGTH:-8192}"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-10m}"
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: "q8_0"
+    volumes:
+      - ollama_data:/root/.ollama
+    mem_limit: "${OLLAMA_MEM_LIMIT:-8g}"
+    restart: unless-stopped
+
   # The AI security intelligence runner: reads the security events the platform
   # has already recorded and writes them in one common shape for the tenants
   # that have switched `intel.enabled` on. It is extra by design — it takes no
@@ -590,3 +620,4 @@ volumes:
   certs_data: {}    # TLS certificate — auto-populated with self-signed on first boot
   backups_data: {}  # Daily pg_dump backups; keep last BACKUP_KEEP_DAILY (default 7)
   drone_edge_data: {}  # A development site edge gateway's store and recordings
+  ollama_data: {}      # The AI module's free chat model (profile ai), downloaded once

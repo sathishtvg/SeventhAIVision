@@ -288,3 +288,23 @@ def test_the_phone_is_as_the_document_says():
                                    now=__import__("datetime").datetime(2026, 10, 26), can_change=True)
     assert "Reply in the language the person writes in; when that is unclear, in Malay." in prompt
     assert "It replies in the language the person writes in" in doc
+
+
+def test_the_models_are_reachable_as_the_document_says():
+    """The api is given the settings the assistant reads, and the free model is a service only the api reaches."""
+    import yaml
+
+    from app.services import ai_chat
+    doc = " ".join(_doc().split())
+    services = yaml.safe_load((REPO_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8"))["services"]
+    env = services["api"]["environment"]
+    for name in ("OLLAMA_URL", "AI_LOCAL_MODEL", "ANTHROPIC_API_KEY", "AI_HOSTED_MODEL", "AI_HOSTED_EFFORT"):
+        assert name in env and f"`{name}`" in doc, name
+    assert env["AI_LOCAL_MODEL"] == "${AI_LOCAL_MODEL:-%s}" % ai_chat.LOCAL_MODEL
+    assert env["OLLAMA_URL"] == "${OLLAMA_URL:-%s}" % ai_chat.LOCAL_URL
+    assert env["AI_HOSTED_MODEL"] == "${AI_HOSTED_MODEL:-%s}" % ai_chat.HOSTED_MODEL
+    assert env["ANTHROPIC_API_KEY"] == "${ANTHROPIC_API_KEY:-}", "no key is written into the file"
+    ollama = services["ollama"]
+    assert ollama["profiles"] == ["ai"] and "ports" not in ollama, "opt-in, and reached only inside the stack"
+    assert f"`{ollama['image']}`" in doc and ollama["image"].split(":")[1][0].isdigit(), "an exact version"
+    assert "A model smaller than the 7B default is not good enough" in doc
