@@ -15,15 +15,24 @@ says plainly that the individual reports are still in the application.
 THE WINDOW IS COMPARED IN THE SCHEDULE'S OWN TIMEZONE. Comparing UTC timestamps
 against local dates puts eight hours of every Singapore day in the wrong bucket
 — precisely the error a summary is trusted not to make.
+
+TIMES ARE PRINTED IN THAT SAME ZONE, AND THE DIGEST SAYS WHICH. The database
+hands back UTC, so a finding answered at 22:00 Singapore printed straight from
+it reads 14:00. The email and its workbook print every time on the schedule's
+clock, with the same Asia/Singapore fallback the scheduler and the patrol
+report use (vpatrol_reports does the same for one patrol).
 """
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.vpatrol_reports import _check_openpyxl
+from app.services.vpatrol_scheduler import _zone
 
 
 async def load_digest(db: AsyncSession, *, schedule_id: str, start, end,
@@ -70,7 +79,22 @@ async def load_digest(db: AsyncSession, *, schedule_id: str, start, end,
 
     return {"schedule": dict(schedule), "start": start, "end": end,
             "patrols": [dict(p) for p in patrols],
-            "exceptions": [dict(e) for e in exceptions]}
+            "exceptions": [dict(e) for e in exceptions],
+            "timezone": _zone(tz).key}
+
+
+def _digest_zone(data: dict) -> ZoneInfo:
+    """The zone the digest prints in. Data built without one (older callers,
+    tests) gets the scheduler's default rather than UTC."""
+    return _zone(data.get("timezone"))
+
+
+def _local(value: datetime, tz: ZoneInfo) -> datetime:
+    """A TIMESTAMPTZ on the schedule's clock. A naive value can only come from a
+    hand-built dict; it is read as the UTC the database keeps."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(tz)
 
 
 def summary_text(data: dict) -> str:
@@ -82,6 +106,7 @@ def summary_text(data: dict) -> str:
     reads.
     """
     s = data["schedule"]
+    tz = _digest_zone(data)
     patrols, exc = data["patrols"], data["exceptions"]
     done = sum(1 for p in patrols if p["status"] == "COMPLETED")
     partial = sum(1 for p in patrols if p["status"] == "PARTIALLY_COMPLETED")
@@ -100,10 +125,12 @@ def summary_text(data: dict) -> str:
     ]
 
     if exc:
-        lines += ["Findings", "--------"]
+        # Said once, above the times, so "22:00" is never left to be read as
+        # whichever clock the reader happens to be on.
+        lines += ["Findings", "--------", f"All times are {tz.key}.", ""]
         for e in exc:
             when = e["answered_at"]
-            stamp = when.strftime("%d %b %H:%M") if when else "-"
+            stamp = _local(when, tz).strftime("%d %b %H:%M") if when else "-"
             raised = " (incident raised)" if e.get("incident_id") else ""
             lines.append(
                 f"  {stamp}  {e['camera_name']}: {e['question_text']} "
@@ -129,6 +156,11 @@ def render_xlsx(data: dict) -> bytes:
     wb = Workbook()
     head = Font(bold=True)
     s = data["schedule"]
+    tz = _digest_zone(data)
+    # The zone is in each time column's heading, as in the patrol report's
+    # workbook: Findings is often the only sheet opened, and a bare "22:00"
+    # there does not say whose 22:00 it is.
+    in_zone = f"({tz.key})"
 
     ws = wb.active
     ws.title = "Patrols"
@@ -137,24 +169,27 @@ def render_xlsx(data: dict) -> bytes:
     ws.append([f"{data['start']:%d %b %Y} to {data['end']:%d %b %Y}"])
     ws.append([])
 
-    cols = ["Patrol", "Scheduled", "Officer", "Status", "Cameras", "Findings"]
+    cols = ["Patrol", f"Scheduled {in_zone}", "Officer", "Status", "Cameras",
+            "Findings"]
     ws.append(cols)
     for c in range(1, len(cols) + 1):
         ws.cell(row=4, column=c).font = head
     for p in data["patrols"]:
         ws.append([
             p["patrol_number"],
-            p["scheduled_for"].strftime("%Y-%m-%d %H:%M") if p["scheduled_for"] else "-",
+            (_local(p["scheduled_for"], tz).strftime("%Y-%m-%d %H:%M")
+             if p["scheduled_for"] else "-"),
             p["officer_name"] or "Unassigned",
             p["status"],
             f"{p['completed_camera_count'] or 0}/{p['camera_count'] or 0}",
             p["exception_count"] or 0,
         ])
-    for col, width in zip("ABCDEF", (26, 20, 22, 22, 10, 10)):
+    for col, width in zip("ABCDEF", (26, 28, 22, 22, 10, 10)):
         ws.column_dimensions[col].width = width
 
     ws2 = wb.create_sheet("Findings")
-    cols2 = ["Patrol", "Camera", "Question", "Answer", "When", "Incident"]
+    cols2 = ["Patrol", "Camera", "Question", "Answer", f"When {in_zone}",
+             "Incident"]
     ws2.append(cols2)
     for c in range(1, len(cols2) + 1):
         ws2.cell(row=1, column=c).font = head
@@ -162,10 +197,11 @@ def render_xlsx(data: dict) -> bytes:
         ws2.append([
             e["patrol_number"], e["camera_name"], e["question_text"],
             e["answer_text"] or "-",
-            e["answered_at"].strftime("%Y-%m-%d %H:%M") if e["answered_at"] else "-",
+            (_local(e["answered_at"], tz).strftime("%Y-%m-%d %H:%M")
+             if e["answered_at"] else "-"),
             "Yes" if e.get("incident_id") else "No",
         ])
-    for col, width in zip("ABCDEF", (26, 22, 46, 18, 20, 10)):
+    for col, width in zip("ABCDEF", (26, 22, 46, 18, 26, 10)):
         ws2.column_dimensions[col].width = width
     ws2.column_dimensions["C"].alignment = Alignment(wrap_text=True)
 

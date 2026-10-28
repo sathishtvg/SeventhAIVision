@@ -10,6 +10,7 @@ Sections:
   A — Which window a frequency means (8 tests)
   B — Queued once, for a closed window, across tenants (4 tests)
   C — What the digest contains (3 tests)
+  D — Times are the schedule's own clock (5 tests)
 """
 from __future__ import annotations
 
@@ -298,3 +299,128 @@ async def test_no_findings_is_stated_rather_than_left_blank():
     ws = load_workbook(_io.BytesIO(payload))["Findings"]
     cells = [c.value for row in ws.iter_rows() for c in row if c.value]
     assert any("No findings" in str(v) for v in cells), cells
+
+
+# ─── D. Times are the schedule's own clock ───────────────────────────────────
+#
+# The same bug the patrol report had until 24 Oct 2026: PostgreSQL hands back
+# UTC, and the digest printed it as it came, so a finding answered at 22:00 in
+# Singapore read "14:00" in the email and in its workbook.
+
+NIGHT_ROUND_UTC = datetime(2026, 10, 1, 14, 0, tzinfo=timezone.utc)  # 22:00 SGT
+
+
+def _night_digest(zone: str | None = "Asia/Singapore") -> dict:
+    """A digest as load_digest returns it: every time in UTC. `...` leaves the
+    zone out altogether, as data built by an older caller would."""
+    data = {
+        "schedule": {"name": "Jurong night camera round", "site_name": "Jurong"},
+        "start": date(2026, 10, 1), "end": date(2026, 10, 1),
+        "patrols": [{"patrol_number": "VP-0042", "scheduled_for": NIGHT_ROUND_UTC,
+                     "officer_name": "Tan Wei Ming", "status": "COMPLETED",
+                     "camera_count": 1, "completed_camera_count": 1,
+                     "exception_count": 1}],
+        "exceptions": [{"patrol_number": "VP-0042", "camera_name": "Loading bay",
+                        "question_text": "Is the shutter down?", "answer_text": "NO",
+                        "answered_at": NIGHT_ROUND_UTC, "incident_id": None}],
+    }
+    if zone is not ...:
+        data["timezone"] = zone
+    return data
+
+
+def _sheets(payload: bytes) -> dict[str, list[tuple]]:
+    import io as _io
+
+    from openpyxl import load_workbook
+    wb = load_workbook(_io.BytesIO(payload))
+    return {ws.title: [tuple(r) for r in ws.iter_rows(values_only=True)]
+            for ws in wb.worksheets}
+
+
+def _cell(rows: list[tuple], header_row: int, column: str):
+    head = rows[header_row]
+    return rows[header_row + 1][head.index(column)]
+
+
+def test_a_finding_answered_at_22_00_singapore_prints_22_00_in_the_email():
+    body = digest.summary_text(_night_digest())
+    assert "01 Oct 22:00  Loading bay" in body, body
+    assert "14:00" not in body, "the email still prints UTC"
+    assert "All times are Asia/Singapore." in body, "the email does not say which zone"
+
+
+def test_a_finding_answered_at_22_00_singapore_prints_22_00_in_the_workbook():
+    book = _sheets(digest.render_xlsx(_night_digest()))
+    # Patrols: title, dates, blank, then the header on row 4.
+    assert _cell(book["Patrols"], 3, "Scheduled (Asia/Singapore)") == "2026-10-01 22:00"
+    assert _cell(book["Findings"], 0, "When (Asia/Singapore)") == "2026-10-01 22:00"
+    cells = [str(c) for rows in book.values() for r in rows for c in r if c is not None]
+    assert not [c for c in cells if "14:00" in c], "the workbook still prints UTC"
+
+
+def test_the_zone_is_the_schedules_own_not_a_fixed_eight_hours():
+    data = _night_digest("Asia/Kolkata")  # UTC+05:30
+    body = digest.summary_text(data)
+    assert "01 Oct 19:30" in body and "All times are Asia/Kolkata." in body, body
+    book = _sheets(digest.render_xlsx(data))
+    assert _cell(book["Findings"], 0, "When (Asia/Kolkata)") == "2026-10-01 19:30"
+
+
+@pytest.mark.parametrize("zone", [..., None, "Mars/Olympus_Mons"])
+def test_no_zone_or_an_unknown_one_prints_singapore_as_the_scheduler_does(zone):
+    """vpatrol_scheduler._zone's rule: an unknown name runs the patrol in
+    Asia/Singapore, so the digest must print it in Asia/Singapore too."""
+    data = _night_digest(zone)
+    body = digest.summary_text(data)
+    assert "01 Oct 22:00" in body and "All times are Asia/Singapore." in body, body
+
+
+@pytest.mark.asyncio
+async def test_the_digest_built_from_the_database_prints_singapore_time():
+    """End to end through build(), as vpatrol_email calls it: the zone the
+    window was read in is the zone the times are printed in."""
+    ids = await _schedule_with_patrols(
+        frequency="DAILY", recipients=["ops@example.test"], patrol_days=[],
+        tz="Asia/Singapore")
+    session, scam, question = (uuid.uuid4() for _ in range(3))
+    await _sql(
+        "INSERT INTO virtual_patrol_sessions "
+        "  (id, tenant_id, site_id, schedule_id, patrol_number, schedule_name, "
+        "   scheduled_for, status, camera_count, completed_camera_count) "
+        "VALUES (:i,:t,:s,:sc,:n,'Morning Patrol',:w,'COMPLETED',1,1)",
+        {"i": session, "t": ids["tenant"], "s": ids["site"], "sc": ids["sched"],
+         "n": f"VPD-{ids['sched'].hex[:6]}-night", "w": NIGHT_ROUND_UTC})
+    await _sql(
+        "INSERT INTO virtual_patrol_session_cameras "
+        "  (id, tenant_id, session_id, sequence_no, camera_name, status) "
+        "VALUES (:i,:t,:se,1,'Loading bay','COMPLETED')",
+        {"i": scam, "t": ids["tenant"], "se": session})
+    await _sql(
+        "INSERT INTO virtual_patrol_session_questions "
+        "  (id, tenant_id, session_camera_id, question_text, question_type, "
+        "   is_required, sequence_no) "
+        "VALUES (:i,:t,:c,'Is the shutter down?','YES_NO',TRUE,1)",
+        {"i": question, "t": ids["tenant"], "c": scam})
+    await _sql(
+        "INSERT INTO virtual_patrol_session_answers "
+        "  (tenant_id, session_question_id, answer_text, answered_at, is_exception) "
+        "VALUES (:t,:q,'NO',:at,TRUE)",
+        {"t": ids["tenant"], "q": question, "at": NIGHT_ROUND_UTC})
+
+    engine = create_async_engine(ADMIN_DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with factory() as s:
+            payload, body = await digest.build(
+                s, schedule_id=str(ids["sched"]), start=date(2026, 10, 1),
+                end=date(2026, 10, 1), tz_name="Asia/Singapore")
+    finally:
+        await engine.dispose()
+
+    assert "Findings raised:     1" in body, body
+    assert "01 Oct 22:00  Loading bay" in body and "14:00" not in body, body
+    assert "All times are Asia/Singapore." in body, body
+    book = _sheets(payload)
+    assert _cell(book["Patrols"], 3, "Scheduled (Asia/Singapore)") == "2026-10-01 22:00"
+    assert _cell(book["Findings"], 0, "When (Asia/Singapore)") == "2026-10-01 22:00"
