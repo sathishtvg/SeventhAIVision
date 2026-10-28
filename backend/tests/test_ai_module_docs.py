@@ -307,4 +307,15 @@ def test_the_models_are_reachable_as_the_document_says():
     ollama = services["ollama"]
     assert ollama["profiles"] == ["ai"] and "ports" not in ollama, "opt-in, and reached only inside the stack"
     assert f"`{ollama['image']}`" in doc and ollama["image"].split(":")[1][0].isdigit(), "an exact version"
-    assert "A model smaller than the 7B default is not good enough" in doc
+    assert "0 of 4 before to 12 of 15 after" in doc and "A model this small can still state a detail wrongly" in doc
+
+
+def test_how_the_free_model_is_helped_is_as_the_document_says():
+    from app.services import ai_chat, ai_functions
+    doc = " ".join(_doc().split())
+    assert ai_chat.LOCAL_PICKS == 3 and "`AI_LOCAL_PICKS` (default 3)" in doc
+    assert ai_chat.LOCAL_OPTIONS == {"temperature": 0, "num_predict": 600, "repeat_penalty": 1.2}
+    assert "`AI_LOCAL_MAX_TOKENS` (default 600)" in doc
+    assert ai_functions.IDF_CAP == 4.0 and "(inverse frequency, capped)" in doc
+    assert '"cuti": ("leave",)' in (REPO_ROOT / "backend" / "app" / "services" / "ai_functions.py").read_text(
+        encoding="utf-8") and '"cuti" is leave' in doc

@@ -4,6 +4,14 @@ TWO TOOLS, NOT 1,100. The model is given `find_functions` (search the app's own
 function list, built from its API description) and `use_function` (call one).
 Giving it every function at once would not fit and would choose badly.
 
+FOUND BY WEIGHTED WORDS (find). Each function's words come from its path, its
+title and its description, the path and the title counting more; a word few
+functions have counts more than one most have; noise words count for nothing,
+and a word matches its plural. A short list of synonyms joins everyday words, and
+the commonest Malay ones, to the app's own ("cuti" is leave, "on duty" is
+attendance). "My" prefers the person's own records; a request ("report",
+"apply") prefers a change, and a question prefers a read.
+
 THE PERSON'S OWN SIGN-IN. A function is called inside the server, through the
 app itself, with the bearer token of the person talking to the assistant.
 Permissions, row-level security, site limits, rate limits and the audit log
@@ -48,7 +56,8 @@ NEVER_OFFERED: tuple[tuple[frozenset, re.Pattern, str], ...] = tuple(
 #: Functions that answer with a file, a picture or a video stream: the assistant reads JSON, and several of these
 #: take their sign-in from the address rather than the header. They are left out of what it is offered.
 FILE_FUNCTIONS = re.compile(
-    r"(/pdf|/xlsx|/csv|/file|/image|/photo|/video|/frames|/download|/live|/stream|/hls|/overlay|/thumbnail"
+    r"(/pdf|/xlsx|/csv|/file|/image|/photo|/video|/frames|/download|/streams/[^/]+/live|/stream|/hls|/overlay"
+    r"|/thumbnail"
     r"|/qr\.png|\.(jpg|jpeg|png|pdf|mp4|m3u8|csv|xlsx))(/|$)")
 #: In a body sent to CHANGE someone (PUT/PATCH): changing a role stays manual even where the function is
 #: allowed. Creating a person with a role is not changing one.
@@ -79,6 +88,8 @@ class Function:
     body_fields: list[dict]
     permissions: set[str] = field(default_factory=set)
     words: set[str] = field(default_factory=set)
+    #: Each searchable word with its weight: the path and the title count more than the description.
+    terms: dict[str, float] = field(default_factory=dict)
 
     def brief(self) -> dict:
         return {"operation_id": self.operation_id, "method": self.method, "path": self.path,
@@ -100,6 +111,166 @@ def _words(*texts: str) -> set[str]:
                 if w.endswith("s") and len(w) > 4:
                     out.add(w[:-1])
     return out
+
+
+# ── Finding a function by its words ──────────────────────────────────────────
+
+#: Words that say nothing about which function is meant.
+_NOISE = frozenset("""
+a an and any are as at be been by can could do does for from get give has have how i if in into is it its me
+mine my no not of on one or our please show tell that the their them there these this to us was we what when
+where which who whom why will with would you your all about also am an api v1 id ids list read lists
+saya aku ku anda apa ada bila mana ke di dan yang untuk boleh tak tidak ini itu siapa berapa many much
+open closed resolved pending
+""".split())
+#: Everyday words, and the commonest Malay ones, joined to the app's own.
+SYNONYMS: dict[str, tuple[str, ...]] = {
+    "duty": ("attendance", "shift"), "roster": ("shift",), "rota": ("shift",), "schedule": ("shift",),
+    "late": ("attendance", "late"), "absent": ("attendance",), "present": ("attendance",),
+    "working": ("attendance", "shift"), "clock": ("attendance", "shift"), "checkin": ("attendance", "shift"),
+    "holiday": ("leave", "holiday"), "vacation": ("leave",), "sick": ("leave",), "mc": ("leave",),
+    "off": ("leave",), "left": ("balance",), "remaining": ("balance",), "balance": ("balance",),
+    "now": ("live",), "currently": ("live",), "right": ("live",),
+    "offline": ("camera", "health", "status"), "online": ("camera", "health", "status"),
+    "open": ("status",), "closed": ("status",), "resolved": ("status",), "pending": ("status",), "down": ("health", "status"), "cctv": ("camera",),
+    "report": ("incident", "create"), "problem": ("incident",), "issue": ("incident",),
+    "round": ("patrol",), "tour": ("patrol",), "guest": ("visitor",), "contractor": ("contractor",),
+    "pay": ("payroll", "payslip"), "salary": ("payroll", "payslip"), "wage": ("payroll",),
+    "ot": ("overtime",), "extra": ("overtime",),
+    # Malay
+    "cuti": ("leave",), "syif": ("shift",), "giliran": ("shift",), "kerja": ("shift", "attendance"),
+    "rondaan": ("patrol",), "ronda": ("patrol",), "insiden": ("incident",), "kejadian": ("incident",),
+    "pelawat": ("visitor",), "tetamu": ("visitor",), "gaji": ("payroll",),
+    "lapor": ("incident", "create"), "laporan": ("incident", "report"),
+    "kamera": ("camera",), "tapak": ("site",), "lewat": ("late", "attendance"), "baki": ("balance",),
+    "hari": ("today", "day"), "seterusnya": ("next",), "berikutnya": ("next",),
+}
+#: Tamil and Chinese are not split into words by spaces: these are found inside the message as they stand.
+SCRIPT_WORDS: dict[str, tuple[str, ...]] = {
+    # Chinese (Simplified)
+    "班次": ("shift",), "排班": ("shift",), "上班": ("shift", "attendance"), "值班": ("shift", "attendance"),
+    "班": ("shift",), "请假": ("leave", "request"), "休假": ("leave",), "假期": ("leave",), "假": ("leave",),
+    "余额": ("balance",), "剩": ("balance",), "巡逻": ("patrol",), "事件": ("incident",), "事故": ("incident",),
+    "报告": ("incident", "report"), "访客": ("visitor",), "加班": ("overtime",), "摄像": ("camera",),
+    "迟到": ("late", "attendance"), "现在": ("live",), "下一个": ("next",),
+    # Tamil
+    "ஷிப்ட்": ("shift",), "பணி": ("shift", "attendance"), "விடுப்பு": ("leave",), "ரோந்து": ("patrol",),
+    "சம்பவம்": ("incident",), "பார்வையாளர்": ("visitor",), "கூடுதல் நேரம்": ("overtime",),
+    "கேமரா": ("camera",), "தாமதம்": ("late", "attendance"), "அடுத்த": ("next",),
+}
+_SCRIPT_OWN = ("我的", "我", "என்", "எனது", "நான்")
+_SCRIPT_ACTION = ("请假", "报告", "申请", "创建", "提交", "விண்ணப்ப", "புகார்")
+
+#: Words that ask for something to be done, not answered.
+_ACTION = frozenset("""
+create add report raise make submit apply request ask start begin end finish stop close
+register cancel approve reject assign set update change mark accept dispute take
+buat tambah lapor mohon minta mula tamat tutup batal daftar
+""".split())
+_OWN = frozenset({"my", "mine", "me", "i", "saya", "aku", "ku"})
+_STATUS_WORDS = frozenset({"open", "closed", "resolved", "pending"})
+_MANY = frozenset({"bulk", "all", "every", "many", "semua"})
+
+
+def _stem(w: str) -> str:
+    if len(w) > 4 and w.endswith("ies"):
+        return w[:-3] + "y"
+    if len(w) > 5 and w.endswith("ing"):
+        return w[:-3]
+    if len(w) > 4 and w.endswith("ed") and not w.endswith("eed"):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def _tokens(text: str) -> list[str]:
+    return _WORD.findall((text or "").lower().replace("_", " ").replace("-", " "))
+
+
+def _terms_of(f: "Function") -> dict[str, float]:
+    """The function's searchable words and their weights: path 3, title 2, what it takes 1.5, description and
+    tags 1. What it takes says what it is about when its title is bare ("List Incidents" takes a site and a
+    status)."""
+    title, _, rest = f.summary.partition(". ")
+    out: dict[str, float] = {}
+    path = re.sub(r"\{[^}]*\}", " ", f.path.removeprefix("/api/v1"))
+    takes = " ".join(x["name"] for x in (*f.query_params, *f.body_fields))
+    for text, weight in ((path, 3.0), (title, 2.0), (takes, 1.5), (rest, 1.0), (" ".join(f.tags), 1.0)):
+        for w in _tokens(text):
+            if w in _NOISE or len(w) < 2:
+                continue
+            w = _stem(w)
+            out[w] = max(out.get(w, 0.0), weight)
+    return out
+
+
+_IDF: dict[str, float] | None = None
+IDF_CAP = 4.0
+
+
+def _idf() -> dict[str, float]:
+    """How rare each word is across the catalogue: a word few functions have says more."""
+    global _IDF
+    if _IDF is None:
+        import math
+
+        cat = catalogue()
+        df: dict[str, int] = {}
+        for f in cat.values():
+            for w in f.terms:
+                df[w] = df.get(w, 0) + 1
+        # Capped: a word only one description happens to use must not outweigh what the function is about.
+        _IDF = {w: min(IDF_CAP, math.log(1 + len(cat) / n)) for w, n in df.items()}
+    return _IDF
+
+
+def query_terms(query: str) -> tuple[dict[str, float], bool, bool]:
+    """(words with weights, whether the person speaks of their own, whether they ask for something done)."""
+    raw = _tokens(query)
+    own = any(w in _OWN for w in raw) or any(w in query for w in _SCRIPT_OWN)
+    action = any(w in _ACTION for w in raw) or any(w in query for w in _SCRIPT_ACTION)
+    wanted: dict[str, float] = {}
+    for k, terms in SCRIPT_WORDS.items():
+        if k in query:
+            for t in terms:
+                wanted[_stem(t)] = 1.0
+    for w in raw:
+        for t, weight in [(w, 1.0)] + [(x, 0.7) for x in SYNONYMS.get(w, ())]:
+            # In a request, "left open" describes what happened; it is not a filter on a status.
+            if t in _NOISE or (action and t == "status" and w in _STATUS_WORDS):
+                continue
+            t = _stem(t)
+            wanted[t] = max(wanted.get(t, 0.0), weight)
+    many = any(w in _MANY for w in raw)
+    if many:
+        wanted["_many"] = 0.0
+    return wanted, own, action
+
+
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+
+def score(f: "Function", wanted: dict[str, float], own: bool, action: bool, idf: dict[str, float],
+          has_id: bool = False) -> float:
+    hit = sum(idf.get(w, 0.0) * weight * f.terms.get(w, 0.0) for w, weight in wanted.items())
+    if hit <= 0:
+        return 0.0
+    # "My" prefers the person's own records - where the function is about what was asked (in its path or title),
+    # not where it only takes it ("my next shift" is not my face checks, which take a shift).
+    about = any(f.terms.get(w, 0.0) >= 2.0 for w in wanted)
+    if own and about and re.search(r"/me(/|$)|/my(-|/|$)", f.path):
+        hit += 4.0
+    if action:
+        hit += 2.0 if f.method != "GET" else 0.0
+    else:
+        hit += 1.5 if f.method == "GET" else -2.0
+    # A question rarely comes with the id a path needs: a list answers it better than one record. And the main
+    # list answers better than a part of another one (/shifts before /occurrence-book/shift-summaries).
+    parts = [x for x in f.path.removeprefix("/api/v1/").split("/") if x and not x.startswith("{")]
+    # A function on many records at once is meant only when the person says so.
+    bulk = 3.0 if "bulk" in f.path and "_many" not in wanted else 0.0
+    return hit - (0.5 if has_id else 2.5) * len(f.path_params) - 0.5 * max(0, len(parts) - 1) - bulk
 
 
 def _permissions_by_route() -> dict[tuple[str, str], set[str]]:
@@ -172,6 +343,7 @@ def catalogue() -> dict[str, Function]:
                 permissions=perms.get((m, path), set()),
             )
             f.words = _words(f.operation_id, f.path, f.summary, " ".join(f.tags))
+            f.terms = _terms_of(f)
             out[f.operation_id] = f
     _CATALOGUE = out
     return out
@@ -185,20 +357,26 @@ async def held_permissions(db: AsyncSession, role_id: int) -> set[str]:
     return set(rows)
 
 
-def find(query: str, held: set[str], limit: int = 8) -> list[dict]:
-    """The functions best matching the words, among those the person's permissions allow."""
-    wanted = _words(query)
+def ranked(query: str, held: set[str], limit: int = 8) -> list[Function]:
+    """The functions best matching the words, among those the person's permissions allow, best first."""
+    wanted, own, action = query_terms(query)
+    if not wanted:
+        return []
+    idf, has_id = _idf(), bool(_UUID.search(query))
     scored = []
     for f in catalogue().values():
         if f.permissions and not f.permissions <= held:
             continue
-        hits = len(wanted & f.words)
-        if not hits:
-            continue
-        # A read is preferred over a change when both match equally: asking is the commoner wish.
-        scored.append((hits + (0.25 if f.method == "GET" else 0.0), f))
-    scored.sort(key=lambda x: (-x[0], x[1].path))
-    return [f.brief() for _, f in scored[:limit]]
+        s = score(f, wanted, own, action, idf, has_id)
+        if s > 0:
+            scored.append((s, f))
+    scored.sort(key=lambda x: (-x[0], x[1].path, x[1].method))
+    return [f for _, f in scored[:limit]]
+
+
+def find(query: str, held: set[str], limit: int = 8) -> list[dict]:
+    """The functions best matching the words, as the model is told of them."""
+    return [f.brief() for f in ranked(query, held, limit)]
 
 
 def fill_path(f: Function, values: dict) -> str | None:

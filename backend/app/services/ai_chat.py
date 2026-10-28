@@ -7,7 +7,28 @@ THE SUPER ADMIN CHOOSES THE MODEL PER ORGANISATION (ai_module_licenses.assistant
           (`fallbacks: "default"`), as Anthropic recommends for this model.
   LOCAL   A free open model served by Ollama on our own server: OLLAMA_URL
           (default http://ollama:11434), model AI_LOCAL_MODEL (default qwen2.5:7b-instruct).
-Both stream the reply as it is written, and both run the same two tools.
+Both stream the reply as it is written.
+
+THE TOOLS DIFFER BY SIZE OF MODEL. Claude is given two tools, find_functions and
+use_function, and searches the app's ~1,100 functions itself. A small open model
+cannot do that two-step reliably (tried 28 October 2026: it skipped the search, or
+searched and then invented the answer). So for each message the free model is
+handed the few functions the search ranks best for it (LOCAL_PICKS), each as a
+tool of its own with flat parameters, a short prompt, its reply language stated,
+and no sampling randomness. A function that needs an id the person never gave is
+not offered (a small model makes one up), and a read takes no free-text filters
+(it invents those too). A QUESTION IS READ FIRST: the search's best read is made
+before the model starts, and the model writes the answer from it (it may read
+more). A small model choosing among functions picks a weaker one; the search's
+first is right more often. If it still answers a question without reading
+anything - "I will check, please wait" - the best read is made for it. A request
+it did nothing about gets one reminder to use the change. A tool call it writes
+out as text is taken as a call. Times in what it reads are written out in the
+organisation's own time zone ("Wed 28 Oct 2026, 22:00") before it sees them: it
+turned 22:00+08:00 into "7 pm" when left to convert them itself. Every
+call still goes through use_function's checks. An answer that names records no
+tool returned (placeholders) is replaced by a plain "could not read that", and an
+empty one by what happened.
 
 THE HISTORY IS APPEND-ONLY. Each turn's messages are stored exactly as the model
 produced them (for Claude, its content blocks, thinking included) and replayed
@@ -24,6 +45,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Awaitable, Callable
@@ -42,6 +64,12 @@ LOCAL_MODEL = os.environ.get("AI_LOCAL_MODEL", "qwen2.5:7b-instruct")
 MAX_ROUNDS = 8
 MAX_TOKENS = 16000
 LANGUAGES = {"en": "English", "ms": "Malay", "ta": "Tamil", "zh": "Chinese (Simplified)"}
+#: Functions handed to the free model for each message, chosen by the search from the message itself.
+LOCAL_PICKS = int(os.environ.get("AI_LOCAL_PICKS", "3"))
+#: How the free model writes: no sampling randomness, a cap on a reply's length (a small model can repeat itself
+#: for thousands of words), and a penalty on repeating.
+LOCAL_OPTIONS = {"temperature": 0, "num_predict": int(os.environ.get("AI_LOCAL_MAX_TOKENS", "600")),
+                 "repeat_penalty": 1.2}
 
 Emit = Callable[[str, dict], Awaitable[None]]
 
@@ -289,6 +317,166 @@ class HostedClaude:
         return result
 
 
+# ── The free model: given the few functions that fit, not the whole app ─────
+
+LOCAL_RULES = """You are the assistant inside Seventh AI Vision, a security operations app. You help the person \
+you are talking to with their work in it.
+- Use a tool to answer. Each tool reads or changes the app as this person, with their own permissions.
+- Answer only with what a tool returned. Never invent names, times, numbers or records.
+- If no tool fits the question, or a tool returned nothing, say so in one short sentence.
+- A tool that changes something only prepares it: say what will change and that they confirm it on the card.
+- Keep answers short and plain."""
+
+#: Parameters a person never means; left out of what the free model is asked to fill.
+_SKIP_PARAMS = frozenset({"limit", "offset", "page", "page_size", "cursor", "tenant_id", "include_inactive"})
+_PASSWORDISH = re.compile(r"password", re.I)
+#: "[Incident ID]", "[IncidentDescription1]": a small model's stand-in for records it never read.
+_PLACEHOLDER = re.compile(r"\[[A-Za-z][A-Za-z ]{1,40}\d*\]")
+_MALAY = frozenset("""saya anda awak kami kita mereka bila apa berapa bagaimana kenapa mana siapa boleh tidak tak
+ada adalah akan dari daripada pada dan yang di ke untuk dengan ini itu esok semalam hari pagi petang malam tahun bulan
+minggu sudah belum mahu nak tolong sila terima kasih cuti syif baki kerja lapor rondaan kejadian seterusnya
+selanjutnya berikutnya pukul jam hingga sehingga selepas sebelum sebanyak lewat tiada
+""".split())
+
+
+def language_of(text: str) -> str | None:
+    """The language a message is written in, where it can be told: Tamil and Chinese by their scripts, Malay by
+    its everyday words, English otherwise; None for nothing to go on."""
+    if re.search(r"[\u0B80-\u0BFF]", text):
+        return "Tamil"
+    if re.search(r"[\u4E00-\u9FFF]", text):
+        return "Chinese (Simplified)"
+    words = re.findall(r"[a-z]+", text.lower())
+    if not words:
+        return None
+    return "Malay" if sum(w in _MALAY for w in words) >= max(1, len(words) // 5) else "English"
+
+
+def local_system(system: str, user_text: str) -> str:
+    """The short prompt for the free model: its own rules, who it is talking to, and the reply language stated."""
+    who = system.split("\n\nYou are talking to ", 1)
+    tail = ("You are talking to " + who[1]) if len(who) == 2 else ""
+    fallback = re.search(r"when that is unclear, in ([^.]+)\.", tail)
+    language = language_of(user_text) or (fallback.group(1) if fallback else "English")
+    tail = re.sub(r"Reply in the language the person writes in; when that is unclear, in [^.]+\. ", "", tail)
+    return f"{LOCAL_RULES}\n\n{tail}\nReply in {language}."
+
+
+_ISO_TIME = re.compile(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?")
+
+
+def readable_times(text: str, tz_name: str | None) -> str:
+    """Every timestamp in what a tool returned, written out in the organisation's time zone: "Wed 28 Oct 2026,
+    22:00". A small model given 2026-10-28T14:00:00Z, or 22:00+08:00, gets the hour wrong."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = ZoneInfo(tz_name or "Asia/Singapore")
+    except Exception:  # noqa: BLE001
+        tz = ZoneInfo("Asia/Singapore")
+
+    def one(m: re.Match) -> str:
+        raw = m.group(0).replace(" ", "T").replace("Z", "+00:00")
+        try:
+            t = datetime.fromisoformat(raw)
+        except ValueError:
+            return m.group(0)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=ZoneInfo("UTC"))
+        return t.astimezone(tz).strftime("%a %d %b %Y, %H:%M")
+    return _ISO_TIME.sub(one, text)
+
+
+def _tool_name(f: ai_functions.Function, taken: set[str]) -> str:
+    title = f.summary.split(".")[0] or f"{f.method} {f.path}"
+    name = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")[:48] or "function"
+    base, n = name, 2
+    while name in taken:
+        name, n = f"{base}_{n}", n + 1
+    taken.add(name)
+    return name
+
+
+def _json_type(kind) -> str:
+    return kind if kind in ("string", "integer", "number", "boolean", "array", "object") else "string"
+
+
+def local_tool(f: ai_functions.Function, name: str) -> dict:
+    """One function as a tool of its own: flat parameters, the path's ids required, nothing a person never means."""
+    props: dict = {}
+    required: list[str] = []
+    for p in f.path_params:
+        props[p] = {"type": "string", "description": f"The {p.replace('_', ' ')}"}
+        required.append(p)
+    # A read takes only the filters with a fixed list of values: a small model fills any other with a guess.
+    queries = [q for q in f.query_params if q.get("choices")] if f.method == "GET" else f.query_params
+    fields = [(q, False) for q in queries] + [(b, True) for b in f.body_fields]
+    for x, in_body in sorted(fields, key=lambda t: not t[0].get("required")):
+        n = x["name"]
+        if n in props or n in _SKIP_PARAMS or _PASSWORDISH.search(n) or len(props) >= 10:
+            continue
+        props[n] = {"type": _json_type(x.get("type")), **({"enum": x["choices"]} if x.get("choices") else {})}
+        if x.get("required"):
+            required.append(n)
+    what = f.summary[:220]
+    if f.method != "GET":
+        what += " This prepares a change; the person confirms it on a card."
+    return {"type": "function", "function": {"name": name, "description": what, "parameters": {
+        "type": "object", "properties": props, "required": required}}}
+
+
+_CALLED = re.compile(r"\b(?:called|named|bernama|dinamakan)\s+[\"'“]?([^\"'”.,!?]{2,80})", re.I)
+
+
+def local_call(f: ai_functions.Function, args, said: str = "") -> dict:
+    """The free model's flat arguments, put where the function takes them, for use_function. `said` is the
+    person's message: a name they gave ("a site called Harbour Gate") is used when the model leaves it out."""
+    args = args if isinstance(args, dict) else {}
+    queries = {q["name"] for q in f.query_params if f.method != "GET" or q.get("choices")}
+    body_names = {b["name"] for b in f.body_fields}
+    body = {k: v for k, v in args.items() if k in body_names and k not in queries and v not in (None, "")}
+    # A small model often writes what happened and leaves the title out: the title is then the start of the
+    # person's own words, which the Confirm card shows for them to change.
+    needs_title = any(b["name"] == "title" and b.get("required") for b in f.body_fields)
+    words = next((body[k] for k in ("description", "details", "note", "notes") if isinstance(body.get(k), str)), "")
+    if f.method != "GET" and needs_title and not body.get("title") and words.strip():
+        body["title"] = re.split(r"(?<=[.!?])\s", words.strip(), maxsplit=1)[0][:80]
+    called = _CALLED.search(said or "")
+    if f.method != "GET" and called and any(b["name"] == "name" and b.get("required") for b in f.body_fields) \
+            and not body.get("name"):
+        body["name"] = called.group(1).strip()
+    return {"operation_id": f.operation_id,
+            "path_params": {p: args[p] for p in f.path_params if p in args},
+            "query": {k: v for k, v in args.items() if k in queries and v not in (None, "")},
+            "body": body}
+
+
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+
+def local_picks(text: str, held: set[str], limit: int = LOCAL_PICKS) -> list[ai_functions.Function]:
+    """The functions handed to the free model for a message: the best the search ranks for it, leaving out any
+    that needs an id the conversation never gave."""
+    has_id = bool(_UUID.search(text))
+    out = [f for f in ai_functions.ranked(text, held, limit * 4) if has_id or not f.path_params]
+    return out[:limit]
+
+
+def calls_in_text(text: str, names) -> list[dict]:
+    """Tool calls a small model wrote into its words instead of making them: {"name": ..., "arguments": {...}}."""
+    found, decoder, i = [], json.JSONDecoder(), 0
+    while (i := text.find("{", i)) != -1:
+        try:
+            obj, end = decoder.raw_decode(text, i)
+        except ValueError:
+            i += 1
+            continue
+        if isinstance(obj, dict) and obj.get("name") in names and isinstance(obj.get("arguments", {}), dict):
+            found.append({"function": {"name": obj["name"], "arguments": obj.get("arguments") or {}}})
+        i = end
+    return found
+
+
 class LocalOllama:
     """A free open model on our own server, through Ollama's own chat API (not a stand-in for Claude)."""
 
@@ -299,17 +487,55 @@ class LocalOllama:
 
     async def turn(self, *, system: str, history: list[dict], user_text: str, tools: ToolBox, emit: Emit) -> TurnResult:
         user = {"role": "user", "content": user_text}
-        messages, new = [{"role": "system", "content": system}, *history, user], [user]
+        messages = [{"role": "system", "content": local_system(system, user_text)}, *history, user]
+        new = [user]
         result = TurnResult(text="", messages=new)
         parts: list[str] = []
-        spec = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
-                                                  "parameters": t["input_schema"]}} for t in TOOLS]
+        # The functions that fit this message - and the last one asked, so "and tomorrow?" keeps its subject.
+        earlier = next((m.get("content") for m in reversed(history) if m.get("role") == "user"
+                        and isinstance(m.get("content"), str) and not m["content"].startswith("[Note")), "")
+        picked: dict[str, ai_functions.Function] = {}
+        taken: set[str] = set()
+        for f in local_picks(f"{user_text} {earlier}", tools.held):
+            picked[_tool_name(f, taken)] = f
+        spec = [local_tool(f, name) for name, f in picked.items()]
+        prepared = read = helped = reminded = False
+        _, _, asks_change = ai_functions.query_terms(user_text)
+        zone = re.search(r"The organisation's time zone is ([^;]+);", system)
+        last_words = ""
+
+        async def run(name: str, args) -> str:
+            """One of the picked functions, through use_function's checks."""
+            nonlocal prepared, read
+            f = picked.get(name)
+            if f is None:
+                return json.dumps({"error": f"No tool called {name}. Use one of: {', '.join(picked) or 'none'}."})
+            call = local_call(f, args, user_text)
+            what = tools.describe("use_function", call)
+            await emit("status", {"text": what})
+            content, error = await tools.call("use_function", call)
+            result.used.append({"tool": name, "what": what})
+            if not error:
+                prepared, read = prepared or f.method != "GET", read or f.method == "GET"
+            # The refusal of a change with details missing names the tool the model knows, not use_function.
+            content = content.replace("call use_function again", f"call {name} again")
+            return readable_times(content, zone.group(1) if zone else None)
+
+        # A question is read first: the search's best read, before the model starts.
+        first = next(iter(picked), None)
+        if first and not asks_change and picked[first].method == "GET":
+            content = await run(first, {})
+            for m in ({"role": "assistant", "content": "", "tool_calls": [{"function": {"name": first, "arguments": {}}}]},
+                      {"role": "tool", "content": content, "tool_name": first}):
+                messages.append(m)
+                new.append(m)
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=5.0)) as client:
                 for _ in range(MAX_ROUNDS):
                     text, calls = "", []
                     async with client.stream("POST", f"{self.url}/api/chat", json={
-                            "model": self.model, "messages": messages, "tools": spec, "stream": True}) as r:
+                            "model": self.model, "messages": messages, "stream": True, "options": LOCAL_OPTIONS,
+                            **({"tools": spec} if spec else {})}) as r:
                         if r.status_code != 200:
                             raise AssistantUnavailable(f"The built-in model answered {r.status_code}. "
                                                        f"Is the model {self.model} downloaded on the server?")
@@ -326,6 +552,28 @@ class LocalOllama:
                             if chunk.get("done"):
                                 result.tokens_in += int(chunk.get("prompt_eval_count") or 0)
                                 result.tokens_out += int(chunk.get("eval_count") or 0)
+                    if not calls and picked:
+                        calls = calls_in_text(text, picked)
+                        if calls:
+                            text = ""
+                    if not calls and asks_change and not prepared and not reminded:
+                        # A request it did nothing about: one reminder to use the change it was given.
+                        change = next((n for n, f in picked.items() if f.method != "GET"), None)
+                        if change:
+                            reminded = True
+                            for m in ({"role": "assistant", "content": text},
+                                      {"role": "user", "content": f"Use the tool {change} now, with the details I "
+                                                                  "gave. Do not ask me to wait."}):
+                                messages.append(m)
+                                new.append(m)
+                            continue
+                    if not calls and picked and not helped and not read and not prepared and not asks_change:
+                        # It answered a question without reading anything ("I will check, please wait"): the best
+                        # read is made for it, and it answers from that.
+                        best = next((n for n, f in picked.items() if f.method == "GET"), None)
+                        if best:
+                            calls, text, helped = [{"function": {"name": best, "arguments": {}}}], "", True
+                    last_words = text
                     assistant = {"role": "assistant", "content": text, **({"tool_calls": calls} if calls else {})}
                     messages.append(assistant)
                     new.append(assistant)
@@ -339,9 +587,7 @@ class LocalOllama:
                                 args = json.loads(args)
                             except ValueError:
                                 args = None
-                        await emit("status", {"text": tools.describe(fn.get("name", ""), args or {})})
-                        content, _ = await tools.call(fn.get("name", ""), args)
-                        result.used.append({"tool": fn.get("name"), "what": tools.describe(fn.get("name", ""), args or {})})
+                        content = await run(fn.get("name", ""), args)
                         reply = {"role": "tool", "content": content, "tool_name": fn.get("name")}
                         messages.append(reply)
                         new.append(reply)
@@ -349,7 +595,14 @@ class LocalOllama:
                     result.stop = "rounds"
         except httpx.ConnectError as e:
             raise AssistantUnavailable("The free built-in model is not running on this server yet.") from e
-        result.text = "".join(parts)
+        # What it said before it read ("let me check") is not the answer: the answer is what came after.
+        result.text = (last_words if (read or prepared) else "".join(parts)).strip()
+        if _PLACEHOLDER.search(result.text) and not read:
+            # It answered with records it never read. Said plainly instead; the person asks again.
+            result.text = "I could not read that from the app. Please ask me again in other words."
+        elif not result.text:
+            result.text = ("I have prepared that for you: check the card and press Confirm." if prepared else
+                           "I could not find an answer to that in the app.")
         return result
 
 

@@ -232,12 +232,36 @@ Without the model running (no Ollama, or no key), the assistant says so in words
 It loads one model at a time, answers one person at a time, unloads after `OLLAMA_KEEP_ALIVE` (10 minutes) idle,
 and is held to `OLLAMA_MEM_LIMIT` (default 8g) so a model too big for the machine cannot take the rest down.
 
-**A model smaller than the 7B default is not good enough.** Tried on the 7.7 GB development PC on 28 October 2026,
-where Docker has 3.7 GB and only a 1.5B model fits (`qwen2.5:1.5b-instruct`, 1.3 GB loaded, 15 to 75 seconds a
-reply on its CPU): asked for a guard's next shift it did not look it up; asked in Malay it refused; asked for open
-incidents it found the function and then answered with invented placeholders instead of reading them; asked to
-report one it said nothing. Do not license the free model to an organisation on a machine that cannot hold the 7B
-default (about 6 GB for the model alone), or use the hosted model there.
+**The free model is helped** (`LocalOllama` in `services/ai_chat.py`). A small open model cannot use the two
+tools above: on the development PC on 28 October 2026 (Docker has 3.7 GB, so only a 1.5B model fits,
+`qwen2.5:1.5b-instruct`) it skipped the search, refused in Malay, and once searched and then answered with
+invented placeholders. So for each message the free model is given:
+
+- the **`AI_LOCAL_PICKS` (default 3)** functions the search ranks best for that message (and the one before it),
+  each as a tool of its own with flat parameters; a function needing an id the person never gave is left out, and a
+  read takes no free-text filters (a small model makes up an id, or a guard's name as a filter);
+- **a question read first**: the search's best read is made before the model starts, and it writes the answer from
+  that (it may read more); a request it did nothing about gets one reminder; a tool call it writes out as words is
+  taken as a call;
+- a short prompt of its own, **the reply language stated** (told from the message: Tamil and Chinese by their
+  scripts, Malay by its everyday words), no sampling randomness, and **at most `AI_LOCAL_MAX_TOKENS` (default 600)
+  tokens** a reply (it once repeated itself for 10,000);
+- **times written out** in the organisation's zone ("Wed 28 Oct 2026, 22:00") in what it reads;
+- where it leaves out a required title or name, the person's own words: the start of their description, or the name
+  after "called" or "named". The Confirm card shows it.
+
+An answer naming records no tool returned (placeholders) is replaced by "I could not read that from the app", and an
+empty one by what happened. Every call still goes through `use_function`'s checks, as the person.
+
+**Measured** on 15 everyday questions (a guard, a supervisor and an admin; English, Malay, Tamil and Chinese; reads
+and changes; one the app cannot answer). A question passes only if the right function was used, the answer holds the
+right facts (times and counts included) in the right language, and nothing is invented. With
+`qwen2.5:1.5b-instruct` on the development PC it went from **0 of 4 before to 12 of 15 after**, about 8 seconds a
+reply once loaded (the first takes about 40). All ten English questions pass. In Malay it read shifts and leave right
+but miscounted who was late; in Chinese and Tamil it found the right records and wrote the times wrong. **A model this
+small can still state a detail wrongly**: for an organisation's real use, run the 7B default on a server with the
+memory for it (about 6 GB for the model alone), or the hosted model. The small one is for trying the assistant on a
+small machine.
 
 ### Reaching the whole app
 
@@ -245,6 +269,15 @@ Two tools rather than 1,100: **find_functions** searches the app's own function 
 at start-up, about 1,100 functions) and offers only those the person's role holds; **use_function** calls one **inside
 the server, with the person's own sign-in**, so permissions, row-level security, site limits, rate limits and the
 audit log apply as when they click. Functions that answer with a file, a picture or a video are not offered.
+
+**The search** (`ranked` in `services/ai_functions.py`) scores each function by the words of its path (weight 3),
+its title (2), what it takes (1.5) and its description and tags (1). A word few functions use counts more than one
+most use (inverse frequency, capped), noise words count for nothing, and a word matches its plural. A short list of
+synonyms joins everyday words and the commonest Malay ones to the app's own ("cuti" is leave, "on duty now" is the
+live attendance board), and the key Tamil and Chinese words are found inside a message as they stand. "My" prefers the
+person's own records where the function is about what was asked; a request ("report", "apply") prefers a change and
+a question a read; a list beats one record that needs an id; a function on many records at once is meant only when
+the person says "all" or "bulk".
 
 **Never offered**: Super Admin functions, sign-in and passwords, two-factor sign-in, organisations (including deleting
 one), licences, roles and permissions, API keys, the AI module's own settings, finalising payroll, erasing a person's
@@ -371,6 +404,8 @@ Additions only:
 - `backend/app/scheduler_main.py`: the hourly pass (`AI_MODULE_INTERVAL`, one block).
 - `frontend/src/App.tsx`, `components/layout/Sidebar.tsx`, `motion/scenes.ts`: the AI Insights and AI Settings pages,
   their menu entries and their scenes.
+- `backend/app/services/ai_functions.py` (the module's own): the live attendance board (`/attendance/live`) was taken
+  for a camera's video stream by the rule that leaves out files and streams, and is now offered.
 - `docker/docker-compose.yml`: the api is given the AI module's five settings, and the `ollama` service and its
   `ollama_data` volume are added (profile `ai`, not started by default).
 - `backend/app/services/retention_statement.py`, `ENTERPRISE_SECURITY_HARDENING.md`: what is read from an IC is a
