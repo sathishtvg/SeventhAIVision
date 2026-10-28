@@ -1048,3 +1048,13 @@ Overtime requests panel on Attendance, and the markers on Guard Ops for a shift
 closed by the system or checked out away from its site. Nothing in the desktop
 shell was changed for it. It is unsigned, with the same app id and MSI upgrade
 code, so it installs over 1.0.10.
+
+### Desktop 1.0.12
+
+Desktop 1.0.12 is the web build of 28 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.11: the AI module's screens (AI Insights, AI Settings, and the AI Assistant
+& Learning tab in Manage Licenses), the assistant's button and panel on every
+page, with its Confirm cards, and scanning a new staff member's IC. Nothing in
+the desktop shell was changed for it. It is unsigned, with the same app id and
+MSI upgrade code, so it installs over 1.0.11.
