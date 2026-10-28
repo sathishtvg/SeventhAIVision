@@ -222,6 +222,23 @@ The Super Admin chooses per organisation, in the licence:
 
 Without the model running (no Ollama, or no key), the assistant says so in words; nothing else is affected.
 
+**Running them.** `docker/docker-compose.yml` passes `OLLAMA_URL`, `AI_LOCAL_MODEL`, `ANTHROPIC_API_KEY`,
+`AI_HOSTED_MODEL` and `AI_HOSTED_EFFORT` to the api. The free model is the `ollama` service (profile `ai`, image
+`ollama/ollama:0.40.4`, no published port: only the api reaches it), started and given its model with:
+
+    docker compose -f docker/docker-compose.yml --profile ai up -d --no-deps ollama
+    docker compose -f docker/docker-compose.yml exec ollama ollama pull <AI_LOCAL_MODEL>
+
+It loads one model at a time, answers one person at a time, unloads after `OLLAMA_KEEP_ALIVE` (10 minutes) idle,
+and is held to `OLLAMA_MEM_LIMIT` (default 8g) so a model too big for the machine cannot take the rest down.
+
+**A model smaller than the 7B default is not good enough.** Tried on the 7.7 GB development PC on 28 October 2026,
+where Docker has 3.7 GB and only a 1.5B model fits (`qwen2.5:1.5b-instruct`, 1.3 GB loaded, 15 to 75 seconds a
+reply on its CPU): asked for a guard's next shift it did not look it up; asked in Malay it refused; asked for open
+incidents it found the function and then answered with invented placeholders instead of reading them; asked to
+report one it said nothing. Do not license the free model to an organisation on a machine that cannot hold the 7B
+default (about 6 GB for the model alone), or use the hosted model there.
+
 ### Reaching the whole app
 
 Two tools rather than 1,100: **find_functions** searches the app's own function list (built from its API description
@@ -354,6 +371,8 @@ Additions only:
 - `backend/app/scheduler_main.py`: the hourly pass (`AI_MODULE_INTERVAL`, one block).
 - `frontend/src/App.tsx`, `components/layout/Sidebar.tsx`, `motion/scenes.ts`: the AI Insights and AI Settings pages,
   their menu entries and their scenes.
+- `docker/docker-compose.yml`: the api is given the AI module's five settings, and the `ollama` service and its
+  `ollama_data` volume are added (profile `ai`, not started by default).
 - `backend/app/services/retention_statement.py`, `ENTERPRISE_SECURITY_HARDENING.md`: what is read from an IC is a
   ninth kind of record with a period (`IC_READINGS`, an hour); `frontend/src/api/dataGovernance.ts` reads a period in
   hours.
