@@ -1058,3 +1058,14 @@ Desktop 1.0.12 is the web build of 28 October 2026 - `desktop/package.json`,
 page, with its Confirm cards, and scanning a new staff member's IC. Nothing in
 the desktop shell was changed for it. It is unsigned, with the same app id and
 MSI upgrade code, so it installs over 1.0.11.
+
+### Desktop 1.0.13
+
+Desktop 1.0.13 is the web build of 31 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.12: the card beside the AI button that asks for what the AI is waiting on
+the person to decide - a Confirm the chat left waiting, or a warning they may
+accept or dismiss - with the count of them on the button
+(`docs/plans/2026-10-31-ai-corner-button-and-decision-popups-design.md`).
+Nothing in the desktop shell was changed for it. It is unsigned, with the same
+app id and MSI upgrade code, so it installs over 1.0.12.
