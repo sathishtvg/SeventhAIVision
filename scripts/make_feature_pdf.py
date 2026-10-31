@@ -43,8 +43,8 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "28 October 2026"
-EDITION = "Edition 19"
+GENERATED = "31 October 2026"
+EDITION = "Edition 20"
 HEAD = "0174"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -133,6 +133,9 @@ EDITIONS = [
      "Module 32, the AI assistant and learning; overtime approval."],
     ["Edition 19", "28 October 2026", "0174",
      "The small free model runs, helped (module 32); Windows 1.0.12."],
+    ["Edition 20", "31 October 2026", "0174",
+     "The AI button on every phone screen, and the AI's decisions pop up on the web, the "
+     "desktop app and the phone (module 32)."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -325,13 +328,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("307", "DATABASE TABLES"), ("1,142", "API OPERATIONS"), ("120", "API MODULES"),
+        ("307", "DATABASE TABLES"), ("1,143", "API OPERATIONS"), ("121", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
         ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("174", "MIGRATIONS"),
-        ("6,925", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,964", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1631,16 +1634,17 @@ story += module(
         "records, refitted about once a day, each warning with the factors that "
         "raised it, measured on history it did not see; the bar it must reach moves "
         "with what people accept and dismiss.",
-        "<b>Conversations are kept</b> in the platform's own database; each person "
-        "reads only their own.",
+        "<b>Decisions pop up</b> beside the AI button on every screen, one at a "
+        "time, and a phone is pushed when warnings are raised. Conversations are "
+        "kept; each person reads only their own.",
         "<i>By design:</i> nothing in the module acts on its own. A warning changes "
         "no roster, alert or payslip, and the assistant saves nothing without "
         "Confirm. <i>Documented limitations:</i> the development PC runs a small "
         "free model (1.5B), helped to answer 12 of 15 everyday questions right; it "
         "can still state a detail wrongly, so real use wants the 7B one on a server, "
         "or the hosted one. The phone's assistant has not run on a device; the IC "
-        "reader is tested on printed cards, not photos of real ones; a feature warns "
-        "only once there is enough history.",
+        "reader is tested on printed cards only; a feature warns only with enough "
+        "history.",
     ],
     tag="ADDED IN EDITION 18 · MIGRATIONS 0170 TO 0174")
 
@@ -1818,7 +1822,8 @@ story.append(data_table(
         ["Learning from the organisation's work (module 32)",
          "Simple models fitted to its own records; each warning names its "
          "factors, and its bar moves with people's decisions",
-         "Accepts or dismisses each warning, and changes nothing by it"],
+         "Accepts or dismisses each warning, on AI Insights or the card that "
+         "pops up, and changes nothing by it"],
     ],
     widths=[44 * mm, 72 * mm, 54 * mm]))
 story += [Spacer(1, 8), KeepTogether([
@@ -1914,7 +1919,7 @@ story += bullets([
     "<b>A phone build and a device pass.</b> The phone parts of guard response, "
     "handover notes, procedures and visitor authorisation, the four screens "
     "added in edition 7, privacy zones on the phone (edition 9) and the AI "
-    "assistant (edition 18) are type-checked and tested against the server, "
+    "assistant with its corner button (editions 18 and 20) are type-checked and tested against the server, "
     "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
     "<b>A code-signing certificate.</b> Desktop 1.0.12 is built and carries the AI "
@@ -2134,8 +2139,8 @@ story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 174 "
-    "database migrations, 307 tables, 120 API modules serving 1,142 operations, 147 backend "
-    "services, 124 web routes and 59 phone screens, covered by 6,925 automated tests "
+    "database migrations, 307 tables, 121 API modules serving 1,143 operations, 148 backend "
+    "services, 124 web routes and 59 phone screens, covered by 6,964 automated tests "
     "(backend 4,297, repository inspection 1,406, web 799, phone 423). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
