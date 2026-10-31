@@ -229,7 +229,8 @@ Without the model running (no Ollama, or no key), the assistant says so in words
     docker compose -f docker/docker-compose.yml --profile ai up -d --no-deps ollama
     docker compose -f docker/docker-compose.yml exec ollama ollama pull <AI_LOCAL_MODEL>
 
-It loads one model at a time, answers one person at a time, unloads after `OLLAMA_KEEP_ALIVE` (10 minutes) idle,
+It loads one model at a time, answers one person at a time, unloads after the idle time the api asks for with each
+reply (`AI_LOCAL_KEEP_ALIVE`, 30 minutes; `OLLAMA_KEEP_ALIVE`, 10 minutes, for anything else),
 and is held to `OLLAMA_MEM_LIMIT` (default 8g) so a model too big for the machine cannot take the rest down.
 
 **The free model is helped** (`LocalOllama` in `services/ai_chat.py`). A small open model cannot use the two
@@ -249,6 +250,19 @@ invented placeholders. So for each message the free model is given:
 - **times written out** in the organisation's zone ("Wed 28 Oct 2026, 22:00") in what it reads;
 - where it leaves out a required title or name, the person's own words: the start of their description, or the name
   after "called" or "named". The Confirm card shows it.
+
+**It is sent little, for speed** (31 October 2026: on the development PC, a laptop processor, replies took 40 seconds
+to 6 minutes; it reads about 25 words a second and writes fewer than ten). The conversation so far is shown to it as
+words only, **the last 6 messages** (`LOCAL_HISTORY_WORDS`), without the earlier reads it used to re-read with every
+message; a read comes **without empty values, the organisation's id or any id but a record's own**, a list cut to its
+first **15 rows** with the rest counted (`brief` in `services/ai_functions.py`), and at most
+**`AI_LOCAL_RESULT_LIMIT` (default 4000) characters**; a change once prepared **ends the reply with a fixed sentence**
+in the person's language instead of one more call, since the Confirm card shows what will change; and the model
+**stays loaded for `AI_LOCAL_KEEP_ALIVE` (default 30m)** after a reply, where loading it again took 11 to 32 seconds.
+It holds **`AI_LOCAL_CONTEXT` (default 4096)** words at once and reads **`AI_LOCAL_BATCH` (default 512)** in one go,
+not Ollama's 8192 and 1024: what it is sent fits, and on the development PC the larger sizes kept the model against its
+memory cap (it hit the cap 5,861 times in one evening), so parts of it were read back from disk for every word it
+wrote, and writing fell from about 9 words a second to under 1.
 
 An answer naming records no tool returned (placeholders) is replaced by "I could not read that from the app", and an
 empty one by what happened. Every call still goes through `use_function`'s checks, as the person.
@@ -275,7 +289,10 @@ its title (2), what it takes (1.5) and its description and tags (1). A word few 
 most use (inverse frequency, capped), noise words count for nothing, and a word matches its plural. A short list of
 synonyms joins everyday words and the commonest Malay ones to the app's own ("cuti" is leave, "on duty now" is the
 live attendance board), and the key Tamil and Chinese words are found inside a message as they stand. "My" prefers the
-person's own records where the function is about what was asked; a request ("report", "apply") prefers a change and
+person's own records where the function is about what was asked, and without "my", "me" or "I" they come last
+(unasked, "how many incidents are still open?" once read the person's own incident responses); a request adding a
+person ("create a new guard", "register a new employee", "tambah pengawal baru") is a new staff account
+(`POST /users`), which by words alone it never found; a request ("report", "apply") prefers a change and
 a question a read; a list beats one record that needs an id; a function on many records at once is meant only when
 the person says "all" or "bulk".
 

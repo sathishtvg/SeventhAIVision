@@ -30,6 +30,13 @@ call still goes through use_function's checks. An answer that names records no
 tool returned (placeholders) is replaced by a plain "could not read that", and an
 empty one by what happened.
 
+THE FREE MODEL IS SENT LITTLE (31 October 2026: replies took 40 s to 6 min on the
+development PC, which reads about 25 words a second). The conversation so far is
+replayed as words only, the last few messages; a read comes without empty values
+or ids other than a record's own, its long lists cut and counted; a prepared change
+ends the reply with a fixed sentence in the person's language rather than one more
+call; and the model stays loaded between replies (loading took 11 to 32 s).
+
 THE HISTORY IS APPEND-ONLY. Each turn's messages are stored exactly as the model
 produced them (for Claude, its content blocks, thinking included) and replayed
 unchanged: editing a past turn is refused by the model. A conversation started on
@@ -69,7 +76,28 @@ LOCAL_PICKS = int(os.environ.get("AI_LOCAL_PICKS", "3"))
 #: How the free model writes: no sampling randomness, a cap on a reply's length (a small model can repeat itself
 #: for thousands of words), and a penalty on repeating.
 LOCAL_OPTIONS = {"temperature": 0, "num_predict": int(os.environ.get("AI_LOCAL_MAX_TOKENS", "600")),
-                 "repeat_penalty": 1.2}
+                 "repeat_penalty": 1.2,
+                 # How much it holds at once (words) and reads in one go. Smaller than Ollama's 8192 and 1024: what
+                 # it is sent now fits in 4096, and on the development PC the larger sizes pushed the model against
+                 # its memory cap, so parts of it were read back from disk for every word it wrote.
+                 "num_ctx": int(os.environ.get("AI_LOCAL_CONTEXT", "4096")),
+                 "num_batch": int(os.environ.get("AI_LOCAL_BATCH", "512"))}
+# What the free model is given, kept small: on a small machine it reads about 25 words a second and writes
+# fewer than ten, so every word sent costs the person waiting.
+#: How long the model stays loaded after its last reply: loading it again took 11 to 32 seconds on the development PC.
+LOCAL_KEEP_ALIVE = os.environ.get("AI_LOCAL_KEEP_ALIVE", "30m")
+#: How much of the conversation it is shown again: the last few messages, in words only (no earlier reads).
+LOCAL_HISTORY_WORDS = 6
+#: How much of a read it is shown, in characters, after `ai_functions.brief` has taken out what says nothing.
+LOCAL_RESULT_LIMIT = int(os.environ.get("AI_LOCAL_RESULT_LIMIT", "4000"))
+#: A change prepared ends the reply with this, in the person's language, instead of asking the model for a sentence
+#: (the Confirm card shows what will change).
+PREPARED = {
+    "English": "I have prepared that for you: check the card and press Confirm.",
+    "Malay": "Saya telah menyediakannya untuk anda: semak kad itu dan tekan Confirm.",
+    "Tamil": "நான் அதைத் தயார் செய்துள்ளேன்: அட்டையைச் சரிபார்த்து Confirm அழுத்தவும்.",
+    "Chinese (Simplified)": "我已为您准备好了：请查看卡片并按 Confirm。",
+}
 
 Emit = Callable[[str, dict], Awaitable[None]]
 
@@ -118,6 +146,8 @@ class ToolBox:
                  | None = None):
         self.token, self.held, self.client_ip, self.mask_results = token, held, client_ip, mask_results
         self.on_change = on_change
+        #: Set by the free model: a read is given to it without what says nothing, and shorter.
+        self.brief = False
 
     def describe(self, name: str, args: dict) -> str:
         """What the person sees while a tool runs."""
@@ -167,6 +197,8 @@ class ToolBox:
             return json.dumps({"error": f"The app answered {status}", "detail": payload}), True
         if self.mask_results:
             payload = ai_functions.mask(payload)
+        if self.brief:
+            return ai_functions.shorten(ai_functions.brief(payload), LOCAL_RESULT_LIMIT), False
         return ai_functions.shorten(payload), False
 
 
@@ -366,6 +398,28 @@ def local_system(system: str, user_text: str) -> str:
     return f"{LOCAL_RULES}\n\n{tail}\nReply in {language}."
 
 
+_REMINDER = "Use the tool "
+
+
+def local_history(history: list[dict], keep: int = LOCAL_HISTORY_WORDS) -> list[dict]:
+    """The conversation so far as the free model is shown it again: what the person wrote and what it answered,
+    the last `keep` of them. Earlier reads and calls are left out - each new message re-read them all (one
+    conversation reached 2,900 words a call), and what they said is in the answers. Each message's functions
+    come from its own words and the one before it, and a function on a record needs an id the person typed."""
+    words = [{"role": m["role"], "content": m["content"]} for m in history
+             if m.get("role") in ("user", "assistant") and not m.get("tool_calls")
+             and isinstance(m.get("content"), str) and m["content"].strip()
+             and not (m["role"] == "user" and m["content"].startswith(_REMINDER))]
+    return words[-keep:]
+
+
+def prepared_words(system: str, user_text: str) -> str:
+    """The sentence a prepared change ends with, in the language the reply is written in."""
+    fallback = re.search(r"when that is unclear, in ([^.]+)\.", system)
+    language = language_of(user_text) or (fallback.group(1) if fallback else "English")
+    return PREPARED.get(language, PREPARED["English"])
+
+
 _ISO_TIME = re.compile(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?")
 
 
@@ -436,6 +490,10 @@ def local_call(f: ai_functions.Function, args, said: str = "") -> dict:
     """The free model's flat arguments, put where the function takes them, for use_function. `said` is the
     person's message: a name they gave ("a site called Harbour Gate") is used when the model leaves it out."""
     args = args if isinstance(args, dict) else {}
+    # A small model sometimes hands back the tool's own description of a field as its value ("name":
+    # {"type": "string"}): that is no value, and the person's own words fill the name instead.
+    args = {k: v for k, v in args.items() if not (isinstance(v, dict) and "type" in v
+                                                    and set(v) <= {"type", "description", "enum", "items", "format"})}
     queries = {q["name"] for q in f.query_params if f.method != "GET" or q.get("choices")}
     body_names = {b["name"] for b in f.body_fields}
     body = {k: v for k, v in args.items() if k in body_names and k not in queries and v not in (None, "")}
@@ -491,7 +549,8 @@ class LocalOllama:
 
     async def turn(self, *, system: str, history: list[dict], user_text: str, tools: ToolBox, emit: Emit) -> TurnResult:
         user = {"role": "user", "content": user_text}
-        messages = [{"role": "system", "content": local_system(system, user_text)}, *history, user]
+        tools.brief = True
+        messages = [{"role": "system", "content": local_system(system, user_text)}, *local_history(history), user]
         new = [user]
         result = TurnResult(text="", messages=new)
         parts: list[str] = []
@@ -539,7 +598,7 @@ class LocalOllama:
                     text, calls = "", []
                     async with client.stream("POST", f"{self.url}/api/chat", json={
                             "model": self.model, "messages": messages, "stream": True, "options": LOCAL_OPTIONS,
-                            **({"tools": spec} if spec else {})}) as r:
+                            "keep_alive": LOCAL_KEEP_ALIVE, **({"tools": spec} if spec else {})}) as r:
                         if r.status_code != 200:
                             raise AssistantUnavailable(f"The built-in model answered {r.status_code}. "
                                                        f"Is the model {self.model} downloaded on the server?")
@@ -595,6 +654,14 @@ class LocalOllama:
                         reply = {"role": "tool", "content": content, "tool_name": fn.get("name")}
                         messages.append(reply)
                         new.append(reply)
+                    if prepared:
+                        # A change is prepared: the Confirm card shows it, so the reply ends here rather than
+                        # waiting on the model for a sentence (a whole further call, 15 to 50 s on a small machine).
+                        last_words = prepared_words(system, user_text)
+                        ending = {"role": "assistant", "content": last_words}
+                        messages.append(ending)
+                        new.append(ending)
+                        break
                 else:
                     result.stop = "rounds"
         except httpx.ConnectError as e:
