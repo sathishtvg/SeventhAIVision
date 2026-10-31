@@ -85,6 +85,7 @@ import PolicyIcon from '@mui/icons-material/Policy'
 import { useQuery } from '@tanstack/react-query'
 import { getBranding } from '@/api/branding'
 import { PRODUCT_NAME } from '@/lib/brand'
+import { WEB_BUILD, versionLine } from '@/lib/appVersion'
 import { usePermission, getPermissionsForRole } from '@/hooks/usePermission'
 import { useAuthStore } from '@/store/auth'
 
@@ -944,6 +945,18 @@ export function Sidebar() {
             </IconButton>
           </Tooltip>
         </Box>
+        {/* Which build this is, so an updated console can be told from an old one (lib/appVersion.ts). In the rail
+            only the commit fits; the whole line is its tooltip. */}
+        <Tooltip title={rail ? versionLine() : ''} placement="right">
+          <Typography
+            variant="caption"
+            data-testid="app-version"
+            sx={{ display: 'block', mt: 0.75, textAlign: 'center', color: 'text.secondary', fontSize: '0.62rem',
+                  lineHeight: 1.35, opacity: 0.85 }}
+          >
+            {rail ? (WEB_BUILD.commit || 'build') : versionLine()}
+          </Typography>
+        </Tooltip>
       </Box>
     </Drawer>
   )

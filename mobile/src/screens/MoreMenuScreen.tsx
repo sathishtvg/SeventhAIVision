@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth'
 import { assistantIsMine, getAiStatus } from '@/api/aiAssistant'
 import { Card } from '@/components/Card'
 import { canSee, type Gated } from '@/lib/access'
+import { versionLine } from '@/lib/appVersion'
 import { colors, fontSize, radius, spacing } from '@/theme'
 import type { MoreStackParamList } from '@/navigation'
 
@@ -120,6 +121,9 @@ export function MoreMenuScreen() {
         <Ionicons name="log-out-outline" size={18} color={colors.error} />
         <Text style={styles.logoutText}>Sign Out</Text>
       </Pressable>
+
+      {/* Which build this is, so an updated app can be told from an old one (lib/appVersion.ts). */}
+      <Text style={styles.version} testID="app-version">{versionLine()}</Text>
     </ScrollView>
   )
 }
@@ -140,4 +144,5 @@ const styles = StyleSheet.create({
   menuDesc:     { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   logoutBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingVertical: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.error + '60' },
   logoutText:   { fontSize: fontSize.md, fontWeight: '700', color: colors.error },
+  version:      { fontSize: fontSize.xs, color: colors.textDisabled, textAlign: 'center', marginTop: spacing.md },
 })
