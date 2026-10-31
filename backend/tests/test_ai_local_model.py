@@ -8,13 +8,15 @@ of their own; the read made for it when it only says "I will check"; and nothing
 never read passed off as an answer. A fake Ollama plays the model.
 
 Sections:
-  A — The search (4 tests)
-  B — The free model's tools and words (6 tests)
+  A — The search (6 tests)
+  B — The free model's tools and words (7 tests)
   C — A turn of the free model (5 tests)
+  D — Sent little, for speed (3 tests)
 """
 from __future__ import annotations
 
 import json
+import uuid
 
 import httpx
 import pytest
@@ -70,6 +72,31 @@ async def test_a_request_finds_a_change_and_my_finds_my_own():
     assert any(f.path_params for f in with_id), "given an id, a function on that record may be offered"
     face_first = _paths(ai_functions.ranked("When is my next shift?", guard), 1)
     assert face_first != [("GET", "/api/v1/faces/me/checks")], "'my' prefers what is about shifts"
+
+
+@pytest.mark.asyncio
+async def test_adding_a_person_finds_a_new_staff_account_and_nothing_else_does():
+    """31 October 2026: "Can you create a new guard?" found shifts, sites and violations, never a new account."""
+    admin = await _held(2)
+    for ask in ("Can you create a new guard?", "Add a new security guard", "Create a staff account for Ravi Kumar",
+                "Register a new employee", "I want to add a new guard", "Tambah pengawal baru",
+                "His name is Ravi Kumar, email ravi@x.test Can you create a new guard?"):
+        assert _paths(ai_functions.ranked(ask, admin), 1) == [("POST", "/api/v1/users")], ask
+    for ask in ("Create a shift for the guard", "Add the guard to tonight's shift", "Show me the new guards",
+                "Add my phone number to my account"):
+        assert ("POST", "/api/v1/users") not in _paths(ai_functions.ranked(ask, admin), 1), ask
+    assert ("POST", "/api/v1/users") not in _paths(ai_functions.ranked("Can you create a new guard?",
+                                                                      await _held(5)), 8), "only for who may"
+
+
+@pytest.mark.asyncio
+async def test_the_persons_own_records_come_first_only_when_they_say_my():
+    admin = await _held(2)
+    assert _paths(ai_functions.ranked("How many incidents are still open?", admin), 1) == [("GET", "/api/v1/incidents")]
+    assert _paths(ai_functions.ranked("Show my incident responses", admin), 1) == [
+        ("GET", "/api/v1/incident-responses/mine")]
+    assert ("PUT", "/api/v1/users/me") not in _paths(ai_functions.ranked("Create a staff account", admin), 2)
+    assert _paths(ai_functions.ranked("Update my phone number", await _held(5)), 1) == [("PUT", "/api/v1/users/me")]
 
 
 def test_the_live_attendance_board_is_offered_and_a_camera_stream_is_not():
@@ -128,8 +155,31 @@ def test_flat_arguments_are_put_where_the_function_takes_them():
     assert ai_chat.local_call(create, {"title": "Gate", "description": "x"})["body"]["title"] == "Gate"
     site = next(f for f in cat.values() if (f.method, f.path) == ("POST", "/api/v1/sites"))
     assert ai_chat.local_call(site, {}, "Create a site called Harbour Gate")["body"]["name"] == "Harbour Gate"
-    assert ai_chat.local_call(site, {"name": "Changi"}, "a site called Harbour Gate")["body"]["name"] == "Changi"
+    assert ai_chat.local_call(site, {"name": "Changi"}, "a site called Changi")["body"]["name"] == "Changi"
+    assert ai_chat.local_call(site, {"name": "Changi"}, "a site called Harbour Gate")["body"]["name"] == \
+        "Harbour Gate", "a name the person never wrote gives way to the one they did"
     assert "name" not in ai_chat.local_call(site, {}, "Create a site")["body"], "no name said, none made up"
+    # 31 October 2026: it handed back the tool's own description of each field as the values.
+    echoed = {"name": {"type": "string"}, "latitude": {"type": "number"}, "address": {"type": "string"}}
+    assert ai_chat.local_call(site, echoed, "Create a site called Harbour Gate")["body"] == {"name": "Harbour Gate"}
+
+
+def test_who_a_new_person_is_comes_from_the_persons_own_words_and_their_role_from_its_name():
+    """31 October 2026: asked "Can you create a new guard?", the free model filled in the admin's own name from its
+    prompt, a made-up email and the Super Admin's role, and the card was shown."""
+    new = next(f for f in ai_functions.catalogue().values() if (f.method, f.path) == ("POST", "/api/v1/users"))
+    invented = {"full_name": "Sathish Admin", "email": "sathish@example.com", "role_id": 1}
+    assert ai_chat.local_call(new, invented, "Can you create a new guard?")["body"] == {"role_id": 5}
+    said = "Can you create a new guard?\nHis name is Ravi Kumar, email ravi.kumar@demo.test"
+    assert ai_chat.local_call(new, {"full_name": "ravi kumar", "email": "ravi.kumar@demo.test", "role_id": 0},
+                              said)["body"] == {"full_name": "ravi kumar", "email": "ravi.kumar@demo.test",
+                                                "role_id": 5}
+    assert ai_chat.local_call(new, {"role_id": 5}, "Add a new staff account")["body"] == {}, "no role named, asked"
+    assert ai_chat.role_named("Create a new guard\nActually make her a supervisor") == 3, "the latest words"
+    assert ai_chat.role_named("Create a new super admin") is None, "never the Super Admin, nor read as an admin"
+    assert ai_chat.role_named("Tambah pengawal baru") == 5 and ai_chat.role_named("Add a new manager") == 8
+    assert ai_chat.said_by_person("+65 9123-4567", "his phone is 91234567")
+    assert not ai_chat.said_by_person("91234567", "his phone is 98765432")
 
 
 def test_times_are_written_out_in_the_organisations_zone_before_the_model_sees_them():
@@ -189,7 +239,7 @@ def app_calls(monkeypatch):
     return calls
 
 
-async def _turn(question: str, held: set[str], cards: list | None = None):
+async def _turn(question: str, held: set[str], cards: list | None = None, history: list | None = None):
     async def on_change(f, path, path_values, query, change):
         cards.append((f.method, path, change))
         return json.dumps({"prepared": True}), False
@@ -202,7 +252,7 @@ async def _turn(question: str, held: set[str], cards: list | None = None):
     system = "RULES\n\nYou are talking to Ravi (Security Guard) of Demo. Reply in the language the person writes " \
              "in; when that is unclear, in English. The organisation's time zone is Asia/Singapore; today is x."
     return await ai_chat.LocalOllama(url="http://ollama:11434", model="small").turn(
-        system=system, history=[], user_text=question, tools=tools, emit=emit)
+        system=system, history=history or [], user_text=question, tools=tools, emit=emit)
 
 
 @pytest.mark.asyncio
@@ -212,7 +262,9 @@ async def test_a_question_is_read_first_and_the_model_writes_the_answer_from_it(
     assert [c[:2] for c in app_calls] == [("GET", "/api/v1/shifts")], "read before the model was asked"
     assert r.text == "Your next shift is at Jurong Logistics Hub at 22:00."
     first = fake.sent[0]
-    assert first["options"] == {"temperature": 0, "num_predict": 600, "repeat_penalty": 1.2}
+    assert first["options"] == {"temperature": 0, "num_predict": 600, "repeat_penalty": 1.2,
+                                "num_ctx": 4096, "num_batch": 512}
+    assert first["keep_alive"] == "30m", "loading the model again took 11 to 32 s"
     assert first["messages"][0]["content"].endswith("Reply in English.")
     assert [t["function"]["name"] for t in first["tools"]][0] == "list_shifts"
     assert first["messages"][-1]["role"] == "tool" and "Jurong" in first["messages"][-1]["content"]
@@ -223,14 +275,13 @@ async def test_a_question_is_read_first_and_the_model_writes_the_answer_from_it(
 async def test_a_request_it_did_nothing_about_gets_one_reminder(ollama, app_calls):
     cards: list = []
     fake = ollama([{"text": "Sure, I will report it. Please wait."},
-                   {"calls": [{"function": {"name": "create_incident", "arguments": {"title": "Gate 2 left open"}}}]},
-                   {"text": "It is prepared: confirm it on the card."}])
+                   {"calls": [{"function": {"name": "create_incident", "arguments": {"title": "Gate 2 left open"}}}]}])
     r = await _turn("Report an incident: gate 2 was left open", await _held(5), cards)
     assert app_calls == [], "a request is not read first"
     assert [(m, p) for m, p, _ in cards] == [("POST", "/api/v1/incidents")]
     assert fake.sent[1]["messages"][-1] == {"role": "user", "content": "Use the tool create_incident now, with the "
                                                                        "details I gave. Do not ask me to wait."}
-    assert r.text == "It is prepared: confirm it on the card."
+    assert len(fake.sent) == 2 and r.text == ai_chat.PREPARED["English"], "no call after the change was prepared"
 
 
 @pytest.mark.asyncio
@@ -258,3 +309,55 @@ async def test_a_change_is_prepared_and_an_empty_answer_says_so(ollama, app_call
     assert [(m, p) for m, p, _ in cards] == [("POST", "/api/v1/incidents")]
     assert cards[0][2] == {"title": "Gate 2 left open", "severity": "low"}
     assert r.text == "I have prepared that for you: check the card and press Confirm."
+
+
+# ─── D. Sent little, for speed ───────────────────────────────────────────────
+# On the development PC (a laptop processor) the free model reads about 25 words a second and writes fewer than ten:
+# on 31 October 2026 replies took 40 seconds to 6 minutes, re-reading every earlier read with each new message.
+
+@pytest.mark.asyncio
+async def test_the_conversation_is_shown_again_as_words_only(ollama, app_calls):
+    earlier = [
+        {"role": "user", "content": "Can you create a new guard?"},
+        {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "create_user", "arguments": {}}}]},
+        {"role": "tool", "content": json.dumps({"error": "Not prepared yet. Ask the person for: email"}),
+         "tool_name": "create_user"},
+        {"role": "user", "content": "Use the tool create_user now, with the details I gave. Do not ask me to wait."},
+        {"role": "assistant", "content": "What is the new guard's email?"},
+    ] + [{"role": r, "content": f"{r} {n}"} for n in range(4) for r in ("user", "assistant")]
+    shown = ai_chat.local_history(earlier)
+    assert len(shown) == 6 and all(m["role"] in ("user", "assistant") and m["content"] for m in shown)
+    assert not [m for m in ai_chat.local_history(earlier, keep=50) if "tool_calls" in m or "Use the tool" in m["content"]]
+    assert [m["content"] for m in ai_chat.local_history(earlier, keep=50)][:2] == [
+        "Can you create a new guard?", "What is the new guard's email?"]
+    fake = ollama([{"text": "Your next shift is at Jurong Logistics Hub."}])
+    await _turn("When is my next shift?", await _held(5), history=earlier)
+    sent = fake.sent[0]["messages"]
+    assert sent[1:7] == shown, "the last six messages in words, after the prompt"
+    assert [m["role"] for m in sent[7:]] == ["user", "assistant", "tool"], "then this message and its read"
+
+
+def test_a_read_comes_without_what_says_nothing_and_a_long_list_is_counted():
+    org, site, row_id = (str(uuid.uuid4()) for _ in range(3))
+    rows = [{"id": row_id, "tenant_id": org, "site_id": site, "site_name": "Jurong", "title": f"Gate {n}",
+             "notes": "", "closed_at": None, "tags": [], "extra": {"assigned_to": None}} for n in range(20)]
+    small = ai_functions.brief({"items": rows, "total": 20, "next_cursor": None})
+    assert small["total"] == 20 and "next_cursor" not in small
+    assert list(small) == ["total", "items"], "the total before the rows: a small model counted the rows shown"
+    assert small["items"][0] == {"id": row_id, "site_name": "Jurong", "title": "Gate 0"}
+    assert len(small["items"]) == 16 and small["items"][-1] == {"not_shown": 5}
+    assert ai_functions.brief([1, 0, False, "x"]) == [1, 0, False, "x"], "a zero or a no is said, not dropped"
+    before, after = len(json.dumps(rows)), len(json.dumps(small))
+    assert after < before / 3, (before, after)
+
+
+@pytest.mark.asyncio
+async def test_a_prepared_change_ends_the_reply_in_the_persons_language_without_another_call(ollama, app_calls):
+    cards: list = []
+    fake = ollama([{"calls": [{"function": {"name": "create_incident", "arguments": {
+        "title": "Pintu 2 terbuka", "severity": "low"}}}]}])
+    r = await _turn("Tolong report an incident: gate 2 di Jurong terbuka", await _held(5), cards)
+    assert [(m, p) for m, p, _ in cards] == [("POST", "/api/v1/incidents")]
+    assert len(fake.sent) == 1, "the model was asked again after the change was prepared"
+    assert r.text == ai_chat.PREPARED["Malay"] and r.messages[-1] == {"role": "assistant", "content": r.text}
+    assert set(ai_chat.PREPARED) == set(ai_chat.LANGUAGES.values()), "a sentence for every language the app speaks"

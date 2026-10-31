@@ -316,8 +316,15 @@ def test_how_the_free_model_is_helped_is_as_the_document_says():
     from app.services import ai_chat, ai_functions
     doc = " ".join(_doc().split())
     assert ai_chat.LOCAL_PICKS == 3 and "`AI_LOCAL_PICKS` (default 3)" in doc
-    assert ai_chat.LOCAL_OPTIONS == {"temperature": 0, "num_predict": 600, "repeat_penalty": 1.2}
+    assert ai_chat.LOCAL_OPTIONS == {"temperature": 0, "num_predict": 600, "repeat_penalty": 1.2,
+                                     "num_ctx": 4096, "num_batch": 512}
+    assert "`AI_LOCAL_CONTEXT` (default 4096)" in doc and "`AI_LOCAL_BATCH` (default 512)" in doc
     assert "`AI_LOCAL_MAX_TOKENS` (default 600)" in doc
+    # Sent little, for speed (31 October 2026).
+    assert ai_chat.LOCAL_KEEP_ALIVE == "30m" and "`AI_LOCAL_KEEP_ALIVE` (default 30m)" in doc
+    assert ai_chat.LOCAL_RESULT_LIMIT == 4000 and "`AI_LOCAL_RESULT_LIMIT` (default 4000) characters" in doc
+    assert ai_chat.LOCAL_HISTORY_WORDS == 6 and "the last 6 messages" in doc
+    assert ai_functions.BRIEF_ROWS == 15 and "first **15 rows**" in doc
     assert ai_functions.IDF_CAP == 4.0 and "(inverse frequency, capped)" in doc
     assert '"cuti": ("leave",)' in (REPO_ROOT / "backend" / "app" / "services" / "ai_functions.py").read_text(
         encoding="utf-8") and '"cuti" is leave' in doc

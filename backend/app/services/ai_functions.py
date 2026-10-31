@@ -259,8 +259,13 @@ def score(f: "Function", wanted: dict[str, float], own: bool, action: bool, idf:
     # "My" prefers the person's own records - where the function is about what was asked (in its path or title),
     # not where it only takes it ("my next shift" is not my face checks, which take a shift).
     about = any(f.terms.get(w, 0.0) >= 2.0 for w in wanted)
-    if own and about and re.search(r"/me(/|$)|/my(-|/|$)", f.path):
+    mine = re.search(r"/me(/|$)|/mine(/|$)|/my(-|/|$)", f.path)
+    if own and about and mine:
         hit += 4.0
+    elif mine and not own:
+        # And only then: unasked, the person's own records won on everyday words (31 October 2026: "How many
+        # incidents are still open?" read my incident responses; "Create a staff account" offered changing my own).
+        hit -= 6.0
     if action:
         hit += 2.0 if f.method != "GET" else 0.0
     else:
@@ -357,6 +362,19 @@ async def held_permissions(db: AsyncSession, role_id: int) -> set[str]:
     return set(rows)
 
 
+#: Adding a person means a new staff account. By words alone the search never found it (31 October 2026: "Can you
+#: create a new guard?" found shifts, sites and violations; "Register a new employee" found device registration):
+#: an account is a "user" in the app's words, which nobody says. The person must be what is added - "create a new
+#: guard", "tambah pengawal baru" - not what something else is for ("create a shift for the guard") or added to
+#: ("add the guard to tonight's shift").
+_ADD_PERSON = re.compile(
+    r"\b(?:create|add|register|onboard|hire|buat|tambah|daftar)"
+    r"(?:\s+(?:a|an|the|new|one|another|more|security|night|day|relief|female|male|baru|seorang|satu))*"
+    r"\s+(?:guard|staff|employee|officer|worker|personnel|supervisor|operator|user|account|pengawal|kakitangan"
+    r"|pekerja)s?\b(?!\s+(?:to|into|ke)\b)")
+NEW_PERSON = ("POST", "/api/v1/users")
+
+
 def ranked(query: str, held: set[str], limit: int = 8) -> list[Function]:
     """The functions best matching the words, among those the person's permissions allow, best first."""
     wanted, own, action = query_terms(query)
@@ -371,7 +389,13 @@ def ranked(query: str, held: set[str], limit: int = 8) -> list[Function]:
         if s > 0:
             scored.append((s, f))
     scored.sort(key=lambda x: (-x[0], x[1].path, x[1].method))
-    return [f for _, f in scored[:limit]]
+    out = [f for _, f in scored[:limit]]
+    if action and _ADD_PERSON.search(query.lower()):
+        new = next((f for f in catalogue().values() if (f.method, f.path) == NEW_PERSON
+                    and not (f.permissions and not f.permissions <= held)), None)
+        if new is not None:
+            out = [new, *[f for f in out if f is not new]][:limit]
+    return out
 
 
 def find(query: str, held: set[str], limit: int = 8) -> list[dict]:
@@ -414,6 +438,33 @@ def mask(value):
     if isinstance(value, str):
         return _NRIC.sub(lambda m: _mask_text(m.group(0)), value)
     return value
+
+
+_ID_VALUE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+#: Rows of a list the free model is shown; the rest are counted.
+BRIEF_ROWS = 15
+
+
+def brief(payload, rows: int = BRIEF_ROWS):
+    """A read made smaller for the small free model, which pays for every word: empty values, the organisation's
+    own id and every id but a record's own `id` taken out (a name sits beside each), and a long list cut to its
+    first rows with the rest counted. An id is some twenty words to a model; the organisation's is on every row."""
+    if isinstance(payload, dict):
+        out = {}
+        for k, v in payload.items():
+            if k == "tenant_id" or v is None or v == "" or v == [] or v == {}:
+                continue
+            if k != "id" and isinstance(v, str) and _ID_VALUE.match(v):
+                continue
+            v = brief(v, rows)
+            if v not in ("", [], {}):
+                out[k] = v
+        # Single values first: a small model counted the rows it was shown, not the total that came after them.
+        return dict(sorted(out.items(), key=lambda kv: isinstance(kv[1], (dict, list))))
+    if isinstance(payload, list):
+        kept = [brief(x, rows) for x in payload[:rows]]
+        return kept + ([{"not_shown": len(payload) - rows}] if len(payload) > rows else [])
+    return payload
 
 
 def shorten(payload, limit: int = 12_000) -> str:
