@@ -284,6 +284,16 @@ one), licences, roles and permissions, API keys, the AI module's own settings, f
 data, and deleting evidence, footage or recordings; changing someone's role is refused even through an allowed
 function. A test holds each rule to a real route (`NEVER_OFFERED` in `services/ai_functions.py`).
 
+**Only the person's own organisation.** Every read is made with the person's own sign-in, so the database's
+row-level security keeps it to their organisation, and their role and sites limit it further. Asked for another
+organisation's record by its id, the app answers 404 and nothing of it reaches the model; a supervisor limited to
+some sites reads only those. Both models are also told, in their rules, that they see only the person's own
+organisation and know nothing of any other: asked about one, they say so rather than guess or give this
+organisation's figures as another's. The Super Admin role, which manages every organisation on screen, does not hold
+`ai:assistant:use`, and no function that lists or opens organisations is offered to anyone. Conversations, Confirm
+cards, warnings and learned models are kept in tables that each hold `tenant_id` under forced row-level security.
+`tests/test_ai_assistant.py` section E holds all of this.
+
 ### Changes: the Confirm card
 
 `services/ai_actions.py`, `ai_pending_actions`. A change the model asks for is **prepared, not made**: the person sees

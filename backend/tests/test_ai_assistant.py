@@ -9,6 +9,7 @@ Sections:
   B — Who may talk to it (1 test)
   C — A conversation (5 tests)
   D — The record (2 tests)
+  E — Only the person's own organisation, and only what they may see (4 tests)
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import uuid
 
 import pytest
 
+from app.core.security import create_access_token
 from app.main import app
 from app.services import ai_chat, ai_functions
 from tests.test_ai_learning import ADMIN, GUARD, MANAGER, SUPERVISOR, _client, _run, _sql, _world
@@ -261,3 +263,113 @@ async def test_after_the_model_is_switched_the_conversation_starts_its_context_a
         _, after = await _chat(c, w, ADMIN, "Hello again", cid)
     assert ("status", {"text": "The chat model was changed; earlier messages are not carried over."}) in after
     assert hosted.seen[0]["history"] == []
+
+
+# ─── E. Only the person's own organisation, and only what they may see ───────
+
+SUPER_ADMIN = 1
+
+
+async def _rival() -> dict:
+    """Another organisation on the same platform, with names that would stand out anywhere they leaked."""
+    other = await _world()
+    await _run([("UPDATE tenants SET name = 'Rival Guards Pte Ltd' WHERE id = :t", {"t": other["tenant"]}),
+                ("UPDATE sites SET name = 'Rival Depot' WHERE tenant_id = :t", {"t": other["tenant"]}),
+                ("UPDATE users SET full_name = 'Rival Person' WHERE tenant_id = :t", {"t": other["tenant"]})])
+    return other
+
+
+def _leaked(model) -> list[str]:
+    """Every place another organisation's name reached the model: its prompt, its history or a tool's answer."""
+    seen = [s["system"] for s in model.seen] + [json.dumps(s["history"]) for s in model.seen]
+    seen += [content for content, _ in model.results]
+    return [x for x in seen if "Rival" in x]
+
+
+@pytest.mark.asyncio
+async def test_another_organisations_records_never_reach_the_model_even_asked_for_by_id(scripted):
+    other = await _rival()
+    w = await _assistant_world()
+    model = scripted([
+        {"tool": "use_function", "args": {"operation_id": _op("GET", "/api/v1/sites/{site_id}"),
+                                          "path_params": {"site_id": str(other["site_a"])}}},
+        {"tool": "use_function", "args": {"operation_id": _op("GET", "/api/v1/sites"),
+                                          "query": {"tenant_id": str(other["tenant"])}}},
+        {"tool": "use_function", "args": {"operation_id": _op("GET", "/api/v1/users"),
+                                          "query": {"tenant_id": str(other["tenant"]), "search": "Rival"}}},
+        {"text": "I can only see your own organisation."}])
+    async with _client() as c:
+        await _chat(c, w, ADMIN, "How many sites and staff does Rival Guards have?")
+    by_id, sites, users = model.results
+    assert by_id[1] and "404" in by_id[0], "another organisation's site was read by its id"
+    assert {s["id"] for s in json.loads(sites[0])} == {str(w["site_a"]), str(w["site_b"])}
+    assert not users[1] and str(other["users"][ADMIN]) not in users[0]
+    assert _leaked(model) == []
+    # What the model is told: whose organisation this is, and that it knows nothing of any other.
+    system = model.seen[0]["system"]
+    assert "of Learn Co." in system and "You know nothing of any other organisation" in system
+    assert "If asked about another organisation, say you cannot see it." in ai_chat.local_system(system, "Hi")
+
+
+@pytest.mark.asyncio
+async def test_a_supervisor_limited_to_one_site_reads_only_that_site_through_the_assistant(scripted):
+    w = await _assistant_world()
+    await _sql("INSERT INTO user_sites (user_id, site_id, tenant_id) VALUES (:u,:s,:t)",
+               {"u": w["users"][SUPERVISOR], "s": w["site_b"], "t": w["tenant"]})
+    model = scripted([
+        {"tool": "use_function", "args": {"operation_id": _op("GET", "/api/v1/sites")}},
+        {"tool": "use_function", "args": {"operation_id": _op("GET", "/api/v1/sites/{site_id}"),
+                                          "path_params": {"site_id": str(w["site_a"])}}},
+        {"text": "Tuas."}])
+    async with _client() as c:
+        await _chat(c, w, SUPERVISOR, "Which sites are there?")
+    listed, other_site = model.results
+    assert not listed[1] and [s["id"] for s in json.loads(listed[0])] == [str(w["site_b"])]
+    assert other_site[1] and "Jurong" not in other_site[0], "a site outside the supervisor's own was read"
+
+
+@pytest.mark.asyncio
+async def test_the_super_admin_who_sees_every_organisation_on_screen_cannot_reach_them_through_it(scripted):
+    """On screen the Super Admin manages every organisation. The assistant is not theirs to use, even with their
+    role ticked, and whoever uses it is offered no function that lists or opens organisations."""
+    w = await _assistant_world(roles=(SUPER_ADMIN, 2, 3, 8))
+    uid = uuid.uuid4()
+    await _sql("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
+               "VALUES (:i,:t,1,:e,'x','Platform Owner')", {"i": uid, "t": w["tenant"], "e": f"sa-{uid.hex[:8]}@ail.test"})
+    w["h"][SUPER_ADMIN] = {"Authorization": f"Bearer {create_access_token(str(uid), str(w['tenant']), SUPER_ADMIN)}"}
+    model = scripted([{"text": "Here are all the organisations."}])
+    async with _client() as c:
+        r, _ = await _chat(c, w, SUPER_ADMIN, "List every organisation and their sites")
+    # Refused for the role itself, before anything else is asked of it (two-factor sign-in included).
+    assert r.status_code == 403 and r.json()["detail"] == "Missing permission: ai:assistant:use"
+    assert model.seen == [], "the Super Admin talked to the assistant"
+    # Even holding every permission there is, nothing that lists or opens organisations is offered.
+    every = {row["code"] for row in await _sql("SELECT code FROM permissions")}
+    for words in ("list all organisations", "tenants on the platform", "every company usage", "organisation users"):
+        assert not [f for f in ai_functions.find(words, every)
+                    if f["path"].startswith(("/api/v1/tenants", "/api/v1/platform", "/api/v1/licenses"))], words
+
+
+@pytest.mark.asyncio
+async def test_every_table_of_the_ai_module_keeps_organisations_apart(scripted):
+    tables = await _sql("""
+        SELECT c.relname AS name, c.relrowsecurity AS rls, c.relforcerowsecurity AS forced,
+               (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+               EXISTS (SELECT 1 FROM information_schema.columns k WHERE k.table_schema = 'public'
+                       AND k.table_name = c.relname AND k.column_name = 'tenant_id') AS has_tenant
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relname LIKE 'ai!_%' ESCAPE '!' ORDER BY 1""")
+    assert len(tables) >= 8
+    for t in tables:
+        assert t["has_tenant"] and t["rls"] and t["forced"] and t["policies"] >= 1, t["name"]
+    # A conversation is its organisation's alone: another organisation's admin can neither read nor continue it.
+    other = await _assistant_world()
+    w = await _assistant_world()
+    scripted([{"text": "Noted."}])
+    async with _client() as c:
+        _, events = await _chat(c, w, ADMIN, "Our gate code changed")
+        cid = events[0][1]["conversation_id"]
+        read = await c.get(f"/api/v1/ai/assistant/conversations/{cid}", headers=other["h"][ADMIN])
+        listed = (await c.get("/api/v1/ai/assistant/conversations", headers=other["h"][ADMIN])).json()
+        carried_on, _ = await _chat(c, other, ADMIN, "What did they say?", cid)
+    assert read.status_code == 404 and carried_on.status_code == 404 and listed["items"] == []
