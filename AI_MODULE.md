@@ -10,7 +10,7 @@ work activity. Agreed with the owner on 26 October 2026; the design is
 | Controls | The organisation's admin, per feature (`ai_feature_settings`) |
 | Migrations | `0170`, `0171`, `0172`, `0173`, `0174` |
 | Web | AI Insights (`/ai-insights`), AI Settings (`/ai-settings`); Manage Licenses > AI Assistant & Learning (Super Admin) |
-| Phone | More > AI Assistant (`mobile/src/screens/AssistantScreen.tsx`) |
+| Phone | More > AI Assistant (`mobile/src/screens/AssistantScreen.tsx`), and the AI button in the bottom-right corner of every screen (`mobile/src/components/AiCorner.tsx`) |
 | Runs | The scheduler, every hour (`AI_MODULE_INTERVAL_SECONDS`, default 3600): `services/ai_runner.py` |
 
 ## What is built
@@ -350,6 +350,31 @@ guards in AI Settings). A guard types in their own language and the reply comes 
   temporary password is shown once; **Carry on** lets the assistant go on after a card is decided.
 - The conversation is kept as a phone one (`channel` `PHONE`). Reading an IC is on the web only.
 
+## Decisions that pop up
+
+Agreed with the owner on 31 October 2026; the design is
+`docs/plans/2026-10-31-ai-corner-button-and-decision-popups-design.md`. When the AI is waiting on a person, a card
+slides up in the bottom-right corner, beside the AI button, on the web, the Windows app and the phone. It does not
+block the screen, and on the web the alert pop-ups sit above it.
+
+- **What pops up.** A Confirm card the person left waiting in the chat (anyone who uses the assistant, guards
+  included), soonest to expire first; then the open warnings the person may decide (`ai:insights:decide`, the roles
+  the admin chose for the feature, and their sites), most important first. One card at a time, with "and N more
+  waiting"; the AI button carries the count.
+- **The buttons.** Confirm and Cancel, or Accept and Dismiss, call the same endpoints as the chat and AI Insights, so
+  the same checks and the same audit log apply. **Later** hides that card for **4 hours** on that device. On the web a
+  warning's card also offers **Open AI Insights**. Once anyone decides a warning, it is gone for everyone.
+- **Where.** On the web, beside the assistant's button (`components/ai/DecisionCard.tsx`), hidden while the chat is
+  open. On the phone, the AI button sits above the bottom tabs on every screen
+  (`mobile/src/components/AiCorner.tsx`), hidden on the live camera, the live wall, the QR patrol scan, zone drawing,
+  the AI Assistant screen and while the keyboard is up; the man-down countdown stays on top of everything.
+- **How the apps find out.** `GET /ai/waiting` (`routers/ai_waiting.py`), asked every **60 seconds** while the app is
+  open and again when it comes back to the front. It is never refused: a person the module is not for gets empty
+  lists. A warning about something already over is not offered.
+- **The push.** After each organisation's hourly pass is committed, each person who may decide a warning the pass
+  raised gets **one** phone push with the count (`services/ai_decision_push.py`); a warning is pushed only in the pass
+  that raised it, and **Learn now** pushes nothing. A push that fails is logged and changes nothing.
+
 ## The admin's controls
 
 On AI Settings, for each licensed feature: on or off; which roles use it; every
@@ -381,6 +406,7 @@ sign-in.
 | `GET` | `/ai/learning` | `ai:insights:read` |
 | `POST` | `/ai/learning/{feature_key}/run` | `ai:configure` |
 | `POST` | `/ai/incident-helper` | `ai:insights:read` |
+| `GET` | `/ai/waiting` | signed in |
 | `POST` | `/ai/assistant/chat` | `ai:assistant:use` |
 | `GET` | `/ai/assistant/conversations` | `ai:assistant:use` |
 | `GET` | `/ai/assistant/conversations/{conversation_id}` | `ai:assistant:use` |
@@ -419,3 +445,13 @@ Additions only:
 - `mobile/src/screens/MoreMenuScreen.tsx`: the AI Assistant row, shown only when `/ai/status` says the assistant
   is the person's; `mobile/__tests__/phoneLoadingRules.test.ts` lists the menu as fetching only to decide that.
 - `PAGE_AWARE_ANIMATION_MATRIX.md`: written again.
+
+For the decisions that pop up (31 October 2026), additions only:
+
+- `backend/app/main.py`: the `ai_waiting` router registered.
+- `backend/app/services/ai_runner.py` (the module's own): the pass reads its own clock, and after each
+  organisation's commit calls `ai_decision_push.after_pass`.
+- `frontend/src/components/ai/AssistantPanel.tsx` (the module's own): the count on the button and the decision card
+  beside it; the button's place is kept for the card when the assistant is not the person's.
+- `mobile/App.tsx`: the AI corner placed once, beside the man-down watcher.
+- `backend/tests/test_ai_module_docs.py`: the new web and phone clients counted among the calls that must be served.
