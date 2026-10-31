@@ -254,7 +254,9 @@ def test_every_ai_call_the_web_and_the_phone_make_is_served():
 
     spec = app.openapi()
     clients = {WEB / "api" / "aiAssistant.ts": 8, WEB / "api" / "ai.ts": 7, WEB / "api" / "platformAiLicense.ts": 2,
-               REPO_ROOT / "mobile" / "src" / "api" / "aiAssistant.ts": 5}
+               REPO_ROOT / "mobile" / "src" / "api" / "aiAssistant.ts": 5,
+               # The corner card (docs/plans/2026-10-31-ai-corner-button-and-decision-popups-design.md).
+               WEB / "api" / "aiWaiting.ts": 1, REPO_ROOT / "mobile" / "src" / "api" / "aiWaiting.ts": 2}
     for client, at_least in clients.items():
         calls = client_calls(client)
         assert len(calls) >= at_least, f"only {len(calls)} calls found in {client}"

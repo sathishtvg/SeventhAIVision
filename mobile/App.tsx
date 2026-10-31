@@ -10,6 +10,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { queryPersister } from '@/lib/queryPersister'
 import { OfflineBanner } from '@/components/OfflineBanner'
 import { ManDownGuard } from '@/components/ManDownGuard'
+import { AiCorner } from '@/components/AiCorner'
 import { RootNavigator } from '@/navigation'
 
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000  // 24 hours
@@ -31,6 +32,8 @@ function AppInner() {
     <>
       <OfflineBanner />
       <RootNavigator />
+      {/* The AI button and the decisions it waits on, over every screen (components/AiCorner.tsx). */}
+      <AiCorner />
       {/* Mounted at the root, not on a screen: a fall does not wait for the
           guard to open the right tab. Renders nothing until it fires. */}
       <ManDownGuard />

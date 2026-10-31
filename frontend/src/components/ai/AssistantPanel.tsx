@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import {
-  Alert, Box, Button, Chip, Drawer, Fab, IconButton, List, ListItemButton, ListItemText, TextField, Tooltip,
+  Alert, Badge, Box, Button, Chip, Drawer, Fab, IconButton, List, ListItemButton, ListItemText, TextField, Tooltip,
   Typography,
 } from '@mui/material'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
@@ -27,6 +27,8 @@ import type { AssistantAction, AssistantEvent } from '@/api/aiAssistant'
 import { apiError } from '@/api/platformDroneLicense'
 import { usePermission } from '@/hooks/usePermission'
 import IcScanDialog from './IcScanDialog'
+import { DecisionCard } from './DecisionCard'
+import { useDecisions } from './decisions'
 
 interface Line { role: 'user' | 'assistant' | 'card'; text: string; pending?: boolean; action?: AssistantAction }
 
@@ -233,23 +235,36 @@ export function AssistantPanel({ open, onClose, canReadIc = false }: { open: boo
   )
 }
 
-/** The button that opens the assistant, on every page, for the people it is switched on for. */
+/** The button that opens the assistant, on every page, for the people it is switched on for. Beside it, the card
+ * asking for what the AI is waiting on them to decide (DecisionCard), and on it how many are waiting. */
 export function AssistantButton() {
   const [open, setOpen] = useState(false)
   const status = useQuery({ queryKey: ['ai-status'], queryFn: getAiStatus, retry: false, staleTime: 60_000 })
   const mine = status.data?.features.some((f) => f.key === 'assistant' && f.mine)
   const mayCreateStaff = usePermission('user:create')
   const canReadIc = mayCreateStaff && !!status.data?.features.some((f) => f.key === 'ic_reading' && f.mine)
-  if (!mine) return null
+  // A supervisor may decide warnings without the assistant being theirs: the card then takes the button's place.
+  const anyMine = !!status.data?.features.some((f) => f.mine)
+  const decisions = useDecisions(anyMine)
+  if (!anyMine) return null
   return (
     <>
-      <Tooltip title="Ask the AI assistant">
-        <Fab color="primary" aria-label="Ask the AI assistant" onClick={() => setOpen(true)}
-             sx={{ position: 'fixed', right: 24, bottom: 24, zIndex: (t) => t.zIndex.drawer - 1 }}>
-          <AutoAwesomeIcon />
-        </Fab>
-      </Tooltip>
-      <AssistantPanel open={open} onClose={() => setOpen(false)} canReadIc={canReadIc} />
+      {mine && (
+        <Tooltip title="Ask the AI assistant">
+          <Fab color="primary" aria-label="Ask the AI assistant" onClick={() => setOpen(true)}
+               sx={{ position: 'fixed', right: 24, bottom: 24, zIndex: (t) => t.zIndex.drawer - 1 }}>
+            <Badge badgeContent={decisions.total} color="error" invisible={!decisions.total} data-testid="ai-waiting-count"
+                   sx={{ '& .MuiBadge-badge': { top: -10, right: -10 } }}>
+              <AutoAwesomeIcon />
+            </Badge>
+          </Fab>
+        </Tooltip>
+      )}
+      {/* The chat shows its own Confirm cards while it is open. */}
+      {!open && <DecisionCard decisions={decisions} aboveButton={!!mine} />}
+      {mine && (
+        <AssistantPanel open={open} onClose={() => { setOpen(false); decisions.refresh() }} canReadIc={canReadIc} />
+      )}
     </>
   )
 }

@@ -89,6 +89,8 @@ async def run_all(session_factory, *, now: datetime | None = None) -> dict:
     for tid in tenants:
         async with session_factory() as db:
             try:
+                # The pass's own clock: every warning it raises carries this as created_at (ai_decision_push).
+                started = (await db.execute(text("SELECT now()"))).scalar()
                 result = await run_tenant(db, str(tid), now=now)
                 await db.commit()
                 if result:
@@ -96,4 +98,8 @@ async def run_all(session_factory, *, now: datetime | None = None) -> dict:
             except Exception:
                 await db.rollback()
                 logger.exception("ai module: the pass failed for organisation %s", tid)
+        if str(tid) in done:
+            # After the commit, on its own session: a push cannot change what the pass decided.
+            from app.services import ai_decision_push  # noqa: PLC0415
+            await ai_decision_push.after_pass(session_factory, str(tid), since=started)
     return done

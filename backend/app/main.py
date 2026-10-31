@@ -66,6 +66,7 @@ from app.routers import (
     ai,
     ai_assistant,
     ai_insights,
+    ai_waiting,
     platform_ai_licenses,
     overtime_requests,
     handover,
@@ -497,6 +498,8 @@ app.include_router(staff_faces.router)
 app.include_router(ai.router)
 app.include_router(ai_insights.router)
 app.include_router(ai_assistant.router)
+# What the AI waits on a person to decide, for the corner card (docs/plans/2026-10-31-...-popups-design.md).
+app.include_router(ai_waiting.router)
 app.include_router(platform_ai_licenses.router)
 app.include_router(overtime_requests.router)
 app.include_router(i18n.router)
