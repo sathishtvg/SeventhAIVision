@@ -12,6 +12,7 @@ import { useServerStore } from '@/store/server'
 import { useBiometricStore } from '@/store/biometric'
 import { setApiBaseUrl } from '@/api/client'
 import { codeRefusal, digitsOnly, isWholeCode, loginRefusal } from '@/lib/signIn'
+import { versionLine } from '@/lib/appVersion'
 import { colors, fontSize, radius, spacing } from '@/theme'
 
 const REFRESH_TOKEN_KEY = 'seventh_ai_refresh_token'
@@ -330,6 +331,8 @@ export function LoginScreen() {
             </>
             )}
           </View>
+          {/* Which build this is, before signing in too (lib/appVersion.ts). */}
+          <Text style={styles.version} testID="app-version">{versionLine()}</Text>
         </View>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -490,6 +493,12 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primaryMuted,
     minHeight: 46,
+  },
+  version: {
+    fontSize: fontSize.xs,
+    color: colors.textDisabled,
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
   biometricText: {
     color: colors.primary,

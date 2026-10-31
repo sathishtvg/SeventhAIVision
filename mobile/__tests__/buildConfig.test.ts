@@ -20,6 +20,11 @@ const eas = require('../eas.json') as { build: Record<string, { extends?: string
                                                                   android?: { buildType?: string } }> }
 
 const nameOf = (plugin: unknown) => (Array.isArray(plugin) ? plugin[0] : plugin) as string
+/** Every build is stamped with which build it is (`extra.build`, shown in the app); the rest is compared without it. */
+const unstamped = (c: { extra?: Record<string, unknown> } & Record<string, unknown>) => {
+  const { build: _build, ...extra } = c.extra ?? {}
+  return { ...c, extra }
+}
 const configured = (allowHttp?: string) => {
   const before = process.env.APP_ALLOW_HTTP
   if (allowHttp === undefined) delete process.env.APP_ALLOW_HTTP
@@ -34,9 +39,9 @@ const configured = (allowHttp?: string) => {
 
 describe('a build of the phone app', () => {
   it('is exactly what app.json describes unless a build asks for http', () => {
-    expect(configured()).toEqual(app.expo)
-    expect(configured('0')).toEqual(app.expo)
-    expect(configured('true')).toEqual(app.expo)
+    expect(unstamped(configured())).toEqual(app.expo)
+    expect(unstamped(configured('0'))).toEqual(app.expo)
+    expect(unstamped(configured('true'))).toEqual(app.expo)
     // As app.json has it, the build-properties plugin sets nothing: plain http stays refused.
     expect(app.expo.plugins.filter((p) => nameOf(p) === 'expo-build-properties')).toEqual(['expo-build-properties'])
   })
@@ -48,7 +53,22 @@ describe('a build of the phone app', () => {
     // Every other plugin is there, as it was and in its order.
     const others = (plugins: unknown[]) => plugins.filter((p) => nameOf(p) !== 'expo-build-properties')
     expect(others(lan.plugins)).toEqual(others(app.expo.plugins))
-    expect({ ...lan, plugins: undefined }).toEqual({ ...app.expo, plugins: undefined })
+    expect({ ...unstamped(lan), plugins: undefined }).toEqual({ ...app.expo, plugins: undefined })
+  })
+
+  it("is stamped with which build it is: the commit Expo's build server was given, and the day", () => {
+    const before = process.env.EAS_BUILD_GIT_COMMIT_HASH
+    process.env.EAS_BUILD_GIT_COMMIT_HASH = '0219501d2c0ffee0000000000000000000000000'
+    try {
+      const build = (configured() as unknown as { extra: { build: { commit: string; date: string } } }).extra.build
+      expect(build.commit).toBe('0219501')
+      expect(build.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      // The project id Expo needs is still there beside it.
+      expect((configured() as unknown as { extra: { eas: unknown } }).extra.eas).toEqual((app.expo as unknown as { extra: { eas: unknown } }).extra.eas)
+    } finally {
+      if (before === undefined) delete process.env.EAS_BUILD_GIT_COMMIT_HASH
+      else process.env.EAS_BUILD_GIT_COMMIT_HASH = before
+    }
   })
 
   it('has one profile that asks for it: an APK for testing on the same network, and not the one for the store', () => {
