@@ -1269,8 +1269,13 @@ async def run_compliance_maintenance(db: AsyncSession, redis: Redis) -> dict:
     return {"expired": expired_total, "linked": linked_total}
 
 
-async def run_once(redis: Redis | None = None) -> None:
-    """Full daily maintenance cycle (partitions, evidence purge, audit archive, backup)."""
+async def run_once(redis: Redis | None = None) -> bool:
+    """Full daily maintenance cycle (partitions, evidence purge, audit archive, backup).
+
+    Returns whether the database backup completed, so the loop can try again soon when it did not (31 Oct 2026:
+    after a restart the cycle ran before the database was up, failed, and was not tried again for a day - no
+    backup on the 29th, 30th or 31st)."""
+    backed_up = False
     async with admin_session() as db:
         if db is None:
             logger.error(
@@ -1285,7 +1290,12 @@ async def run_once(redis: Redis | None = None) -> None:
                 await run_partition_maintenance(db)
             except Exception:
                 logger.exception("run_partition_maintenance failed")
-    await secure_new_partitions()
+    try:
+        await secure_new_partitions()
+    except Exception:
+        # Non-fatal like the steps around it: it used to end the whole cycle here, backup included, when the
+        # database could not be reached (31 Oct 2026).
+        logger.exception("secure_new_partitions failed (non-fatal, maintenance continues)")
 
     async with AsyncSessionLocal() as db:
         try:
@@ -1373,6 +1383,7 @@ async def run_once(redis: Redis | None = None) -> None:
     try:
         result = await run_database_backup()
         logger.info("run_database_backup: %s (%d bytes)", result["filename"], result["size_bytes"])
+        backed_up = True
     except Exception:
         logger.exception("run_database_backup failed (non-fatal, maintenance continues)")
 
@@ -1410,10 +1421,59 @@ async def run_once(redis: Redis | None = None) -> None:
             logger.info("roster generation: created %d shifts", created)
     except Exception:
         logger.exception("roster generation failed (non-fatal, maintenance continues)")
+    return backed_up
 
 
 #: The "last run" of a job that has not run since this process started.
 _NOT_YET = float("-inf")
+
+#: A daily cycle that failed or did not complete its backup is tried again this soon, up to DAILY_RETRIES times, before
+#: waiting the usual day (31 Oct 2026: one failure at start-up used to cost the day's backup).
+DAILY_RETRY_SECONDS = int(os.environ.get("SCHEDULER_DAILY_RETRY_SECONDS", str(15 * 60)))
+DAILY_RETRIES = 4
+#: How long the scheduler waits for the database at start before going on anyway.
+DB_READY_WAIT_SECONDS = int(os.environ.get("SCHEDULER_DB_READY_WAIT_SECONDS", "300"))
+
+
+async def wait_for_database(connect=None, wait_seconds: float | None = None, every: float = 5.0) -> bool:
+    """Wait until the database answers, at most `wait_seconds`. True when it did.
+
+    After a restart Docker starts the scheduler and the database together, and the first daily cycle ran while
+    Postgres was still "starting up" (31 Oct 2026). `connect` is for tests: an async callable that raises until the
+    database is there."""
+    async def _ping() -> None:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+
+    connect = connect or _ping
+    limit = DB_READY_WAIT_SECONDS if wait_seconds is None else wait_seconds
+    loop = asyncio.get_event_loop()
+    started = loop.time()
+    told = False
+    while True:
+        try:
+            await connect()
+            if told:
+                logger.info("database is up after %.0f s", loop.time() - started)
+            return True
+        except Exception as exc:  # noqa: BLE001 - any failure to connect means "not yet"
+            if loop.time() - started >= limit:
+                logger.error("database still not reachable after %.0f s, going on anyway: %s", limit, exc)
+                return False
+            if not told:
+                logger.info("waiting for the database before the first pass: %s", exc)
+                told = True
+            await asyncio.sleep(every)
+
+
+def next_daily_timer(now: float, completed: bool, retries_used: int) -> tuple[float, int]:
+    """Where the daily timer goes after a cycle, and how many quick retries have been used.
+
+    A cycle that completed (the backup was made) is next due in RUN_INTERVAL_SECONDS. One that did not is due again
+    in DAILY_RETRY_SECONDS, at most DAILY_RETRIES times in a row; after that it waits the usual day."""
+    if completed or retries_used >= DAILY_RETRIES:
+        return now, 0
+    return now - RUN_INTERVAL_SECONDS + DAILY_RETRY_SECONDS, retries_used + 1
 
 
 async def main() -> None:
@@ -1442,18 +1502,27 @@ async def main() -> None:
     last_vpatrol = _NOT_YET
     last_device_health = _NOT_YET
     last_ai_module = _NOT_YET
+    daily_retries = 0
+
+    # Not before the database is up: the first pass after a restart used to run while Postgres was "starting up".
+    await wait_for_database()
 
     try:
         while True:
             now = asyncio.get_event_loop().time()
 
-            # Daily jobs
+            # Daily jobs. A cycle that failed or made no backup is tried again in minutes, not tomorrow.
             if now - last_daily >= RUN_INTERVAL_SECONDS:
+                completed = False
                 try:
-                    await run_once(redis)
+                    completed = await run_once(redis)
                 except Exception:
                     logger.exception("daily run_once failed")
-                last_daily = now
+                last_daily, daily_retries = next_daily_timer(now, completed, daily_retries)
+                if not completed:
+                    logger.warning("daily cycle did not complete its backup; %s",
+                                   f"trying again in {DAILY_RETRY_SECONDS // 60} min" if daily_retries
+                                   else "next try in a day")
 
             # Virtual patrolling (every 2 min): create the patrols whose
             # time has come, mark the ones nobody started, and post the
