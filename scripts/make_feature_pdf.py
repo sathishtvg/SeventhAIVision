@@ -44,7 +44,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "31 October 2026"
-EDITION = "Edition 21"
+EDITION = "Edition 22"
 HEAD = "0174"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -138,6 +138,8 @@ EDITIONS = [
      "desktop app and the phone (module 32)."],
     ["Edition 21", "31 October 2026", "0174",
      "Windows 1.0.13 carries the decision card."],
+    ["Edition 22", "31 October 2026", "0174",
+     "Windows 1.0.14; the web, the desktop app and the phone say which build is running."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -1924,7 +1926,7 @@ story += bullets([
     "assistant with its corner button (editions 18 and 20) are type-checked and tested against the server, "
     "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.13 is built and carries the AI "
+    "<b>A code-signing certificate.</b> Desktop 1.0.14 is built and carries the AI "
     "module. Its installer is not code-signed, so Windows warns "
     "before it runs - and where Smart App Control is on, may refuse a newly "
     "built installer for some minutes before it allows it.",
@@ -1959,7 +1961,7 @@ story.append(data_table(
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.13, which installs over 1.0.12. It is a copy of the web "
+         "Version 1.0.14, which installs over 1.0.13. It is a copy of the web "
          "console taken when it is built: a fix to the web reaches it in the "
          "next build."],
     ],

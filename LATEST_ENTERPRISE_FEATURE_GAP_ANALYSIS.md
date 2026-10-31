@@ -1069,3 +1069,13 @@ accept or dismiss - with the count of them on the button
 (`docs/plans/2026-10-31-ai-corner-button-and-decision-popups-design.md`).
 Nothing in the desktop shell was changed for it. It is unsigned, with the same
 app id and MSI upgrade code, so it installs over 1.0.12.
+
+### Desktop 1.0.14
+
+Desktop 1.0.14 is the web build of 31 October 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. It carries what was built for the web after
+1.0.13: under the sidebar's user box, which build is running - inside the
+Windows app "Windows 1.0.14", read from the version Electron puts in every
+page's user agent, then the web build's commit and the day it was built.
+Nothing in the desktop shell was changed for it. It is unsigned, with the same
+app id and MSI upgrade code, so it installs over 1.0.13.

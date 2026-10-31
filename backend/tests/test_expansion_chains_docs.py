@@ -119,8 +119,8 @@ def test_what_is_left_for_the_owner_is_in_one_place_and_nothing_existing_was_cha
     # The Windows app is the web build in a shell: its version is the one the record names, and its identity is unchanged.
     desktop = (REPO_ROOT / "desktop" / "package.json").read_text(encoding="utf-8")
     builder = (REPO_ROOT / "desktop" / "electron-builder.yml").read_text(encoding="utf-8")
-    assert '"version": "1.0.13"' in desktop
-    assert all(f"desktop 1.0.{n}" in _flat(after).replace("Desktop", "desktop") for n in (5, 6, 7, 8, 9, 10, 11, 12, 13))
+    assert '"version": "1.0.14"' in desktop
+    assert all(f"desktop 1.0.{n}" in _flat(after).replace("Desktop", "desktop") for n in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14))
     # The desktop app is a copy of the web taken when it is built: the owner's code step reached it only in 1.0.7.
     assert "A fix to the web reaches it only in the next build." in _flat(after)
     web = (REPO_ROOT / "frontend" / "src" / "api" / "auth.ts").read_text(encoding="utf-8")
