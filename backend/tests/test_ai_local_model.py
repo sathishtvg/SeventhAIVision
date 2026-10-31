@@ -9,7 +9,7 @@ never read passed off as an answer. A fake Ollama plays the model.
 
 Sections:
   A — The search (6 tests)
-  B — The free model's tools and words (6 tests)
+  B — The free model's tools and words (7 tests)
   C — A turn of the free model (5 tests)
   D — Sent little, for speed (3 tests)
 """
@@ -155,11 +155,31 @@ def test_flat_arguments_are_put_where_the_function_takes_them():
     assert ai_chat.local_call(create, {"title": "Gate", "description": "x"})["body"]["title"] == "Gate"
     site = next(f for f in cat.values() if (f.method, f.path) == ("POST", "/api/v1/sites"))
     assert ai_chat.local_call(site, {}, "Create a site called Harbour Gate")["body"]["name"] == "Harbour Gate"
-    assert ai_chat.local_call(site, {"name": "Changi"}, "a site called Harbour Gate")["body"]["name"] == "Changi"
+    assert ai_chat.local_call(site, {"name": "Changi"}, "a site called Changi")["body"]["name"] == "Changi"
+    assert ai_chat.local_call(site, {"name": "Changi"}, "a site called Harbour Gate")["body"]["name"] == \
+        "Harbour Gate", "a name the person never wrote gives way to the one they did"
     assert "name" not in ai_chat.local_call(site, {}, "Create a site")["body"], "no name said, none made up"
     # 31 October 2026: it handed back the tool's own description of each field as the values.
     echoed = {"name": {"type": "string"}, "latitude": {"type": "number"}, "address": {"type": "string"}}
     assert ai_chat.local_call(site, echoed, "Create a site called Harbour Gate")["body"] == {"name": "Harbour Gate"}
+
+
+def test_who_a_new_person_is_comes_from_the_persons_own_words_and_their_role_from_its_name():
+    """31 October 2026: asked "Can you create a new guard?", the free model filled in the admin's own name from its
+    prompt, a made-up email and the Super Admin's role, and the card was shown."""
+    new = next(f for f in ai_functions.catalogue().values() if (f.method, f.path) == ("POST", "/api/v1/users"))
+    invented = {"full_name": "Sathish Admin", "email": "sathish@example.com", "role_id": 1}
+    assert ai_chat.local_call(new, invented, "Can you create a new guard?")["body"] == {"role_id": 5}
+    said = "Can you create a new guard?\nHis name is Ravi Kumar, email ravi.kumar@demo.test"
+    assert ai_chat.local_call(new, {"full_name": "ravi kumar", "email": "ravi.kumar@demo.test", "role_id": 0},
+                              said)["body"] == {"full_name": "ravi kumar", "email": "ravi.kumar@demo.test",
+                                                "role_id": 5}
+    assert ai_chat.local_call(new, {"role_id": 5}, "Add a new staff account")["body"] == {}, "no role named, asked"
+    assert ai_chat.role_named("Create a new guard\nActually make her a supervisor") == 3, "the latest words"
+    assert ai_chat.role_named("Create a new super admin") is None, "never the Super Admin, nor read as an admin"
+    assert ai_chat.role_named("Tambah pengawal baru") == 5 and ai_chat.role_named("Add a new manager") == 8
+    assert ai_chat.said_by_person("+65 9123-4567", "his phone is 91234567")
+    assert not ai_chat.said_by_person("91234567", "his phone is 98765432")
 
 
 def test_times_are_written_out_in_the_organisations_zone_before_the_model_sees_them():
@@ -323,6 +343,7 @@ def test_a_read_comes_without_what_says_nothing_and_a_long_list_is_counted():
              "notes": "", "closed_at": None, "tags": [], "extra": {"assigned_to": None}} for n in range(20)]
     small = ai_functions.brief({"items": rows, "total": 20, "next_cursor": None})
     assert small["total"] == 20 and "next_cursor" not in small
+    assert list(small) == ["total", "items"], "the total before the rows: a small model counted the rows shown"
     assert small["items"][0] == {"id": row_id, "site_name": "Jurong", "title": "Gate 0"}
     assert len(small["items"]) == 16 and small["items"][-1] == {"not_shown": 5}
     assert ai_functions.brief([1, 0, False, "x"]) == [1, 0, False, "x"], "a zero or a no is said, not dropped"

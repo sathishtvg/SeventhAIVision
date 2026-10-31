@@ -249,7 +249,12 @@ invented placeholders. So for each message the free model is given:
   tokens** a reply (it once repeated itself for 10,000);
 - **times written out** in the organisation's zone ("Wed 28 Oct 2026, 22:00") in what it reads;
 - where it leaves out a required title or name, the person's own words: the start of their description, or the name
-  after "called" or "named". The Confirm card shows it.
+  after "called" or "named". The Confirm card shows it;
+- **who someone is only from the person's own words**: a name, email or phone it gives is kept only if the person
+  wrote it in this conversation, and a new person's role is the one their words name ("guard" is Security Guard,
+  "supervisor" Supervisor; never the Super Admin). Asked "Can you create a new guard?" on 31 October 2026 it had
+  filled in the admin's own name from its prompt, a made-up email and the Super Admin's role; now the card is
+  refused with those details missing, and it asks for them.
 
 **It is sent little, for speed** (31 October 2026: on the development PC, a laptop processor, replies took 40 seconds
 to 6 minutes; it reads about 25 words a second and writes fewer than ten). The conversation so far is shown to it as

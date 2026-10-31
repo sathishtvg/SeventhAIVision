@@ -484,11 +484,47 @@ def local_tool(f: ai_functions.Function, name: str) -> dict:
 
 
 _CALLED = re.compile(r"\b(?:called|named|bernama|dinamakan)\s+[\"'“]?([^\"'”.,!?]{2,80})", re.I)
+#: Who someone is: taken from the free model only when the person wrote it in this conversation (31 October 2026:
+#: asked to create a new guard, it filled in the admin's own name from its prompt and made up an email). Left out,
+#: the change is refused with the details missing, and the model asks for them.
+_SAID_ONLY = frozenset({"email", "full_name", "name", "phone", "phone_number", "mobile"})
+#: A new person's role, from the words used for it - the model guessed the Super Admin's. The built-in roles' ids;
+#: the Super Admin's (1) is never one. With no role named, none is sent and the person is asked.
+_ROLE_WORDS = ((5, r"security guards?|guards?|pengawal"), (3, r"supervisors?|penyelia"), (4, r"operators?"),
+               (8, r"managers?|pengurus"), (6, r"viewers?"), (7, r"clients?|pelanggan"),
+               (2, r"admins?|administrators?|pentadbir"))
+
+
+def _flat(text: str) -> str:
+    return re.sub(r"[\s\-+().,]", "", (text or "").lower())
+
+
+def said_by_person(value, said: str) -> bool:
+    """Whether a value the model gave is in what the person wrote: letters as written, spaces and dots aside;
+    a phone number by its last eight digits."""
+    if not isinstance(value, str):
+        return True
+    digits = re.sub(r"\D", "", value)
+    if len(digits) >= 6 and len(digits) >= len(_flat(value)) - 3:
+        return digits[-8:] in re.sub(r"\D", "", said or "")
+    return bool(_flat(value)) and _flat(value) in _flat(said)
+
+
+def role_named(said: str) -> int | None:
+    """The built-in role the person's latest words name, or None."""
+    for line in reversed((said or "").lower().splitlines()):
+        line = re.sub(r"super\s*-?\s*admin\w*", " ", line)  # never made here, and not an "admin" either
+        found = [(m.start(), role) for role, pattern in _ROLE_WORDS for m in re.finditer(rf"\b(?:{pattern})\b", line)]
+        if found:
+            return min(found)[1]
+    return None
 
 
 def local_call(f: ai_functions.Function, args, said: str = "") -> dict:
-    """The free model's flat arguments, put where the function takes them, for use_function. `said` is the
-    person's message: a name they gave ("a site called Harbour Gate") is used when the model leaves it out."""
+    """The free model's flat arguments, put where the function takes them, for use_function. `said` is what the
+    person wrote in this conversation, one message a line, the latest last: a name they gave ("a site called
+    Harbour Gate") is used when the model leaves it out; who someone is must be in it; a new person's role is the
+    one it names."""
     args = args if isinstance(args, dict) else {}
     # A small model sometimes hands back the tool's own description of a field as its value ("name":
     # {"type": "string"}): that is no value, and the person's own words fill the name instead.
@@ -496,14 +532,20 @@ def local_call(f: ai_functions.Function, args, said: str = "") -> dict:
                                                     and set(v) <= {"type", "description", "enum", "items", "format"})}
     queries = {q["name"] for q in f.query_params if f.method != "GET" or q.get("choices")}
     body_names = {b["name"] for b in f.body_fields}
-    body = {k: v for k, v in args.items() if k in body_names and k not in queries and v not in (None, "")}
+    body = {k: v for k, v in args.items() if k in body_names and k not in queries and v not in (None, "")
+            and not (f.method != "GET" and k in _SAID_ONLY and not said_by_person(v, said))}
+    if f.method == "POST" and "role_id" in body_names:
+        role = role_named(said)
+        body.pop("role_id", None)
+        if role is not None:
+            body["role_id"] = role
     # A small model often writes what happened and leaves the title out: the title is then the start of the
     # person's own words, which the Confirm card shows for them to change.
     needs_title = any(b["name"] == "title" and b.get("required") for b in f.body_fields)
     words = next((body[k] for k in ("description", "details", "note", "notes") if isinstance(body.get(k), str)), "")
     if f.method != "GET" and needs_title and not body.get("title") and words.strip():
         body["title"] = re.split(r"(?<=[.!?])\s", words.strip(), maxsplit=1)[0][:80]
-    called = _CALLED.search(said or "")
+    called = next((m for line in reversed((said or "").splitlines()) if (m := _CALLED.search(line))), None)
     if f.method != "GET" and called and any(b["name"] == "name" and b.get("required") for b in f.body_fields) \
             and not body.get("name"):
         body["name"] = called.group(1).strip()
@@ -550,6 +592,9 @@ class LocalOllama:
     async def turn(self, *, system: str, history: list[dict], user_text: str, tools: ToolBox, emit: Emit) -> TurnResult:
         user = {"role": "user", "content": user_text}
         tools.brief = True
+        # What the person wrote in this conversation, the latest last: who someone is must come from here.
+        said = "\n".join([m["content"] for m in local_history(history, keep=len(history)) if m["role"] == "user"]
+                         + [user_text])
         messages = [{"role": "system", "content": local_system(system, user_text)}, *local_history(history), user]
         new = [user]
         result = TurnResult(text="", messages=new)
@@ -573,7 +618,7 @@ class LocalOllama:
             f = picked.get(name)
             if f is None:
                 return json.dumps({"error": f"No tool called {name}. Use one of: {', '.join(picked) or 'none'}."})
-            call = local_call(f, args, user_text)
+            call = local_call(f, args, said)
             what = tools.describe("use_function", call)
             await emit("status", {"text": what})
             content, error = await tools.call("use_function", call)

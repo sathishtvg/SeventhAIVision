@@ -459,7 +459,8 @@ def brief(payload, rows: int = BRIEF_ROWS):
             v = brief(v, rows)
             if v not in ("", [], {}):
                 out[k] = v
-        return out
+        # Single values first: a small model counted the rows it was shown, not the total that came after them.
+        return dict(sorted(out.items(), key=lambda kv: isinstance(kv[1], (dict, list))))
     if isinstance(payload, list):
         kept = [brief(x, rows) for x in payload[:rows]]
         return kept + ([{"not_shown": len(payload) - rows}] if len(payload) > rows else [])
