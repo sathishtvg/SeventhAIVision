@@ -1079,3 +1079,13 @@ Windows app "Windows 1.0.14", read from the version Electron puts in every
 page's user agent, then the web build's commit and the day it was built.
 Nothing in the desktop shell was changed for it. It is unsigned, with the same
 app id and MSI upgrade code, so it installs over 1.0.13.
+
+### Desktop 1.0.15
+
+Desktop 1.0.15 is the web build of 1 November 2026 - `desktop/package.json`,
+`desktop/package-lock.json`. Nothing in the web or the desktop shell changed
+after 1.0.14; it is built so that the Windows app, the web and the phone say
+the same build. The assistant changes of 31 October (only the person's own
+organisation, the free model sent less) are on the server, which the Windows
+app already used. It is unsigned, with the same app id and MSI upgrade code,
+so it installs over 1.0.14.

@@ -43,8 +43,8 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "31 October 2026"
-EDITION = "Edition 22"
+GENERATED = "1 November 2026"
+EDITION = "Edition 23"
 HEAD = "0174"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
@@ -140,6 +140,9 @@ EDITIONS = [
      "Windows 1.0.13 carries the decision card."],
     ["Edition 22", "31 October 2026", "0174",
      "Windows 1.0.14; the web, the desktop app and the phone say which build is running."],
+    ["Edition 23", "1 November 2026", "0174",
+     "Windows 1.0.15; the assistant sees only the person's own organisation, and the "
+     "free model is sent less."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -338,7 +341,7 @@ story += [
     Spacer(1, 6),
     stat_strip([
         ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("174", "MIGRATIONS"),
-        ("6,964", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("6,980", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1926,7 +1929,7 @@ story += bullets([
     "assistant with its corner button (editions 18 and 20) are type-checked and tested against the server, "
     "but have not run on a device since the app moved to Expo SDK 57. Guards "
     "have them after a new build.",
-    "<b>A code-signing certificate.</b> Desktop 1.0.14 is built and carries the AI "
+    "<b>A code-signing certificate.</b> Desktop 1.0.15 is built and carries the AI "
     "module. Its installer is not code-signed, so Windows warns "
     "before it runs - and where Smart App Control is on, may refuse a newly "
     "built installer for some minutes before it allows it.",
@@ -1961,7 +1964,7 @@ story.append(data_table(
          "no signal and sends them when it returns."],
         ["Windows desktop", "Electron", "Same as web",
          "Packaged installer for control-room machines, with auto-update. "
-         "Version 1.0.14, which installs over 1.0.13. It is a copy of the web "
+         "Version 1.0.15, which installs over 1.0.14. It is a copy of the web "
          "console taken when it is built: a fix to the web reaches it in the "
          "next build."],
     ],
@@ -2144,8 +2147,8 @@ story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 174 "
     "database migrations, 307 tables, 121 API modules serving 1,143 operations, 148 backend "
-    "services, 124 web routes and 59 phone screens, covered by 6,964 automated tests "
-    "(backend 4,297, repository inspection 1,406, web 799, phone 423). Capability counts "
+    "services, 124 web routes and 59 phone screens, covered by 6,980 automated tests "
+    "(backend 4,329, repository inspection 1,406, web 808, phone 437). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
