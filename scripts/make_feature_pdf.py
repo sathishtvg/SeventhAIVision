@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "3 November 2026"
-EDITION = "Edition 24"
-HEAD = "0175"
+EDITION = "Edition 25"
+HEAD = "0176"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -145,6 +145,8 @@ EDITIONS = [
      "free model is sent less."],
     ["Edition 24", "3 November 2026", "0175",
      "Singapore payroll (module 11): CPF by date, PR rates, bonus ceiling, MOM's PWM floors."],
+    ["Edition 25", "3 November 2026", "0176",
+     "Retention for the history of modules 20 to 26; evidence packages removed by a person (18, 29)."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -337,13 +339,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("311", "DATABASE TABLES"), ("1,150", "API OPERATIONS"), ("121", "API MODULES"),
+        ("312", "DATABASE TABLES"), ("1,154", "API OPERATIONS"), ("122", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("175", "MIGRATIONS"),
-        ("7,004", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("176", "MIGRATIONS"),
+        ("7,013", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -467,7 +469,7 @@ story += [
     Paragraph("The platform in thirty-three lines", S["h2"]),
 ]
 story += bullets([
-    "<b>Identity and access</b> — 8 roles, 227 permissions, SSO, 2FA, audit log, "
+    "<b>Identity and access</b> — 8 roles, 228 permissions, SSO, 2FA, audit log, "
     "per-tenant branding, four languages.",
     "<b>Video surveillance</b> — cameras, live wall, recording with checksums, "
     "playback, privacy zones painted out of the picture, NVR.",
@@ -556,7 +558,7 @@ story += module(
         "only, and the application's database role cannot empty a table.",
         "<b>Eight built-in roles</b> — Super Admin, Admin, Manager, Supervisor, "
         "Operator, Security Guard, Viewer, Client — plus custom roles defined "
-        "per tenant, across 227 permission codes.",
+        "per tenant, across 228 permission codes.",
         "<b>Site scope.</b> A user can be held to particular sites; every list, "
         "search and record honours it.",
         "<b>The platform operator is not a customer's administrator.</b> Super "
@@ -1081,6 +1083,9 @@ story += module(
         "<b>Holds.</b> A hold stops all three retention jobs — frames and clips, "
         "recordings, drone media. Sealing places one on every item; a hold is "
         "lifted only by a person, with a reason.",
+        "<b>Removed when due, by a person.</b> Past the organisation's period, with "
+        "nothing held and its matter over, a package is listed for Admin or Manager "
+        "to remove with a reason; its record and chain of custody are kept.",
         "<i>Documented limitations:</i> video is not watermarked; nothing is "
         "digitally signed; the platform sends evidence to nobody — sharing and "
         "release are records of what a person did.",
@@ -1491,15 +1496,13 @@ story += module(
         "removed by no job. Everything in modules 17 to 28 is of that kind until "
         "an organisation sets a period, and each of its tables is listed with "
         "whether it names a person.",
-        "<b>Four periods an organisation may set.</b> Closed cases, closed "
-        "investigations, visitor authorisations that have run out, and answers to "
-        "recommendations about a guard or a site. Nothing is removed until a "
-        "period is set — of at least thirty days — by somebody who may change the "
-        "organisation's settings. Setting one that would remove records already "
-        "older says how many first, and asks again. A job then removes what is "
-        "over and older, once a day, and writes one line in the audit log for "
-        "what went. A case that is open is never removed, nor an investigation "
-        "an evidence package was made from. <i>Added in edition 7.</i>",
+        "<b>Twelve periods an organisation may set.</b> Closed cases and "
+        "investigations, authorisations that have run out, answers to advice, and "
+        "since edition 25 guard responses, shift summaries, ended instructions, "
+        "device health, finished work orders, briefings and evidence packages. "
+        "Nothing is removed until a period of at least thirty days is set; setting "
+        "one says first how many are older. A job removes what is over once a day, "
+        "never what is open — and never a package, which a person removes.",
         "<b>A subject report.</b> For a member of staff, a visitor, or a name or "
         "a number plate as it was typed: where they appear in the records of "
         "modules 17 to 28, how often and between which dates — told apart as "
@@ -1521,9 +1524,9 @@ story += module(
         "law requires, and changes no period; a subject report says where and how "
         "often, not what each record says — a record holds other people too; a "
         "name typed is matched as text and identifies nobody. <i>Documented "
-        "limitations:</i> evidence packages and everything else of modules 17 to "
-        "28 have no retention period, and the four that may have one have none "
-        "until it is set; a report does not read attendance, rosters, leave, pay, "
+        "limitations:</i> settings in use and the chain of custody have no "
+        "retention period, and the kinds that may have one have none until it is "
+        "set; a report does not read attendance, rosters, leave, pay, "
         "training or violations, or the account, which has its own export; "
         "nothing is erased on request; the phone has no part of it.",
     ],
@@ -1800,8 +1803,8 @@ story.append(data_table(
         ["The retention statement and a subject report (module 29)",
          "Nothing decides. The statement reads what the jobs read; a report counts "
          "where a person appears. A name typed is matched as text. Not a model",
-         "Sets a period for the four kinds that may have one, or leaves them "
-         "kept; reads each record on its own screen and judges what of it is "
+         "Sets a period for the kinds that may have one, or leaves them kept; "
+         "removes an evidence package that is due; judges what of a record is "
          "that person's"],
         ["Daily intelligence and the site security score",
          "Counting over a stated period of history",
@@ -1913,8 +1916,8 @@ story.append(data_table(
          "organisation — and, since edition 8, applied (module 02)"],
         ["Retention for modules 17 to 28",
          "Nothing removed a case, a visitor's authorisation or an answer about a guard",
-         "Four kinds may be given a period by the organisation; nothing is "
-         "removed until one is set (module 29)"],
+         "Twelve kinds may be given a period by the organisation; nothing is "
+         "removed until one is set, and a package only by a person (module 29)"],
         ["Visitor and door events",
          "Set against the authorisation; not given to the intelligence layer",
          "Given to it when an organisation switches that on; off to begin with "
@@ -2127,9 +2130,6 @@ story += bullets([
     "<b>A case names nobody by itself</b>, and a name in one is text: it is not "
     "matched to a visitor, a member of staff, a watchlist entry or a face. Nobody "
     "is told when they are put on a case, and nothing escalates one.",
-    "<b>Most of modules 17 to 28 has no retention period.</b> Four kinds may be "
-    "given one by the organisation and are kept until then; evidence packages "
-    "have none. The statement says nothing of what the law requires.",
     "<b>A subject report says where a person appears, not what each record "
     "says</b>, and reads modules 17 to 28: attendance, rosters, leave, pay, "
     "training and violations are each on their own screen.",
@@ -2148,10 +2148,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 175 "
-    "database migrations, 311 tables, 121 API modules serving 1,150 operations, 149 backend "
-    "services, 124 web routes and 59 phone screens, covered by 7,004 automated tests "
-    "(backend 4,342, repository inspection 1,406, web 819, phone 437). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 176 "
+    "database migrations, 312 tables, 122 API modules serving 1,154 operations, 149 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,013 automated tests "
+    "(backend 4,347, repository inspection 1,406, web 823, phone 437). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
