@@ -40,8 +40,12 @@ ADMIN_DATABASE_URL = os.environ.get(
     f"postgresql+asyncpg://postgres:change_me_dev_only@{_db_host}:5432/seventh_ai_vision_test",
 )
 
-GRADE = "security_officer"
-SUPERVISOR = "security_supervisor"
+# Grades MOM sets no floor for. Since migration 0175 the official MOM floors for security_officer,
+# senior_security_officer, security_supervisor and senior_security_supervisor are on file for 2024-2028, so a
+# test that writes its own floor for one of them on a date the official one also covers would either lose to
+# it (a 2020 fixture is older than the official 2026 floor) or overwrite it for every later test.
+GRADE = "security_site_supervisor"
+SUPERVISOR = "senior_security_site_supervisor"
 # Reserved for the "no rate on file" test. pwm_wage_floors is shared across every
 # tenant by design, so a test asking whether a grade has no rate must use one no
 # other test seeds — otherwise it is really asking who ran first.
@@ -55,6 +59,7 @@ CHIEF = "chief_security_officer"
 # depends on the database being new, which is a test that lies on the second
 # run.
 RETRO = "senior_security_officer"
+# ... on dates far past the official schedule (which ends in 2028), so its own figures never meet MOM's.
 
 
 async def _sql(statement: str, params: dict | None = None):
@@ -172,17 +177,17 @@ async def test_a_rate_rise_does_not_retroactively_fail_last_year():
     # RETRO, not GRADE: see the note beside the constant. Another test in this
     # file sets a tenant override of 2800 on GRADE, and because these run as a
     # BYPASSRLS superuser that override is visible here regardless of tenant.
-    await _statutory(RETRO, date(2025, 1, 1), "2000")
-    await _statutory(RETRO, date(2026, 1, 1), "2500")
+    await _statutory(RETRO, date(2090, 1, 1), "2000")
+    await _statutory(RETRO, date(2091, 1, 1), "2500")
 
     old = (await _sql(
         "SELECT pwm_effective_floor(:g, CAST(:d AS date))",
-        {"g": RETRO, "d": date(2025, 6, 1)}))[0][0]
+        {"g": RETRO, "d": date(2090, 6, 1)}))[0][0]
     new = (await _sql(
         "SELECT pwm_effective_floor(:g, CAST(:d AS date))",
-        {"g": RETRO, "d": date(2026, 6, 1)}))[0][0]
+        {"g": RETRO, "d": date(2091, 6, 1)}))[0][0]
 
-    assert Decimal(old) == Decimal("2000.00"), "June 2025 must use the 2025 floor"
+    assert Decimal(old) == Decimal("2000.00"), "June 2090 must use the 2090 floor"
     assert Decimal(new) == Decimal("2500.00")
 
 

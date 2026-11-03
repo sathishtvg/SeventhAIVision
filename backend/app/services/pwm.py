@@ -158,3 +158,117 @@ def _verdict(
         "actual": actual,
         "basis": basis,
     }
+
+
+# ── MOM's whole schedule (migration 0175, 3 November 2026) ─────────────────────
+#
+# Outsourced full-time officers are judged on monthly basic wage (pwm_wage_floors, with a company's own higher floor),
+# outsourced part-timers on MOM's own hourly basic wage, in-house officers on GROSS wage (basic + allowances +
+# incentives, without overtime). In-house part-time is the full-time gross pro-rated on a 44-hour week, as MOM says.
+# The old hourly derivation for part-timers above (floor / 26 / 8) was this codebase's own; MOM publishes the hourly
+# figures, and they are what `assess_schedule` uses.
+
+IN_HOUSE_WEEKLY_HOURS = Decimal("44")
+WEEKS_PER_YEAR = Decimal("52")
+
+BASIS_LABEL = {
+    "monthly_basic": "monthly basic wage (outsourced, full-time)",
+    "hourly_basic": "hourly basic wage (outsourced, part-time)",
+    "monthly_gross": "monthly gross wage without overtime (in-house, full-time)",
+    "hourly_gross": "hourly gross wage without overtime (in-house, part-time, pro-rated on a 44-hour week)",
+}
+
+
+def floor_kind(arrangement: str | None, employment_type: str | None) -> tuple[str, str]:
+    """(hours, basis) for a guard: which of MOM's schedules applies. Contract staff are judged as full-time, as
+    before."""
+    part_time = employment_type == "part_time"
+    if (arrangement or "outsourced") == "in_house":
+        return ("part_time", "hourly_gross") if part_time else ("full_time", "monthly_gross")
+    return ("part_time", "hourly_basic") if part_time else ("full_time", "monthly_basic")
+
+
+def in_house_hourly(monthly_gross_floor: Decimal) -> Decimal:
+    """The in-house full-time monthly gross floor pro-rated on a 44-hour week: monthly x 12 / (44 x 52)."""
+    return _money(Decimal(monthly_gross_floor) * 12 / (IN_HOUSE_WEEKLY_HOURS * WEEKS_PER_YEAR))
+
+
+async def resolve_floor(db, *, grade: str | None, arrangement: str | None, employment_type: str | None,
+                        on) -> dict:
+    """The floor for one guard on one date: {"amount", "basis", "source"}; amount None when MOM sets none for that
+    grade, arrangement and hours (Chief Security Officer, the older site-supervisor grades, an in-house Senior
+    Security Supervisor), which callers must show as "not assessed"."""
+    from sqlalchemy import text  # local: the module stays importable by the pure tests without a database
+
+    hours, basis = floor_kind(arrangement, employment_type)
+    if not grade:
+        return {"amount": None, "basis": basis, "source": None}
+    if basis == "monthly_basic":
+        amount = (await db.execute(text("SELECT pwm_effective_floor(CAST(:g AS varchar), CAST(:d AS date))"),
+                                   {"g": grade, "d": on})).scalar()
+        source = (await db.execute(text(
+            "SELECT source FROM pwm_wage_floors WHERE grade = :g AND effective_from <= CAST(:d AS date) "
+            "ORDER BY effective_from DESC LIMIT 1"), {"g": grade, "d": on})).scalar()
+        return {"amount": Decimal(amount) if amount is not None else None, "basis": basis, "source": source}
+    schedule_hours = "full_time" if basis == "hourly_gross" else hours
+    row = (await db.execute(text(
+        "SELECT amount, source FROM pwm_wage_schedules WHERE grade = :g AND arrangement = :a AND hours = :h "
+        "AND effective_from <= CAST(:d AS date) ORDER BY effective_from DESC LIMIT 1"),
+        {"g": grade, "a": arrangement or "outsourced", "h": schedule_hours, "d": on})).first()
+    if row is None:
+        return {"amount": None, "basis": basis, "source": None}
+    amount = Decimal(row.amount)
+    if basis == "hourly_gross":
+        amount = in_house_hourly(amount)
+    return {"amount": amount, "basis": basis, "source": row.source}
+
+
+def assess_schedule(
+    *,
+    pwm_grade: str | None,
+    floor: Decimal | None,
+    basis: str,
+    monthly_salary: Decimal | None = None,
+    daily_rate: Decimal | None = None,
+    hourly_rate: Decimal | None = None,
+    gross_monthly: Decimal | None = None,
+    gross_hourly: Decimal | None = None,
+) -> dict:
+    """Judge one guard against the floor `resolve_floor` found, on its basis.
+
+    In-house floors are on GROSS wage. A payroll run knows it (gross_monthly / gross_hourly, without overtime); a
+    profile does not, because allowances vary by month. Without it a basic wage at or above the floor is enough to
+    say compliant, and one below it is "not assessed" until payroll, never refused: allowances may make up the gap.
+    """
+    if not pwm_grade:
+        return _verdict(NOT_ASSESSED, "No PWM grade is set for this guard.", basis=basis)
+    if floor is None:
+        return _verdict(NOT_ASSESSED, "MOM sets no PWM floor for this grade, arrangement and hours.", basis=basis)
+    floor = _money(Decimal(floor))
+    label = BASIS_LABEL[basis]
+    if basis == "monthly_basic":
+        actual = monthly_equivalent(monthly_salary=monthly_salary, daily_rate=daily_rate, hourly_rate=hourly_rate)
+    elif basis == "hourly_basic":
+        actual = hourly_equivalent(monthly_salary=monthly_salary, daily_rate=daily_rate, hourly_rate=hourly_rate)
+    else:
+        known = gross_monthly if basis == "monthly_gross" else gross_hourly
+        if known is not None:
+            actual = _money(Decimal(known))
+        else:
+            basic = (monthly_equivalent if basis == "monthly_gross" else hourly_equivalent)(
+                monthly_salary=monthly_salary, daily_rate=daily_rate, hourly_rate=hourly_rate)
+            if basic is None:
+                return _verdict(NOT_ASSESSED, "No wage is set for this guard.", basis=basis)
+            if basic >= floor:
+                return _verdict(COMPLIANT, f"Basic wage {basic} alone meets the {label} floor {floor}.",
+                                floor_applied=floor, actual=basic, basis=basis)
+            return _verdict(NOT_ASSESSED, f"Basic wage {basic} is below the {label} floor {floor}; allowances may "
+                            "make it up, so it is judged on the gross wage in the payroll run.",
+                            floor_applied=floor, actual=basic, basis=basis)
+    if actual is None:
+        return _verdict(NOT_ASSESSED, "No wage is set for this guard.", basis=basis)
+    if actual < floor:
+        return _verdict(BELOW_FLOOR, f"{label[0].upper()}{label[1:]} {actual} is below the PWM floor {floor}.",
+                        floor_applied=floor, actual=actual, basis=basis)
+    return _verdict(COMPLIANT, f"{label[0].upper()}{label[1:]} {actual} meets the PWM floor {floor}.",
+                    floor_applied=floor, actual=actual, basis=basis)

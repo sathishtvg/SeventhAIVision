@@ -403,10 +403,22 @@ def _ic_out(draft_id, fields: dict, check: bool | None) -> dict:
     return {
         "draft_id": str(draft_id), "fields": fields, "check_letter_ok": check,
         "unread": [f for f in ai_ic.FIELDS if not fields.get(f)],
+        "residency": ai_ic.residency(nric),
         # What is sent to the assistant: the number shortened. The full one stays here, in the draft.
-        "message": ("I scanned the IC of a new staff member. " + "; ".join(words) + ". Please create them as a "
-                    "new staff member: ask me for anything else you need, one question at a time."),
+        "message": ("I scanned the IC of a new staff member. " + "; ".join(words) + ". "
+                    + _IC_RESIDENCY_WORDS.get(ai_ic.residency(nric), "")
+                    + "Please create them as a new staff member: ask me for anything else you need, one question at "
+                    "a time."),
     }
+
+
+#: Residency from the number's first letter, said to the assistant so the new account's work_pass_type is right for
+#: CPF (3 November 2026, Singapore payroll): citizen or PR is asked, as the card's colour is not read.
+_IC_RESIDENCY_WORDS = {
+    "citizen_or_pr": ("The number is a Singapore citizen's or a PR's: ask me which (work_pass_type citizen or pr), "
+                      "and for a PR the date they became one (pr_since). "),
+    "foreigner": "The number is a foreigner's FIN: ask me which work pass (ep, sp or wp); there is no CPF. ",
+}
 
 
 @router.post("/ic", dependencies=[_USE])

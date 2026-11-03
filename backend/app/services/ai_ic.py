@@ -175,3 +175,11 @@ async def read(front: bytes, back: bytes | None) -> Reading:
 
 def masked(value: str) -> str:
     return "*" * max(0, len(value) - 4) + value[-4:]
+
+
+def residency(value: str | None) -> str | None:
+    """What the number says about residency, for CPF (3 November 2026): an S or T number is a Singapore citizen's or a
+    PR's (the card's colour tells which, and that is not read), F, G or M a foreigner's FIN. None when unknown."""
+    if not value or not NRIC.fullmatch(value):
+        return None
+    return "citizen_or_pr" if value[0] in "ST" else "foreigner"

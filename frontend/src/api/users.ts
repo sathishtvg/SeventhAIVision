@@ -4,7 +4,27 @@ import { apiClient } from './client'
 export const getUsers = () =>
   apiClient.get<User[]>('/api/v1/users').then((r) => r.data)
 
-export const createUser = (data: { email: string; password: string; role_id: number; full_name?: string }) =>
+export type WorkPassType = 'citizen' | 'pr' | 'ep' | 'sp' | 'wp'
+export type CpfRateType = 'graduated' | 'fg' | 'full'
+export type EmploymentArrangement = 'outsourced' | 'in_house'
+
+export interface UserCreateData {
+  email: string
+  password: string
+  role_id: number
+  full_name?: string
+  /** Since 3 Nov 2026 the form asks residency first (Singaporean, PR or foreigner) and saves it with the account. */
+  work_pass_type?: WorkPassType
+  work_pass_expiry?: string
+  date_of_birth?: string
+  pr_since?: string
+  cpf_rate_type?: CpfRateType
+  monthly_salary?: number
+  employment_type?: 'full_time' | 'part_time' | 'contract'
+  employment_arrangement?: EmploymentArrangement
+}
+
+export const createUser = (data: UserCreateData) =>
   apiClient.post<User>('/api/v1/users', data).then((r) => r.data)
 
 export const getUser = (userId: string) =>
@@ -36,9 +56,12 @@ export interface UserUpdateData {
    *  so they may sit on several sites' duty teams. The roster still schedules
    *  them at one site at a time. */
   is_standby?: boolean
+  pr_since?: string
+  cpf_rate_type?: CpfRateType
+  employment_arrangement?: EmploymentArrangement
 }
 
-export const updateUser = (userId: string, data: UserUpdateData) =>
+export const updateUser =(userId: string, data: UserUpdateData) =>
   apiClient.put<Partial<User>>(`/api/v1/users/${userId}`, data).then((r) => r.data)
 
 export const deactivateUser = (userId: string) =>

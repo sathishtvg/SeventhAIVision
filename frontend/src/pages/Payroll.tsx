@@ -1,8 +1,9 @@
 /**
  * Payroll / CPF / IR8A (ShiftSecure Phase 5) — monthly pay runs computed
  * from shifts.actual_start/actual_end + overtime_minutes, Singapore CPF
- * contribution (standard full rates only — see services/payroll.py for
- * documented v1 limitations), and an annual IR8A summary for tax filing.
+ * from CPF Board's published tables by the payroll month (services/cpf.py,
+ * since 3 Nov 2026: PR graduated rates, the wage bands, CPF's rounding and the
+ * Additional Wage ceiling), and an annual IR8A summary for tax filing.
  */
 import { useMemo, useState } from 'react'
 import {
@@ -30,6 +31,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Alert,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import PaymentsIcon from '@mui/icons-material/Payments'
@@ -39,20 +41,23 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import AddIcon from '@mui/icons-material/Add'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import DownloadIcon from '@mui/icons-material/Download'
+import DeleteIcon from '@mui/icons-material/Delete'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   createPayrollRun, listPayrollRuns, getPayrollRun, finalizePayrollRun,
   payslipPdfUrl, getIr8aSummary, ir8aPdfUrl, getPwmCompliance,
-  getOvertimeProjection,
+  getOvertimeProjection, recalculatePayrollRun, listAdditionalWages, addAdditionalWage,
+  removeAdditionalWage, getAwCeilingCheck, ADDITIONAL_WAGE_KINDS,
 } from '@/api/payroll'
-import type { OvertimeProjectionRow, PwmVerdict } from '@/api/payroll'
+import type { AdditionalWageKind, OvertimeProjectionRow, Payslip, PwmVerdict } from '@/api/payroll'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
 import { PermissionGuard } from '@/components/common/PermissionGuard'
 import { usePermission } from '@/hooks/usePermission'
 import { fadeUpSx, useCountUp } from '@/lib/motion'
 import { useAuthStore } from '@/store/auth'
-import { ErrorState, RefreshingLine } from '@/components/states'
+import { ErrorState, RefreshingLine, errorText } from '@/components/states'
 
 function hexToRgb(hex: string) {
   const m = hex.replace('#', '').match(/.{2}/g)
@@ -177,6 +182,14 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
       qc.invalidateQueries({ queryKey: ['payroll-runs'] })
     },
   })
+  // A draft is worked out again from its shifts, the pay on file now, its additional pay and CPF's table.
+  const { mutate: recalculate, isPending: recalculating, error: recalculateError } = useMutation({
+    mutationFn: () => recalculatePayrollRun(runId),
+    onSuccess: (data) => {
+      qc.setQueryData(['payroll-run', runId], (old: typeof run) => ({ ...old, ...data, needs_recalculation: false }))
+      qc.invalidateQueries({ queryKey: ['payroll-run', runId] })
+    },
+  })
 
   const kpis = useMemo(() => {
     const payslips = run?.payslips ?? []
@@ -184,7 +197,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
       grossPayroll: Math.round(payslips.reduce((s, p) => s + p.gross_pay, 0)),
       totalCpf: Math.round(payslips.reduce((s, p) => s + p.cpf_employee + p.cpf_employer, 0)),
       guardsPaid: payslips.length,
-      guardsSkipped: run?.warnings?.length ?? 0,
+      guardsSkipped: (run?.warnings ?? []).filter((w) => w.includes('skipped')).length,
     }
   }, [run])
 
@@ -201,11 +214,24 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
         <RunStatusChip status={run.status} />
         <Box sx={{ flexGrow: 1 }} />
         {canManage && run.status === 'draft' && (
-          <Button variant="contained" size="small" disabled={finalizing} onClick={() => finalize()}>
+          <Button variant="outlined" size="small" startIcon={<RefreshIcon />} disabled={recalculating}
+                  onClick={() => recalculate()}>
+            {recalculating ? 'Recalculating…' : 'Recalculate'}
+          </Button>
+        )}
+        {canManage && run.status === 'draft' && (
+          <Button variant="contained" size="small" disabled={finalizing || recalculating || run.needs_recalculation}
+                  onClick={() => finalize()}>
             Finalize Run
           </Button>
         )}
       </Stack>
+      {run.needs_recalculation && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Additional pay changed since these payslips were worked out. Recalculate before finalising.
+        </Alert>
+      )}
+      {recalculateError && <Alert severity="error" sx={{ mb: 2 }}>{`Not recalculated. ${errorText(recalculateError)}`}</Alert>}
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2.5, flexWrap: 'wrap' }}>
         {[
@@ -223,7 +249,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
       {run.warnings && run.warnings.length > 0 && (
         <Box sx={{ p: 1.5, mb: 2, borderRadius: '8px', backgroundColor: 'rgba(255,152,0,0.1)', border: '1px solid rgba(255,152,0,0.3)' }}>
           <Typography variant="caption" sx={{ color: '#FF9800', fontWeight: 700, display: 'block', mb: 0.5 }}>
-            Skipped guards (no rate configured)
+            Notes on this run
           </Typography>
           {run.warnings.map((w, i) => (
             <Typography key={i} variant="caption" color="text.secondary" sx={{ display: 'block' }}>{w}</Typography>
@@ -239,6 +265,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
               <TableCell align="right">Reg. Hrs</TableCell>
               <TableCell align="right">OT Hrs</TableCell>
               <TableCell align="right">Days</TableCell>
+              <TableCell align="right">Bonus</TableCell>
               <TableCell align="right">Gross</TableCell>
               <TableCell align="right">CPF (Emp.)</TableCell>
               <TableCell align="right">CPF (Empl.)</TableCell>
@@ -249,10 +276,14 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
           <TableBody>
             {run.payslips.map((p) => (
               <TableRow key={p.id}>
-                <TableCell>{p.guard_name}</TableCell>
+                <TableCell>
+                  {p.guard_name}
+                  <CpfLine payslip={p} />
+                </TableCell>
                 <TableCell align="right">{p.regular_hours.toFixed(1)}</TableCell>
                 <TableCell align="right">{p.overtime_hours.toFixed(1)}</TableCell>
                 <TableCell align="right">{p.days_worked.toFixed(1)}</TableCell>
+                <TableCell align="right">{p.additional_wage ? `$${Number(p.additional_wage).toFixed(2)}` : '—'}</TableCell>
                 <TableCell align="right">${p.gross_pay.toFixed(2)}</TableCell>
                 <TableCell align="right">${p.cpf_employee.toFixed(2)}</TableCell>
                 <TableCell align="right">${p.cpf_employer.toFixed(2)}</TableCell>
@@ -272,6 +303,177 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <AdditionalPay runId={runId} payslips={run.payslips} editable={canManage && run.status === 'draft'} />
+    </Box>
+  )
+}
+
+/** Under each name: which CPF table was used, or why there is no CPF. */
+function CpfLine({ payslip: p }: { payslip: Payslip }) {
+  if (p.cpf_note) {
+    return (
+      <Typography variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
+        {`CPF not worked out: ${p.cpf_note}`}
+      </Typography>
+    )
+  }
+  if (!p.cpf_scheme_label) return null
+  const capped = p.aw_subject_to_cpf != null && p.additional_wage && Number(p.aw_subject_to_cpf) < Number(p.additional_wage)
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+      {`CPF: ${p.cpf_scheme_label}, ${p.cpf_age_band_label}`}
+      {capped ? ` · bonus CPF capped at $${Number(p.aw_subject_to_cpf).toFixed(2)} by the year's ceiling` : ''}
+    </Typography>
+  )
+}
+
+/** Bonus-type pay on a draft run: CPF's Additional Wages, then Recalculate (3 Nov 2026). */
+function AdditionalPay({ runId, payslips, editable }: { runId: string; payslips: Payslip[]; editable: boolean }) {
+  const qc = useQueryClient()
+  const { data: lines = [], isLoading, isLoadingError: linesFailed, error: linesError, refetch: refetchLines } = useQuery({
+    queryKey: ['payroll-additional-wages', runId],
+    queryFn: () => listAdditionalWages(runId),
+  })
+  const [guardId, setGuardId] = useState('')
+  const [kind, setKind] = useState<AdditionalWageKind>('bonus')
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const changed = () => {
+    qc.invalidateQueries({ queryKey: ['payroll-additional-wages', runId] })
+    qc.invalidateQueries({ queryKey: ['payroll-run', runId] })
+  }
+  const add = useMutation({
+    mutationFn: () => addAdditionalWage(runId, { guard_user_id: guardId, kind, amount: Number(amount), note: note || undefined }),
+    onSuccess: () => { setAmount(''); setNote(''); changed() },
+  })
+  const remove = useMutation({ mutationFn: (lineId: string) => removeAdditionalWage(runId, lineId), onSuccess: changed })
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Additional pay (bonus, 13th month, incentives)</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        CPF&apos;s Additional Wages: CPF is paid on them up to the year&apos;s ceiling ($102,000 less the year&apos;s
+        Ordinary Wages subject to CPF).
+      </Typography>
+      {isLoading ? <Skeleton height={40} /> : linesFailed ? <ErrorState compact error={linesError} onRetry={refetchLines} /> : (
+        lines.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">No additional pay on this run.</Typography>
+        ) : (
+          <Table size="small">
+            <TableBody>
+              {lines.map((l) => (
+                <TableRow key={l.id}>
+                  <TableCell>{l.guard_name ?? l.guard_user_id}</TableCell>
+                  <TableCell>{l.kind_label}</TableCell>
+                  <TableCell align="right">${Number(l.amount).toFixed(2)}</TableCell>
+                  <TableCell>{l.note ?? ''}</TableCell>
+                  <TableCell align="right">
+                    {editable && (
+                      <IconButton size="small" aria-label="Remove this additional pay"
+                                  disabled={remove.isPending} onClick={() => remove.mutate(l.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )
+      )}
+      {editable && (
+        <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', rowGap: 1, alignItems: 'center' }}>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel id="aw-employee-label">Employee</InputLabel>
+            <Select labelId="aw-employee-label" value={guardId} label="Employee" onChange={(e) => setGuardId(e.target.value)}>
+              {payslips.map((p) => <MenuItem key={p.guard_user_id} value={p.guard_user_id}>{p.guard_name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 170 }}>
+            <InputLabel id="aw-kind-label">Kind</InputLabel>
+            <Select labelId="aw-kind-label" value={kind} label="Kind" onChange={(e) => setKind(e.target.value as AdditionalWageKind)}>
+              {ADDITIONAL_WAGE_KINDS.map((k) => <MenuItem key={k.value} value={k.value}>{k.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField size="small" label="Amount ($)" type="number" value={amount} sx={{ width: 130 }}
+                     onChange={(e) => setAmount(e.target.value)} />
+          <TextField size="small" label="Note (optional)" value={note} sx={{ flex: 1, minWidth: 160 }}
+                     onChange={(e) => setNote(e.target.value)} />
+          <Button size="small" variant="contained" disabled={!guardId || !(Number(amount) > 0) || add.isPending}
+                  onClick={() => add.mutate()}>
+            Add
+          </Button>
+        </Stack>
+      )}
+      {(add.error || remove.error) && (
+        <Alert severity="error" sx={{ mt: 1 }}>{errorText(add.error ?? remove.error)}</Alert>
+      )}
+    </Box>
+  )
+}
+
+/** CPF's Additional Wage ceiling at year end, from finalised runs: it reports and changes nothing. */
+function AwCeilingTab() {
+  const [year, setYear] = useState(new Date().getFullYear())
+  const { data, isLoading, isLoadingError: checkFailed, error: checkError, refetch: refetchCheck } = useQuery({
+    queryKey: ['aw-ceiling-check', year],
+    queryFn: () => getAwCeilingCheck(year),
+  })
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel id="aw-year-label">Year</InputLabel>
+          <Select labelId="aw-year-label" value={year} label="Year" onChange={(e) => setYear(Number(e.target.value))}>
+            {[year - 1, year, year + 1].map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <Typography variant="body2" color="text.secondary">
+          Each employee&apos;s bonus-type pay against CPF&apos;s Additional Wage ceiling for the year, from finalised
+          runs. Over or under means the CPF on it needs adjusting with CPF Board, for example after a pay change late
+          in the year.
+        </Typography>
+      </Stack>
+      {checkFailed ? <ErrorState compact error={checkError} onRetry={refetchCheck} /> : isLoading || !data ? <Skeleton height={80} /> : data.employees.length === 0 ? (
+        <Typography color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+          No additional pay with CPF on finalised runs in {year}.
+        </Typography>
+      ) : (
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Employee</TableCell>
+                <TableCell align="right">Ordinary Wages subject to CPF</TableCell>
+                <TableCell align="right">Additional Wages</TableCell>
+                <TableCell align="right">AW ceiling</TableCell>
+                <TableCell align="right">CPF paid on</TableCell>
+                <TableCell align="right">CPF due on</TableCell>
+                <TableCell>Result</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.employees.map((e) => (
+                <TableRow key={e.guard_user_id}>
+                  <TableCell>{e.full_name ?? '—'}</TableCell>
+                  <TableCell align="right">${Number(e.ow_subject_to_cpf).toFixed(2)}</TableCell>
+                  <TableCell align="right">${Number(e.additional_wages).toFixed(2)}</TableCell>
+                  <TableCell align="right">${Number(e.aw_ceiling).toFixed(2)}</TableCell>
+                  <TableCell align="right">${Number(e.aw_contributed_on).toFixed(2)}</TableCell>
+                  <TableCell align="right">${Number(e.aw_due_on).toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Chip size="small" variant={e.verdict === 'right' ? 'outlined' : 'filled'}
+                          color={e.verdict === 'right' ? 'success' : 'warning'}
+                          label={e.verdict === 'right' ? 'Right' : `${e.verdict === 'over' ? 'Over' : 'Under'} by $${Math.abs(Number(e.difference)).toFixed(2)}`} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
     </Box>
   )
 }
@@ -361,6 +563,8 @@ function Ir8aTab() {
                 <TableCell>Name</TableCell>
                 <TableCell>NRIC/FIN</TableCell>
                 <TableCell align="right">Annual Gross</TableCell>
+                <TableCell align="right">of which Bonus</TableCell>
+                <TableCell align="right">Annual Employee CPF</TableCell>
                 <TableCell align="right">Annual Employer CPF</TableCell>
               </TableRow>
             </TableHead>
@@ -370,6 +574,8 @@ function Ir8aTab() {
                   <TableCell>{r.full_name ?? '—'}</TableCell>
                   <TableCell>{r.nric_fin ?? '—'}</TableCell>
                   <TableCell align="right">${r.annual_gross.toFixed(2)}</TableCell>
+                  <TableCell align="right">${Number(r.annual_additional_wages ?? 0).toFixed(2)}</TableCell>
+                  <TableCell align="right">${Number(r.annual_employee_cpf ?? 0).toFixed(2)}</TableCell>
                   <TableCell align="right">${r.annual_employer_cpf.toFixed(2)}</TableCell>
                 </TableRow>
               ))}
@@ -511,8 +717,8 @@ function PwmComplianceTab() {
             <TableRow>
               <TableCell>Guard</TableCell>
               <TableCell>Grade</TableCell>
-              <TableCell>Basis</TableCell>
-              <TableCell align="right">Basic wage</TableCell>
+              <TableCell>Judged on (MOM schedule)</TableCell>
+              <TableCell align="right">Wage</TableCell>
               <TableCell align="right">Floor</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
@@ -531,7 +737,12 @@ function PwmComplianceTab() {
                     )}
                   </TableCell>
                   <TableCell>{GRADE_LABEL(g.pwm_grade)}</TableCell>
-                  <TableCell>{g.basis || '—'}</TableCell>
+                  <TableCell>
+                    {g.basis_label || g.basis || '—'}
+                    {g.verdict === 'not_assessed' && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{g.detail}</Typography>
+                    )}
+                  </TableCell>
                   <TableCell align="right">
                     {g.actual != null ? Number(g.actual).toFixed(2) : '—'}
                   </TableCell>
@@ -563,15 +774,17 @@ export function PayrollPage() {
       <GlassCard>
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-            <Tab label="Runs" />
-            <Tab label="PWM Compliance" />
-            <Tab label="Overtime" />
-            {canManage && <Tab label="IR8A" />}
+            <Tab label="Runs" value={0} />
+            <Tab label="PWM Compliance" value={1} />
+            <Tab label="Overtime" value={2} />
+            <Tab label="Bonus CPF Ceiling" value={4} />
+            {canManage && <Tab label="IR8A" value={3} />}
           </Tabs>
         </Box>
         {tab === 0 && <RunsTab />}
         {tab === 1 && <PwmComplianceTab />}
         {tab === 2 && <OvertimeTab />}
+        {tab === 4 && <AwCeilingTab />}
         {tab === 3 && canManage && (
           <PermissionGuard permission="payroll:manage">
             <Ir8aTab />
