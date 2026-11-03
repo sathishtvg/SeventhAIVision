@@ -3,7 +3,7 @@ r"""Generate the Seventh AI Vision feature reference as a PDF.
 Everything here was read out of the codebase — routers, migrations, services
 and pages — rather than from a marketing deck, so the counts and capabilities
 match what actually ships. It also states known limitations (the CPF rates
-that are not implemented, the drone that has only flown in a simulator) rather
+not yet published in full, the drone that has only flown in a simulator) rather
 than omitting them, which is the difference between a reference and a brochure.
 
 Committed alongside docs/Seventh-AI-Vision-Features.pdf so the PDF can be
@@ -43,9 +43,9 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "1 November 2026"
-EDITION = "Edition 23"
-HEAD = "0174"
+GENERATED = "3 November 2026"
+EDITION = "Edition 24"
+HEAD = "0175"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -143,6 +143,8 @@ EDITIONS = [
     ["Edition 23", "1 November 2026", "0174",
      "Windows 1.0.15; the assistant sees only the person's own organisation, and the "
      "free model is sent less."],
+    ["Edition 24", "3 November 2026", "0175",
+     "Singapore payroll (module 11): CPF by date, PR rates, bonus ceiling, MOM's PWM floors."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -335,13 +337,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("307", "DATABASE TABLES"), ("1,143", "API OPERATIONS"), ("121", "API MODULES"),
+        ("311", "DATABASE TABLES"), ("1,150", "API OPERATIONS"), ("121", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("174", "MIGRATIONS"),
-        ("6,980", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("227", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("175", "MIGRATIONS"),
+        ("7,004", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -528,7 +530,7 @@ story += [
     Paragraph(
         "PLRD licence expiry per officer, and what a site requires an officer to "
         "hold. PWM grades across the seven-grade ladder, with wage floors pay is "
-        "checked against. CPF by age band against the Ordinary Wage ceiling. "
+        "checked against. CPF from CPF Board's tables, PRs' first two years included. "
         "Gazetted public holidays and holiday pay. The 72-hour monthly overtime "
         "cap flagged on every run. IR8A. PDPA consent and data subject requests. "
         "An occurrence book built against the Private Security Industry Act. SGD "
@@ -855,9 +857,12 @@ story += module(
         "<b>Training</b> — courses, a real quiz engine with question banks, "
         "attempts and pass records.",
         "<b>Certifications</b> with issuing body, number and expiry.",
-        "<b>Payroll</b> — CPF by age band with the S$7,400 Ordinary Wage ceiling, "
-        "work-pass eligibility, overtime at 1.5x, and monthly, daily or hourly "
-        "pay bases.",
+        "<b>Payroll</b> — CPF from CPF Board's published tables for the payroll "
+        "month: the age band, a PR's graduated first two years, the wage bands, "
+        "CPF's rounding and the year's Ordinary Wage ceiling. Bonuses are Additional "
+        "Wages up to the year's ceiling, then Recalculate. A new employee is asked "
+        "Singaporean, PR or foreigner first, and the salary shows its CPF. Overtime "
+        "at 1.5x; monthly, daily or hourly pay bases.",
         "<b>Timesheet approval.</b> A human between a check-in scan and a payslip. "
         "Hours are snapshotted when submitted, so an approval stays a signature on "
         "a fixed document rather than on one that keeps changing underneath. "
@@ -871,16 +876,14 @@ story += module(
         "the shift; a supervisor approves, or refuses with a note. Only approved "
         "overtime is paid. Payroll runs already made are not recalculated.",
         "<b>PWM grade and wage floors.</b> The grade is on the officer record "
-        "across the seven-grade ladder, and pay is checked against a floor: the "
-        "statutory one, held once for every customer, or a company's own, which "
-        "may only be higher. A floor is judged as of the payroll period, so "
+        "across the seven-grade ladder, and pay is checked against a floor: MOM's "
+        "2024-2028 schedules, outsourced or in-house, full- or part-time, or a "
+        "company's own, which may only be higher. A floor is judged as of the payroll period, so "
         "restating March is judged against March. Where no rate has been loaded "
         "the result is <i>not assessed</i>, never <i>compliant</i>.",
         "<b>PLRD licence number and expiry</b> tracked per officer.",
-        "<b>Payslip PDFs</b> and an <b>IR8A</b> annual summary and PDF.",
-        "<i>Documented limitations:</i> graduated first- and second-year PR CPF "
-        "rates and the Additional Wage ceiling are not implemented; no PWM rates "
-        "are shipped — they are loaded from the published schedule with its source.",
+        "<b>Payslip PDFs</b> and an <b>IR8A</b> annual summary and PDF, and a "
+        "year-end check of the bonus CPF ceiling.",
     ])
 
 story += module(
@@ -2060,8 +2063,8 @@ story += bullets([
     "<b>Digital Occurrence Book</b> built against the Private Security Industry "
     "Act requirement for a licensed agency to maintain one. No screen or "
     "endpoint edits or removes an entry; a mistake is corrected by a further entry.",
-    "<b>CPF</b> calculated by age band against the S$7,400 Ordinary Wage ceiling, "
-    "with eligibility determined by work pass type.",
+    "<b>CPF</b> from CPF Board's published tables by date, with PRs' graduated rates "
+    "and the Additional Wage ceiling.",
     "<b>IR8A</b> annual reporting.",
     "<b>PWM grades</b> across the seven-grade Progressive Wage Model ladder, with "
     "wage floors that pay is checked against, and <b>PLRD licence</b> number and "
@@ -2132,8 +2135,8 @@ story += bullets([
     "training and violations are each on their own screen.",
     "<b>The end-to-end tests ran on software only.</b> No camera, door controller, "
     "alarm panel or drone was behind them, and none was timed or loaded.",
-    "<b>Payroll:</b> graduated first- and second-year PR CPF rates and the "
-    "Additional Wage ceiling are not implemented; PWM rates are not shipped.",
+    "<b>Payroll:</b> CPF's 2027 rates are not loaded; their employer and employee "
+    "shares are not yet published.",
     "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
     "<b>The phone app</b> needs a pass on a device; <b>the desktop app</b> is not code-signed.",
     "<b>A signed-in browser tab left open keeps the web console it loaded</b> "
@@ -2145,10 +2148,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 174 "
-    "database migrations, 307 tables, 121 API modules serving 1,143 operations, 148 backend "
-    "services, 124 web routes and 59 phone screens, covered by 6,980 automated tests "
-    "(backend 4,329, repository inspection 1,406, web 808, phone 437). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 175 "
+    "database migrations, 311 tables, 121 API modules serving 1,150 operations, 149 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,004 automated tests "
+    "(backend 4,342, repository inspection 1,406, web 819, phone 437). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
