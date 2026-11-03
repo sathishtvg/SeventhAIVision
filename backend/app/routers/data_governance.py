@@ -4,7 +4,7 @@ Phase 13 of LATEST_ENTERPRISE_FEATURE_GAP_ANALYSIS.md; the design is in
 ENTERPRISE_SECURITY_HARDENING.md.
 
   GET  /retention                  every retention period in force, the holds, and what nothing removes
-  PUT  /retention/periods/{kind}   set, change or take away the period of one of the four kinds that may have one
+  PUT  /retention/periods/{kind}   set, change or take away the period of one of the kinds that may have one
   POST /subjects/find              the members of staff or the visitors a name matches, to choose one
   GET  /subjects/staff/{id}        where one member of staff appears in the expansion's records
   GET  /subjects/visitor/{id}      where one visitor appears
@@ -121,9 +121,12 @@ async def set_period(
     before = (await record_retention.periods(db))[chosen.key]["days"]
     older = await record_retention.waiting(db, chosen, body.days) if body.days is not None else 0
     if body.days is not None and older and body.already_older != older:
+        # An evidence package is listed for a person to remove, never removed by the scheduler (3 November 2026).
+        then = ("will be listed as due for removal, for a person to remove" if chosen.by_person
+                else "will be removed for good when the scheduler next runs")
         raise HTTPException(409, {
             "message": (f"{older} of these {'is' if older == 1 else 'are'} already older than {body.days} days and "
-                        "will be removed for good when the scheduler next runs. Confirm to set the period."),
+                        f"{then}. Confirm to set the period."),
             "already_older": older, "days": body.days})
     if body.days is None:
         await db.execute(text("DELETE FROM tenant_settings WHERE setting_key = :k"), {"k": chosen.setting_key})
@@ -139,7 +142,7 @@ async def set_period(
         "kind": chosen.key, "from_days": before, "to_days": body.days, "already_older": older})
     after = (await record_retention.periods(db))[chosen.key]
     answer = {"kind": chosen.key, "label": chosen.label, "days": after["days"], "set_at": after["set_at"],
-              "already_older": older, "removed_by": record_retention.REMOVED_BY}
+              "already_older": older, "removed_by": chosen.removed_by}
     await db.commit()
     return answer
 

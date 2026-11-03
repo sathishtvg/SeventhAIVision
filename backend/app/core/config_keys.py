@@ -180,7 +180,7 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "maintenance.suggest_from_health": _bool_validator,
     # After how many hours down a device is put forward: an hour to a week.
     "maintenance.suggest_after_hours": _range_validator(1, 168),
-    # Periods an organisation may set for four kinds of record
+    # Periods an organisation may set for kinds of record
     # (services/record_retention.py). With no row a kind is kept, as before. At
     # least thirty days: a guard against a slip, not a recommendation. Set through
     # /api/v1/data-governance/retention/periods/{kind}, which says first how
@@ -189,6 +189,16 @@ SETTING_VALIDATORS: dict[str, Callable[[Any], None]] = {
     "retention.closed_investigations_days": _whole_days_validator(30, 36_500),
     "retention.visitor_authorisations_days": _whole_days_validator(30, 36_500),
     "retention.workforce_answers_days": _whole_days_validator(30, 36_500),
+    # Since 3 November 2026: the history of modules 20 to 26, and evidence
+    # packages (which a person removes when due, never the scheduler).
+    "retention.incident_responses_days": _whole_days_validator(30, 36_500),
+    "retention.shift_summaries_days": _whole_days_validator(30, 36_500),
+    "retention.ended_instructions_days": _whole_days_validator(30, 36_500),
+    "retention.device_health_changes_days": _whole_days_validator(30, 36_500),
+    "retention.finished_work_orders_days": _whole_days_validator(30, 36_500),
+    "retention.advice_answers_days": _whole_days_validator(30, 36_500),
+    "retention.daily_briefings_days": _whole_days_validator(30, 36_500),
+    "retention.evidence_packages_days": _whole_days_validator(30, 36_500),
     # A visitor's badge used outside what the visit is authorised for, handed to
     # the intelligence layer as an event to look at
     # (services/visitor_movement_events.py). Off until an organisation asks.

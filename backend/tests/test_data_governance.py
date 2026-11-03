@@ -211,12 +211,15 @@ def test_everything_a_job_deletes_is_in_the_statement():
     assert deleted["drone_sync_receipts"] == {"drone_runner.py"}
     assert deleted["footage_videos"] == {"footage_retention.py"} and by["FOOTAGE_REVIEW"].removed_by.startswith("The scheduler")
     # Of what the expansion added, one job removes anything: the one that applies a period the organisation set,
-    # to the four kinds that may have one. It names the table it removes from, and nothing else of the expansion's.
+    # to the kinds that may have one. It names the table it removes from, and nothing else of the expansion's.
     assert not set(deleted) & set(_expansion_tables())
     remover = (APP / "services" / "record_retention.py").read_text(encoding="utf-8")
-    assert remover.count("DELETE FROM {kind.table}") == 1 and "DELETE FROM" not in remover.replace("DELETE FROM {kind.table}", "")
-    assert {k.table for k in record_retention.KINDS} == {"case_files", "investigations", "visitor_authorizations",
-                                                         "workforce_advice_answers"}
+    assert remover.count("DELETE FROM {table}") == 1 and "DELETE FROM" not in remover.replace("DELETE FROM {table}", "")
+    assert {k.table for k in record_retention.KINDS} == {
+        "case_files", "investigations", "visitor_authorizations", "workforce_advice_answers",
+        # Since 3 November 2026 (Phase 2 of the known limits).
+        "incident_responses", "shift_handover_summaries", "site_instructions", "device_health_changes",
+        "maintenance_work_orders", "risk_advice_answers", "daily_briefings", "evidence_packages"}
     assert {k.table for k in record_retention.KINDS} <= set(_expansion_tables())
     scheduler = (APP / "scheduler_main.py").read_text(encoding="utf-8")
     assert "not_held(FRAMES_AND_CLIPS" in scheduler and "not_held(RECORDINGS" in (APP / "services" / "continuous_recording.py").read_text(encoding="utf-8")
@@ -230,9 +233,9 @@ async def test_every_table_the_expansion_added_is_stated_as_kept_with_whether_it
     tables = _expansion_tables()
     assert len(tables) == len(set(tables)) == 36
     kept = [t for k in statement.KEPT for t in k.tables]
-    may_have_a_period = [t for k in record_retention.KINDS for t in (k.table, *k.parts)]
+    may_have_a_period = [t for k in record_retention.KINDS for t in k.tables]
     assert sorted(kept + may_have_a_period) == sorted(tables), "each is stated once: kept, or kept until a period is set"
-    assert (len(kept), len(may_have_a_period), len(statement.KEPT)) == (24, 12, 8)
+    assert (len(kept), len(may_have_a_period), len(statement.KEPT)) == (12, 24, 6)
     # Whether a table names a person is what the database's own catalogue says of its columns.
     refers = await _sql("""
         SELECT c.conrelid::regclass::text AS tbl, a.attname AS col, c.confrelid::regclass::text AS refs

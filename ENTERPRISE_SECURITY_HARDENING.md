@@ -110,10 +110,13 @@ Nine kinds of record have a period, because a job removes them:
 - **Holds.** How many are in force, by kind, and beside each kind of record
   that a hold stops, how many of it are held now. Somebody held to particular
   sites is given those sites and their holds.
-- **Kept until a period is set.** Four kinds of the newer records, twelve
-  tables, may be given a period by the organisation (below).
-- **Kept, with no period.** The other twenty-four tables the expansion added,
-  in eight groups, each table with whether it names a person. Three tables of
+- **Kept until a period is set.** Twelve kinds of the newer records, twenty-four
+  tables, may be given a period by the organisation (below). Four since
+  9 October 2026; the history of modules 20 to 26 and evidence packages since
+  3 November 2026.
+- **Kept, with no period.** The other twelve tables the expansion added,
+  in six groups, each table with whether it names a person: the settings in use,
+  the occurrence book's reviews and corrections, and the chain of custody. Three tables of
   the thirty-six lose a row by a person's own step — an item taken out of a
   package that has not been sealed, and two lists that are replaced when they
   are set again — and an authorisation goes with its visitor when a
@@ -134,11 +137,29 @@ none, each kind is kept as before.
 | `INVESTIGATIONS` | A closed investigation with what was put into it | When it was closed | One that is open; one an evidence package was made from; one linked to a case that is not closed |
 | `VISITOR_AUTHORIZATIONS` | An authorisation with its places and its reviews | The end of the period it was for | — |
 | `WORKFORCE_ANSWERS` | An answer to a recommendation | When the answer was given | — |
+| `RESPONSES` | Guards sent to an incident with their steps, and its escalations | When the incident was resolved | Those of an incident that is not resolved, that an evidence package was made for, or that a case not closed links |
+| `SHIFT_SUMMARIES` | A shift's handover summary | The end of the shift it covers | A summary still being written |
+| `INSTRUCTIONS` | A standing instruction that has ended, with who read it | When it was closed, or when it expired | An instruction still in force, and who read it |
+| `DEVICE_HEALTH` | A change in a device's health | When it was seen | Each device's latest change: it is the device's state now |
+| `WORK_ORDERS` | A maintenance work order that is over | When it was done, cancelled or dismissed | An order suggested, open or in progress; a suggestion for a device still down, or for the date its schedule still stands at, so that it is not put forward again |
+| `ADVICE_ANSWERS` | An answer to risk advice | When the answer was given | — |
+| `BRIEFINGS` | A daily briefing published or discarded | The end of the day it was for, or when it was discarded | A briefing still being drafted |
+| `EVIDENCE_PACKAGES` | A package and its list of items, by a person from the due list | When it was sealed, or a draft's last change | A package with anything in it on hold; one whose investigation is open, whose incident is not resolved, or that a case not closed links |
 
 - **Only what is over has a period.** An open case is never removed, however
   old.
-- **Evidence packages, their custody and their holds have none.** A chain of
-  custody that expires is not one.
+- **History only.** A setting in use has no period: procedures, a site's
+  places, escalation policies, the asset register and maintenance schedules.
+  The occurrence book's reviews and corrections go only with their entry.
+- **An evidence package is removed by a person, never by the job.** Its period
+  makes it due; somebody holding `evidence:package:dispose` (Admin and Manager)
+  removes it from the due list on the Evidence Packages screen, with a reason
+  and its number said back. The database checks again that it is due, keeps a
+  record of the removal and the package's chain of custody for good, and
+  removes the package (migration 0176, `routers/evidence_disposal.py`). The
+  pictures and video it pointed to follow their own periods.
+- **Holds and the chain of custody have no period.** A chain of custody that
+  expires is not one.
 - **A period is at least thirty days**, in whole days. That is a guard against
   a slip of the hand, not a recommendation.
 - **Setting one is asked for twice when it would remove something.**

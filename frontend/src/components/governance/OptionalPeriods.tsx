@@ -1,5 +1,6 @@
 /**
- * The four kinds of record an organisation may give a retention period.
+ * The kinds of record an organisation may give a retention period (evidence packages, since 3 November 2026, are
+ * listed as due for a person to remove rather than removed).
  *
  * Each is kept until a period is set. Setting one removes nothing by itself:
  * the scheduler removes what is over and older than the period, once a day,
@@ -55,7 +56,7 @@ function PeriodForm({ kind, least, onClose, onSet }: {
         <Button onClick={onClose} disabled={save.isPending}>Cancel</Button>
         {told && told.days === wanted
           ? <Button color="warning" variant="contained" disabled={save.isPending} onClick={() => save.mutate(told.already_older)}>
-              Set it, and remove them
+              {kind.by_person ? 'Set it' : 'Set it, and remove them'}
             </Button>
           : <Button variant="contained" disabled={!valid || save.isPending} onClick={() => save.mutate(undefined)}>Set the period</Button>}
       </DialogActions>

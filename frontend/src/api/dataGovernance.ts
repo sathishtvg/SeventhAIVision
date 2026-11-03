@@ -65,6 +65,8 @@ export interface OptionalKind {
   removes: string
   kept_whatever: string | null
   removed_by: string
+  /** Removed by a person from a list of those due, never by the scheduler (evidence packages, since 3 November 2026). */
+  by_person?: boolean
   taken_away: Record<string, string>
 }
 

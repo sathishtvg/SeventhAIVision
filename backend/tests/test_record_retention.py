@@ -30,6 +30,8 @@ from tests.test_visitor_authorizations import _approved, _period, _visit
 BASE = "/api/v1/data-governance"
 PERIODS = f"{BASE}/retention/periods"
 OLD = timedelta(days=400)
+#: The four kinds that had a period first (9 October 2026); the others are tested in test_retention_history.py.
+FIRST_FOUR = ("CASES", "INVESTIGATIONS", "VISITOR_AUTHORIZATIONS", "WORKFORCE_ANSWERS")
 
 
 async def _as_the_scheduler(now: datetime | None = None) -> dict:
@@ -118,8 +120,10 @@ async def _old_records(c, w: dict) -> dict:
 
 # ─── A. What a period is ─────────────────────────────────────────────────────
 
-def test_a_period_is_whole_days_thirty_or_more_and_four_kinds_may_have_one():
-    assert [k.key for k in retention.KINDS] == ["CASES", "INVESTIGATIONS", "VISITOR_AUTHORIZATIONS", "WORKFORCE_ANSWERS"]
+def test_a_period_is_whole_days_thirty_or_more_and_twelve_kinds_may_have_one():
+    assert [k.key for k in retention.KINDS] == [*FIRST_FOUR, "RESPONSES", "SHIFT_SUMMARIES", "INSTRUCTIONS",
+                                                "DEVICE_HEALTH", "WORK_ORDERS", "ADVICE_ANSWERS", "BRIEFINGS",
+                                                "EVIDENCE_PACKAGES"]
     assert retention.days_of(30) == 30 and retention.days_of(365) == 365 and retention.days_of(36_500) == 36_500
     for not_a_period in (29, 0, -1, 36_501, None, "365", 90.5, True):
         assert retention.days_of(not_a_period) is None, not_a_period
@@ -131,11 +135,15 @@ def test_a_period_is_whole_days_thirty_or_more_and_four_kinds_may_have_one():
             with pytest.raises(ValueError):
                 validate(bad)
         # Only something that is over has a period, and every statement is about a row that is over.
-        assert kind.old_enough.startswith(("x.status = 'CLOSED' AND x.closed_at < :cutoff", "x.valid_until < :cutoff",
-                                           "x.answered_at < :cutoff")), kind.key
-    # Evidence, its custody and its holds have no period here at all.
-    every = {t for k in retention.KINDS for t in (k.table, *k.parts)}
-    assert not {t for t in every if t.startswith("evidence_")} and len(every) == 12
+        if kind.key in FIRST_FOUR:
+            assert kind.old_enough.startswith(("x.status = 'CLOSED' AND x.closed_at < :cutoff", "x.valid_until < :cutoff",
+                                               "x.answered_at < :cutoff")), kind.key
+        assert all(":cutoff" in condition for condition in (kind.old_enough, *(c for _, c in kind.also))), kind.key
+    # Evidence packages are the one kind a person removes; their holds and custody have no period at all.
+    every = {t for k in retention.KINDS for t in k.tables}
+    assert {t for t in every if t.startswith("evidence_")} == {"evidence_packages", "evidence_package_items"}
+    assert [k.key for k in retention.KINDS if k.by_person] == ["EVIDENCE_PACKAGES"] and len(every) == 24
+    assert "EVIDENCE_PACKAGES" not in {k.key for k in retention.BY_THE_JOB}
     assert retention.LEAST_DAYS == 30 and "kept" in retention.NOT_SET
 
 
@@ -156,8 +164,8 @@ async def test_nothing_is_removed_until_a_period_is_set_and_then_only_what_is_ov
         first = await _as_the_scheduler()
         assert first["removed"] == {} and {t: await _count(w, t) for t in tables} == before
 
-        # A year, for each kind, for the first organisation only.
-        for kind in retention.KINDS:
+        # A year, for each of the first four kinds, for the first organisation only.
+        for kind in (retention.BY_KEY[k] for k in FIRST_FOUR):
             asked = await c.put(f"{PERIODS}/{kind.key}", headers=w["h"][MANAGER], json={"days": 365})
             assert asked.status_code == 409 and asked.json()["detail"]["already_older"] == 1, (kind.key, asked.text)
             assert "will be removed for good" in asked.json()["detail"]["message"]
@@ -185,11 +193,11 @@ async def test_nothing_is_removed_until_a_period_is_set_and_then_only_what_is_ov
     # One line in the organisation's audit log: how many of each kind, and under what period. No name, no title.
     (entry,) = await _audit(w, "retention.purge")
     assert entry["user_id"] is None and entry["resource_type"] == "record_retention"
-    assert entry["detail"] == {"removed": result["removed"], "days": {k.key: 365 for k in retention.KINDS}}
+    assert entry["detail"] == {"removed": result["removed"], "days": {k: 365 for k in FIRST_FOUR}}
     assert await _audit(other, "retention.purge") == []
     # The next day there is nothing older to remove, and nothing more is written.
     again = await _as_the_scheduler()
-    assert again["removed"] == {k.key: 0 for k in retention.KINDS} and len(await _audit(w, "retention.purge")) == 1
+    assert again["removed"] == {k: 0 for k in FIRST_FOUR} and len(await _audit(w, "retention.purge")) == 1
     # A year on, the case closed ten days ago has had its year. The open one never has.
     later = await _as_the_scheduler(datetime.now(timezone.utc) + timedelta(days=366))
     assert later["removed"]["CASES"] == 1

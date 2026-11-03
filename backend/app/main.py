@@ -105,6 +105,7 @@ from app.routers import (
     security_decisions,
     investigations,
     evidence_packages,
+    evidence_disposal,
     site_map,
     drone_edge,
     platform_drone_licenses,
@@ -407,6 +408,8 @@ app.include_router(security_decisions.router)
 app.include_router(investigations.router)
 app.include_router(evidence_packages.router)
 app.include_router(evidence_packages.holds_router)
+# Evidence packages due for removal, removed by a person (Phase 2 of the known limits, 3 November 2026).
+app.include_router(evidence_disposal.router)
 app.include_router(site_map.router)
 app.include_router(incident_responses.router)
 app.include_router(occurrence_book.router)

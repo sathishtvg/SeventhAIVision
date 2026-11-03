@@ -30,7 +30,8 @@ MIGRATION = REPO_ROOT / "backend" / "alembic" / "versions" / "0156_data_governan
 CODES = ("retention:read", "subject:report")
 CHANGED = ["backend/app/main.py", "frontend/src/App.tsx", "frontend/src/components/layout/Sidebar.tsx",
            "frontend/src/hooks/usePermission.ts"]
-NUMBERS = {"Nine": 9, "eight": 8, "Twelve": 12, "Four": 4, "thirty-six": 36, "twenty-four": 24, "twelve": 12}
+NUMBERS = {"Nine": 9, "eight": 8, "Twelve": 12, "Four": 4, "thirty-six": 36, "twenty-four": 24, "twelve": 12,
+           "six": 6}
 
 
 def _doc() -> str:
@@ -87,11 +88,12 @@ def test_the_document_gives_every_period_with_where_it_comes_from_and_what_remov
     assert not re.search(r"INSERT INTO|UPDATE \w+ SET|DELETE FROM", service + _code(subjects.__file__)), "both read only"
     # Every table of the expansion is kept with no period, or kept until one is set, in the groups the document counts.
     kept = [t for k in statement.KEPT for t in k.tables]
-    may = [t for k in record_retention.KINDS for t in (k.table, *k.parts)]
+    may = [t for k in record_retention.KINDS for t in k.tables]
     assert sorted(kept + may) == sorted(expansion_tables()) and len(kept + may) == NUMBERS["thirty-six"]
-    assert (len(kept), len(may), len(statement.KEPT)) == (NUMBERS["twenty-four"], NUMBERS["twelve"], NUMBERS["eight"])
-    assert "The other twenty-four tables the expansion added, in eight groups" in flat
-    assert "Four kinds of the newer records, twelve tables, may be given a period" in flat
+    # Since 3 November 2026 (Phase 2 of the known limits): the history of modules 20 to 26 and evidence packages.
+    assert (len(kept), len(may), len(statement.KEPT)) == (NUMBERS["twelve"], NUMBERS["twenty-four"], NUMBERS["six"])
+    assert "The other twelve tables the expansion added, in six groups" in flat
+    assert "Twelve kinds of the newer records, twenty-four tables, may be given a period" in flat
     taken = {t for k in statement.KEPT for t in (k.taken_away or {})} | {t for n in statement.ALSO_TAKEN.values() for t in n}
     assert taken == set(MAY_DELETE) | {"visitor_authorizations"}
     assert "Three tables of the thirty-six lose a row by a person's own step" in flat
@@ -110,7 +112,7 @@ def test_the_document_gives_every_period_with_where_it_comes_from_and_what_remov
 def test_the_periods_an_organisation_may_set_are_as_the_document_says():
     section = _section("### Periods the organisation may set", "## 3.")
     rows = re.findall(r"^\| `([A-Z_]+)` \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", section, re.M)
-    assert [r[0] for r in rows] == [k.key for k in record_retention.KINDS] and len(rows) == NUMBERS["Four"]
+    assert [r[0] for r in rows] == [k.key for k in record_retention.KINDS] and len(rows) == NUMBERS["Twelve"]
     for (key, _, counted_from, kept), k in zip(rows, record_retention.KINDS):
         assert counted_from.strip().lower() == k.counted_from.lower(), key
         assert (kept.strip() == "—") == (k.kept_whatever is None), key
@@ -118,10 +120,13 @@ def test_the_periods_an_organisation_may_set_are_as_the_document_says():
     service = _code(record_retention.__file__)
     assert "Nothing is removed unless a period is set" in flat and "kept as before" in flat
     assert "**A period is at least thirty days**" in flat and record_retention.LEAST_DAYS == 30
-    # Only what is over has a period; evidence has none.
+    # Only what is over has a period; a package is removed by a person; holds and custody have none.
     assert all("x.status = 'CLOSED'" in k.old_enough for k in record_retention.KINDS if k.key in ("CASES", "INVESTIGATIONS"))
-    assert "**Evidence packages, their custody and their holds have none.**" in flat
-    assert not [t for k in record_retention.KINDS for t in (k.table, *k.parts) if t.startswith("evidence_")]
+    assert "**An evidence package is removed by a person, never by the job.**" in flat
+    assert "**Holds and the chain of custody have no period.**" in flat and "**History only.**" in flat
+    assert {t for k in record_retention.KINDS for t in k.tables if t.startswith("evidence_")} == {
+        "evidence_packages", "evidence_package_items"}
+    assert [k.key for k in record_retention.KINDS if k.by_person] == ["EVIDENCE_PACKAGES"]
     assert "evidence_packages p WHERE p.investigation_id = x.id" in service, "an investigation a package was made from is kept"
     # Asked for twice; a person's; and the scheduler removes, not the route.
     router = _code(api.__file__)

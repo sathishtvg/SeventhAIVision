@@ -21,7 +21,10 @@ WEB = REPO_ROOT / "frontend" / "src"
 APP = REPO_ROOT / "backend" / "app"
 MIGRATION = REPO_ROOT / "backend" / "alembic" / "versions" / "0144_evidence_packages.py"
 PREFIXES = ("/api/v1/evidence-packages", "/api/v1/evidence-holds")
-OWN = {"evidence:package:read", "evidence:package:manage", "evidence:package:export", "evidence:hold:manage"}
+OWN = {"evidence:package:read", "evidence:package:manage", "evidence:package:export", "evidence:hold:manage",
+       # Removing a package that is due (migration 0176, 3 November 2026).
+       "evidence:package:dispose"}
+REMOVAL = REPO_ROOT / "backend" / "alembic" / "versions" / "0176_retention_history_and_evidence_disposal.py"
 
 
 def _doc() -> str:
@@ -101,6 +104,9 @@ def test_the_limits_the_document_states_are_the_codes():
 def test_the_steps_of_custody_the_document_names_are_the_ones_there_are():
     migration = MIGRATION.read_text(encoding="utf-8")
     recorded = set(re.findall(r"'([A-Z_]+)'", re.search(r'^STEPS = "(.*)"$', migration, re.M).group(1)))
+    # The step 0176 added, written by the database when a package due for removal is removed.
+    assert 'STEPS = (*OLD_STEPS, "DISPOSED")' in REMOVAL.read_text(encoding="utf-8")
+    recorded |= {"DISPOSED"}
     section = _doc().split("## 5. The chain of custody", 1)[1].split("## 6.", 1)[0]
     rows = re.findall(r"^\| (`[A-Z`, ]+`) \| (.*) \|$", section, re.M)
     named = {step: where for steps, where in rows for step in re.findall(r"`([A-Z]+)`", steps)}
@@ -126,12 +132,15 @@ def test_the_document_says_who_holds_what_and_the_migration_grants_exactly_that(
         granted.setdefault(code, set()).add(int(role))
     assert granted == {"evidence:package:read": {2, 3, 4, 6, 8}, "evidence:package:manage": {2, 3, 4, 8},
                        "evidence:package:export": {2, 3, 8}, "evidence:hold:manage": {2, 8}}
+    # 0176 gives removing a package that is due to Admin and Manager, who also place and lift holds.
+    assert "WHERE r.id IN (2, 8) AND p.code = 'evidence:package:dispose'" in REMOVAL.read_text(encoding="utf-8")
+    granted["evidence:package:dispose"] = {2, 8}
     assert set(granted) == OWN
     header = re.search(r"^\| \| Admin 2 \|.*$", _doc(), re.M).group(0)
     roles = [int(n) for n in re.findall(r" (\d) \|", header)]
     assert roles == [2, 8, 3, 4, 6, 5, 7, 1]
     for code, holders in granted.items():
-        cells = re.search(rf"^\| `{code}` \|(.*)\|$", _doc(), re.M).group(1).split("|")
+        cells = re.search(rf"^\| `{code}`(?: \(0176\))? \|(.*)\|$", _doc(), re.M).group(1).split("|")
         assert {role for role, cell in zip(roles, cells) if "✓" in cell} == holders, code
 
 
@@ -143,7 +152,8 @@ def test_the_web_gives_each_role_exactly_what_the_migration_grants():
     table = src.split("const ROLE_PERMISSIONS", 1)[1].split("export function usePermission", 1)[0]
     web = {role: set(re.findall(pattern, re.search(rf"\n  {role}: \[(.*?)\n  \],", table, re.S).group(1)))
            for role in (3, 4, 5, 6, 7)}
-    assert web == {3: OWN - {"evidence:hold:manage"}, 4: {"evidence:package:read", "evidence:package:manage"},
+    assert web == {3: OWN - {"evidence:hold:manage", "evidence:package:dispose"},
+                   4: {"evidence:package:read", "evidence:package:manage"},
                    5: set(), 6: {"evidence:package:read"}, 7: set()}
     platform = src.split("const PLATFORM_PERMISSIONS", 1)[1].split("]", 1)[0]
     assert "evidence:package" not in platform and "evidence:hold" not in platform

@@ -130,6 +130,8 @@ const ALL_PERMISSIONS = [
   // Evidence packages (migration 0144). The platform owner, the client role
   // and guards hold none.
   'evidence:package:read', 'evidence:package:manage', 'evidence:package:export', 'evidence:hold:manage',
+  // Removing a package that is due (migration 0176): Admin and Manager, who also place and lift holds.
+  'evidence:package:dispose',
   // The security map (migration 0145). The platform owner, the client role
   // and guards hold neither.
   'sitemap:read', 'sitemap:manage',
