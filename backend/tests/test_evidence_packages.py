@@ -1043,7 +1043,9 @@ async def test_the_permissions_are_held_by_the_roles_that_handle_evidence():
     for r in rows:
         held.setdefault(r["code"], set()).add(r["role_id"])
     assert held == {"evidence:package:read": {2, 3, 4, 6, 8}, "evidence:package:manage": {2, 3, 4, 8},
-                    "evidence:package:export": {2, 3, 8}, "evidence:hold:manage": {2, 8}}
+                    "evidence:package:export": {2, 3, 8}, "evidence:hold:manage": {2, 8},
+                    # Removing a package that is due (migration 0176, 3 November 2026): those who place and lift holds.
+                    "evidence:package:dispose": {2, 8}}
 
 
 async def test_an_api_key_and_a_support_session_do_not_handle_evidence(roots):

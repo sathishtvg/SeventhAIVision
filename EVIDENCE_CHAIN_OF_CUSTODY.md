@@ -151,6 +151,7 @@ One list, oldest first, from three places:
 | `CAPTURED` | The item itself: when the platform recorded it |
 | `ACCESSED` | The existing `evidence_access_log` — every opening, download or export of a frame or clip the platform has logged, including those made before the package existed |
 | `COLLECTED`, `REMOVED`, `VIEWED`, `SEALED`, `LOCKED`, `UNLOCKED`, `EXPORTED`, `DOWNLOADED`, `SHARED`, `RELEASED` | `evidence_custody_events`, added by this phase |
+| `DISPOSED` | `evidence_custody_events`, written by the database when a package due for removal is removed (migration 0176, 3 November 2026): the last step, with who, why and under what period |
 
 Each step carries who, their role, the reason where one is required, and what
 was found (an export's counts; a disclosure's recipient). Opening a package is
@@ -187,6 +188,20 @@ Its evidence is from then on kept only as long as the retention rules keep
 anything; once purged, the package still says what there was, and an export
 lists every item as left out.
 
+**Removal when due (3 November 2026, migration 0176).** An organisation may give
+packages a period (the Data Retention screen). A package past it, with nothing
+in it on hold, its investigation closed, its incident resolved and no case that
+is not closed linking it, is listed as due for removal to whoever holds
+`evidence:package:dispose` (Admin and Manager). No job removes one: a person
+does, with a reason and its number said back (`/api/v1/evidence-disposals`).
+The application only inserts a row into `evidence_package_disposals`; the
+database checks again that the package is due, links each of its custody
+entries to that row (the new `disposal_id`), writes `DISPOSED`, and removes the
+package and its items. The record (number, title, the manifest's hash, items,
+who, when, why, the period) and the chain are kept for good. The rule that a
+sealed package cannot be changed is not edited, and the application's role still
+cannot change or delete one. The pictures and video are not touched.
+
 ---
 
 ## 7. API
@@ -222,6 +237,7 @@ route, and the database refuses that one once the package is sealed.
 | `evidence:package:manage` | ✓ | ✓ | ✓ | ✓ | – | – | – | – |
 | `evidence:package:export` | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `evidence:hold:manage` | ✓ | ✓ | – | – | – | – | – | – |
+| `evidence:package:dispose` (0176) | ✓ | ✓ | – | – | – | – | – | – |
 
 **Audit.** `evidence.package.create`, `evidence.package.item.add`,
 `evidence.package.item.remove`, `evidence.package.seal`,

@@ -12,7 +12,7 @@ export const STEP_LABEL: Record<CustodyStep, string> = {
   CAPTURED: 'Captured', COLLECTED: 'Added to the package', REMOVED: 'Taken out of the package',
   VIEWED: 'Package opened', ACCESSED: 'Accessed', SEALED: 'Sealed', LOCKED: 'Placed under a hold',
   UNLOCKED: 'Hold lifted', EXPORTED: 'Exported', DOWNLOADED: 'Original downloaded', SHARED: 'Shared',
-  RELEASED: 'Released',
+  RELEASED: 'Released', DISPOSED: 'Package removed',
 }
 
 /** Steps in which evidence left the platform, or stopped being protected. */

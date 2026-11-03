@@ -11,13 +11,14 @@ import { apiClient } from './client'
 
 const BASE = '/api/v1/evidence-packages'
 const HOLDS = '/api/v1/evidence-holds'
+const DISPOSALS = '/api/v1/evidence-disposals'
 
 export type EvidenceKind = 'SNAPSHOT' | 'CLIP' | 'RECORDING' | 'DRONE_MEDIA' | 'FOOTAGE'
 export type PackageStatus = 'DRAFT' | 'SEALED'
 export type ItemState = 'SHOWN' | 'NOT_PERMITTED' | 'NOT_AVAILABLE'
 export type CustodyStep =
   | 'CAPTURED' | 'COLLECTED' | 'REMOVED' | 'VIEWED' | 'ACCESSED' | 'SEALED' | 'LOCKED' | 'UNLOCKED' | 'EXPORTED'
-  | 'DOWNLOADED' | 'SHARED' | 'RELEASED'
+  | 'DOWNLOADED' | 'SHARED' | 'RELEASED' | 'DISPOSED'
 
 export interface Paged<T> { items: T[]; total: number; limit: number; offset: number; has_more: boolean }
 
@@ -248,3 +249,63 @@ export function apiError(err: unknown): string {
   if (d && typeof d === 'object') return (d as { message?: string }).message ?? 'That could not be done.'
   return e?.message ?? 'Something went wrong.'
 }
+
+// ─── Removal when due (3 November 2026; backend/app/routers/evidence_disposal.py) ───
+
+/** A package due for removal: past the organisation's period, nothing in it held, what it was made for over. */
+export interface DuePackage {
+  id: string
+  package_number: string
+  title: string
+  status: PackageStatus
+  site_id: string | null
+  site_name: string | null
+  sealed_at: string | null
+  updated_at: string
+  investigation_id: string | null
+  investigation_number: string | null
+  incident_id: string | null
+  items: number
+  due_since: string
+}
+
+export interface DueList {
+  /** The organisation's period, or null when none is set and nothing is due. */
+  period_days: number | null
+  packages: DuePackage[]
+  note: string
+}
+
+/** What is kept of a removed package, for good. */
+export interface RemovedPackage {
+  id: string
+  package_id: string
+  package_number: string | null
+  title: string | null
+  site_id: string | null
+  site_name: string | null
+  was_sealed: boolean | null
+  sealed_at: string | null
+  manifest_sha256: string | null
+  items: number | null
+  investigation_id: string | null
+  investigation_number: string | null
+  incident_id: string | null
+  period_days: number | null
+  reason: string
+  removed_by_user_id: string | null
+  removed_by_name: string | null
+  removed_at: string
+}
+
+export const getDueForRemoval = () => apiClient.get<DueList>(`${DISPOSALS}/due`).then((r) => r.data)
+
+export const removePackage = (body: { package_id: string; package_number: string; reason: string }) =>
+  apiClient.post<RemovedPackage & { note: string }>(DISPOSALS, body).then((r) => r.data)
+
+export const listRemoved = (params: { limit?: number; offset?: number }) =>
+  apiClient.get<Paged<RemovedPackage>>(DISPOSALS, { params }).then((r) => r.data)
+
+export const getRemovedCustody = (id: string) =>
+  apiClient.get<{ record: RemovedPackage; chain: Omit<Step, 'source'>[] }>(`${DISPOSALS}/${id}/custody`)
+    .then((r) => r.data)

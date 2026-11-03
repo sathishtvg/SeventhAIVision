@@ -1,12 +1,15 @@
 /**
  * Evidence packages — what was kept about a matter, put together for somebody.
  * Most recently created first. A row opens the package.
+ *
+ * Since 3 November 2026 two more views: the packages due for removal (only for somebody who may remove them) and
+ * the record of those removed (components/evidence/EvidenceDisposal.tsx).
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Alert, Box, Button, Chip, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
-  TablePagination, TableRow, TextField, Typography,
+  TablePagination, TableRow, TextField, Typography, Tab, Tabs,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import LockIcon from '@mui/icons-material/Lock'
@@ -22,10 +25,13 @@ import { CreatePackageDialog } from '@/components/evidence/EvidenceDialogs'
 import { fmt } from '@/components/evidence/evidenceFormat'
 import { InvestigationNav } from '@/pages/investigations/InvestigationNav'
 import { ErrorState, RefreshingLine } from '@/components/states'
+import { DueForRemoval, RemovedPackages } from '@/components/evidence/EvidenceDisposal'
 
 export default function EvidencePackages() {
   const navigate = useNavigate()
   const canManage = usePermission('evidence:package:manage')
+  const canDispose = usePermission('evidence:package:dispose')
+  const [view, setView] = useState<'packages' | 'due' | 'removed'>('packages')
   const [status, setStatus] = useState<'' | PackageStatus>('')
   const [siteId, setSiteId] = useState('')
   const [q, setQ] = useState('')
@@ -49,6 +55,14 @@ export default function EvidencePackages() {
                     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
                       Put evidence together</Button>) : undefined} />
       <InvestigationNav />
+      <Tabs value={view} onChange={(_, v) => setView(v)} sx={{ mb: 2 }}>
+        <Tab value="packages" label="Packages" />
+        {canDispose && <Tab value="due" label="Due for removal" />}
+        <Tab value="removed" label="Removed" />
+      </Tabs>
+      {view === 'due' && canDispose && <GlassCard sx={{ p: 2 }}><DueForRemoval /></GlassCard>}
+      {view === 'removed' && <GlassCard sx={{ p: 2 }}><RemovedPackages /></GlassCard>}
+      {view === 'packages' && (<>
       <GlassCard sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField select size="small" label="Status" value={status} sx={{ minWidth: 140 }}
@@ -114,6 +128,7 @@ export default function EvidencePackages() {
                          rowsPerPageOptions={[25, 50, 100]} onPageChange={(_, p) => setPage(p)}
                          onRowsPerPageChange={(e) => { setRows(Number(e.target.value)); setPage(0) }} />
       </GlassCard>
+      </>)}
       <CreatePackageDialog open={creating} onClose={() => setCreating(false)}
                            onCreated={(id) => { setCreating(false); navigate(`/evidence-packages/${id}`) }} />
     </Box>

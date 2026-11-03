@@ -25,10 +25,11 @@ so beside every period that falls back.
 NO PERIOD IS A STATEMENT TOO. Most of what the platform keeps is removed by no
 job: it stays until a person removes it on its own screen, a data-subject
 erasure is carried out, or the organisation is removed. Of what the enterprise
-expansion added, four kinds may be given a period by the organisation
-(services/record_retention.py) and are kept until one is set; the rest has no
-period and no way to set one. Each of its tables is listed with whether it
-names a person.
+expansion added, twelve kinds may be given a period by the organisation
+(services/record_retention.py) and are kept until one is set - history, and
+since 3 November 2026 evidence packages, which a person removes when due; what
+is left, settings in use and the chain of custody, has no period and no way to
+set one. Each of its tables is listed with whether it names a person.
 
 IT SAYS WHAT IS CONFIGURED, NOT WHAT THE LAW REQUIRES. How long a recording or
 a visitor's record ought to be kept is the organisation's to decide and is
@@ -134,31 +135,28 @@ class Kept:
     taken_away: dict[str, str] | None = None
 
 
-#: What the enterprise expansion added (migrations 0143 to 0155) that has no period and no way to set one.
-#: The four kinds that may be given one are record_retention.KINDS, and are not repeated here.
+#: What the enterprise expansion added (migrations 0143 to 0155) that has no period and no way to set one: the
+#: settings in use, the occurrence book's reviews and corrections (they go with their entry, never on their own),
+#: and the chain of custody. The kinds that may be given one are record_retention.KINDS, and are not repeated here.
 #: Whether a table names a person is read from the columns that refer to one (services/subject_records.py).
 KEPT: tuple[Kept, ...] = (
-    Kept("EVIDENCE_PACKAGES", "Evidence packages, their holds and their custody",
-         ("evidence_packages", "evidence_package_items", "evidence_holds", "evidence_custody_events"),
-         {"evidence_package_items": "An item is taken out of a package that has not been sealed"}),
+    Kept("EVIDENCE_CUSTODY", "Holds on evidence, and the chain of custody",
+         ("evidence_holds", "evidence_custody_events")),
     Kept("SITE_MAP", "The places of a site", ("site_places",)),
-    Kept("RESPONSE", "Guards sent to incidents, their steps, the escalation policies and what was escalated",
-         ("incident_responses", "incident_response_steps", "escalation_policies", "incident_escalations")),
-    Kept("OCCURRENCE_BOOK", "Reviews and corrections of occurrence book entries, standing instructions and who read "
-         "them, and shift summaries",
-         ("occurrence_entry_reviews", "occurrence_entry_corrections", "site_instructions", "site_instruction_reads",
-          "shift_handover_summaries")),
+    Kept("ESCALATION_POLICIES", "Escalation policies", ("escalation_policies",)),
+    Kept("OCCURRENCE_BOOK", "Reviews and corrections of occurrence book entries: they go with their entry, never on "
+         "their own", ("occurrence_entry_reviews", "occurrence_entry_corrections")),
     Kept("SOP", "Procedures, their versions and passages", ("sop_documents", "sop_versions", "sop_passages",
                                                              "sop_incident_types"),
          {"sop_incident_types": "The kinds of incident a procedure is for are replaced when they are set again"}),
-    Kept("ASSETS", "The asset register, what devices reported of their health, maintenance schedules and work orders",
-         ("asset_register", "device_health_changes", "maintenance_schedules", "maintenance_work_orders")),
-    Kept("ADVICE_ANSWERS", "Answers to risk advice", ("risk_advice_answers",)),
-    Kept("BRIEFINGS", "Daily briefings", ("daily_briefings",)),
+    Kept("ASSETS", "The asset register and maintenance schedules", ("asset_register", "maintenance_schedules")),
 )
 
 #: What else takes a row away from one of the kinds that may be given a period, besides the period.
 ALSO_TAKEN = {
+    "EVIDENCE_PACKAGES": {
+        "evidence_package_items": "An item is taken out of a package that has not been sealed",
+    },
     "VISITOR_AUTHORIZATIONS": {
         "visitor_authorization_places": "The places a visit is for are replaced when they are set again",
         "visitor_authorizations": "An authorisation goes with its visitor when a data-subject erasure removes "
@@ -166,7 +164,8 @@ ALSO_TAKEN = {
     },
 }
 MAY_BE_SET = ("These are kept until the organisation sets a period for them. Once one is set, what is over and older "
-              "than it is removed for good, a day at a time.")
+              "than it is removed for good, a day at a time; an evidence package is listed instead, for a person to "
+              "remove.")
 
 #: What a data-subject erasure, carried out by a person, removes or blanks. It is the existing step and is unchanged.
 ERASURE = ("A face on the watchlist, and the match kept on what the cameras saw of it",
@@ -256,14 +255,14 @@ async def read(db: AsyncSession, allowed: list[str] | None) -> dict:
             "set_at": s["updated_at"] if own else None,
         })
 
-    # The four kinds the organisation may give a period: each kept until one is set.
+    # The kinds the organisation may give a period: each kept until one is set.
     chosen = await record_retention.periods(db)
     optional = [{
         "key": k.key, "label": k.label, "setting_key": k.setting_key,
-        "tables": [{"name": t, "names_people": names_people(t)} for t in (k.table, *k.parts)],
+        "tables": [{"name": t, "names_people": names_people(t)} for t in k.tables],
         "days": chosen[k.key]["days"], "set_at": chosen[k.key]["set_at"],
         "counted_from": k.counted_from, "removes": k.removes, "kept_whatever": k.kept_whatever,
-        "removed_by": record_retention.REMOVED_BY, "taken_away": ALSO_TAKEN.get(k.key, {}),
+        "removed_by": k.removed_by, "by_person": k.by_person, "taken_away": ALSO_TAKEN.get(k.key, {}),
     } for k in record_retention.KINDS]
 
     # The fleet's two: positions and archived vehicles, each kept until the organisation sets a period.

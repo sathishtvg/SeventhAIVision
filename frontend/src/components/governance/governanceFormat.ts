@@ -22,7 +22,8 @@ export const periodLine = (p: PeriodInForce['period']) =>
 
 /** A kind that may be given a period: how it stands. Kept, until a period is set. */
 export const optionalLine = (k: OptionalKind) =>
-  k.days == null ? 'Kept: no period is set' : `Removed ${many(k.days, 'day', 'days')} after ${k.counted_from}`
+  k.days == null ? 'Kept: no period is set'
+    : `${k.by_person ? 'Due for removal' : 'Removed'} ${many(k.days, 'day', 'days')} after ${k.counted_from}`
 
 /** A site's recordings: its days, or that none is kept centrally. */
 export const siteLine = (s: SitePeriod) =>
