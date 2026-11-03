@@ -9,10 +9,11 @@ for the CPF calculation and its documented v1 limitations.
 import io
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,8 +22,9 @@ from app.db.session import AsyncSessionLocal
 from app.dependencies.auth import TokenPayload, get_token_payload
 from app.dependencies.permissions import require_permission
 from app.dependencies.tenant import get_db_with_tenant
-from app.services import pwm
-from app.services.payroll import compute_age, compute_payslip
+from app.services import cpf, pwm
+from app.services.audit import write_audit_log
+from app.services.payroll import compute_payslip
 
 try:
     from reportlab.lib import colors
@@ -99,19 +101,67 @@ async def create_payroll_run(
         """),
         {"ps": body.period_start, "pe": body.period_end, "uid": token.user_id},
     )).first()
-    run_id = run_row.id
+    worked = await _work_out_run(db, run_row.id, body.period_start, body.period_end, require_timesheets)
+    await db.commit()
+    return {**dict(run_row._mapping), **worked}
+
+
+async def _require_timesheets(db: AsyncSession) -> bool:
+    setting = (await db.execute(
+        text("SELECT setting_value FROM tenant_settings WHERE setting_key = :k"),
+        {"k": REQUIRE_APPROVED_TIMESHEETS_KEY},
+    )).first()
+    return bool(setting[0]) if setting is not None else False
+
+
+async def _year_so_far(db: AsyncSession, guard_id, year: int, run_id) -> tuple[Decimal, Decimal]:
+    """This guard's Ordinary and Additional Wages already contributed on this calendar year, from FINALISED runs
+    other than this one. A payslip from before 0175 has no ow_subject_to_cpf: its gross, capped at that month's
+    ceiling, stands in (those runs had no Additional Wages)."""
+    row = (await db.execute(text("""
+        SELECT COALESCE(SUM(COALESCE(p.ow_subject_to_cpf,
+                   LEAST(p.gross_pay, (SELECT c.ow_ceiling_monthly FROM cpf_wage_ceilings c
+                                        WHERE c.effective_from <= r.period_end
+                                        ORDER BY c.effective_from DESC LIMIT 1)))), 0) AS ow,
+               COALESCE(SUM(COALESCE(p.aw_subject_to_cpf, 0)), 0) AS aw
+          FROM payslips p JOIN payroll_runs r ON r.id = p.payroll_run_id
+         WHERE p.guard_user_id = :gid AND r.status = 'finalized' AND r.id <> CAST(:run AS uuid)
+           AND EXTRACT(YEAR FROM r.period_end) = :yr
+    """), {"gid": guard_id, "run": str(run_id), "yr": year})).first()
+    return Decimal(str(row.ow or 0)), Decimal(str(row.aw or 0))
+
+
+async def _work_out_run(db: AsyncSession, run_id, period_start: date, period_end: date,
+                        require_timesheets: bool) -> dict:
+    """Every payslip of a run, from the shifts, the guard's pay, the run's Additional Wages and CPF's tables for the
+    month. Used by creating a run and by recalculating a draft one, so the two cannot differ (3 November 2026).
+
+    CPF is worked out for the calendar month of `period_end` (services/cpf.py): the rate table in force then, the
+    guard's age band and PR year in that month. A citizen or PR without the details CPF needs is not guessed: the
+    payslip says why its CPF is nil (cpf_note) and the run lists it."""
+    year, month = period_end.year, period_end.month
+    rates = await cpf.load_rates(db, period_end)
 
     guards = await db.execute(
         text("""
             SELECT id, full_name, date_of_birth, work_pass_type, hourly_rate, daily_rate, monthly_salary,
-                   employment_type, pwm_grade
+                   employment_type, pwm_grade, pr_since, cpf_rate_type, employment_arrangement
             FROM users WHERE role_id = ANY(:roles) AND is_active = TRUE
         """),
         {"roles": list(_PAYROLL_GUARD_ROLES)},
     )
+    additional = {
+        str(r.guard_user_id): Decimal(str(r.total))
+        for r in (await db.execute(text(
+            "SELECT guard_user_id, SUM(amount) AS total FROM payroll_additional_wages "
+            "WHERE payroll_run_id = CAST(:run AS uuid) GROUP BY guard_user_id"), {"run": str(run_id)})).all()
+    }
 
     payslips = []
     warnings = []
+    if (period_start.year, period_start.month) != (year, month):
+        warnings.append(f"The period spans more than one calendar month: CPF is worked out once, for "
+                        f"{period_end:%B %Y}, with that month's ceiling")
 
     # Below-floor payslips are REPORTED, not refused. Payroll's job is to say
     # what happened — the same reasoning as MAX_OT_HOURS_PER_MONTH — and a run
@@ -123,21 +173,21 @@ async def create_payroll_run(
     # operator's housekeeping, while a below-floor wage is a legal exposure an
     # agency may have to answer for. Mixing them buries the second in the first.
     pwm_exceptions: list[dict] = []
-    _floors: dict[str, Decimal | None] = {}
+    _floors: dict[tuple, dict] = {}
 
-    async def _floor_for(grade: str):
-        """Resolved as of the PERIOD, not today, and once per grade rather than
-        once per guard — a restated month must be judged by the rates that were
-        in force then."""
-        if grade not in _floors:
-            _floors[grade] = (await db.execute(
-                text("SELECT pwm_effective_floor(CAST(:g AS varchar), CAST(:d AS date))"),
-                {"g": grade, "d": body.period_start},
-            )).scalar()
-        return _floors[grade]
+    async def _floor_for(grade: str, arrangement: str | None, employment_type: str | None) -> dict:
+        """Resolved as of the PERIOD, not today, and once per grade, arrangement and hours rather than once per
+        guard — a restated month must be judged by the rates that were in force then."""
+        key = (grade, arrangement, pwm.floor_kind(arrangement, employment_type))
+        if key not in _floors:
+            _floors[key] = await pwm.resolve_floor(db, grade=grade, arrangement=arrangement,
+                                                   employment_type=employment_type, on=period_start)
+        return _floors[key]
 
     for g in guards:
         if g.hourly_rate is None and g.monthly_salary is None and g.daily_rate is None:
+            if str(g.id) in additional:
+                warnings.append(f"{g.full_name or g.id} has additional pay on this run but no pay rate — skipped")
             warnings.append(f"{g.full_name or g.id} has no hourly_rate, daily_rate, or monthly_salary configured — skipped")
             continue
 
@@ -151,7 +201,7 @@ async def create_payroll_run(
                 WHERE guard_user_id = :gid AND status = 'completed' AND actual_end IS NOT NULL
                   AND actual_start::date >= :ps AND actual_start::date <= :pe
             """),
-            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+            {"gid": g.id, "ps": period_start, "pe": period_end},
         )).first()
         total_hours = Decimal(str(hours_row.total_hours or 0))
         ot_hours = Decimal(str(hours_row.ot_hours or 0))
@@ -165,7 +215,7 @@ async def create_payroll_run(
                 WHERE lr.guard_user_id = :gid AND lr.status = 'approved' AND lt.name = 'Unpaid Leave'
                   AND lr.start_date <= :pe AND lr.end_date >= :ps
             """),
-            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+            {"gid": g.id, "ps": period_start, "pe": period_end},
         )).first()
         unpaid_leave_days = Decimal(str(unpaid_row.days or 0))
 
@@ -184,7 +234,7 @@ async def create_payroll_run(
                    AND sh.actual_end IS NOT NULL
                    AND sh.actual_start::date >= :ps AND sh.actual_start::date <= :pe
             """),
-            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+            {"gid": g.id, "ps": period_start, "pe": period_end},
         )).first()
         public_holiday_days = Decimal(str(ph_row.days or 0))
 
@@ -200,7 +250,7 @@ async def create_payroll_run(
                    AND sh.actual_end IS NOT NULL
                    AND sh.actual_start::date >= :ps AND sh.actual_start::date <= :pe
             """),
-            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+            {"gid": g.id, "ps": period_start, "pe": period_end},
         )).first()
         allowance_pay = Decimal(str(allowance_row.total or 0))
 
@@ -210,7 +260,7 @@ async def create_payroll_run(
                 SELECT id, status FROM timesheets
                  WHERE guard_user_id = :gid AND period_start = :ps AND period_end = :pe
             """),
-            {"gid": g.id, "ps": body.period_start, "pe": body.period_end},
+            {"gid": g.id, "ps": period_start, "pe": period_end},
         )).first()
         approved = timesheet is not None and timesheet.status == "approved"
 
@@ -225,16 +275,41 @@ async def create_payroll_run(
                 f"{g.full_name or g.id} paid from unapproved hours ({state})"
             )
 
-        age = compute_age(g.date_of_birth, body.period_end) if g.date_of_birth else 30
         calc = compute_payslip(
             regular_hours, ot_hours, days_worked,
             Decimal(str(g.hourly_rate)) if g.hourly_rate is not None else None,
             Decimal(str(g.daily_rate)) if g.daily_rate is not None else None,
             Decimal(str(g.monthly_salary)) if g.monthly_salary is not None else None,
-            age, g.work_pass_type,
             public_holiday_days=public_holiday_days,
             allowance_pay=allowance_pay,
         )
+        ordinary_wage = calc["ordinary_wage"]
+        additional_wage = additional.get(str(g.id), Decimal("0"))
+
+        # CPF from CPF Board's table for this month (services/cpf.py), never guessed.
+        who = cpf.who_pays(work_pass_type=g.work_pass_type, date_of_birth=g.date_of_birth, pr_since=g.pr_since,
+                           cpf_rate_type=g.cpf_rate_type, year=year, month=month, rates=rates)
+        cpf_employee = cpf_employer = Decimal("0")
+        ow_subject = aw_subject = ceiling_left = None
+        if who.scheme:
+            employer_rate, employee_rate = rates.bands[who.scheme][who.age_above]
+            if additional_wage > 0:
+                ow_year, aw_year = await _year_so_far(db, g.id, year, run_id)
+                this_month = min(ordinary_wage, rates.ow_ceiling)
+                ceiling_left = cpf.aw_ceiling_left(
+                    annual_wage_ceiling=rates.annual_wage_ceiling,
+                    ow_subject_this_year=ow_year + this_month * (13 - month),   # this month and the rest of the year
+                    aw_subject_so_far=aw_year,
+                )
+            paid = cpf.contribution(ordinary_wage=ordinary_wage, additional_wage=additional_wage,
+                                    employer_rate=employer_rate, employee_rate=employee_rate,
+                                    ow_ceiling=rates.ow_ceiling, aw_ceiling_left=ceiling_left)
+            cpf_employee, cpf_employer = paid.employee, paid.employer
+            ow_subject, aw_subject = paid.ow_subject, paid.aw_subject
+        elif who.note:
+            warnings.append(f"{g.full_name or g.id}: CPF not worked out — {who.note}")
+        gross_pay = ordinary_wage + additional_wage
+        net_pay = gross_pay - cpf_employee
 
         # Surfaced on the run, not blocked: refusing to pay hours somebody has
         # already worked would be the wrong correction, but a month over the
@@ -250,40 +325,52 @@ async def create_payroll_run(
                 INSERT INTO payslips (
                     tenant_id, payroll_run_id, guard_user_id, regular_hours, overtime_hours, days_worked,
                     base_pay, overtime_pay, gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days,
-                    public_holiday_days, public_holiday_pay, allowance_pay, timesheet_id
+                    public_holiday_days, public_holiday_pay, allowance_pay, timesheet_id,
+                    ordinary_wage, additional_wage, ow_subject_to_cpf, aw_subject_to_cpf, aw_ceiling_left,
+                    cpf_scheme, cpf_age_above, cpf_rates_from, cpf_note
                 ) VALUES (
                     current_setting('app.current_tenant')::uuid, :run_id, :gid, :reg, :ot, :days,
                     :base, :otpay, :gross, :cpfe, :cpfr, :net, :unpaid,
-                    :phdays, :phpay, :allow, CAST(:ts AS uuid)
+                    :phdays, :phpay, :allow, CAST(:ts AS uuid),
+                    :ow, :aw, :ows, :aws, :awleft, :scheme, :age, :ratesfrom, :note
                 )
                 RETURNING id, guard_user_id, regular_hours, overtime_hours, days_worked, base_pay, overtime_pay,
                           gross_pay, cpf_employee, cpf_employer, net_pay, unpaid_leave_days,
-                          public_holiday_days, public_holiday_pay, allowance_pay
+                          public_holiday_days, public_holiday_pay, allowance_pay,
+                          ordinary_wage, additional_wage, ow_subject_to_cpf, aw_subject_to_cpf, aw_ceiling_left,
+                          cpf_scheme, cpf_age_above, cpf_rates_from, cpf_note
             """),
             {
                 "run_id": run_id, "gid": g.id, "reg": regular_hours, "ot": ot_hours, "days": days_worked,
-                "base": calc["base_pay"], "otpay": calc["overtime_pay"], "gross": calc["gross_pay"],
-                "cpfe": calc["cpf_employee"], "cpfr": calc["cpf_employer"], "net": calc["net_pay"],
+                "base": calc["base_pay"], "otpay": calc["overtime_pay"], "gross": gross_pay,
+                "cpfe": cpf_employee, "cpfr": cpf_employer, "net": net_pay,
                 "unpaid": unpaid_leave_days,
                 "phdays": public_holiday_days, "phpay": calc["public_holiday_pay"],
                 "allow": calc["allowance_pay"],
                 "ts": str(timesheet.id) if timesheet else None,
+                "ow": ordinary_wage, "aw": additional_wage, "ows": ow_subject, "aws": aw_subject,
+                "awleft": ceiling_left, "scheme": who.scheme, "age": who.age_above,
+                "ratesfrom": rates.effective_from if who.scheme else None, "note": who.note,
             },
         )).first()
         payslips.append(dict(row._mapping))
 
-        # Judged on the BASIC wage, not the gross. Overtime and allowances are
-        # not basic pay, and counting them would let a guard paid below the
-        # floor look compliant purely by working more hours — which is the
-        # arrangement PWM exists to prevent.
+        # Against MOM's schedule for this guard's arrangement and hours (services/pwm.py). Outsourced officers are
+        # judged on BASIC wage: overtime and allowances are not basic pay, and counting them would let a guard paid
+        # below the floor look compliant purely by working more hours. In-house officers are judged on GROSS wage
+        # without overtime, as MOM sets it: basic, holiday pay and allowances.
         if g.pwm_grade:
-            assessment = pwm.assess(
+            floor = await _floor_for(g.pwm_grade, g.employment_arrangement, g.employment_type)
+            gross_without_ot = calc["base_pay"] + calc["public_holiday_pay"] + calc["allowance_pay"]
+            assessment = pwm.assess_schedule(
                 pwm_grade=g.pwm_grade,
-                employment_type=g.employment_type,
-                floor=await _floor_for(g.pwm_grade),
+                floor=floor["amount"],
+                basis=floor["basis"],
                 monthly_salary=g.monthly_salary,
                 daily_rate=g.daily_rate,
                 hourly_rate=g.hourly_rate,
+                gross_monthly=gross_without_ot,
+                gross_hourly=(gross_without_ot / regular_hours) if regular_hours > 0 else None,
             )
             if assessment["verdict"] == pwm.BELOW_FLOOR:
                 pwm_exceptions.append({
@@ -293,12 +380,12 @@ async def create_payroll_run(
                     "floor_applied": assessment["floor_applied"],
                     "actual": assessment["actual"],
                     "basis": assessment["basis"],
+                    "source": floor["source"],
                     "detail": assessment["reason"],
                 })
 
-    await db.commit()
     return {
-        **dict(run_row._mapping),
+        "cpf_rates_from": rates.effective_from if rates else None,
         "payslips": payslips,
         "warnings": warnings,
         "pwm_exceptions": pwm_exceptions,
@@ -323,7 +410,8 @@ async def get_payroll_run(
     token: TokenPayload = Depends(get_token_payload),
 ):
     run_row = (await db.execute(
-        text("SELECT id, period_start, period_end, status, generated_at, finalized_at FROM payroll_runs WHERE id = CAST(:id AS uuid)"),
+        text("SELECT id, period_start, period_end, status, generated_at, finalized_at, recalculated_at, "
+             "additional_wages_changed_at FROM payroll_runs WHERE id = CAST(:id AS uuid)"),
         {"id": run_id},
     )).first()
     if run_row is None:
@@ -339,14 +427,182 @@ async def get_payroll_run(
         text(f"""
             SELECT p.id, p.guard_user_id, p.regular_hours, p.overtime_hours, p.days_worked, p.base_pay,
                    p.overtime_pay, p.gross_pay, p.cpf_employee, p.cpf_employer, p.net_pay,
-                   p.unpaid_leave_days, u.full_name AS guard_name
+                   p.unpaid_leave_days, u.full_name AS guard_name,
+                   p.ordinary_wage, p.additional_wage, p.ow_subject_to_cpf, p.aw_subject_to_cpf, p.aw_ceiling_left,
+                   p.cpf_scheme, p.cpf_age_above, p.cpf_rates_from, p.cpf_note
             FROM payslips p JOIN users u ON u.id = p.guard_user_id
             {where}
             ORDER BY u.full_name
         """),
         params,
     )
-    return {**dict(run_row._mapping), "payslips": [dict(r._mapping) for r in payslips]}
+    rows = []
+    for r in payslips:
+        d = dict(r._mapping)
+        d["cpf_scheme_label"] = cpf.SCHEME_LABEL.get(d["cpf_scheme"]) if d["cpf_scheme"] else None
+        d["cpf_age_band_label"] = cpf.AGE_BAND_LABEL.get(d["cpf_age_above"]) if d["cpf_age_above"] is not None else None
+        rows.append(d)
+    # Additional pay changed after the payslips were worked out: they no longer show it until the run is recalculated.
+    changed = run_row.additional_wages_changed_at
+    worked_at = run_row.recalculated_at or run_row.generated_at
+    return {**dict(run_row._mapping), "payslips": rows,
+            "needs_recalculation": run_row.status == "draft" and changed is not None and changed > worked_at}
+
+
+async def _additional_wages_changed(db: AsyncSession, run_id: str) -> None:
+    await db.execute(text("UPDATE payroll_runs SET additional_wages_changed_at = clock_timestamp() "
+                          "WHERE id = CAST(:run AS uuid)"), {"run": run_id})
+
+
+async def _draft_run(db: AsyncSession, run_id: str):
+    run = (await db.execute(text(
+        "SELECT id, period_start, period_end, status FROM payroll_runs WHERE id = CAST(:id AS uuid)"),
+        {"id": run_id})).first()
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Payroll run not found")
+    if run.status != "draft":
+        raise HTTPException(status.HTTP_409_CONFLICT, "This payroll run is finalised: it cannot be changed")
+    return run
+
+
+@router.post("/runs/{run_id}/recalculate", dependencies=[Depends(require_permission("payroll:manage"))])
+async def recalculate_payroll_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    """Work a DRAFT run out again: its shifts, the pay on file now, its Additional Wages and CPF's table for the
+    month. A finalised run is never changed (3 November 2026)."""
+    run = await _draft_run(db, run_id)
+    require_timesheets = await _require_timesheets(db)
+    await db.execute(text("DELETE FROM payslips WHERE payroll_run_id = CAST(:id AS uuid)"), {"id": run_id})
+    worked = await _work_out_run(db, run.id, run.period_start, run.period_end, require_timesheets)
+    row = (await db.execute(text(
+        "UPDATE payroll_runs SET recalculated_at = clock_timestamp() WHERE id = CAST(:id AS uuid) "
+        "RETURNING id, period_start, period_end, status, generated_at, recalculated_at"), {"id": run_id})).first()
+    await write_audit_log(db, tenant_id=str(token.tenant_id), user_id=str(token.user_id),
+                          action="payroll.run.recalculated", resource_type="payroll_run", resource_id=run_id,
+                          detail={"payslips": len(worked["payslips"])})
+    await db.commit()
+    return {**dict(row._mapping), **worked}
+
+
+# ── Additional Wages: bonus-type pay on a draft run (CPF's AW) ──────────────────
+
+AdditionalWageKind = Literal["bonus", "aws", "leave_encashment", "incentive", "other"]
+AW_KIND_LABEL = {"bonus": "Bonus", "aws": "13th month (AWS)", "leave_encashment": "Leave encashment",
+                 "incentive": "Incentive", "other": "Other"}
+
+
+class AdditionalWageIn(BaseModel):
+    guard_user_id: str
+    kind: AdditionalWageKind
+    amount: Decimal = Field(gt=0, le=Decimal("1000000"), decimal_places=2)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class AdditionalWageChange(BaseModel):
+    kind: AdditionalWageKind | None = None
+    amount: Decimal | None = Field(default=None, gt=0, le=Decimal("1000000"), decimal_places=2)
+    note: str | None = Field(default=None, max_length=500)
+
+
+@router.get("/runs/{run_id}/additional-wages", dependencies=[Depends(require_permission("payroll:read"))])
+async def list_additional_wages(run_id: str, db: AsyncSession = Depends(get_db_with_tenant)):
+    rows = (await db.execute(text("""
+        SELECT a.id, a.guard_user_id, u.full_name AS guard_name, a.kind, a.amount, a.note, a.created_at, a.updated_at
+          FROM payroll_additional_wages a JOIN users u ON u.id = a.guard_user_id
+         WHERE a.payroll_run_id = CAST(:id AS uuid)
+         ORDER BY u.full_name, a.created_at
+    """), {"id": run_id})).mappings().all()
+    return [{**dict(r), "kind_label": AW_KIND_LABEL[r["kind"]]} for r in rows]
+
+
+@router.post("/runs/{run_id}/additional-wages", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("payroll:manage"))])
+async def add_additional_wage(
+    run_id: str,
+    body: AdditionalWageIn,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    await _draft_run(db, run_id)
+    guard = (await db.execute(text(
+        "SELECT id FROM users WHERE id = CAST(:g AS uuid) AND role_id = ANY(:roles)"),
+        {"g": body.guard_user_id, "roles": list(_PAYROLL_GUARD_ROLES)})).first()
+    if guard is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No employee on payroll with that id")
+    row = (await db.execute(text("""
+        INSERT INTO payroll_additional_wages (tenant_id, payroll_run_id, guard_user_id, kind, amount, note,
+                                              created_by_user_id)
+        VALUES (current_setting('app.current_tenant')::uuid, CAST(:run AS uuid), CAST(:g AS uuid), :k, :a, :n,
+                CAST(:u AS uuid))
+        RETURNING id, guard_user_id, kind, amount, note, created_at, updated_at
+    """), {"run": run_id, "g": body.guard_user_id, "k": body.kind, "a": body.amount,
+           "n": (body.note or "").strip() or None, "u": token.user_id})).mappings().first()
+    await _additional_wages_changed(db, run_id)
+    await write_audit_log(db, tenant_id=str(token.tenant_id), user_id=str(token.user_id),
+                          action="payroll.additional_wage.added", resource_type="payroll_run", resource_id=run_id,
+                          detail={"line": str(row["id"]), "guard_user_id": body.guard_user_id, "kind": body.kind,
+                                  "amount": str(body.amount)})
+    await db.commit()
+    return {**dict(row), "kind_label": AW_KIND_LABEL[row["kind"]]}
+
+
+@router.put("/runs/{run_id}/additional-wages/{line_id}", dependencies=[Depends(require_permission("payroll:manage"))])
+async def change_additional_wage(
+    run_id: str,
+    line_id: str,
+    body: AdditionalWageChange,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    await _draft_run(db, run_id)
+    changes = body.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nothing to change")
+    if "amount" in changes and changes["amount"] is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "An amount is required")
+    if "kind" in changes and changes["kind"] is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A kind is required")
+    if "note" in changes:
+        changes["note"] = (changes["note"] or "").strip() or None
+    sets = ", ".join(f"{k} = :{k}" for k in changes)
+    row = (await db.execute(text(f"""
+        UPDATE payroll_additional_wages SET {sets}, updated_at = clock_timestamp()
+         WHERE id = CAST(:id AS uuid) AND payroll_run_id = CAST(:run AS uuid)
+        RETURNING id, guard_user_id, kind, amount, note, created_at, updated_at
+    """), {**changes, "id": line_id, "run": run_id})).mappings().first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such additional pay on this run")
+    await _additional_wages_changed(db, run_id)
+    await write_audit_log(db, tenant_id=str(token.tenant_id), user_id=str(token.user_id),
+                          action="payroll.additional_wage.changed", resource_type="payroll_run", resource_id=run_id,
+                          detail={"line": line_id, **{k: str(v) for k, v in changes.items()}})
+    await db.commit()
+    return {**dict(row), "kind_label": AW_KIND_LABEL[row["kind"]]}
+
+
+@router.delete("/runs/{run_id}/additional-wages/{line_id}", dependencies=[Depends(require_permission("payroll:manage"))])
+async def remove_additional_wage(
+    run_id: str,
+    line_id: str,
+    db: AsyncSession = Depends(get_db_with_tenant),
+    token: TokenPayload = Depends(get_token_payload),
+):
+    await _draft_run(db, run_id)
+    row = (await db.execute(text(
+        "DELETE FROM payroll_additional_wages WHERE id = CAST(:id AS uuid) AND payroll_run_id = CAST(:run AS uuid) "
+        "RETURNING guard_user_id, kind, amount"), {"id": line_id, "run": run_id})).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such additional pay on this run")
+    await _additional_wages_changed(db, run_id)
+    await write_audit_log(db, tenant_id=str(token.tenant_id), user_id=str(token.user_id),
+                          action="payroll.additional_wage.removed", resource_type="payroll_run", resource_id=run_id,
+                          detail={"line": line_id, "guard_user_id": str(row.guard_user_id), "kind": row.kind,
+                                  "amount": str(row.amount)})
+    await db.commit()
+    return {"removed": line_id}
 
 
 @router.put("/runs/{run_id}/finalize", dependencies=[Depends(require_permission("payroll:manage"))])
@@ -440,6 +696,17 @@ async def get_payslip_pdf(
         ["CPF (Employer, informational)", f"${row.cpf_employer:.2f}"],
         ["Unpaid Leave Days", f"{row.unpaid_leave_days:.2f}"],
     ]
+    # Since 0175: what the CPF was worked out on, as CPF Board's statement of account would show it.
+    if row.ordinary_wage is not None:
+        data += [
+            ["Ordinary Wages", f"${row.ordinary_wage:.2f}"],
+            ["Additional Wages (bonus)", f"${row.additional_wage:.2f}"],
+        ]
+        if row.cpf_scheme:
+            data.append(["CPF table", f"{cpf.SCHEME_LABEL[row.cpf_scheme]}, "
+                                      f"{cpf.AGE_BAND_LABEL[row.cpf_age_above]}, rates from {row.cpf_rates_from}"])
+        if row.cpf_note:
+            data.append(["CPF not worked out", row.cpf_note])
     tbl = Table(data, colWidths=[100 * mm, 60 * mm])
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6C63FF")),
@@ -459,10 +726,12 @@ async def get_payslip_pdf(
 
 @router.get("/ir8a", dependencies=[Depends(require_permission("payroll:manage"))])
 async def get_ir8a_summary(year: int, db: AsyncSession = Depends(get_db_with_tenant)):
+    # Additional Wages (bonuses) are in the gross since 0175, and listed apart with the employee's CPF.
     result = await db.execute(
         text("""
             SELECT u.id AS guard_user_id, u.full_name, u.nric_fin,
-                   SUM(p.gross_pay) AS annual_gross, SUM(p.cpf_employer) AS annual_employer_cpf
+                   SUM(p.gross_pay) AS annual_gross, SUM(p.cpf_employer) AS annual_employer_cpf,
+                   SUM(p.additional_wage) AS annual_additional_wages, SUM(p.cpf_employee) AS annual_employee_cpf
             FROM payslips p
             JOIN payroll_runs r ON r.id = p.payroll_run_id
             JOIN users u ON u.id = p.guard_user_id
@@ -596,7 +865,7 @@ async def pwm_compliance_report(
 
     guards = (await db.execute(
         text("""
-            SELECT id, full_name, employee_code, pwm_grade, employment_type,
+            SELECT id, full_name, employee_code, pwm_grade, employment_type, employment_arrangement,
                    monthly_salary, daily_rate, hourly_rate
               FROM users
              WHERE role_id = ANY(:roles) AND is_active = TRUE
@@ -605,20 +874,21 @@ async def pwm_compliance_report(
         {"roles": list(_PAYROLL_GUARD_ROLES)},
     )).mappings().all()
 
-    floors: dict[str, Decimal | None] = {}
+    # Against MOM's schedule for each guard's arrangement and hours (0175). In-house officers are judged on gross
+    # wage, which only a payroll run knows: here a basic wage below the floor is "not assessed", not "below".
+    floors: dict[tuple, dict] = {}
     rows = []
     for g in guards:
         grade = g["pwm_grade"]
-        if grade and grade not in floors:
-            floors[grade] = (await db.execute(
-                text("SELECT pwm_effective_floor(CAST(:g AS varchar), CAST(:d AS date))"),
-                {"g": grade, "d": when},
-            )).scalar()
-
-        assessment = pwm.assess(
+        key = (grade, g["employment_arrangement"], pwm.floor_kind(g["employment_arrangement"], g["employment_type"]))
+        if key not in floors:
+            floors[key] = await pwm.resolve_floor(db, grade=grade, arrangement=g["employment_arrangement"],
+                                                  employment_type=g["employment_type"], on=when)
+        floor = floors[key]
+        assessment = pwm.assess_schedule(
             pwm_grade=grade,
-            employment_type=g["employment_type"],
-            floor=floors.get(grade) if grade else None,
+            floor=floor["amount"],
+            basis=floor["basis"],
             monthly_salary=g["monthly_salary"],
             daily_rate=g["daily_rate"],
             hourly_rate=g["hourly_rate"],
@@ -629,10 +899,13 @@ async def pwm_compliance_report(
             "employee_code": g["employee_code"],
             "pwm_grade": grade,
             "employment_type": g["employment_type"],
+            "employment_arrangement": g["employment_arrangement"],
             "verdict": assessment["verdict"],
             "floor_applied": assessment["floor_applied"],
             "actual": assessment["actual"],
             "basis": assessment["basis"],
+            "basis_label": pwm.BASIS_LABEL[floor["basis"]],
+            "source": floor["source"],
             "detail": assessment["reason"],
         })
 
@@ -645,6 +918,92 @@ async def pwm_compliance_report(
             "not_assessed": sum(1 for r in rows if r["verdict"] == pwm.NOT_ASSESSED),
         },
         "guards": rows,
+    }
+
+
+@router.get("/aw-ceiling-check", dependencies=[Depends(require_permission("payroll:read"))])
+async def additional_wage_ceiling_check(year: int = Query(..., ge=2000, le=2100),
+                                        db: AsyncSession = Depends(get_db_with_tenant)):
+    """The year-end check of CPF's Additional Wage ceiling, from FINALISED runs: each employee's Ordinary Wages
+    subject to CPF, their Additional Wages, the ceiling those leave ($102,000 less the OW), and whether the AW
+    contributed on is over or under it - as when pay changed later in the year than a bonus was paid. It reports
+    and changes nothing (3 November 2026)."""
+    ceiling = (await db.execute(text(
+        "SELECT annual_wage_ceiling FROM cpf_wage_ceilings WHERE effective_from <= make_date(:y, 12, 31) "
+        "ORDER BY effective_from DESC LIMIT 1"), {"y": year})).scalar()
+    rows = (await db.execute(text("""
+        SELECT u.id AS guard_user_id, u.full_name,
+               SUM(COALESCE(p.ow_subject_to_cpf, 0)) AS ow_subject,
+               SUM(p.additional_wage) AS additional_wages,
+               SUM(COALESCE(p.aw_subject_to_cpf, 0)) AS aw_subject,
+               bool_or(p.cpf_scheme IS NOT NULL) AS pays_cpf
+          FROM payslips p
+          JOIN payroll_runs r ON r.id = p.payroll_run_id
+          JOIN users u ON u.id = p.guard_user_id
+         WHERE r.status = 'finalized' AND EXTRACT(YEAR FROM r.period_end) = :y
+         GROUP BY u.id, u.full_name
+        HAVING SUM(p.additional_wage) > 0
+         ORDER BY u.full_name
+    """), {"y": year})).mappings().all()
+    out = []
+    for r in rows:
+        if not r["pays_cpf"] or ceiling is None:
+            continue
+        allowed = max(Decimal(ceiling) - Decimal(r["ow_subject"]), Decimal("0"))
+        should = min(Decimal(r["additional_wages"]), allowed)
+        difference = Decimal(r["aw_subject"]) - should
+        out.append({
+            "guard_user_id": str(r["guard_user_id"]), "full_name": r["full_name"],
+            "ow_subject_to_cpf": Decimal(r["ow_subject"]), "additional_wages": Decimal(r["additional_wages"]),
+            "aw_ceiling": allowed, "aw_contributed_on": Decimal(r["aw_subject"]), "aw_due_on": should,
+            "difference": difference,
+            "verdict": "over" if difference > 0 else "under" if difference < 0 else "right",
+        })
+    return {"year": year, "annual_wage_ceiling": ceiling, "employees": out,
+            "summary": {"checked": len(out), "over": sum(1 for o in out if o["verdict"] == "over"),
+                        "under": sum(1 for o in out if o["verdict"] == "under")}}
+
+
+class CpfPreviewIn(BaseModel):
+    work_pass_type: Literal["citizen", "pr", "ep", "sp", "wp"]
+    date_of_birth: date | None = None
+    pr_since: date | None = None
+    cpf_rate_type: Literal["graduated", "fg", "full"] | None = None
+    monthly_salary: Decimal = Field(ge=0, le=Decimal("1000000"))
+    month: date | None = None
+
+
+@router.post("/cpf-preview", dependencies=[Depends(require_permission("user:read"))])
+async def cpf_preview(body: CpfPreviewIn, db: AsyncSession = Depends(get_db_with_tenant)):
+    """What CPF a salary carries for a person, from the same rules payroll uses (services/cpf.py), so the employee
+    form and the payslip cannot disagree. Shown while an employee is created or edited (3 November 2026). Reads no
+    record: only the CPF tables and what was sent."""
+    on = body.month or date.today()
+    rates = await cpf.load_rates(db, on)
+    who = cpf.who_pays(work_pass_type=body.work_pass_type, date_of_birth=body.date_of_birth, pr_since=body.pr_since,
+                       cpf_rate_type=body.cpf_rate_type, year=on.year, month=on.month, rates=rates)
+    salary = cpf.money(body.monthly_salary)
+    answer: dict = {"eligible": who.eligible, "monthly_salary": salary, "note": who.note,
+                    "month": date(on.year, on.month, 1)}
+    if not who.eligible:
+        return {**answer, "note": "No CPF for foreign employees.", "employee_cpf": Decimal("0"),
+                "employer_cpf": Decimal("0"), "total_cpf": Decimal("0"), "take_home": salary}
+    if not who.scheme:
+        return answer
+    employer_rate, employee_rate = rates.bands[who.scheme][who.age_above]
+    paid = cpf.contribution(ordinary_wage=salary, additional_wage=Decimal("0"), employer_rate=employer_rate,
+                            employee_rate=employee_rate, ow_ceiling=rates.ow_ceiling)
+    return {
+        **answer,
+        "scheme": who.scheme, "scheme_label": cpf.SCHEME_LABEL[who.scheme],
+        "age_band": who.age_above, "age_band_label": cpf.AGE_BAND_LABEL[who.age_above],
+        "employer_rate": employer_rate, "employee_rate": employee_rate,
+        "employer_percent": cpf.percent(employer_rate), "employee_percent": cpf.percent(employee_rate),
+        "total_percent": cpf.percent(employer_rate + employee_rate),
+        "employee_cpf": paid.employee, "employer_cpf": paid.employer, "total_cpf": paid.total,
+        "take_home": salary - paid.employee,
+        "ow_ceiling": rates.ow_ceiling, "rates_from": rates.effective_from, "source": rates.source,
+        "below_full_rates": salary <= Decimal("750"),
     }
 
 

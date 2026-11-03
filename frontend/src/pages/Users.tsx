@@ -35,6 +35,9 @@ import {
   InputAdornment,
   Switch,
   FormControlLabel,
+  Alert,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material'
 import Stack from '@/components/common/Stack'
 import AddIcon from '@mui/icons-material/Add'
@@ -60,6 +63,7 @@ import {
   getUsers, createUser, updateUser, deactivateUser, getUserSites, setUserSites,
   getEmployeeDocuments, uploadEmployeeDocument, deleteEmployeeDocument,
   uploadProfilePhoto,
+  type CpfRateType, type EmploymentArrangement, type WorkPassType,
 } from '@/api/users'
 import { profilePhotoUrl } from '@/api/attendance'
 import { useAuthStore } from '@/store/auth'
@@ -71,7 +75,9 @@ import { getUserSessions, revokeAllUserSessions, unlockUserAccount } from '@/api
 import { getSites } from '@/api/sites'
 import type { User } from '@/types/api'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ErrorState, TableErrorRow } from '@/components/states'
+import { ErrorState, TableErrorRow, errorText } from '@/components/states'
+import { CpfPreviewCard } from '@/components/payroll/CpfPreviewCard'
+import { missingForCpf, residencyOf, type Residency } from '@/components/payroll/cpfResidency'
 
 const ROLE_LABELS: Record<number, string> = {
   1: 'Super Admin',
@@ -89,6 +95,9 @@ const ROLE_LABELS: Record<number, string> = {
  *  else covers several sites by design, which is what makes the standby flag
  *  meaningless for them. */
 const POST_STANDING_ROLES = new Set([4, 5])
+// The roles payroll pays (routers/payroll.py _PAYROLL_GUARD_ROLES): creating one asks residency first, because CPF
+// depends on it (3 November 2026).
+const PAYROLL_ROLES = new Set([3, 4, 5, 8])
 
 interface UserFormDialogProps {
   open: boolean
@@ -258,6 +267,12 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
   // Work Pass tab
   const [workPassType, setWorkPassType] = useState('')
   const [workPassExpiry, setWorkPassExpiry] = useState('')
+  // Singapore payroll (migration 0175). `residency` is kept apart from the work pass so "Foreigner" can be chosen
+  // before which pass.
+  const [residency, setResidency] = useState<Residency | ''>('')
+  const [prSince, setPrSince] = useState('')
+  const [cpfRateType, setCpfRateType] = useState('')
+  const [arrangement, setArrangement] = useState('outsourced')
 
   // Bank Details tab
   const [bankName, setBankName] = useState('')
@@ -297,6 +312,10 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
     setStandby(Boolean(u?.is_standby))
     setWorkPassType(u?.work_pass_type ?? '')
     setWorkPassExpiry(u?.work_pass_expiry ?? '')
+    setResidency(residencyOf(u?.work_pass_type))
+    setPrSince(u?.pr_since ?? '')
+    setCpfRateType(u?.cpf_rate_type ?? '')
+    setArrangement(u?.employment_arrangement ?? 'outsourced')
     setBankName(u?.bank_name ?? '')
     setBankAccount(u?.bank_account_number ?? '')
     setHourlyRate(u?.hourly_rate?.toString() ?? '')
@@ -325,7 +344,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
     queryKey: ['roles'], queryFn: listRoles, enabled: open,
   })
 
-  const { mutate: create, isPending: creating } = useMutation({
+  const { mutate: create, isPending: creating, error: createError } = useMutation({
     mutationFn: createUser,
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
@@ -336,7 +355,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
     },
   })
 
-  const { mutate: update, isPending: updating } = useMutation({
+  const { mutate: update, isPending: updating, error: updateError } = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Parameters<typeof updateUser>[1] }) => {
       const result = await updateUser(id, data)
       // Two writes because it is two records. Only sent when it actually
@@ -362,6 +381,41 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
 
   const isPending = creating || updating
   const isEdit = !!editUser
+  const saveError = createError ?? updateError
+
+  function chooseResidency(next: Residency | null) {
+    if (!next) return
+    setResidency(next)
+    if (next === 'citizen' || next === 'pr') setWorkPassType(next)
+    else if (workPassType === 'citizen' || workPassType === 'pr') setWorkPassType('')
+  }
+  // Creating someone payroll pays: residency first, and what CPF needs for a Singaporean or PR.
+  const residencyMissing = !isEdit && PAYROLL_ROLES.has(roleId) && (
+    !residency
+    || (residency === 'foreigner' ? !workPassType
+      : missingForCpf({ workPassType, dateOfBirth: dob, prSince, monthlySalary }) !== null)
+  )
+
+  const prFields = (
+    <>
+      <TextField
+        label="PR since" type="date" value={prSince} onChange={(e) => setPrSince(e.target.value)}
+        size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
+        helperText="The date this person became a PR. CPF uses graduated rates in the first two years."
+      />
+      <FormControl size="small" fullWidth>
+        <InputLabel>CPF rate type</InputLabel>
+        <Select value={cpfRateType} label="CPF rate type" onChange={(e) => setCpfRateType(e.target.value)}>
+          <MenuItem value="">Graduated (the default)</MenuItem>
+          <MenuItem value="fg">Full employer, graduated employee (F/G)</MenuItem>
+          <MenuItem value="full">Full rates</MenuItem>
+        </Select>
+        <FormHelperText>
+          F/G and full rates apply only after CPF Board approves a joint application by you and the employee.
+        </FormHelperText>
+      </FormControl>
+    </>
+  )
 
   const roleSelect = (
     <FormControl size="small" fullWidth>
@@ -409,15 +463,26 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
           hourly_rate: hourlyRate ? Number(hourlyRate) : undefined,
           daily_rate: dailyRate ? Number(dailyRate) : undefined,
           monthly_salary: monthlySalary ? Number(monthlySalary) : undefined,
+          pr_since: prSince || undefined,
+          cpf_rate_type: (cpfRateType || undefined) as CpfRateType | undefined,
+          employment_arrangement: arrangement as EmploymentArrangement,
         },
       })
     } else {
-      create({ email: email.trim(), password, role_id: roleId, full_name: fullName || undefined })
+      create({
+        email: email.trim(), password, role_id: roleId, full_name: fullName || undefined,
+        work_pass_type: (workPassType || undefined) as WorkPassType | undefined,
+        work_pass_expiry: residency === 'foreigner' ? (workPassExpiry || undefined) : undefined,
+        date_of_birth: dob || undefined,
+        pr_since: residency === 'pr' ? (prSince || undefined) : undefined,
+        cpf_rate_type: residency === 'pr' ? ((cpfRateType || undefined) as CpfRateType | undefined) : undefined,
+        monthly_salary: monthlySalary ? Number(monthlySalary) : undefined,
+      })
     }
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth={isEdit ? 'sm' : 'xs'} fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{isEdit ? 'Edit User' : 'Create User'}</DialogTitle>
       {isEdit && (
         <Tabs
@@ -437,6 +502,60 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
             <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} size="small" fullWidth />
             <TextField label="Full Name (optional)" value={fullName} onChange={(e) => setFullName(e.target.value)} size="small" fullWidth />
             {roleSelect}
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Residency{PAYROLL_ROLES.has(roleId) ? ' (needed for CPF and payroll)' : ''}
+              </Typography>
+              <ToggleButtonGroup
+                exclusive fullWidth size="small" value={residency || null}
+                onChange={(_, v) => chooseResidency(v)} aria-label="Residency"
+              >
+                <ToggleButton value="citizen">Singaporean</ToggleButton>
+                <ToggleButton value="pr">PR</ToggleButton>
+                <ToggleButton value="foreigner">Foreigner</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+            {(residency === 'citizen' || residency === 'pr') && (
+              <>
+                <TextField
+                  label="Date of Birth" type="date" value={dob} onChange={(e) => setDob(e.target.value)}
+                  size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
+                  helperText="CPF rates depend on age."
+                />
+                {residency === 'pr' && prFields}
+                <TextField
+                  label="Monthly Salary ($)" type="number" value={monthlySalary}
+                  onChange={(e) => setMonthlySalary(e.target.value)} size="small" fullWidth
+                />
+                <CpfPreviewCard
+                  workPassType={workPassType} dateOfBirth={dob} prSince={prSince}
+                  cpfRateType={cpfRateType} monthlySalary={monthlySalary}
+                />
+              </>
+            )}
+            {residency === 'foreigner' && (
+              <>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Work Pass</InputLabel>
+                  <Select value={workPassType} label="Work Pass" onChange={(e) => setWorkPassType(e.target.value)}>
+                    <MenuItem value="ep">Employment Pass (EP)</MenuItem>
+                    <MenuItem value="sp">S Pass (SP)</MenuItem>
+                    <MenuItem value="wp">Work Permit (WP)</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="Work Pass Expiry" type="date" value={workPassExpiry}
+                  onChange={(e) => setWorkPassExpiry(e.target.value)}
+                  size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <TextField
+                  label="Monthly Salary ($, optional)" type="number" value={monthlySalary}
+                  onChange={(e) => setMonthlySalary(e.target.value)} size="small" fullWidth
+                />
+                <Alert severity="info" sx={{ py: 0 }}>No CPF for foreign employees.</Alert>
+              </>
+            )}
           </>
         )}
 
@@ -472,6 +591,16 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
                 <MenuItem value="part_time">Part-Time</MenuItem>
                 <MenuItem value="contract">Contract</MenuItem>
               </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Employment Arrangement</InputLabel>
+              <Select value={arrangement} label="Employment Arrangement" onChange={(e) => setArrangement(e.target.value)}>
+                <MenuItem value="outsourced">Outsourced (security agency)</MenuItem>
+                <MenuItem value="in_house">In-house</MenuItem>
+              </Select>
+              <FormHelperText>
+                Decides which of MOM&apos;s PWM wage floors applies: outsourced on basic wage, in-house on gross wage.
+              </FormHelperText>
             </FormControl>
             <TextField label="Designation" value={designation} onChange={(e) => setDesignation(e.target.value)} size="small" fullWidth />
             <TextField label="Department" value={department} onChange={(e) => setDepartment(e.target.value)} size="small" fullWidth />
@@ -555,7 +684,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
           <>
             <FormControl size="small" fullWidth>
               <InputLabel>Work Pass Type</InputLabel>
-              <Select value={workPassType} label="Work Pass Type" onChange={(e) => setWorkPassType(e.target.value as typeof workPassType)}>
+              <Select value={workPassType} label="Work Pass Type" onChange={(e) => { setWorkPassType(e.target.value as typeof workPassType); setResidency(residencyOf(e.target.value)) }}>
                 <MenuItem value=""><em>Not set</em></MenuItem>
                 <MenuItem value="citizen">Citizen</MenuItem>
                 <MenuItem value="pr">Permanent Resident</MenuItem>
@@ -568,6 +697,7 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
               label="Work Pass Expiry" type="date" value={workPassExpiry} onChange={(e) => setWorkPassExpiry(e.target.value)}
               size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}
             />
+            {workPassType === 'pr' && prFields}
             <Divider />
             <EmployeeDocumentsPanel userId={editUser!.id} />
           </>
@@ -592,14 +722,21 @@ function UserFormDialog({ open, onClose, editUser, onCreated }: UserFormDialogPr
               onChange={(e) => setMonthlySalary(e.target.value)} size="small" fullWidth
               helperText="Overrides Daily/Hourly Rate for base pay if set"
             />
+            {workPassType && (
+              <CpfPreviewCard
+                workPassType={workPassType} dateOfBirth={dob} prSince={prSince}
+                cpfRateType={cpfRateType} monthlySalary={monthlySalary}
+              />
+            )}
           </>
         )}
+        {saveError && <Alert severity="error">{errorText(saveError)}</Alert>}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isPending}>Cancel</Button>
         <Button
           variant="contained"
-          disabled={(!isEdit && (!email.trim() || !password)) || isPending}
+          disabled={(!isEdit && (!email.trim() || !password || residencyMissing)) || isPending}
           onClick={handleSubmit}
         >
           {isEdit ? 'Save' : 'Create'}

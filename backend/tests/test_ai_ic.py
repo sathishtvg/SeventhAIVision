@@ -183,3 +183,20 @@ def test_the_real_reader_reads_a_printed_card():
     assert r.fields["nric_fin"] == "S1234567D" and r.check_letter_ok is True
     assert r.fields["date_of_birth"] == "1990-05-02"
     assert r.fields["full_name"].replace(" ", "") == "TANAHKOW"
+
+
+def test_the_number_says_citizen_or_pr_or_foreigner():
+    # 3 November 2026 (Singapore payroll): residency decides CPF, and the number's first letter narrows it.
+    assert ai_ic.residency("S1234567D") == "citizen_or_pr" and ai_ic.residency("T0123456G") == "citizen_or_pr"
+    assert ai_ic.residency("F1234567N") == "foreigner" and ai_ic.residency("M1234567K") == "foreigner"
+    assert ai_ic.residency(None) is None and ai_ic.residency("12345") is None
+
+
+@pytest.mark.asyncio
+async def test_the_assistant_is_told_what_the_number_says_about_residency(canned):
+    w = await _ic_world()
+    async with _client() as c:
+        body = (await c.post("/api/v1/ai/assistant/ic", headers=w["h"][ADMIN], files=_photos())).json()
+    assert body["residency"] == "citizen_or_pr"
+    assert "citizen's or a PR's" in body["message"] and "pr_since" in body["message"]
+    assert "one question at a time" in body["message"]

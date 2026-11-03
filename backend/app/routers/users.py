@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,9 @@ _EMPLOYEE_FIELDS = (
     "emergency_contact_name", "emergency_contact_phone",
     "hourly_rate", "daily_rate", "monthly_salary",
     "pwm_grade",
+    # Singapore payroll (migration 0175): the PR year for graduated CPF rates, the PR's CPF rate type, and whether
+    # MOM's outsourced or in-house PWM schedule applies.
+    "pr_since", "cpf_rate_type", "employment_arrangement",
     "profile_photo_path",
     # Relief officer: exempt from "a guard stands one post" (migration 0101),
     # so they may hold duty postings at several sites. The roster still puts
@@ -57,11 +60,25 @@ _EMPLOYEE_FIELDS = (
 )
 
 
+CpfRateType = Literal["graduated", "fg", "full"]
+EmploymentArrangement = Literal["outsourced", "in_house"]
+
+
 class UserCreate(BaseModel):
     email: str
     password: str
     role_id: int
     full_name: str | None = None
+    # Since 3 November 2026 the web's new-employee form asks residency first (Singaporean, PR or foreigner) and
+    # shows the CPF the salary carries; these are saved with the account. All optional: other callers send none.
+    work_pass_type: WorkPassType | None = None
+    work_pass_expiry: datetime.date | None = None
+    date_of_birth: datetime.date | None = None
+    pr_since: datetime.date | None = None
+    cpf_rate_type: CpfRateType | None = None
+    monthly_salary: float | None = Field(default=None, ge=0)
+    employment_type: EmploymentType | None = None
+    employment_arrangement: EmploymentArrangement | None = None
 
 
 class UserUpdate(BaseModel):
@@ -90,6 +107,9 @@ class UserUpdate(BaseModel):
     monthly_salary: float | None = None
     pwm_grade: PwmGrade | None = None
     is_standby: bool | None = None
+    pr_since: datetime.date | None = None
+    cpf_rate_type: CpfRateType | None = None
+    employment_arrangement: EmploymentArrangement | None = None
 
 
 def _row_to_dict(row) -> dict:
@@ -328,11 +348,17 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db_with_t
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     new_id = uuid.uuid4()
+    # The residency and pay the new-employee form may send (0175), saved with the account when given.
+    profile = {k: v for k, v in body.model_dump(include={
+        "work_pass_type", "work_pass_expiry", "date_of_birth", "pr_since", "cpf_rate_type", "monthly_salary",
+        "employment_type", "employment_arrangement"}).items() if v is not None}
+    columns = "".join(f", {k}" for k in profile)
+    values = "".join(f", :{k}" for k in profile)
     try:
         result = await db.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
-                "VALUES (:id, current_setting('app.current_tenant')::uuid, :rid, :email, :pw, :name) "
+                f"INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name{columns}) "
+                f"VALUES (:id, current_setting('app.current_tenant')::uuid, :rid, :email, :pw, :name{values}) "
                 f"RETURNING {_USER_SELECT_COLUMNS}"
             ),
             {
@@ -341,6 +367,7 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db_with_t
                 "email": body.email,
                 "pw": hash_password(body.password),
                 "name": body.full_name,
+                **profile,
             },
         )
         row = result.first()
@@ -372,7 +399,7 @@ async def get_user(
 
 #: Any of these changing can move a guard across the PWM floor.
 _PWM_WATCHED_FIELDS = frozenset(
-    {"pwm_grade", "employment_type", "monthly_salary", "daily_rate", "hourly_rate"}
+    {"pwm_grade", "employment_type", "monthly_salary", "daily_rate", "hourly_rate", "employment_arrangement"}
 )
 
 
@@ -402,7 +429,7 @@ async def _assert_pwm_floor_respected(
 
     current = (await db.execute(
         text("SELECT pwm_grade, employment_type, monthly_salary, daily_rate, "
-             "       hourly_rate "
+             "       hourly_rate, employment_arrangement "
              "  FROM users WHERE id = :id"),
         {"id": user_id},
     )).mappings().first()
@@ -417,16 +444,17 @@ async def _assert_pwm_floor_respected(
 
     # As of today, because that is when this wage takes effect. Payroll resolves
     # the floor as of the PERIOD instead, so a restated month is judged by the
-    # rates that were in force then.
-    floor = (await db.execute(
-        text("SELECT pwm_effective_floor(CAST(:g AS varchar), CURRENT_DATE)"),
-        {"g": after["pwm_grade"]},
-    )).scalar()
-
-    verdict = pwm.assess(
+    # rates that were in force then. Since 0175, against MOM's schedule for the
+    # guard's arrangement and hours; an in-house floor is on gross wage, which a
+    # profile does not know, so it is never refused here (services/pwm.py).
+    floor = await pwm.resolve_floor(
+        db, grade=after["pwm_grade"], arrangement=after.get("employment_arrangement"),
+        employment_type=after.get("employment_type"), on=datetime.date.today(),
+    )
+    verdict = pwm.assess_schedule(
         pwm_grade=after.get("pwm_grade"),
-        employment_type=after.get("employment_type"),
-        floor=floor,
+        floor=floor["amount"],
+        basis=floor["basis"],
         monthly_salary=after.get("monthly_salary"),
         daily_rate=after.get("daily_rate"),
         hourly_rate=after.get("hourly_rate"),

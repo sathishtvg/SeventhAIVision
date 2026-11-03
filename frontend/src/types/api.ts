@@ -54,6 +54,11 @@ export interface User {
    *  so they may sit on several sites' duty teams. The roster still schedules
    *  them at one site at a time. */
   is_standby: boolean
+  /** Singapore payroll (migration 0175): when this person became a PR (decides graduated CPF in years 1-2), the
+   *  PR's CPF rate type, and whether MOM's outsourced or in-house PWM schedule applies. */
+  pr_since?: string | null
+  cpf_rate_type?: 'graduated' | 'fg' | 'full' | null
+  employment_arrangement?: 'outsourced' | 'in_house'
   // List-only fields (GET /users grid round) — present only in the list
   // response, not GET /users/{id} or POST /users.
   site_names?: string[]

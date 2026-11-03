@@ -96,8 +96,10 @@ the reason. CPF is never guessed (until now a missing date of birth meant age 0)
 
 ## 3. The official PWM floors
 
-MOM's published schedule for the security sector, 2024 to 2028, loaded with the MOM page as the source, in a new
-table beside the existing one (`pwm_wage_schedules`; `pwm_wage_floors` and the companies' own floors are untouched):
+MOM's published schedule for the security sector, 2024 to 2028, loaded with the MOM page as the source. As built:
+the outsourced full-time floors go into the existing `pwm_wage_floors` (the table was made for them; a row already
+there is left as it is), the other three schedules into a new table beside it (`pwm_wage_schedules`); the companies'
+own floors are untouched:
 
 | Arrangement | Hours | Judged on | 2026: SO / SSO / SS / SSS |
 |---|---|---|---|
@@ -124,17 +126,22 @@ It uses the existing `work_pass_type` (`citizen`, `pr`, `ep`, `sp`, `wp`). As th
 the form shows the employee's and the employer's CPF, as percentages and dollars, the total, the take-home before other
 deductions, and the table it used. The figures come from the server, from the same function payroll uses, so the form
 and the payslip cannot disagree. The same preview is on the edit screen. A scanned IC fills in the residency: an S or T
-number is a citizen or PR, F, G or M a foreigner.
+number is a citizen or PR, F, G or M a foreigner. (As built: the IC scan belongs to the AI assistant, not the Users
+page; it tells the assistant what the number says, and the assistant asks citizen or PR, as the card's colour is not
+read.)
 
 **Payroll screens:** additional-pay lines on a draft run and **Recalculate**; payslips with OW, AW and the ceiling; the
 year-end ceiling check; the PWM report with arrangement and part-time.
 
-**Storage:** migration 0175. New tables `cpf_rate_tables`, `pwm_wage_schedules`, `payroll_additional_wages`; new
-employee columns `pr_since`, `cpf_rate_type`, `employment_arrangement`. Nothing removed.
+**Storage:** migration 0175. New tables `cpf_rate_tables`, `cpf_wage_ceilings`, `pwm_wage_schedules`,
+`payroll_additional_wages`; new employee columns `pr_since`, `cpf_rate_type`, `employment_arrangement`; new payslip
+columns for the OW, the AW, what CPF was paid on, the ceiling left and the table used; the official outsourced floors
+added to `pwm_wage_floors`. Nothing removed.
 
 **Existing files changed (the owner agreed to correct the CPF calculation):** `services/payroll.py`,
 `routers/payroll.py` (runs, payslips, IR8A, the PWM check), `services/pwm.py`, `routers/users.py`, the web Users page
-and the payroll page.
+and the payroll page; as built also `services/ai_ic.py` and `routers/ai_assistant.py` (what the IC number says),
+and `tests/test_pwm_wage_floors.py`, whose fixtures used grades and dates that now hold MOM's official floors.
 
 **Tests:** every published row of both years' tables, at each band edge ($50, $500, $750, the OW ceiling) and each
 age band, including the month of a birthday; CPF's "Max." figures; a payroll run for a citizen, a 1st-year PR, a
