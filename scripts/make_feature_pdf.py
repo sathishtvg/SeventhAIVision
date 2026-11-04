@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "4 November 2026"
-EDITION = "Edition 26"
-HEAD = "0177"
+EDITION = "Edition 27"
+HEAD = "0178"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -149,6 +149,8 @@ EDITIONS = [
      "Retention for the history of modules 20 to 26; evidence packages removed by a person (18, 29)."],
     ["Edition 26", "4 November 2026", "0177",
      "Cases (module 28): people told when put on one; overdue, quiet and waiting cases escalate."],
+    ["Edition 27", "4 November 2026", "0178",
+     "Module 26: the daily briefing emailed when published; the nine reports on a schedule as CSV and PDF."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -341,13 +343,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("314", "DATABASE TABLES"), ("1,157", "API OPERATIONS"), ("123", "API MODULES"),
+        ("317", "DATABASE TABLES"), ("1,166", "API OPERATIONS"), ("124", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("177", "MIGRATIONS"),
-        ("7,027", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("178", "MIGRATIONS"),
+        ("7,038", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1378,12 +1380,14 @@ story += module(
         "which, for where, how many. Text a spreadsheet would run as a formula "
         "is made plain; each time names its time zone; a file cut at 10,000 "
         "records says so. A support session takes none.",
+        "<b>Emailed, to the organisation's own people only.</b> A published briefing "
+        "goes to its list; a report on a schedule goes as CSV and PDF, each person's own sites.",
         "<i>By design:</i> nothing is scored — no index, grade or rank of a site, "
         "a customer or a person — and the board and a briefing name nobody. No "
-        "model writes a briefing, nothing drafts or publishes one by itself, and "
-        "publishing tells nobody. <i>Documented limitations:</i> the board keeps "
+        "model writes a briefing, and nothing drafts or publishes one by itself. "
+        "<i>Documented limitations:</i> the board keeps "
         "no history of itself; a site with nothing scheduled has nothing missed; "
-        "no report is delivered on a schedule or as a PDF; the client portal is "
+        "the client portal is "
         "unchanged; the phone reads published briefings and has nothing of the "
         "board or the reports.",
     ],
@@ -2150,10 +2154,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 177 "
-    "database migrations, 314 tables, 123 API modules serving 1,157 operations, 151 backend "
-    "services, 124 web routes and 59 phone screens, covered by 7,027 automated tests "
-    "(backend 4,355, repository inspection 1,406, web 829, phone 437). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 178 "
+    "database migrations, 317 tables, 124 API modules serving 1,166 operations, 153 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,038 automated tests "
+    "(backend 4,361, repository inspection 1,406, web 834, phone 437). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
