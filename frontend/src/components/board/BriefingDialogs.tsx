@@ -20,6 +20,8 @@ import {
 import type { Briefing, BriefingSection } from '@/api/operationsBoard'
 import { AS_AT_LABEL, STATE_COLOUR, STATE_LABEL, briefingFor, briefingLine, dayBefore, fmt, fmtDay } from './boardFormat'
 import { ErrorState } from '@/components/states'
+import { usePermission } from '@/hooks/usePermission'
+import { BriefingEmails } from './OpsDelivery'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 
@@ -114,6 +116,8 @@ function BriefingView({ id, onClose, onChanged, onCorrect }: ReadProps & { id: s
   const failed = [review, recount, publish, discard].find((m) => m.isError)
   const busy = review.isPending || recount.isPending || publish.isPending || discard.isPending
   const edit = !!data?.may.edit
+  // Who a published briefing was emailed to (4 November 2026): for whoever sets the lists.
+  const seesEmails = usePermission('report:schedule')
   const written = note ?? data?.note ?? ''
   const leaveOut = (key: string, out: boolean) => {
     const now = (data?.left_out ?? []).map((s) => s.key).filter((k) => k !== key)
@@ -178,6 +182,11 @@ function BriefingView({ id, onClose, onChanged, onCorrect }: ReadProps & { id: s
                 a new revision.
               </Alert>)}
             {failed && <Alert severity="error" sx={{ mt: 2 }}>{apiError(failed.error)}</Alert>}
+            {seesEmails && data.state === 'PUBLISHED' && (
+              <Box sx={{ mt: 2 }} data-testid="briefing-emails">
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>Emailed</Typography>
+                <BriefingEmails briefingId={data.id} />
+              </Box>)}
           </>)}
       </DialogContent>
       <DialogActions>

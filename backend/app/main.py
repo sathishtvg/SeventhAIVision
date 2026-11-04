@@ -107,6 +107,7 @@ from app.routers import (
     evidence_packages,
     evidence_disposal,
     case_escalation,
+    ops_delivery,
     site_map,
     drone_edge,
     platform_drone_licenses,
@@ -413,6 +414,8 @@ app.include_router(evidence_packages.holds_router)
 app.include_router(evidence_disposal.router)
 # Case escalation timings and a case's escalations (Phase 3 of the known limits, 4 November 2026).
 app.include_router(case_escalation.router)
+# Briefings and operations reports by email (Phase 4 of the known limits, 4 November 2026).
+app.include_router(ops_delivery.router)
 app.include_router(site_map.router)
 app.include_router(incident_responses.router)
 app.include_router(occurrence_book.router)

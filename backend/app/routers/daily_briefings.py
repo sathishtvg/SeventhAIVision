@@ -12,8 +12,9 @@ SECURITY_ANALYTICS_ARCHITECTURE.md.
   POST  /{id}/discard     set a draft aside
 
 THE PLATFORM DRAFTS; A PERSON PUBLISHES. A draft is read only by whoever
-manages briefings. Nothing here publishes one by itself, and publishing tells
-nobody: a published briefing is there to be read.
+manages briefings. Nothing here publishes one by itself. Since 4 November 2026
+publishing queues an email to the people on the briefing's list who may read
+it (services/ops_delivery.py); the scheduler sends them.
 
 THE COUNTED LINES ARE NOT EDITED. A reviewer leaves a whole section out, and
 writes what they have to say in a note that is shown as theirs.
@@ -43,6 +44,7 @@ from app.dependencies.sites import get_allowed_site_ids, is_site_allowed
 from app.dependencies.tenant import get_db_with_tenant
 from app.routers.operations_board import SOURCE_PERMISSIONS, held_by
 from app.services import daily_briefing, intel_audit, intel_insight, ops_board, risk_patterns
+from app.services import ops_delivery
 
 PERMISSIONS = ("briefing:read", "briefing:manage")
 EVERY_SITE = "A briefing for every site together is drafted by somebody who is not held to particular sites."
@@ -330,7 +332,8 @@ async def publish_briefing(
     allowed: list[str] | None = Depends(get_allowed_site_ids),
 ):
     """Publish a draft as it stands: what was counted, less what the reviewer
-    left out, with their note. From then it is not changed. Nobody is told."""
+    left out, with their note. From then it is not changed. Its emails are
+    queued with it, for the people on its list who may read it."""
     _a_person(token)
     row = await _draft_of(db, briefing_id, allowed)
     content = row["content"] if isinstance(row["content"], dict) else json.loads(row["content"])
@@ -345,6 +348,9 @@ async def publish_briefing(
                              site_id=row["site_id"],
                              detail={"briefing_date": row["briefing_date"].isoformat(), "revision": row["revision"],
                                      "left_out": list(row["left_out"] or [])})
+    # Its emails, in the same transaction: published and queued together, or neither.
+    await ops_delivery.queue_briefing(db, {"id": briefing_id, "site_id": row["site_id"],
+                                           "briefing_date": row["briefing_date"], "revision": row["revision"]})
     out = _out(await _one(db, briefing_id, allowed, True), True)
     await db.commit()
     return out

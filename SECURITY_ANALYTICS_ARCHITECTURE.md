@@ -54,8 +54,9 @@ a person to send round.
 6. **The board stores nothing and writes nothing.** It is counted when it is
    asked for.
 7. **The platform drafts; a person publishes.** A draft is read only by
-   whoever manages briefings. Nothing publishes one by itself, and publishing
-   tells nobody: a published briefing is there to be read.
+   whoever manages briefings. Nothing publishes one by itself. Since
+   4 November 2026 publishing emails it to the people on its list who may read
+   it (*Emailed*, section 4).
 8. **No model writes a briefing** (owner decision E2). Each line is a fixed
    sentence with a count in it, and every section carries the figures its
    lines were made of. The same figures give the same lines.
@@ -241,6 +242,21 @@ A report is records the platform already keeps, taken out as a CSV file
 
 ---
 
+### Emailed (since 4 November 2026)
+
+Phase 4 of closing the known limits (`docs/plans/2026-11-04-ops-reports-and-briefing-email-design.md`,
+`services/ops_delivery.py`, `routers/ops_delivery.py`, migration 0178), set up by `report:schedule` (Admin and
+Manager):
+
+- **A briefing** is queued, when it is published and in the same transaction, for each person on its site's list
+  or the list for every briefing who holds `briefing:read` and is shown its site. Its text is the email; a PDF goes
+  with it; a revision says it is one.
+- **A report** on a schedule - daily, weekly on a day or monthly on a day, at an hour where the organisation is, for
+  the period just ended - goes to each person named who holds `opsreport:export` and what its records are read under,
+  made for them: their own sites only. CSV as downloaded, and a PDF.
+- **Whoever may not is left out, with why**, and that is recorded. Each email is sent by the scheduler, tried again
+  when the mail server fails, and audited (`briefing.email`, `report.email`). A time missed sends once.
+
 ## 5. API
 
 Under `/api/v1/operations-board`, all needing `board:read`:
@@ -375,15 +391,16 @@ it: tables named `security_…` are the intelligence layer's own.
   either, and the screen says the clocks are off.
 - **It drafts nothing by itself.** A briefing is drafted when a person asks.
   No scheduler writes one each morning.
-- **It sends nothing.** Publishing a briefing notifies nobody, emails nothing
-  and makes no file. It is read on the screen.
+- **It sends nothing to anybody outside the organisation.** A published
+  briefing is emailed, as text and a PDF, to the people on its list who may read
+  it, and to nobody else; nothing pushes it to a phone.
 - **It does not let a line be rewritten.** What a reviewer wants said
   differently goes in the note.
-- **It delivers no report on a schedule.** A report is asked for by a person
-  and handed to them. The existing scheduled reports are unchanged and do not
-  carry these.
-- **A report is a CSV file.** There is no PDF of one, no workbook and no
-  chart.
+- **A scheduled report goes to the organisation's own people only**, each as
+  they could take it out. The existing scheduled reports are unchanged and do
+  not carry these.
+- **A report is a CSV file, and by email a PDF too.** There is no workbook and
+  no chart; the PDF holds the first 500 rows.
 - **It has no report per guard.** That is phase 11's.
 - **The client role's portal is unchanged**, and a customer's own people are
   not given this board.
