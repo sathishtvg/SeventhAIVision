@@ -41,6 +41,23 @@ leaves the camera through the platform:
 | Before a frame is encoded | `backend/app/routers/streams.py`, the recorder | Manual and continuous recordings |
 | Before the image is hashed and stored | `backend/app/services/vpatrol_snapshot.py` | The image a virtual patrol keeps. Its checksum is of the masked image |
 
+### 2a. A drone's camera (since 4 November 2026)
+
+A drone's picture moves with the drone, so a zone drawn on it would mean nothing. Its privacy areas are drawn on the
+map instead (`services/drone_privacy.py`, `routers/drone_privacy.py`, migration 0179;
+`docs/plans/2026-11-04-drone-privacy-areas-design.md`), by `privacy:manage`, each with a margin (25 m by default).
+
+- **While the drone is in an area or within its margin - or its position is not known, or older than ten seconds -
+  its whole picture is withheld:** `services/privacy_mask.py` gives a drone's camera a zone that paints the whole
+  frame solid with "Picture withheld: privacy area", at the same four places a fixed camera is masked, so the AI,
+  the live view and the recorder are given nothing else. A drone's camera asks every two seconds, not ten, and one
+  whose organisation has any area has no HLS view.
+- **A snapshot the site's gateway took at an area** is stored blank (`services/drone_privacy.py` paints it before it
+  is written; its checksum is the blank picture's). **A clip recorded at one is not kept**: the centre does not ask
+  for it, and `drone_media_withheld` says one was withheld and why.
+- **Planning is told, not refused:** a route or mission that crosses an area says which, and for about how long the
+  picture will be blank.
+
 **Footage Review** (`FOOTAGE_REVIEW.md`) reads no camera. A saved recording it
 analyses is a byte-for-byte copy of the recording, which was masked when it was
 recorded; its frames, thumbnails and search results are of the masked picture.
@@ -167,7 +184,10 @@ New:
 - **Only what passes through the platform is masked.** A recorder at the site
   that records the camera itself, or somebody who connects to the camera, is
   outside it.
-- **Drone camera feeds are not masked.**
+- **A drone's picture is withheld whole, not masked in part** (since 4 November 2026; section 2a). Whether the
+  drone is at a privacy area is read from its reported position, not from where its camera points: a drone outside
+  an area's margin that films into it is not withheld. The drone's own controller, and what the aircraft records
+  on board, are outside the platform.
 - **Nobody is shown the unmasked picture.** There is no permission that lifts a
   mask, and no unmasked copy is kept for one to lift it from.
 - **A zone is not edited or switched off from the screen.** It is deleted and

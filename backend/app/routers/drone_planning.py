@@ -590,6 +590,11 @@ async def _route_detail(db: AsyncSession, route_id: uuid.UUID, allowed) -> dict:
         {"id": str(route_id)})).mappings().all()
     base = (float(route["base_latitude"]), float(route["base_longitude"]))
     points = [(float(w["latitude"]), float(w["longitude"])) for w in waypoints]
+    # The privacy areas it crosses, and for about how long the picture will be blank (4 November 2026): told, and
+    # saved all the same (services/drone_privacy.py).
+    from app.services import drone_privacy
+
+    crossing = await drone_privacy.route_crossings(db, route_id)
     return {
         **route,
         "waypoints": waypoints,
@@ -598,6 +603,8 @@ async def _route_detail(db: AsyncSession, route_id: uuid.UUID, allowed) -> dict:
             "length_m": round(geo.route_length_m(base, points, route["return_to_base"]), 1),
             # A warning for the planner, not a refusal: see drone_geometry.
             "outside_site_geofence": geo.waypoints_outside_site(dict(site or {}), waypoints),
+            "privacy_crossings": crossing,
+            "privacy_warning": drone_privacy.crossing_words(crossing),
         },
         "missions": [dict(m) for m in missions],
     }
@@ -933,8 +940,12 @@ async def get_mission(mission_id: uuid.UUID, db: AsyncSession = Depends(get_db_w
     """), {"id": str(mission_id)})).mappings().all()
     next_run = min((s["next_runs"][0] for s in schedules if s["next_runs"]),
                    key=lambda x: x["utc"], default=None) if mission["enabled"] else None
+    from app.services import drone_privacy
+
+    crossing = await drone_privacy.route_crossings(db, mission["route_id"]) if mission.get("route_id") else []
     return {**mission, "schedules": schedules, "recent_sessions": [dict(r) for r in recent],
-            "next_run": next_run}
+            "next_run": next_run, "privacy_crossings": crossing,
+            "privacy_warning": drone_privacy.crossing_words(crossing)}
 
 
 @router.put("/drone-missions/{mission_id}", dependencies=[_UPDATE, _LICENSED])

@@ -28,6 +28,8 @@ import type { ZoneDraft } from '@/components/drones/geo'
 import { draftComplete, draftFromZone, emptyDraft } from '@/components/drones/geo'
 import { DroneNav } from './DroneNav'
 import { ErrorState } from '@/components/states'
+import { PrivacyAreasTab, PrivacyLayer } from '@/components/drones/PrivacyAreas'
+import { listPrivacyAreas } from '@/api/dronePrivacy'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -41,8 +43,10 @@ export default function DroneZones() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="Security zones" />
         <Tab label="AI security profiles" />
+        {/* Where a drone's picture is withheld (4 November 2026). */}
+        <Tab label="Privacy areas" />
       </Tabs>
-      {tab === 0 ? <ZonesTab /> : <ProfilesTab />}
+      {tab === 0 ? <ZonesTab /> : tab === 1 ? <ProfilesTab /> : <PrivacyAreasTab />}
     </Box>
   )
 }
@@ -86,6 +90,7 @@ function ZonesTab() {
   const { data: zones, isLoading, isLoadingError: zonesFailed, error: zonesError, refetch: refetchZones } = useQuery({ queryKey: ['drone-zones', siteId], queryFn: () => listZones(siteId),
                                                 enabled: !!siteId })
 
+  const { data: privacy } = useQuery({ queryKey: ['drone-privacy-areas'], queryFn: listPrivacyAreas })
   const [editing, setEditing] = useState<Zone | 'new' | null>(null)
   const [draft, setDraft] = useState<ZoneDraft>(emptyDraft('POLYGON'))
   const [form, setForm] = useState<ZoneForm>(blankForm())
@@ -156,6 +161,7 @@ function ZonesTab() {
           </Stack>
           {siteId ? (
             <DroneMap height={560}>
+              <PrivacyLayer areas={(privacy?.areas ?? []).filter((a) => a.site_id === siteId)} />
               <ZoneLayer zones={others} />
               {editing && editable && <ZoneDrawer draft={draft} onChange={setDraft} color={ZONE_COLOR[form.zone_type]} />}
               {editing && !editable && editing !== 'new' && <ZoneLayer zones={[editing]} highlight={editing.id} />}

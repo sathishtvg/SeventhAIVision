@@ -201,8 +201,11 @@ def test_a_cameras_picture_is_read_in_the_known_places_and_nowhere_else():
     assert sorted(p for p, text_ in code.items() if "VideoCapture" in text_) == [
         "ingestion_main.py", "routers/cameras.py", "routers/streams.py"]
     assert "ret, _ = cap.read()" in code["routers/cameras.py"] and "imencode" not in code["routers/cameras.py"]
-    # Frames turned into a picture somebody is given.
-    assert sorted(p for p, text_ in code.items() if "imencode" in text_) == ["ingestion_main.py", "routers/streams.py"]
+    # Frames turned into a picture somebody is given. Since 4 November 2026 also a drone's withheld snapshot, painted
+    # solid before it is stored (PRIVACY_MASKING.md, section 2a).
+    assert sorted(p for p, text_ in code.items() if "imencode" in text_) == [
+        "ingestion_main.py", "routers/streams.py", "services/drone_privacy.py"]
+    assert "A snapshot the site's gateway took at an area" in (REPO_ROOT / "PRIVACY_MASKING.md").read_text(encoding="utf-8")
     # ffmpeg, which reads a camera without this code seeing the frame: HLS (refused when masked), the patrol
     # snapshot (painted afterwards), and two that are only given files and frames that are masked already.
     assert sorted(p for p, text_ in code.items() if "ffmpeg" in text_) == [
@@ -319,7 +322,8 @@ def test_the_screen_says_what_the_document_says_a_zone_does_and_does_not_do():
         assert on_screen in words and in_document in limits, on_screen
     assert "Within about ten seconds" in words and "cannot be unmasked" in words
     assert "It takes effect within about ten seconds, not at once." in limits
-    for limit in ("Drone camera feeds are not masked.", "Nobody is shown the unmasked picture.",
+    # Since 4 November 2026 a drone's picture is withheld whole while it is at a privacy area (section 2a).
+    for limit in ("A drone's picture is withheld whole, not masked in part", "Nobody is shown the unmasked picture.",
                   "A zone is not edited or switched off from the screen.", "It has run on test streams."):
         assert limit in limits, limit
     # The tab is for whoever manages privacy, and is the third on the page that was there.

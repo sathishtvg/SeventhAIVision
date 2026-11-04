@@ -172,6 +172,18 @@ async def upload_media(
         if not any(head[off:off + len(sig)] == sig for off, sig in _MAGIC[row["media_kind"]]):
             raise HTTPException(415, f"That is not a {row['media_kind'].lower().replace('_', ' ')} "
                                      "file this system stores (JPEG or PNG images, MP4 video).")
+        # A snapshot taken at a privacy area is stored blank, and its checksum is the blank picture's
+        # (services/drone_privacy.py, 4 November 2026). What was sent is not kept.
+        blank = (await gw.db.execute(text(
+            "SELECT 1 FROM drone_media_withheld WHERE media_id = :m AND action = 'BLANKED'"),
+            {"m": row["id"]})).scalar()
+        if blank:
+            from app.services import drone_privacy
+
+            data = drone_privacy.blank_like(Path(tmp).read_bytes())
+            Path(tmp).write_bytes(data)
+            size = len(data)
+            digest = hashlib.sha256(data)
         if local:
             os.replace(tmp, final)
         else:
@@ -186,9 +198,10 @@ async def upload_media(
 
     await gw.db.execute(text("""
         UPDATE drone_event_media
-           SET storage_path = :p, storage_location = 'both', sync_state = 'synced', synced_at = now()
+           SET storage_path = :p, storage_location = 'both', sync_state = 'synced', synced_at = now(),
+               checksum_sha256 = :sum, size_bytes = :size
          WHERE id = :id
-    """), {"p": rel, "id": row["id"]})
+    """), {"p": rel, "id": row["id"], "sum": digest.hexdigest(), "size": size})
     out = ds.Announcements()
     out.add("drone_media_synced", {"media_id": str(row["id"]), "event_id": str(row["event_id"]) if row["event_id"] else None,
                                    "session_id": str(row["session_id"]) if row["session_id"] else None,

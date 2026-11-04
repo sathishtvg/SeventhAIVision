@@ -114,6 +114,10 @@ def _snapshot(media: list[dict], evidence: list[dict]) -> dict:
     AI worker's own evidence for the detection."""
     shots = [m for m in media if m["media_kind"] == "SNAPSHOT"]
     for m in shots:
+        # Taken over a privacy area: stored blank, and said to be withheld rather than shown (4 November 2026).
+        if m.get("withheld_reason"):
+            return {"state": "withheld", "source": "drone", "path": None, "reason": m["withheld_reason"],
+                    "checksum_sha256": m["checksum_sha256"], "captured_at": m["captured_at"]}
         if m["storage_location"] in ("central", "both"):
             return {"state": "available", "source": "drone", "path": m["storage_path"],
                     "checksum_sha256": m["checksum_sha256"], "captured_at": m["captured_at"]}
@@ -183,9 +187,11 @@ async def load_report(db: AsyncSession, session_id) -> dict:
     incidents: dict = {}
     if event_ids:
         for m in (await db.execute(text("""
-            SELECT id, event_id, media_kind, storage_path, storage_location, sync_state, checksum_sha256,
-                   size_bytes, duration_seconds, captured_at
-              FROM drone_event_media WHERE event_id = ANY(:ids) ORDER BY captured_at
+            SELECT m.id, m.event_id, m.media_kind, m.storage_path, m.storage_location, m.sync_state,
+                   m.checksum_sha256, m.size_bytes, m.duration_seconds, m.captured_at, w.reason AS withheld_reason
+              FROM drone_event_media m
+              LEFT JOIN drone_media_withheld w ON w.media_id = m.id AND w.action = 'BLANKED'
+             WHERE m.event_id = ANY(:ids) ORDER BY m.captured_at
         """), {"ids": event_ids})).mappings().all():
             media.setdefault(m["event_id"], []).append(dict(m))
         for c in (await db.execute(text("""
@@ -513,6 +519,8 @@ def _snapshot_flowable(e: dict, read_file: FileReader, styles):
     snap = e["snapshot"]
     if snap["state"] == "none":
         return Paragraph("<b>No snapshot.</b> None was recorded for this event.", styles["BodyText"])
+    if snap["state"] == "withheld":
+        return Paragraph(f"<b>Snapshot withheld.</b> {escape(snap['reason'])}", styles["BodyText"])
     if snap["state"] == "held_at_site":
         return Paragraph(
             f"<b>Snapshot held at the site.</b> The recording policy keeps it on the site's gateway "
@@ -798,7 +806,7 @@ def render_xlsx(data: dict) -> bytes:
         snap = e["snapshot"]
         if snap["state"] != "none":
             where = {"available": "Held centrally" + (" (AI worker evidence)" if snap["source"] == "ai_worker" else ""),
-                     "held_at_site": "Held at the site"}[snap["state"]]
+                     "held_at_site": "Held at the site", "withheld": "Withheld: privacy area"}[snap["state"]]
             ws.append([e["number"], "Snapshot", clock.dt(snap["captured_at"], ""), where, None, None,
                        snap["checksum_sha256"] or "", snap["path"] or ""])
         for v in e["videos"]:
