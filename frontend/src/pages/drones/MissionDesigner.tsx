@@ -191,6 +191,11 @@ function Designer({ mission, route }: { mission: Mission | null; route: Route | 
                   <Tooltip title="Waypoints outside the site's geofence — a warning, not a refusal">
                     <Chip size="small" color="warning" label={`${route.summary.outside_site_geofence.length} outside site`} />
                   </Tooltip>) : null}
+                {route?.summary?.privacy_warning ? (
+                  <Tooltip title={route.summary.privacy_warning}>
+                    <Chip size="small" color="warning" data-testid="privacy-warning"
+                          label={`Crosses ${route.summary.privacy_crossings?.length ?? 0} privacy area${route.summary.privacy_crossings?.length === 1 ? '' : 's'}`} />
+                  </Tooltip>) : null}
                 {canEdit && (
                   <ToggleButtonGroup size="small" exclusive value={placingBase ? 'base' : 'wp'}
                                      onChange={(_, v) => v && setPlacingBase(v === 'base')}>

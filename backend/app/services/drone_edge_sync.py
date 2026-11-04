@@ -366,6 +366,29 @@ async def _apply_media(db: AsyncSession, gw: dict, m, out: ds.Announcements, wan
         drone_id = (await db.execute(text("SELECT drone_id FROM drone_patrol_sessions WHERE id = :s"),
                                      {"s": session_id})).scalar()
     drone, session = await _owned_drone(db, gw, drone_id, session_id)
+    # Taken at a privacy area (services/drone_privacy.py, 4 November 2026)? A clip is not kept; a snapshot is stored
+    # blank when its file arrives.
+    from app.services import drone_privacy
+
+    at_area = await drone_privacy.picture_at_area(
+        db, drone_id=(drone or {}).get("id"), session_id=session_id, captured_at=m.captured_at,
+        duration_seconds=m.duration_seconds, telemetry_snapshot=m.telemetry_snapshot)
+    if at_area and m.media_kind != "SNAPSHOT":
+        made = (await db.execute(text("""
+            INSERT INTO drone_media_withheld (tenant_id, client_ref, event_id, session_id, drone_id, edge_gateway_id,
+                                              media_kind, action, captured_at, duration_seconds, reason, area_names)
+            VALUES (current_setting('app.current_tenant')::uuid, :ref, :ev, :s, :d, :g, :kind, 'NOT_KEPT', :at, :dur,
+                    :why, CAST(:names AS text[]))
+            ON CONFLICT (tenant_id, client_ref) DO NOTHING RETURNING id
+        """), {"ref": m.client_ref, "ev": event_id, "s": session_id, "d": (drone or {}).get("id"), "g": gw["id"],
+               "kind": m.media_kind, "at": m.captured_at, "dur": m.duration_seconds,
+               "why": drone_privacy.withheld_reason(m.media_kind, at_area), "names": list(at_area)})).first()
+        if made is None:
+            raise _Duplicate()
+        out.add("drone_media_withheld", {"withheld_id": str(made[0]), "event_id": str(event_id) if event_id else None,
+                                         "session_id": str(session_id) if session_id else None,
+                                         "media_kind": m.media_kind, "action": "NOT_KEPT"})
+        return
     site_policy = await _site_policy(db, (session or drone)["site_id"])
     mode = ((session or {}).get("recording_sync_mode_snapshot")
             or (site_policy or {}).get("sync_mode"))
@@ -392,6 +415,16 @@ async def _apply_media(db: AsyncSession, gw: dict, m, out: ds.Announcements, wan
                 wanted_refs.append(str(m.client_ref))   # a resend must not look unwanted
             raise _Duplicate()
         raise _Rejected("That client_ref is already used by another record.")
+    if at_area:
+        await db.execute(text("""
+            INSERT INTO drone_media_withheld (tenant_id, client_ref, media_id, event_id, session_id, drone_id,
+                                              edge_gateway_id, media_kind, action, captured_at, reason, area_names)
+            VALUES (current_setting('app.current_tenant')::uuid, :ref, :media, :ev, :s, :d, :g, :kind, 'BLANKED', :at,
+                    :why, CAST(:names AS text[]))
+            ON CONFLICT (tenant_id, client_ref) DO NOTHING
+        """), {"ref": m.client_ref, "media": row[0], "ev": event_id, "s": session_id, "d": (drone or {}).get("id"),
+               "g": gw["id"], "kind": m.media_kind, "at": m.captured_at,
+               "why": drone_privacy.withheld_reason(m.media_kind, at_area), "names": list(at_area)})
     if wanted:
         wanted_refs.append(str(m.client_ref))
     out.add("drone_media_recorded", {"media_id": str(row[0]), "event_id": str(event_id) if event_id else None,

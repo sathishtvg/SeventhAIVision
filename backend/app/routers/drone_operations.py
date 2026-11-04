@@ -361,9 +361,18 @@ async def get_event(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_
          ORDER BY detected_at LIMIT 200
     """), {"id": str(event_id)})).mappings().all()
     media = (await db.execute(text("""
-        SELECT id, media_kind, storage_location, sync_state, checksum_sha256, size_bytes,
-               duration_seconds, captured_at, telemetry_snapshot
-          FROM drone_event_media WHERE event_id = CAST(:id AS uuid) ORDER BY captured_at
+        SELECT m.id, m.media_kind, m.storage_location, m.sync_state, m.checksum_sha256, m.size_bytes,
+               m.duration_seconds, m.captured_at, m.telemetry_snapshot,
+               -- A snapshot taken over a privacy area is stored blank (4 November 2026, services/drone_privacy.py).
+               w.reason AS withheld_reason
+          FROM drone_event_media m
+          LEFT JOIN drone_media_withheld w ON w.media_id = m.id AND w.action = 'BLANKED'
+         WHERE m.event_id = CAST(:id AS uuid) ORDER BY m.captured_at
+    """), {"id": str(event_id)})).mappings().all()
+    # A clip recorded over a privacy area was not kept: what is said of it instead.
+    withheld = (await db.execute(text("""
+        SELECT id, media_kind, action, captured_at, duration_seconds, reason, area_names
+          FROM drone_media_withheld WHERE event_id = CAST(:id AS uuid) AND action = 'NOT_KEPT' ORDER BY captured_at
     """), {"id": str(event_id)})).mappings().all()
     cameras = (await db.execute(text("""
         SELECT id, camera_id, camera_name, distance_m, correlation_method, bearing_deg, in_coverage,
@@ -385,7 +394,7 @@ async def get_event(event_id: uuid.UUID, db: AsyncSession = Depends(get_db_with_
             "SELECT id, title, severity, status, created_at FROM alerts WHERE id = CAST(:id AS uuid)"),
             {"id": str(event["alert_id"])})).mappings().first()
     return {**event, "media": [dict(m) for m in media], "observations": [dict(o) for o in observations],
-            "cameras": [dict(c) for c in cameras],
+            "withheld": [dict(x) for x in withheld], "cameras": [dict(c) for c in cameras],
             "incident": dict(incident) if incident else None, "alert": dict(alert) if alert else None}
 
 

@@ -159,7 +159,7 @@ async def _everything(evidence: Path) -> dict:
     media = (await _sql("SELECT id FROM drone_event_media WHERE event_id = :e", {"e": event["id"]}))[0]["id"]
 
     x = {k: uuid.uuid4() for k in ("gateway", "schedule", "profile", "recipient", "delivery", "fixed_camera",
-                                   "site2", "supervisor2", "client")}
+                                   "site2", "supervisor2", "client", "privacy_area")}
     w["key"], digest = _key(w["tenant"])
     t = w["tenant"]
     stmts = [
@@ -181,6 +181,10 @@ async def _everything(evidence: Path) -> dict:
          "VALUES (:t,:c,90,60,40)", {"t": t, "c": x["fixed_camera"]}),
         ("INSERT INTO sites (id, tenant_id, name, latitude, longitude, geofence_radius_meters) "
          "VALUES (:i,:t,'Annexe',1.35,103.85,300)", {"i": x["site2"], "t": t}),
+        # A privacy area well away from the flight (Phase 5 of the known limits, 4 November 2026).
+        ("INSERT INTO drone_privacy_areas (id, tenant_id, site_id, name, shape, center_latitude, center_longitude, "
+         "    radius_m, margin_m) VALUES (:i,:t,:s,'Neighbour yard','CIRCLE',1.45,104.0,20,0)",
+         {"i": x["privacy_area"], "t": t, "s": w["site"]}),
     ]
     for key, role in (("supervisor2", SUPERVISOR), ("client", CLIENT)):
         stmts.append(("INSERT INTO users (id, tenant_id, role_id, email, hashed_password, full_name) "
@@ -198,7 +202,8 @@ async def _everything(evidence: Path) -> dict:
                 "drone_id": w["drone"], "zone_id": w["zone"], "profile_id": x["profile"], "route_id": w["route"],
                 "mission_id": w["mission"], "schedule_id": x["schedule"], "session_id": sid,
                 "event_id": event["id"], "media_id": media, "recipient_id": x["recipient"],
-                "delivery_id": x["delivery"], "client_ref": uuid.uuid4(), "tenant_id": t}
+                "delivery_id": x["delivery"], "client_ref": uuid.uuid4(), "tenant_id": t,
+                "area_id": x["privacy_area"]}
     return w
 
 

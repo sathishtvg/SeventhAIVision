@@ -218,18 +218,35 @@ function MediaItem({ m }: { m: EventDetail['media'][number] }) {
         {pretty(m.media_kind)} · {new Date(m.captured_at).toLocaleTimeString()}
         {m.size_bytes ? ` · ${(m.size_bytes / 1_048_576).toFixed(1)} MB` : ''}
       </Typography>
+      {m.withheld_reason && (
+        <Typography variant="caption" color="warning.main" sx={{ display: 'block' }} data-testid="media-withheld">
+          {m.withheld_reason}
+        </Typography>)}
     </Box>
   )
 }
 
 function Media({ event }: { event: EventDetail }) {
+  // Clips recorded over a privacy area were not kept (4 November 2026): what is said of each instead.
+  const withheld = (event.withheld ?? []).map((w) => (
+    <Typography key={w.id} variant="body2" color="text.secondary" data-testid="clip-withheld">
+      {`${pretty(w.media_kind)}${w.captured_at ? ` · ${new Date(w.captured_at).toLocaleTimeString()}` : ''}: ${w.reason}`}
+    </Typography>))
   if (!event.media.length) {
-    return <Typography variant="body2" color="text.secondary">No snapshot or clip was kept for this event.</Typography>
+    return (
+      <>
+        {!withheld.length && <Typography variant="body2" color="text.secondary">No snapshot or clip was kept for this event.</Typography>}
+        {withheld}
+      </>
+    )
   }
   return (
-    <Grid container spacing={1.5}>
-      {event.media.map((m) => <Grid key={m.id} size={{ xs: 12, sm: 6 }}><MediaItem m={m} /></Grid>)}
-    </Grid>
+    <>
+      <Grid container spacing={1.5}>
+        {event.media.map((m) => <Grid key={m.id} size={{ xs: 12, sm: 6 }}><MediaItem m={m} /></Grid>)}
+      </Grid>
+      {withheld}
+    </>
   )
 }
 

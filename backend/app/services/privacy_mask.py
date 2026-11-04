@@ -87,6 +87,15 @@ class Zone:
     points: tuple[tuple[float, float], ...] | None
     #: Blue, green, red.
     colour: tuple[int, int, int] = BLACK
+    #: A drone's camera at a privacy area (4 November 2026, services/drone_privacy.py): the whole picture withheld,
+    #: with the words that say why.
+    withheld: bool = False
+
+
+#: What a drone's camera is given while the drone is at a privacy area, or its position is not known.
+WITHHELD = Zone(points=None, withheld=True)
+#: Drone cameras this process has read, and whether their organisation has privacy areas (they are then watched).
+_DRONE_CAMERAS: dict[str, bool] = {}
 
 
 # ─── What a zone is ──────────────────────────────────────────────────────────
@@ -150,6 +159,10 @@ def paint(frame, zones):
         return frame
     height, width = frame.shape[:2]
     for zone in zones:
+        if zone.withheld:
+            from app.services.drone_privacy import paint_withheld
+
+            return paint_withheld(frame)
         if zone.points is None:
             frame[:] = 0
             return frame
@@ -180,12 +193,20 @@ async def read(session: AsyncSession, camera_id) -> tuple[Zone, ...]:
 
 
 async def read_for(tenant_id, camera_id) -> tuple[Zone, ...]:
-    """The same, for a loop that has no session of its own."""
+    """The same, for a loop that has no session of its own. A drone's camera at a privacy area - or whose position is
+    not known - is given WITHHELD as well (services/drone_privacy.py); a fixed camera's zones are as stored."""
     from app.db.session import AsyncSessionLocal
+    from app.services import drone_privacy
 
     async with AsyncSessionLocal() as session:
         await session.execute(text("SELECT set_config('app.current_tenant', :t, true)"), {"t": str(tenant_id)})
-        return await read(session, camera_id)
+        zones = await read(session, camera_id)
+        state = await drone_privacy.camera_state(session, camera_id)
+    if state.is_drone:
+        _DRONE_CAMERAS[str(camera_id)] = state.watched
+    if state.withheld:
+        return (*zones, WITHHELD)
+    return zones
 
 
 Reader = Callable[[Any, Any], Awaitable[tuple[Zone, ...]]]
@@ -216,6 +237,11 @@ class Keeper:
         if self._tried_at is None:
             return True
         wait = self._every if self.loaded else min(self._every, RETRY_SECONDS)
+        if str(self.camera_id) in _DRONE_CAMERAS:
+            # A drone moves: whether it is at a privacy area is asked again every couple of seconds.
+            from app.services.drone_privacy import REFRESH_SECONDS as DRONE_REFRESH
+
+            wait = min(wait, DRONE_REFRESH)
         return self._clock() - self._tried_at >= wait
 
     async def refresh(self) -> bool:
@@ -265,6 +291,8 @@ async def is_masked(tenant_id, camera_id, *, reader: Reader | None = None,
     if known is not None and now - known[0] < REFRESH_SECONDS:
         return known[1]
     masked = bool(await (reader or read_for)(tenant_id, camera_id))
+    # A drone's camera whose organisation has privacy areas has no copy-through stream: it may be at one any moment.
+    masked = masked or _DRONE_CAMERAS.get(key, False)
     _MASKED[key] = (now, masked)
     return masked
 

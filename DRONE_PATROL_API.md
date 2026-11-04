@@ -101,6 +101,9 @@ against the simulator provider — see `DRONE_PATROL_OPERATIONS.md` and
 | GET | `/drone-zones/{zone_id}` | `drone:read` | |
 | PUT | `/drone-zones/{zone_id}` | `drone:mission:update` | ✓ |
 | DELETE | `/drone-zones/{zone_id}` | `drone:mission:update` | ✓ |
+| GET | `/drone-privacy-areas` | `drone:read` | |
+| POST | `/drone-privacy-areas` | `privacy:manage` | |
+| POST | `/drone-privacy-areas/{area_id}/remove` | `privacy:manage` | |
 | GET | `/drone-security-profiles` | `drone:read` | |
 | POST | `/drone-security-profiles` | `drone:mission:create` | ✓ |
 | GET | `/drone-security-profiles/{profile_id}` | `drone:read` | |

@@ -234,7 +234,10 @@ export interface Route {
   /** Only on the single-route read; the list gives waypoint_count. */
   waypoints?: Waypoint[]
   waypoint_count?: number
-  summary?: { waypoint_count: number; length_m: number; outside_site_geofence: number[] }
+  summary?: { waypoint_count: number; length_m: number; outside_site_geofence: number[]
+             /** Privacy areas the route crosses (4 November 2026): told, and saved all the same. */
+             privacy_crossings?: { area_id: string; name: string; metres: number; seconds: number }[]
+             privacy_warning?: string | null }
 }
 
 export interface Schedule {
@@ -460,7 +463,11 @@ export interface DroneEvent {
 
 export interface EventDetail extends DroneEvent {
   media: { id: string; media_kind: string; storage_location: string; sync_state: string; captured_at: string
-           size_bytes: number | null }[]
+           size_bytes: number | null
+           /** Taken over a privacy area: stored blank, and why (4 November 2026). */
+           withheld_reason?: string | null }[]
+  /** Clips recorded over a privacy area, which were not kept. */
+  withheld?: { id: string; media_kind: string; action: string; captured_at: string | null; reason: string }[]
   observations: { id: string; source: string; module_type: string; label: string | null
                   ai_confidence: number | null; detected_at: string }[]
   cameras: CctvCamera[]
