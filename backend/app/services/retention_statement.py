@@ -115,6 +115,12 @@ PERIODS: tuple[Period, ...] = (
     Period("IC_READINGS", "What was read from an IC for a new staff member", ("ai_ic_drafts",),
            "when the card was read", "The AI module's hourly pass, or at once when the new staff member is confirmed",
            "The text read from the card is deleted. Its photos were never kept", None, None, None, True),
+    # A camera's checks and the gaps in what the platform records (Phase 6 of the known limits, migration 0180):
+    # the organisation's device health history period, else 90 days.
+    Period("CAMERA_CHECKS", "A camera's checks and recording gaps", ("camera_checks", "recording_gaps"),
+           "when the check was made, or the gap ended", "The scheduler, every 15 minutes",
+           "The check or the gap is deleted. A gap still going on is not", None,
+           "Each stream's latest check: it is how the camera is now.", "retention.device_health_changes_days", False),
     Period("AUDIT", "The audit log", ("audit_logs",),
            "when the entry was written", "The scheduler, once a day",
            "Moved out of the log into a file, a month at a time, once every entry of that month is old enough. "
@@ -181,6 +187,17 @@ def _days(value, default: int, least: int = 1) -> tuple[int, bool]:
     return value, True
 
 
+def _camera_checks(row) -> dict:
+    """The organisation's device health history period, as services/recording_gaps.py reads it, else its 90 days."""
+    from app.services.record_retention import days_of
+    from app.services.recording_gaps import KEEP_DAYS
+
+    days = days_of(row["setting_value"]) if row else None
+    if days is None:
+        return {"amount": KEEP_DAYS, "unit": "days", "source": "FIXED", "set_at": None}
+    return {"amount": days, "unit": "days", "source": "TENANT_SETTING", "set_at": row["updated_at"]}
+
+
 async def read(db: AsyncSession, allowed: list[str] | None) -> dict:
     """The statement for the caller's organisation, as the jobs would read it now."""
     # Imported here: each drags in the job it belongs to, which only this reading needs.
@@ -209,6 +226,7 @@ async def read(db: AsyncSession, allowed: list[str] | None) -> dict:
         # Removed by the first daily cycle after the account is deactivated.
         "STAFF_FACES": {"amount": 1, "unit": "days", "source": "FIXED", "set_at": None},
         "IC_READINGS": {"amount": 1, "unit": "hours", "source": "FIXED", "set_at": None},
+        "CAMERA_CHECKS": _camera_checks(said.get("retention.device_health_changes_days")),
         "AUDIT": {"amount": settings.AUDIT_RETENTION_YEARS, "unit": "years", "source": "INSTALLATION",
                   "set_at": None},
     }

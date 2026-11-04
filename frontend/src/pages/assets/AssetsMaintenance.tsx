@@ -9,7 +9,7 @@
  * Cameras, recorders, sensors, drones, alarm panels, guard kit and facility
  * defects are on the screens that have always had them, unchanged.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Alert, Box, Button, Chip, FormControlLabel, MenuItem, Skeleton, Switch, Tab, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tabs, TextField, Typography,
@@ -34,6 +34,9 @@ import {
   dueIn, every, factLines, fmt, fmtDate, heldBy, madeBy, sinceLine, warrantyLine,
 } from '@/components/assets/assetFormat'
 import { ErrorState, RefreshingLine } from '@/components/states'
+// A camera's checks and recording gaps (Phase 6 of the known limits, 4 November 2026).
+import { getLatestChecks } from '@/api/cameraChecks'
+import { CheckLimitsButton, CheckLine } from '@/components/assets/CameraChecks'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const STATES: HealthState[] = ['DOWN', 'DEGRADED', 'NOT_KNOWN', 'OK', 'OFF']
@@ -49,6 +52,11 @@ function HealthTab() {
     queryFn: () => getHealth({ site_id: siteId || undefined, kind: kind || undefined, state: state || undefined }),
     placeholderData: keepPreviousData, refetchInterval: 60_000,
   })
+  const { data: checks } = useQuery({
+    queryKey: ['camera-checks-latest', siteId], queryFn: () => getLatestChecks({ site_id: siteId || undefined }),
+    enabled: !kind || kind === 'CAMERA', placeholderData: keepPreviousData, refetchInterval: 60_000,
+  })
+  const checked = useMemo(() => new Map((checks?.cameras ?? []).map((c) => [c.camera_id, c])), [checks])
   return (
     <>
       {data && (
@@ -78,6 +86,8 @@ function HealthTab() {
             <MenuItem value="">Any</MenuItem>
             {STATES.map((s) => <MenuItem key={s} value={s}>{HEALTH_LABEL[s]}</MenuItem>)}
           </TextField>
+          <Box sx={{ flexGrow: 1 }} />
+          <CheckLimitsButton />
         </Stack>
       </GlassCard>
       <GlassCard sx={{ p: 2 }}>
@@ -107,6 +117,7 @@ function HealthTab() {
                     <TableCell>
                       <Typography variant="body2">{r.reasons.join(' ')}</Typography>
                       <Typography variant="caption" color="text.secondary">{factLines(r.facts).join(' · ')}</Typography>
+                      {r.kind === 'CAMERA' && <CheckLine camera={checked.get(r.device_id)} />}
                     </TableCell>
                     <TableCell align="right">
                       <Button size="small" onClick={() => setOpen({ kind: r.kind, device_id: r.device_id })}>Open</Button>

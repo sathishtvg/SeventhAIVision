@@ -219,9 +219,13 @@ def test_a_drone_is_read_from_its_heartbeat_what_it_reports_and_its_parts():
 
 
 def test_nothing_is_claimed_that_nothing_measures():
-    assert health.NOT_MEASURED == ("Frame rate", "Latency", "Packet loss",
-                                   "The quality of the picture: darkness, glare, focus", "Gaps in a recording")
-    for word in ("frame rate", "latency", "packet loss"):
+    # Since 4 November 2026 a camera's frame rate, delay and recording gaps are measured (services/camera_checks.py,
+    # services/recording_gaps.py); what still is not is named.
+    assert health.NOT_MEASURED[0] == "The quality of the picture: darkness, glare, focus" and len(health.NOT_MEASURED) == 4
+    assert [m.split(":")[0] for m in health.NOT_MEASURED[1:]] == [
+        "Packet loss as such", "What happens between two checks", "Gaps in a site recorder's own recordings"]
+    for word in ("10-second check every 15 minutes", "frame rate", "answer time", "first picture",
+                 "the gaps in what the platform records"):
         assert word in health.NOTE
     code = Path(health.__file__).read_text(encoding="utf-8").split('"""', 2)[2]
     # No figure for any of them is computed, stored or returned anywhere.

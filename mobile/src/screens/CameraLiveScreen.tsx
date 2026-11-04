@@ -3,12 +3,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/api/client'
 import { useMaskedCameras } from '@/hooks/useMaskedCameras'
 import { MASKED_LABEL, managesPrivacy } from '@/lib/privacyZoneWords'
 import { colors, fontSize, spacing } from '@/theme'
 import { PICTURE_WATCH_SCRIPT, VideoLoadingState, pictureNews } from '@/components/states'
+// The camera's latest check and its recording gaps (Phase 6 of the known limits, 4 November 2026).
+import { getLatestChecks } from '@/api/cameraChecks'
+import { brokeText, gapText, streamLine } from '@/lib/cameraCheckWords'
 
 type LiveParams = { cameraId: string; streamId: string; cameraName: string }
 type Props = { route: { params: LiveParams } }
@@ -36,6 +40,14 @@ export function CameraLiveScreen({ route }: Props) {
   const [picture, setPicture] = useState<'connecting' | 'playing' | 'failed'>('connecting')
   const [attempt, setAttempt] = useState(0)
   const retry = () => { setPicture('connecting'); setAttempt((n) => n + 1) }
+  // Shown over the picture when it is known; the picture does not wait for it.
+  const { data: checks } = useQuery({
+    queryKey: ['camera-checks-latest', 'camera', cameraId],
+    queryFn: () => getLatestChecks({ camera_id: cameraId }),
+    refetchInterval: 60_000,
+  })
+  const checked = checks?.cameras[0]
+  const mine = checked?.streams.find((s) => s.stream_id === streamId) ?? checked?.streams[0]
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -120,6 +132,16 @@ export function CameraLiveScreen({ route }: Props) {
           onRetry={picture === 'failed' ? retry : undefined}
         />
       )}
+      {mine && (
+        <View style={styles.checkPanel} pointerEvents="none" testID="camera-check">
+          <Text style={styles.checkTitle}>Last check</Text>
+          <Text style={styles.checkLine}>{streamLine(mine).text}</Text>
+          {brokeText(mine) ? <Text style={[styles.checkLine, styles.checkWarn]}>{brokeText(mine)}</Text> : null}
+          {checked && gapText(checked) ? (
+            <Text style={[styles.checkLine, styles.checkWarn]}>{gapText(checked)}</Text>
+          ) : null}
+        </View>
+      )}
       {masked && (
         <View style={styles.maskedLabel} pointerEvents="none">
           <Ionicons name="eye-off-outline" size={12} color="#fff" />
@@ -172,6 +194,30 @@ const styles = StyleSheet.create({
   maskedText: {
     color: '#fff',
     fontSize: fontSize.xs,
+    fontWeight: '600',
+  },
+  checkPanel: {
+    position: 'absolute',
+    left: spacing.sm,
+    right: spacing.sm,
+    bottom: spacing.sm,
+    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  checkTitle: {
+    color: '#fff',
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+  },
+  checkLine: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: fontSize.xs,
+  },
+  checkWarn: {
+    color: colors.warning,
     fontWeight: '600',
   },
 })

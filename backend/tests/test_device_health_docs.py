@@ -70,10 +70,16 @@ def test_nothing_is_claimed_that_nothing_measures_and_the_document_says_so():
     for said in ("A reading is made of what the platform is told, and of nothing else.",
                  "What is not known is `NOT_KNOWN`, not `OK`.",
                  "A sensor that reads a dangerous value is a working sensor.",
-                 "Frame rate, latency, packet loss, the quality of the picture and gaps in a recording are measured by "
-                 "nothing here."):
+                 "When this was built, frame rate, latency, packet loss, the quality of the picture and gaps in a "
+                 "recording were measured by nothing here. Since 4 November 2026 a camera is also measured"):
         assert said in doc, said
-    assert len(health.NOT_MEASURED) == 5 and "(`not_measured`)" in doc
+    assert len(health.NOT_MEASURED) == 4 and "(`not_measured`)" in doc
+    # What is measured is measured elsewhere (section 11); this service reads what the check and the gap pass kept.
+    eleven = _flat(_doc().split("## 11. Since 4 November 2026: a camera measured", 1)[1])
+    for said in ("`backend/app/services/camera_checks.py`", "`backend/app/services/recording_gaps.py`",
+                 "loss is seen as a stall or a missed frame and is not counted as such",
+                 "**Still not measured:** the quality of the picture; packet loss as such"):
+        assert said in eleven, said
     for path in (Path(health.__file__), Path(assets_api.__file__), MIGRATION):
         code = path.read_text(encoding="utf-8").split('"""', 2)[2]
         for name in ("fps", "frame_rate", "latency_ms", "packet_loss", "jitter", "bitrate"):
@@ -82,7 +88,7 @@ def test_nothing_is_claimed_that_nothing_measures_and_the_document_says_so():
     # Every answer that carries a reading carries the list of what is not measured.
     assert router.count('"not_measured": list(device_health.NOT_MEASURED)') >= 3
     not_done = _flat(_doc().split("## 10. What this does not do", 1)[1])
-    assert "It measures nothing new." in not_done and "they still are" in not_done
+    assert "It measured nothing new." in not_done and "a site recorder's own gaps still are not" in not_done
     page = (WEB / "pages" / "assets" / "AssetsMaintenance.tsx").read_text(encoding="utf-8")
     dialogs = (WEB / "components" / "assets" / "AssetDialogs.tsx").read_text(encoding="utf-8")
     assert "<NotMeasured items={data.not_measured} />" in page and dialogs.count("<NotMeasured items=") >= 2

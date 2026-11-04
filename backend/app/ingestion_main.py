@@ -351,12 +351,17 @@ async def main() -> None:
     redis_sub = redis.from_url(settings.REDIS_URL, decode_responses=True)
     running: dict[UUID, asyncio.Task] = {}
     subscriber_task = asyncio.create_task(alert_event_subscriber(redis_sub))
+    # A 10-second check of each stream every 15 minutes, on a connection of its own (Phase 6 of the known
+    # limits, services/camera_checks.py). It decodes no picture and never touches the frames above.
+    from app.services import camera_checks
+    checks_task = asyncio.create_task(camera_checks.run_forever(AsyncSessionLocal, _build_auth_url))
     try:
         while True:
             await discover_and_run_cameras(redis_client, running)
             await asyncio.sleep(CAMERA_REFRESH_INTERVAL_SECONDS)
     finally:
         subscriber_task.cancel()
+        checks_task.cancel()
         for task in running.values():
             task.cancel()
         await redis_client.aclose()

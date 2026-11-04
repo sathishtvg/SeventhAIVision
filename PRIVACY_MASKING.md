@@ -64,6 +64,11 @@ recorded; its frames, thumbnails and search results are of the masked picture.
 A video somebody uploads has come from no camera of the platform's, and no zone
 applies to it.
 
+**The camera check keeps no picture** (since 4 November 2026, `services/camera_checks.py`;
+`DEVICE_HEALTH_ARCHITECTURE.md`, section 11). It connects to a camera for ten seconds every fifteen minutes, and
+ffmpeg copies the video packets without decoding them: only when each one arrived and the camera's own time of it
+are read. No picture is made, given to anybody or kept, so there is nothing to mask.
+
 **HLS.** HLS copies the camera's stream without decoding it, so nothing can be
 painted into it. `GET …/hls/index.m3u8` and `GET …/hls/{segment}` answer 409 for
 a camera with an active zone, and a session already running for it is stopped.

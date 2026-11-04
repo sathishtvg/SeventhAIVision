@@ -22,6 +22,8 @@ import {
   HEALTH_COLOUR, HEALTH_LABEL, ORDER_LABEL, STATUS_LABEL, downLine, factLines, fmt, madeBy, sinceLine, warrantyLine,
 } from './assetFormat'
 import { ErrorState } from '@/components/states'
+// A camera's checks and recording gaps (Phase 6 of the known limits, 4 November 2026).
+import { CameraChecks } from './CameraChecks'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
 const boxed = { gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5 }
@@ -71,6 +73,11 @@ function DeviceView({ device, onClose }: DeviceProps & { device: { kind: DeviceK
             </Box>
             <Typography variant="caption" color="text.secondary">{data.note}</Typography>
             <NotMeasured items={data.not_measured} />
+            {device.kind === 'CAMERA' && (
+              <>
+                <Divider />
+                <CameraChecks cameraId={device.device_id} />
+              </>)}
             <Divider />
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>How long it was down</Typography>
             {data.down.map((d) => <Typography key={d.days} variant="body2">{downLine(d)}</Typography>)}

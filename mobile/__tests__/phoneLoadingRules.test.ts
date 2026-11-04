@@ -46,6 +46,8 @@ const NOTHING_TO_FAIL: Record<string, string> = {
   LeaveScreen: 'a summary of the list below it',
   // Whether to offer the AI Assistant row; when it cannot be read the row stays hidden.
   MoreMenuScreen: 'whether the AI Assistant row is offered',
+  // The camera's last check laid over its picture (4 November 2026); the picture says for itself when it fails.
+  CameraLiveScreen: "the camera's last check, laid over the picture",
 }
 
 /** A spinner that fills a screen, where the screen is waiting for something other than data. */
