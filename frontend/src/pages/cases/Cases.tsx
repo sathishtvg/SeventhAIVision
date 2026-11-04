@@ -18,6 +18,7 @@ import { getSites } from '@/api/sites'
 import { getCaseOptions, listCases } from '@/api/cases'
 import type { CaseFile, Status } from '@/api/cases'
 import { CaseDialog, OpenCaseDialog } from '@/components/cases/CaseDialogs'
+import { EscalationTimingsDialog } from '@/components/cases/CaseEscalation'
 import { PRIORITY_LABEL, STATUS_COLOUR, fmt } from '@/components/cases/caseFormat'
 import { ErrorState, RefreshingLine } from '@/components/states'
 
@@ -29,6 +30,7 @@ export default function Cases() {
   const [mine, setMine] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
+  const [timings, setTimings] = useState(false)
   const { data, isLoading, error, refetch: refetchData, isPlaceholderData: dataRefreshing } = useQuery({
     queryKey: ['cases', status, mine], queryFn: () => listCases({ status: status || undefined, mine: mine || undefined }),
     placeholderData: keepPreviousData,
@@ -53,6 +55,7 @@ export default function Cases() {
           <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 200 }}>
             “Mine” is the cases you lead, investigate, or have a task on.
           </Typography>
+          <Button size="small" onClick={() => setTimings(true)}>When cases escalate</Button>
           {data?.can_open && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpening(true)}>Open a case</Button>)}
         </Stack>
@@ -94,6 +97,7 @@ export default function Cases() {
         </GlassCard>)}
       <OpenCaseDialog open={opening} onClose={() => setOpening(false)} onOpened={opened} sites={sites ?? []} options={options.data} />
       <CaseDialog id={open} onClose={() => setOpen(null)} onChanged={again} />
+      <EscalationTimingsDialog open={timings} onClose={() => setTimings(false)} />
     </Box>
   )
 }

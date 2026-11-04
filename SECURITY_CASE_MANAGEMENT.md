@@ -56,8 +56,14 @@ else had to agree to.
    anybody as a suspect, and nothing here names anybody by itself.
 9. **Every step is a signed-in person's** — not an API key, not a support
    session — and is audited.
-10. **Nobody is told.** Being put on a case, given a task or asked to approve
-    sends no notification: each is found on the list of cases.
+10. **Somebody put on a case is told, and a case escalates** (since
+    4 November 2026; `docs/plans/2026-11-04-case-notify-and-escalate-design.md`).
+    Made its lead, added as an investigator or given a task: told on screen, by
+    phone and through the organisation's notification rules - never the person
+    who did it, nor somebody who cannot see the case. A task overdue, a case gone
+    quiet and a close request waiting are escalated, once each, to the people on
+    it and then to Managers and Admins, by timings the organisation sets. Nothing
+    about the case is changed by it.
 11. **Super Admin, a guard and the client role hold none of the new
     permissions.**
 
@@ -151,6 +157,12 @@ Under `/api/v1/cases`, all needing `case:read`:
 | `GET` | `/{id}/report` | |
 | `GET` | `/{id}/report.pdf` | |
 
+Under `/api/v1/case-escalations` (since 4 November 2026): `GET /settings`
+(`case:read`) and `PUT /settings` (`settings:write`) - the organisation's
+timings; `GET /cases/{id}` (`case:read`) - a case's escalations. Each change
+of the timings is audited (case.escalation.settings), and so is each escalation
+sent (case.escalate).
+
 There is no `DELETE`. Holding `case:work` is not enough to work on a case: the
 caller is also on it, or manages cases, or — for finishing a task — was given
 it. Audited: `case.open`, `case.update`, `case.lead`,
@@ -233,10 +245,13 @@ The tables are not named `security_cases…`, as the plan had them: tables named
   entry or a face, and a plate is not matched to a vehicle read at a gate.
 - **It does not change what a case is about.** Closing a case does not resolve
   its incident, close its investigation or seal its evidence package.
-- **It tells nobody.** There is no notification for being put on a case,
-  given a task, or asked to approve.
-- **It has no deadlines of its own.** A task may have a date it is due; nothing
-  escalates, and no clock runs on a case.
+- **Escalating changes nothing.** A case that escalates is not reassigned,
+  closed or given another priority: people are told, and a person decides.
+- **Its only clocks are the escalation timings.** A task may have a date it is
+  due; a case is judged quiet by its priority. Nothing is backdated: a step is
+  due from the later of its moment and when the organisation's escalation began.
+- **The phone is told, and opens nothing.** A push says what happened; the case
+  is on the web.
 - **A task cannot be edited or given to somebody else.** It is dropped and
   added again.
 - **A situation is not linked.** The intelligence layer's situations stay

@@ -20,6 +20,7 @@ import {
 } from '@/api/cases'
 import type { CaseFile, CaseOptions, Category, Connection, LinkKind, PartyKind, Priority } from '@/api/cases'
 import { PRIORITY_LABEL, STATUS_COLOUR, TASK_LABEL, entryLine, linkLine, named, standing, taskLine } from './caseFormat'
+import { CaseEscalations } from './CaseEscalation'
 import { ErrorState } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
@@ -282,6 +283,10 @@ function CaseView({ id, onClose, onChanged }: { id: string; onClose: () => void;
               {c.may.work && (
                 <Ask label="A note" button="Add the note" busy={busy} rows={2} helper="A note is not changed or removed afterwards."
                      onDone={(said) => go(() => addNote(id, said))} />)}
+            </Part>
+
+            <Part title="Escalations" testId="escalations">
+              <CaseEscalations caseId={id} />
             </Part>
 
             <Part title="Closing" testId="closing">

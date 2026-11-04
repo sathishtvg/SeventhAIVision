@@ -92,6 +92,8 @@ beforeEach(() => {
   vi.mocked(api.getCaseOptions).mockResolvedValue(OPTIONS)
   vi.mocked(api.getCase).mockResolvedValue(CASE)
   vi.mocked(api.downloadReport).mockResolvedValue(undefined)
+  // The case's escalations (4 November 2026): none, so the dialog's acts are as they were.
+  vi.mocked(api.getCaseEscalations).mockResolvedValue({ escalations: [], note: 'Nothing about this case has escalated.' })
   for (const fn of [api.openCase, api.changeCase, api.setLead, api.addInvestigator, api.removeInvestigator, api.addNote, api.addTask,
                     api.finishTask, api.addLink, api.removeLink, api.addParty, api.removeParty, api.requestClose, api.approveClose,
                     api.declineClose, api.reopenCase]) {
