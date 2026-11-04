@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "4 November 2026"
-EDITION = "Edition 28"
-HEAD = "0179"
+EDITION = "Edition 29"
+HEAD = "0180"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -153,6 +153,8 @@ EDITIONS = [
      "Module 26: the daily briefing emailed when published; the nine reports on a schedule as CSV and PDF."],
     ["Edition 28", "4 November 2026", "0179",
      "Drone Patrol (module 15): a drone's whole picture withheld while it is at a privacy area."],
+    ["Edition 29", "4 November 2026", "0180",
+     "Device health (module 24): a camera's frame rate, delay and recording gaps measured."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -345,13 +347,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("319", "DATABASE TABLES"), ("1,169", "API OPERATIONS"), ("125", "API MODULES"),
+        ("324", "DATABASE TABLES"), ("1,173", "API OPERATIONS"), ("126", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("179", "MIGRATIONS"),
-        ("7,052", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("180", "MIGRATIONS"),
+        ("7,082", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -513,8 +515,8 @@ story += bullets([
     "<b>SOP library</b> — versioned, approved procedures, quoted beside the incident.",
     "<b>Visitor authorisation</b> — a host's yes or no to a visit, for where and "
     "for how long, read at the gate.",
-    "<b>Assets and maintenance</b> — device health as devices report it, an asset "
-    "register, and work orders a person accepts.",
+    "<b>Assets and maintenance</b> — device health as devices report it and as "
+    "cameras are measured, an asset register, and work orders a person accepts.",
     "<b>Risk patterns</b> — where what went wrong gathers, by hour, day and place, "
     "with how much history each statement rests on.",
     "<b>Operations board and briefing</b> — every part of the operation counted "
@@ -1270,7 +1272,9 @@ story += module(
     [
         "<b>One reading of every device</b> — camera, recorder, sensor, drone, "
         "edge gateway, alarm panel — from what each reports: working, degraded, "
-        "down, not known or switched off, with why and since when.",
+        "down, not known or switched off, with why and since when. A camera is "
+        "also measured every 15 minutes: frame rate, stalls, missed frames, "
+        "answer, first picture, recording gaps. <i>Added in edition 29.</i>",
         "<b>What is not known is not called working.</b> A camera with no stream, "
         "a recorder not probed for a day, a device that has never reported. A "
         "sensor reading a dangerous value is a working sensor.",
@@ -1294,10 +1298,10 @@ story += module(
         "manages maintenance accepts it or dismisses it with a reason; it "
         "assigns nobody and tells nobody.",
         "<i>By design:</i> every answer and screen that shows a reading names "
-        "what is not measured. <i>Documented limitations:</i> frame rate, "
-        "latency, packet loss, the quality of the picture and gaps in a "
-        "recording are not measured; an outage shorter than five minutes can "
-        "pass unrecorded; no cause is inferred; there is no parts store, cost or "
+        "what is not measured. <i>Documented limitations:</i> the quality of "
+        "the picture and packet loss as such are not measured, nor what a camera "
+        "does between two checks; an outage shorter than five minutes can pass "
+        "unrecorded; no cause is inferred; there is no parts store, cost or "
         "maintenance SLA; on the phone, whoever an order is given to says it has "
         "started and what was done, and nothing else of this is there.",
     ],
@@ -1781,7 +1785,8 @@ story.append(data_table(
          "followed up. Decides what follows from a situation it is part of"],
         ["Device health (module 24)",
          "Rules over what each device reports: a stream's state, a probe, a "
-         "heartbeat, a late reading. Nothing is inferred about the cause",
+         "heartbeat, a late reading; and a camera's measured frame rate, stalls "
+         "and recording gaps against limits. Nothing is inferred about the cause",
          "Reads it; decides what is work"],
         ["Work orders put forward (module 24)",
          "Two rules: a schedule falling due, and — when an organisation has "
@@ -2112,10 +2117,12 @@ story += bullets([
     "can; a watchlist entry can.",
     "<b>Guards are not tracked continuously.</b> A guard's position is the last "
     "one they recorded, shown with its age.",
-    "<b>Device health is what devices report.</b> Stream state, disconnections, "
-    "probes, heartbeats and late readings are read; frame rate, latency, packet "
-    "loss, the quality of the picture and gaps in a recording are not measured, "
-    "and an outage shorter than five minutes can pass unrecorded.",
+    "<b>Device health is mostly what devices report.</b> Stream state, "
+    "disconnections, probes, heartbeats and late readings are read; a camera is "
+    "measured for 10 seconds every 15 minutes, so what happens between two checks "
+    "is not seen; packet loss as such, the quality of the picture and a site "
+    "recorder's own gaps are not measured, and an outage shorter than five minutes "
+    "can pass unrecorded.",
     "<b>A privacy zone is fixed to the picture, not to the scene</b>, and takes "
     "effect within about ten seconds: what was captured before it is unchanged. "
     "A camera with one has no HLS view; the AI is blind inside it, so a "
@@ -2157,10 +2164,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 179 "
-    "database migrations, 319 tables, 125 API modules serving 1,169 operations, 154 backend "
-    "services, 124 web routes and 59 phone screens, covered by 7,052 automated tests "
-    "(backend 4,369, repository inspection 1,406, web 840, phone 437). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 180 "
+    "database migrations, 324 tables, 126 API modules serving 1,173 operations, 156 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,082 automated tests "
+    "(backend 4,390, repository inspection 1,406, web 845, phone 441). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
