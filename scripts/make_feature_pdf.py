@@ -43,9 +43,9 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "3 November 2026"
-EDITION = "Edition 25"
-HEAD = "0176"
+GENERATED = "4 November 2026"
+EDITION = "Edition 26"
+HEAD = "0177"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -147,6 +147,8 @@ EDITIONS = [
      "Singapore payroll (module 11): CPF by date, PR rates, bonus ceiling, MOM's PWM floors."],
     ["Edition 25", "3 November 2026", "0176",
      "Retention for the history of modules 20 to 26; evidence packages removed by a person (18, 29)."],
+    ["Edition 26", "4 November 2026", "0177",
+     "Cases (module 28): people told when put on one; overdue, quiet and waiting cases escalate."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -339,13 +341,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("312", "DATABASE TABLES"), ("1,154", "API OPERATIONS"), ("122", "API MODULES"),
+        ("314", "DATABASE TABLES"), ("1,157", "API OPERATIONS"), ("123", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("176", "MIGRATIONS"),
-        ("7,013", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("177", "MIGRATIONS"),
+        ("7,027", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1454,6 +1456,8 @@ story += module(
         "<b>People and vehicles named in it</b>, each with how it is connected "
         "— reported it, saw or heard it, was affected by it, is named in it — "
         "written in by a person.",
+        "<b>Told, and escalated.</b> Whoever is put on it is told; an overdue or "
+        "quiet case reaches Managers.",
         "<b>Closing takes two people.</b> Whoever asks for a case to be closed "
         "says what was found; somebody else approves, or declines with why. The "
         "screen does not offer approving to whoever asked, the server refuses "
@@ -1469,9 +1473,8 @@ story += module(
         "opens a case. Every step is a signed-in person's and is audited. "
         "<i>Documented limitations:</i> a name is text, not matched to a "
         "visitor, a member of staff, a watchlist entry or a face; closing a case "
-        "does not resolve its incident or seal its evidence package; nobody is "
-        "told when they are put on a case or asked to approve; nothing "
-        "escalates a case; the report is not signed; on the phone, somebody given "
+        "does not resolve its incident or seal its evidence package; escalating "
+        "changes nothing about a case; the report is not signed; on the phone, somebody given "
         "a task says it is done or why it is dropped, and the case itself is not there.",
     ],
     tag="ADDED SINCE EDITION 4 · MIGRATION 0155")
@@ -2128,8 +2131,7 @@ story += bullets([
     "<b>A workforce reading is not an appraisal.</b> Nothing says why a shift was "
     "not started, leave is not read, and cover is compared from shifts as rostered.",
     "<b>A case names nobody by itself</b>, and a name in one is text: it is not "
-    "matched to a visitor, a member of staff, a watchlist entry or a face. Nobody "
-    "is told when they are put on a case, and nothing escalates one.",
+    "matched to a visitor, a member of staff, a watchlist entry or a face.",
     "<b>A subject report says where a person appears, not what each record "
     "says</b>, and reads modules 17 to 28: attendance, rosters, leave, pay, "
     "training and violations are each on their own screen.",
@@ -2148,10 +2150,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 176 "
-    "database migrations, 312 tables, 122 API modules serving 1,154 operations, 149 backend "
-    "services, 124 web routes and 59 phone screens, covered by 7,013 automated tests "
-    "(backend 4,347, repository inspection 1,406, web 823, phone 437). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 177 "
+    "database migrations, 314 tables, 123 API modules serving 1,157 operations, 151 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,027 automated tests "
+    "(backend 4,355, repository inspection 1,406, web 829, phone 437). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
