@@ -29,8 +29,12 @@ CLOSING TAKES TWO PEOPLE, and a closed case is not changed. Every step is a
 signed-in person's — not an API key, not a support session — is written into
 the case's own history, and is audited.
 
-NOBODY IS TOLD. Being put on a case, given a task or asked to approve sends no
-notification: each is found on the list of cases.
+SOMEBODY PUT ON A CASE IS TOLD (since 4 November 2026, services/case_notify.py):
+made its lead, added as an investigator, or given a task - on screen, by phone
+and through the organisation's notification rules. Never the person who did it,
+nor somebody who cannot see the case. Who to tell is read before the change is
+saved and told after it; a telling that fails leaves the change as it is. What
+escalates, and when, is services/case_escalation.py.
 """
 from __future__ import annotations
 
@@ -50,7 +54,7 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import get_db_with_tenant
 from app.routers.operations_board import held_by
-from app.services import case_files, intel_audit, intel_insight
+from app.services import case_files, case_notify, intel_audit, intel_insight
 
 PERMISSIONS = ("case:read", "case:work", "case:manage")
 #: Those, and every permission a linked record is read under.
@@ -82,6 +86,16 @@ def _a_person(token: TokenPayload) -> None:
         raise HTTPException(403, "This is done by a person who is signed in, not by an API key.")
     if token.support_session_id:
         raise HTTPException(403, "This is done by the organisation's own staff, not from a support session.")
+
+
+async def _tell(request: Request, token: TokenPayload, case: Mapping, who: list[str], as_what: str,
+                task: Mapping | None = None, zone: str | None = None) -> None:
+    """Tell whoever was put on the case, after the commit. It cannot fail the change."""
+    if who:
+        from app.db.session import AsyncSessionLocal
+
+        await case_notify.put_on(getattr(request.app.state, "redis", None), AsyncSessionLocal, token.tenant_id,
+                                 case, who, as_what=as_what, task=task, zone=zone)
 
 
 def _words(value: str | None, what: str) -> str:
@@ -355,7 +369,10 @@ async def open_case(
                              detail={"number": number, "category": body.category, "from_kind": body.from_kind,
                                      "from_id": str(body.from_id) if body.from_id else None, "lead": str(lead)})
     out = await _answer(db, case_id, allowed, token, held)
+    told = {"id": case_id, "case_number": number, "title": title, "site_id": site_id}
+    who = await case_notify.who_to_tell(db, told, lead, token.user_id)
     await db.commit()
+    await _tell(request, token, told, who, "LEAD")
     return out
 
 
@@ -435,7 +452,9 @@ async def set_lead(
     await intel_audit.record(db, request, token, "case.lead", "case", case_id, site_id=case["site_id"],
                              detail={"lead": str(person["id"])})
     out = await _answer(db, case_id, allowed, token, held)
+    who = await case_notify.who_to_tell(db, case, person["id"], token.user_id)
     await db.commit()
+    await _tell(request, token, case, who, "LEAD")
     return out
 
 
@@ -461,7 +480,9 @@ async def add_investigator(
     await intel_audit.record(db, request, token, "case.investigator.add", "case", case_id, site_id=case["site_id"],
                              detail={"user_id": str(person["id"])})
     out = await _answer(db, case_id, allowed, token, held)
+    who = await case_notify.who_to_tell(db, case, person["id"], token.user_id)
     await db.commit()
+    await _tell(request, token, case, who, "INVESTIGATOR")
     return out
 
 
@@ -548,7 +569,12 @@ async def add_task(
     await intel_audit.record(db, request, token, "case.task.add", "case", case_id, site_id=case["site_id"],
                              detail={"task_id": str(task_id), "assigned_to": str(given) if given else None})
     out = await _answer(db, case_id, allowed, token, held)
+    who = await case_notify.who_to_tell(db, case, given, token.user_id)
+    zone = (await db.execute(text(
+        "SELECT timezone FROM tenants WHERE id = current_setting('app.current_tenant')::uuid"))).scalar() if who else None
     await db.commit()
+    await _tell(request, token, case, who, "TASK", {"id": task_id, "title": body.title.strip(), "due_at": body.due_at},
+                zone)
     return out
 
 

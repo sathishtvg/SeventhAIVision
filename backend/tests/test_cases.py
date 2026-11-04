@@ -326,8 +326,11 @@ async def test_a_case_is_opened_worked_closed_by_two_and_reopened():
     assert (rows["incident"], rows["investigation"], rows["package"], rows["alerts"]) == ("open", "OPEN", "DRAFT", 0)
     assert rows["links"] == 4, "a link that was taken off is still a row"
     router = Path(api.__file__).read_text(encoding="utf-8").split('"""', 2)[2]
-    for word in ("redis", "response_notify", "send_expo_push", "smtp", "webhook"):
+    # Since 4 November 2026 somebody put on a case is told - only through services/case_notify.py, after the commit.
+    for word in ("response_notify", "send_expo_push", "smtp", "webhook"):
         assert word not in router.lower(), word
+    assert router.count("case_notify.put_on(") == 1 and router.count("await _tell(request, token,") == 4
+    assert router.count('getattr(request.app.state, "redis", None)') == 1
     written = set(re.findall(r"(?:INSERT INTO|UPDATE|DELETE FROM)\s+([a-z_{}]+)", router))
     assert written <= {"case_files", "case_investigators", "case_tasks", "case_entries", "case_links", "case_parties", "{table}"}
     assert "DELETE FROM" not in router
@@ -465,8 +468,11 @@ async def test_what_the_application_role_and_the_database_refuse_of_a_case():
     by_table: dict[str, set] = {}
     for g in grants:
         by_table.setdefault(g["table_name"], set()).add(g["privilege_type"])
-    assert by_table == {t: {"SELECT", "INSERT"} for t in ("case_files", "case_investigators", "case_tasks", "case_entries",
-                                                         "case_links", "case_parties")}
+    assert by_table == {**{t: {"SELECT", "INSERT"} for t in ("case_files", "case_investigators", "case_tasks",
+                                                             "case_entries", "case_links", "case_parties",
+                                                             # Each escalation, once (migration 0177).
+                                                             "case_escalations")},
+                        "case_escalation_settings": {"SELECT", "INSERT", "UPDATE"}}
     columns = await _sql("SELECT table_name, column_name FROM information_schema.column_privileges "
                          "WHERE grantee = 'svc_app' AND table_name LIKE 'case\\_%' AND privilege_type = 'UPDATE'")
     may_change: dict[str, set] = {}
@@ -478,7 +484,7 @@ async def test_what_the_application_role_and_the_database_refuse_of_a_case():
     for held in ("case_number", "site_id", "opened_at", "opened_by_user_id", "tenant_id"):
         assert held not in may_change["case_files"], held
     rls = await _sql("SELECT relname, relrowsecurity AND relforcerowsecurity AS forced FROM pg_class WHERE relname LIKE 'case\\_%' AND relkind = 'r'")
-    assert len(rls) == 6 and all(x["forced"] for x in rls)
+    assert len(rls) == 8 and all(x["forced"] for x in rls), "six, and since 0177 the escalation timings and record"
 
     # What the database itself refuses.
     row = ("INSERT INTO case_files (tenant_id, case_number, title, summary, status, category, outcome, close_requested_at, "

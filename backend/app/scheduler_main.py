@@ -984,6 +984,9 @@ SHIFT_AUTO_CLOSE_INTERVAL = int(os.environ.get("SHIFT_AUTO_CLOSE_INTERVAL_SECOND
 # The AI module (services/ai_runner.py): train what is due, score what is coming. Hourly is often enough for
 # shifts 36 hours ahead; a model is refitted only when it is more than 20 hours old.
 AI_MODULE_INTERVAL = int(os.environ.get("AI_MODULE_INTERVAL_SECONDS", "3600"))  # 1 h
+# Cases that escalate (services/case_escalation.py, 4 November 2026): an overdue task, a quiet case, a close request
+# waiting. The shortest timing is an hour, so a quarter of an hour is close enough.
+CASE_ESCALATION_INTERVAL = int(os.environ.get("CASE_ESCALATION_INTERVAL_SECONDS", "900"))  # 15 min
 
 
 async def check_contractor_expiry(
@@ -1502,6 +1505,7 @@ async def main() -> None:
     last_vpatrol = _NOT_YET
     last_device_health = _NOT_YET
     last_ai_module = _NOT_YET
+    last_case_escalation = _NOT_YET
     daily_retries = 0
 
     # Not before the database is up: the first pass after a restart used to run while Postgres was "starting up".
@@ -1780,6 +1784,18 @@ async def main() -> None:
                 except Exception:
                     logger.exception("ai module pass failed")
                 last_ai_module = now
+
+            # Cases that escalate (Phase 3 of the known limits): recorded once, then told. It changes no case.
+            # Each organisation is its own session and transaction inside.
+            if now - last_case_escalation >= CASE_ESCALATION_INTERVAL:
+                try:
+                    from app.services import case_escalation
+                    counts = await case_escalation.run(AsyncSessionLocal, redis)
+                    if counts["escalations"] or counts["failed"]:
+                        logger.info("case escalation: %s", counts)
+                except Exception:
+                    logger.exception("case escalation pass failed")
+                last_case_escalation = now
 
             # Fleet tracking: every iteration. A tracked vehicle the clock has made stale or offline is recorded
             # as such, once, and the screens are told which vehicles changed (not where they are).

@@ -185,3 +185,53 @@ export function apiError(err: unknown): string {
   if (Array.isArray(d)) return d.map((x: { msg?: string }) => x.msg ?? String(x)).join('; ')
   return e?.message ?? 'Something went wrong.'
 }
+
+// ─── Escalation (4 November 2026; backend/app/routers/case_escalation.py) ───
+
+export type EscalationKind = 'TASK_OVERDUE' | 'QUIET' | 'CLOSE_WAITING'
+
+/** The organisation's escalation timings: the defaults until it changes them. */
+export interface EscalationTimings {
+  quiet_high_days: number
+  quiet_normal_days: number
+  quiet_low_days: number
+  overdue_hours: number
+  close_wait_days: number
+}
+
+export interface EscalationSettings extends EscalationTimings {
+  /** When the organisation's escalation began: nothing is due from before it. Null until the first pass. */
+  since: string | null
+  updated_at: string | null
+  updated_by_name: string | null
+  defaults: EscalationTimings
+  limits: Record<keyof EscalationTimings, { least: number; most: number }>
+  quiet_second_days: number
+  may_set: boolean
+}
+
+export interface Escalation {
+  id: string
+  kind: EscalationKind
+  kind_label: string
+  step: 1 | 2
+  task_id: string | null
+  task_title: string | null
+  counted_from: string
+  due_at: string
+  sent_at: string
+  /** How many people it was addressed to: 0 means nobody could be told. */
+  addressed: number
+  message: string
+}
+
+const ESCALATION = '/api/v1/case-escalations'
+
+export const getEscalationSettings = () =>
+  apiClient.get<EscalationSettings>(`${ESCALATION}/settings`).then((r) => r.data)
+
+export const setEscalationSettings = (body: EscalationTimings) =>
+  apiClient.put<EscalationSettings>(`${ESCALATION}/settings`, body).then((r) => r.data)
+
+export const getCaseEscalations = (caseId: string) =>
+  apiClient.get<{ escalations: Escalation[]; note: string | null }>(`${ESCALATION}/cases/${caseId}`).then((r) => r.data)

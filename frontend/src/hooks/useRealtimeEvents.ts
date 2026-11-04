@@ -7,6 +7,7 @@ import type { RealtimeEvent } from '@/types/realtime'
 import type { AlertSeverity } from '@/types/api'
 import { useWebSocket } from './useWebSocket'
 import { useVisitorEntryStore } from '@/store/visitorEntry'
+import { useAuthStore } from '@/store/auth'
 import type { VisitorEntryPrompt } from '@/api/vms'
 
 /** Read off the store rather than via a hook: this is called from inside the
@@ -127,6 +128,21 @@ export function useRealtimeEvents() {
         queryClient.invalidateQueries({ queryKey: ['leave-requests'] })
         queryClient.invalidateQueries({ queryKey: ['leave-balances'] })
         break
+      // Put on a case, or a case escalated (4 November 2026): shown only to the people it is for.
+      case 'case_assigned':
+      case 'case_escalated': {
+        const me = useAuthStore.getState().user?.id
+        const forWhom = (event.payload.user_ids as string[] | undefined) ?? []
+        if (!me || !forWhom.includes(me)) break
+        queryClient.invalidateQueries({ queryKey: ['cases'] })
+        queryClient.invalidateQueries({ queryKey: ['case-escalations'] })
+        const words = (event.payload.message as string) ?? 'A case needs you'
+        push(event.event_type === 'case_escalated' ? ((event.payload.severity as AlertSeverity) ?? 'medium') : 'medium', words)
+        if (window.electronAPI) {
+          window.electronAPI.showNotification(`${PRODUCT_NAME} — Case`, words)
+        }
+        break
+      }
     }
   }, [lastMessage, queryClient, push])
 }

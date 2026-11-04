@@ -9,6 +9,9 @@ export type RealtimeEventType =
   | 'barrier_command'
   | 'violation_created'
   | 'leave_status_changed'
+  // A person put on a case, and a case that escalated (4 November 2026): for the people named in `user_ids` only.
+  | 'case_assigned'
+  | 'case_escalated'
 
 export interface RealtimeEvent {
   schema_version: number

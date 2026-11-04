@@ -150,7 +150,7 @@ def test_closing_takes_two_a_closed_case_is_held_still_and_nothing_is_removed():
     router = _code(api.__file__)
     for said in ("Closing takes two people.", "A closed case is not changed.", "Nothing is removed.",
                  "A case has its own history.", "the application's role may read and add, and nothing else",
-                 "not an API key, not a support session", "Nobody is told."):
+                 "not an API key, not a support session", "Somebody put on a case is told, and a case escalates"):
         assert said in doc, said
     assert case_files.TWO_PEOPLE == "Closing a case takes two people: whoever asked for it to be closed does not approve it."
     assert "CONSTRAINT ck_case_two" in migration and "closed_by_user_id <> close_requested_by_user_id" in migration
@@ -178,8 +178,10 @@ def test_closing_takes_two_a_closed_case_is_held_still_and_nothing_is_removed():
         assert "_a_person(token)" in body or "_working(" in body, name
     assert "_a_person(token)" in router.split("async def _working", 1)[1].split("async def _may_work", 1)[0]
     assert "_a_person(token)" in router.split("async def _finish", 1)[1].split("@router.post", 1)[0]
-    for word in ("redis", "response_notify", "send_expo_push", "smtp", "webhook"):
+    # Since 4 November 2026 people are told - only through services/case_notify.py, after the commit.
+    for word in ("response_notify", "send_expo_push", "smtp", "webhook"):
         assert word not in router.lower() and word not in _code(case_files.__file__).lower(), word
+    assert "case_notify.put_on(" in router and "redis" not in _code(case_files.__file__).lower()
     scheduler = (REPO_ROOT / "backend" / "app" / "scheduler_main.py").read_text(encoding="utf-8")
     assert "case_files" not in scheduler, "no case is opened, closed or chased by a scheduler"
     # The screen offers an act only when the server does, and says the two rules beside what they govern.
@@ -211,7 +213,7 @@ def test_being_named_in_a_case_is_not_an_accusation():
         assert "case_parties" not in (REPO_ROOT / "backend" / "app" / "services" / module).read_text(encoding="utf-8"), module
     not_done = _flat(_doc().split("## 7. What this does not do", 1)[1])
     for said in ("It does not open a case by itself.", "It names nobody by itself", "A name is text.",
-                 "It tells nobody.", "A situation is not linked."):
+                 "Escalating changes nothing.", "A situation is not linked."):
         assert said in not_done, said
     dialogs = (WEB / "components" / "cases" / "CaseDialogs.tsx").read_text(encoding="utf-8")
     assert "{c.party_note}" in dialogs and not accusing.search(dialogs)
@@ -309,7 +311,8 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     assert not re.search(r"CREATE TABLE security_", upgrade)
     assert "The tables are not named `security_cases…`, as the plan had them" in _flat(_doc())
     not_done = _flat(_doc().split("## 7. What this does not do", 1)[1])
-    for said in ("It has no deadlines of its own.", "A task cannot be edited or given to somebody else.",
+    for said in ("Its only clocks are the escalation timings.", "Escalating changes nothing.",
+                 "A task cannot be edited or given to somebody else.",
                  "Its report is a PDF and a reading.", "The phone finishes a task and nothing else.",
                  "The case itself is worked on the web.", "It has run on test data only."):
         assert said in not_done, said
