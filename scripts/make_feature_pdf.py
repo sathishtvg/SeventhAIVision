@@ -44,8 +44,8 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf
 
 # ── What this edition is ────────────────────────────────────────────────────
 GENERATED = "4 November 2026"
-EDITION = "Edition 27"
-HEAD = "0178"
+EDITION = "Edition 28"
+HEAD = "0179"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -151,6 +151,8 @@ EDITIONS = [
      "Cases (module 28): people told when put on one; overdue, quiet and waiting cases escalate."],
     ["Edition 27", "4 November 2026", "0178",
      "Module 26: the daily briefing emailed when published; the nine reports on a schedule as CSV and PDF."],
+    ["Edition 28", "4 November 2026", "0179",
+     "Drone Patrol (module 15): a drone's whole picture withheld while it is at a privacy area."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -343,13 +345,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("317", "DATABASE TABLES"), ("1,166", "API OPERATIONS"), ("124", "API MODULES"),
+        ("319", "DATABASE TABLES"), ("1,169", "API OPERATIONS"), ("125", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("178", "MIGRATIONS"),
-        ("7,038", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("179", "MIGRATIONS"),
+        ("7,052", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -619,8 +621,8 @@ story += module(
         "not to the scene, so a camera that is turned moves out from under it; "
         "footage recorded before a zone was drawn is unchanged; a camera with a "
         "zone has no HLS view and is shown through the masked one; a recorder at "
-        "the site that records the camera itself is outside it; drone feeds are "
-        "not masked.",
+        "the site that records the camera itself is outside it. A drone's "
+        "picture is withheld whole at a privacy area instead (module 15).",
         "<b>NVR integration</b> and HLS streaming for browser playback.",
         "<b>Site map view</b> plotting sites with live camera health and manning "
         "(the full security map is module 19).",
@@ -976,7 +978,7 @@ story += module(
         "<b>The same AI watches it.</b> The detectors that watch fixed cameras "
         "watch the drone's. What they see is judged in the context of where the "
         "drone was and what that place is, and becomes a drone security event "
-        "with a risk level.",
+        "with a risk level. At a privacy area its whole picture is withheld (edition 28).",
         "<b>Checked against fixed cameras.</b> The platform works out which fixed "
         "cameras could have seen the same thing, and whether they did.",
         "<b>Into the platform's own incident and dispatch.</b> A serious event "
@@ -2117,7 +2119,8 @@ story += bullets([
     "<b>A privacy zone is fixed to the picture, not to the scene</b>, and takes "
     "effect within about ten seconds: what was captured before it is unchanged. "
     "A camera with one has no HLS view; the AI is blind inside it, so a "
-    "restricted zone that overlaps it is too; drone feeds are not masked; and a "
+    "restricted zone that overlaps it is too; a drone's picture is withheld whole "
+    "near a privacy area, judged by where the drone is, not where it looks; and a "
     "recorder at the site that records the camera itself is outside it. It has "
     "run on test streams, not on a customer's camera.",
     "<b>A visitor is followed only through the doors their badge opened</b>, and "
@@ -2154,10 +2157,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 178 "
-    "database migrations, 317 tables, 124 API modules serving 1,166 operations, 153 backend "
-    "services, 124 web routes and 59 phone screens, covered by 7,038 automated tests "
-    "(backend 4,361, repository inspection 1,406, web 834, phone 437). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 179 "
+    "database migrations, 319 tables, 125 API modules serving 1,169 operations, 154 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,052 automated tests "
+    "(backend 4,369, repository inspection 1,406, web 840, phone 437). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
