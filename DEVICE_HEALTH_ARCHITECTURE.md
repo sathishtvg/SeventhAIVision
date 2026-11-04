@@ -28,10 +28,12 @@ facility defect a guard could report and a drone's service log.
 ## 1. The rules
 
 1. **A reading is made of what the platform is told, and of nothing else.**
-   Frame rate, latency, packet loss, the quality of the picture and gaps in a
-   recording are measured by nothing here. Every answer that carries a reading
-   carries that list (`not_measured`), and every screen that shows a reading
-   shows it.
+   When this was built, frame rate, latency, packet loss, the quality of the
+   picture and gaps in a recording were measured by nothing here. Since 4
+   November 2026 a camera is also measured, by a 10-second check every 15
+   minutes and the gaps in what the platform records of it (section 11). What is
+   still not measured, every answer that carries a reading carries
+   (`not_measured`), and every screen that shows a reading shows it.
 2. **What is not known is `NOT_KNOWN`, not `OK`.** A camera with no stream, a
    recorder never probed or not probed for a day, and a sensor, drone, gateway
    or panel that has never reported are not called working.
@@ -77,7 +79,7 @@ How each kind is read (`services/device_health.py`):
 
 | Kind | Read from | `DOWN` | `DEGRADED` | `NOT_KNOWN` |
 |---|---|---|---|---|
-| `CAMERA` | Its streams and `camera_health_events` | Every stream is offline | A stream is degraded, or it disconnected 5 times or more in 24 hours | It has no stream |
+| `CAMERA` | Its streams and `camera_health_events`; since 4 November 2026 its checks and recording gaps (section 11) | Every stream is offline | A stream is degraded, or it disconnected 5 times or more in 24 hours; or its latest check broke a limit, or it had a recording gap over the limit in 24 hours | It has no stream |
 | `NVR` | The last probe | The last probe failed | — | Never probed, or not probed for more than a day |
 | `SENSOR` | When its last reading arrived | No reading for more than twice its expected interval | — | No reading has ever arrived |
 | `DRONE` | Its heartbeat, the state it reports, its parts | No heartbeat in time; or it reports offline, communication lost or critical | It reports a warning; or a part reports a warning or a fault | It has never reported |
@@ -311,9 +313,11 @@ No existing table is altered. The new tables refer to `cameras`,
 
 ## 10. What this does not do
 
-- **It measures nothing new.** Frame rate, latency, packet loss, the quality of
-  a picture and gaps in a recording were not measured before this phase and are
-  not measured now. The gap analysis listed them as missing; they still are.
+- **It measured nothing new.** Frame rate, latency, packet loss, the quality
+  of a picture and gaps in a recording were not measured before this phase, nor
+  by it. Since 4 November 2026 a camera's frame rate, delay and recording gaps
+  are (section 11); the quality of a picture, packet loss as such and a site
+  recorder's own gaps still are not.
 - **It does not probe anything.** A recorder is read from its last probe,
   which a person runs; one not probed for a day is `NOT_KNOWN`.
 - **It does not see an outage shorter than five minutes**, and knows nothing of
@@ -339,3 +343,74 @@ No existing table is altered. The new tables refer to `cameras`,
 - **It has run on the development organisation's cameras** — whose streams are
   all offline on a development machine — **and on test data for every other
   kind of device**, of which that organisation has none.
+
+---
+
+## 11. Since 4 November 2026: a camera measured
+
+Phase 6 of the known limits (`docs/plans/2026-11-04-device-health-measured-design.md`, migration 0180).
+
+**The check** (`backend/app/services/camera_checks.py`). The camera feed service listens to each stream of a camera
+that is switched on for 10 seconds every 15 minutes, the streams spread across the 15 minutes and no more than two at
+a time, on a connection of its own. ffmpeg copies the video packets and decodes no picture; when each arrived, and the
+camera's own time of it, are what is read. One check keeps:
+
+| | |
+|---|---|
+| Frame rate | The frames that arrived in the 10 seconds after the first, beside the rate the camera's own frame times give |
+| Longest stall | The longest wait between two frames, the wait to the end of the 10 seconds included |
+| Frames missed | The frames the camera's own times say were sent and did not arrive |
+| Answer time | From sending one RTSP `OPTIONS` request, which carries no sign-in, to the first line of the reply |
+| First picture | From asking for the stream to the first whole picture |
+| Result | Checked; or it could not connect, the sign-in was refused, the camera refused a second connection, it sent no video, or it did not answer in 20 seconds |
+
+The cameras are read over TCP, which sends a lost packet again, so loss is seen as a stall or a missed frame and is
+not counted as such. A drone's camera, a camera switched off and a stream whose address is not RTSP are not checked.
+What ffmpeg says is read for why a check could not run, and never kept: it can hold the camera's address and sign-in.
+
+**The limits** (`camera_check_settings`): frame rate below 70% of what the camera says it sends, a stall over 2 s,
+more than 2% of frames missed, an answer over 500 ms, a first picture after more than 5 s, a recording gap over 60 s.
+An organisation's Admin or Manager changes them (`settings:write`); the change is audited. A check is kept with the
+limits it broke when it was made.
+
+**Gaps** (`backend/app/services/recording_gaps.py`, the scheduler every 15 minutes). For each stream set to record
+all the time, a stretch of 10 seconds or more with no usable recording: no piece, a piece that failed or holds
+nothing, or a piece whose file the integrity sweep found missing. A time "record all the time" was switched off is not
+a gap - the database notes each switch (`recording_switches`, a trigger on `streams` that changes nothing in it) - nor
+a time the camera was switched off or its site's policy did not ask for recording, as the pass saw it. Nothing from
+before a stream was first watched is counted. That the camera was offline then is said; no cause is guessed.
+
+**The reading.** A camera whose latest check broke a limit, and is no older than 45 minutes, is `DEGRADED` - "At its
+last check: frame rate 4.5 of 15; a stall of 7.0 s." - as is one with a recording gap over the limit in 24 hours. A
+check that could not run, while the feed works, makes no state and is shown as it is.
+
+**Kept** for the organisation's device health history period (`retention.device_health_changes_days`), or 90 days
+when it has none; a stream's latest check never.
+
+**Routes** (`backend/app/routers/camera_checks.py`):
+
+| Method | Path | Needs |
+|---|---|---|
+| GET | `/api/v1/camera-checks/latest` | `camera:read` |
+| GET | `/api/v1/camera-checks/cameras/{camera_id}` | `asset:read` |
+| GET | `/api/v1/camera-checks/settings` | `asset:read` |
+| PUT | `/api/v1/camera-checks/settings` | `settings:write` |
+
+**Screens.** The device health page gives each camera its latest check in a line and, opened, its frame rate over 7
+days against its limit, the checks that broke a limit or could not run, and its gaps; a **Check limits** button for
+whoever may change settings. The phone's camera list gives the same line, and a camera's screen its latest check and
+gaps in 24 hours.
+
+**Tests.** `backend/tests/test_camera_checks.py` (the figures, the stand-in camera and ffmpeg, the reading, who sees
+what, the limits, two organisations, the loop) and `backend/tests/test_recording_gaps.py` (the gaps, the switch, the
+pass as the application's role, keeping).
+
+**Existing files this changed** (approved by the owner): `backend/app/services/device_health.py` (a camera's reading
+takes its latest check and its gaps; the "not measured" list and note reworded), `backend/app/ingestion_main.py` (the
+check loop is started), `backend/app/scheduler_main.py` (the gap pass), `backend/app/main.py` (the router), the device
+health page and its dialog, the phone's camera list and camera screen, `PRIVACY_MASKING.md` and the tests that pinned
+the old wording. What "record all the time" does, the frames the AI is given, and how recorders, sensors, drones,
+gateways and alarm panels are read are unchanged.
+
+**Still not measured:** the quality of the picture; packet loss as such; what happens between two checks; the gaps in
+a site recorder's own recordings.

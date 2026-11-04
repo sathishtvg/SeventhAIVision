@@ -10,6 +10,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import { getCameras, getStreams, type Camera, type Stream } from '@/api/cameras'
 import { getSites, type Site } from '@/api/sites'
+// A camera's latest check and its recording gaps (Phase 6 of the known limits, 4 November 2026).
+import { getLatestChecks, type CheckedCamera } from '@/api/cameraChecks'
+import { gapText, streamLine } from '@/lib/cameraCheckWords'
 import { Card } from '@/components/Card'
 import { ErrorState, ListSkeleton, RefreshingLine } from '@/components/states'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -22,10 +25,12 @@ type RouteType = RouteProp<CamerasStackParamList, 'CamerasList'>
 function CameraCard({
   camera,
   stream,
+  checked,
   onWatchLive,
 }: {
   camera: Camera
   stream?: Stream
+  checked?: CheckedCamera
   onWatchLive?: () => void
 }) {
   const statusIcon: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -80,6 +85,21 @@ function CameraCard({
           </Pressable>
         )}
       </View>
+
+      {checked && checked.streams.length > 0 && (
+        <View style={styles.checks} testID="camera-check-line">
+          {checked.streams.map((s, n) => {
+            const line = streamLine(s)
+            return (
+              <Text key={s.stream_id} numberOfLines={2}
+                    style={[styles.checkText, line.wrong && styles.checkWrong, line.old && styles.checkOld]}>
+                {checked.streams.length > 1 ? `Stream ${n + 1}: ` : ''}{line.text}
+              </Text>
+            )
+          })}
+          {gapText(checked) ? <Text style={[styles.checkText, styles.checkWrong]}>{gapText(checked)}</Text> : null}
+        </View>
+      )}
     </Card>
   )
 }
@@ -122,6 +142,19 @@ export function CamerasScreen() {
     refetchInterval: 30_000,
   })
 
+  // Each camera's latest check and its recording gaps, shown under it when they are known. The cameras are shown
+  // whether or not this has come back.
+  const { data: checks } = useQuery({
+    queryKey: ['camera-checks-latest', backendSiteId],
+    queryFn: () => getLatestChecks(backendSiteId ? { site_id: backendSiteId } : {}),
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
+  })
+  const checkMap = useMemo(
+    () => Object.fromEntries((checks?.cameras ?? []).map((c) => [c.camera_id, c])),
+    [checks],
+  )
+
   useLayoutEffect(() => {
     nav.setOptions({
       headerRight: () => (
@@ -138,6 +171,7 @@ export function CamerasScreen() {
       qc.invalidateQueries({ queryKey: ['cameras'] }),
       qc.invalidateQueries({ queryKey: ['streams'] }),
       qc.invalidateQueries({ queryKey: ['sites'] }),
+      qc.invalidateQueries({ queryKey: ['camera-checks-latest'] }),
     ])
     setRefreshing(false)
   }, [qc])
@@ -219,6 +253,7 @@ export function CamerasScreen() {
               <CameraCard
                 camera={item}
                 stream={stream}
+                checked={checkMap[item.id]}
                 onWatchLive={() => {
                   if (stream) {
                     nav.navigate('CameraLive', {
@@ -269,4 +304,8 @@ const styles = StyleSheet.create({
   liveBtn:       { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4 },
   liveBtnText:   { color: '#fff', fontSize: fontSize.xs, fontWeight: '600' },
   emptyText:     { color: colors.textSecondary, fontSize: fontSize.md },
+  checks:        { gap: 2, borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.xs },
+  checkText:     { fontSize: fontSize.xs, color: colors.textSecondary },
+  checkWrong:    { color: colors.warning, fontWeight: '600' },
+  checkOld:      { color: colors.textDisabled },
 })

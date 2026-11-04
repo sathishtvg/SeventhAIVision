@@ -75,7 +75,16 @@ every two seconds and never sees the rate a camera sends at.
   half-written. A camera's address and sign-in never appear in a result or a log.
 - Privacy: the check keeps no picture; `PRIVACY_MASKING.md` lists it as a place that connects to a camera and keeps
   no picture, and its docs test checks the sentence.
-- Load: at most two checks at a time; the CPU it takes on this box is measured on the real run and written here.
+- Load: at most two checks at a time. Measured on the real run (4 November 2026, a 320x240 15 fps test stream): two
+  checks took 0.6 s of CPU in 24 s, about 2.5% of one core while they ran; a camera's full-size stream copies more
+  bytes but is still not decoded.
+- Real run, on the test database: a steady stream read 15.1 of 15 fps, a 0.09 s stall, nothing missed - OK; a stream
+  that stops 3 s in every 5 read 6.0 of 15, a 3.1 s stall, 59.6% missed - Degraded with those words. The real
+  recorder with 1-minute pieces: one piece ended 16:52:29 and the next began 16:52:29 (rotation leaves no gap); after
+  the camera's address went dead its pieces held 0 bytes and the pass kept one gap still going on (`EMPTY`, over the
+  limit).
+- Found while building: the recorder's `duration_seconds` is wall time, so "a piece shorter than its time" cannot be
+  seen; a gap is any stretch with no usable piece instead (no piece, one that failed or holds nothing, a file missing).
 - Tests: the figures from a list of frame times; the answer time against a stand-in camera; the gap finder with
   switched-off times left out and "offline then" marked; the Degraded rules, an old check and a failed one; the limits
   and who may change them; keeping (90 days by default, the latest never removed); checks and gaps as the

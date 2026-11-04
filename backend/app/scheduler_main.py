@@ -989,6 +989,9 @@ AI_MODULE_INTERVAL = int(os.environ.get("AI_MODULE_INTERVAL_SECONDS", "3600"))  
 CASE_ESCALATION_INTERVAL = int(os.environ.get("CASE_ESCALATION_INTERVAL_SECONDS", "900"))  # 15 min
 # The briefing's emails and the operations reports' schedules (services/ops_delivery.py, 4 November 2026).
 OPS_DELIVERY_INTERVAL = int(os.environ.get("OPS_DELIVERY_INTERVAL_SECONDS", "300"))  # 5 min
+# Gaps in what the platform records itself, and the keeping of camera checks (services/recording_gaps.py,
+# Phase 6 of the known limits, 4 November 2026).
+RECORDING_GAP_INTERVAL = int(os.environ.get("RECORDING_GAP_INTERVAL_SECONDS", "900"))  # 15 min
 
 
 async def check_contractor_expiry(
@@ -1509,6 +1512,7 @@ async def main() -> None:
     last_ai_module = _NOT_YET
     last_case_escalation = _NOT_YET
     last_ops_delivery = _NOT_YET
+    last_recording_gaps = _NOT_YET
     daily_retries = 0
 
     # Not before the database is up: the first pass after a restart used to run while Postgres was "starting up".
@@ -1811,6 +1815,19 @@ async def main() -> None:
                 except Exception:
                     logger.exception("operations emails pass failed")
                 last_ops_delivery = now
+
+            # Gaps in the platform's own recordings (Phase 6 of the known limits): found and kept, and the camera
+            # checks and gaps older than the device health history period removed (90 days when none is set).
+            # It changes no recording. Each organisation is its own session and transaction inside.
+            if now - last_recording_gaps >= RECORDING_GAP_INTERVAL:
+                try:
+                    from app.services import recording_gaps
+                    counts = await recording_gaps.run(AsyncSessionLocal)
+                    if any(counts.values()):
+                        logger.info("recording gaps and camera checks: %s", counts)
+                except Exception:
+                    logger.exception("recording gaps pass failed")
+                last_recording_gaps = now
 
             # Fleet tracking: every iteration. A tracked vehicle the clock has made stale or offline is recorded
             # as such, once, and the screens are told which vehicles changed (not where they are).

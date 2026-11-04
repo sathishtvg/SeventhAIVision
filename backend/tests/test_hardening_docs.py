@@ -30,7 +30,7 @@ MIGRATION = REPO_ROOT / "backend" / "alembic" / "versions" / "0156_data_governan
 CODES = ("retention:read", "subject:report")
 CHANGED = ["backend/app/main.py", "frontend/src/App.tsx", "frontend/src/components/layout/Sidebar.tsx",
            "frontend/src/hooks/usePermission.ts"]
-NUMBERS = {"Nine": 9, "eight": 8, "Twelve": 12, "Four": 4, "thirty-six": 36, "twenty-four": 24, "twelve": 12,
+NUMBERS = {"Ten": 10, "eight": 8, "Twelve": 12, "Four": 4, "thirty-six": 36, "twenty-four": 24, "twelve": 12,
            "six": 6}
 
 
@@ -64,9 +64,10 @@ def test_the_document_gives_every_period_with_where_it_comes_from_and_what_remov
     section = _section("## 2. The retention statement", "## 3.")
     rows = re.findall(r"^\| `([A-Z_]+)` \| ([^|]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", section, re.M)
     # Eight since staff faces (0167, docs/plans/2026-10-23-staff-face-registration-design.md); nine since the AI
-    # module's IC reading (0174, AI_MODULE.md).
-    assert [r[0] for r in rows] == [p.key for p in statement.PERIODS] and len(rows) == NUMBERS["Nine"]
-    assert "Nine kinds of record have a period" in _flat(section)
+    # module's IC reading (0174, AI_MODULE.md); ten since a camera's checks and recording gaps (0180, Phase 6 of the
+    # known limits).
+    assert [r[0] for r in rows] == [p.key for p in statement.PERIODS] and len(rows) == NUMBERS["Ten"]
+    assert "Ten kinds of record have a period" in _flat(section)
     for (key, label, period, removed_by, hold), p in zip(rows, statement.PERIODS):
         assert label.strip() == p.label and removed_by.strip() == p.removed_by, key
         assert hold.strip() == ("Stops it" if p.hold else "None applies"), key

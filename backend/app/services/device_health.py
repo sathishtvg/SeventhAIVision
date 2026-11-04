@@ -12,9 +12,18 @@ stream is online, degraded or offline, and its disconnections are counted; a
 recorder answered its last probe or did not; a sensor's reading arrived within
 the time one is expected in, or did not; a drone and a gateway sent a heartbeat
 in time and report their own parts; an alarm panel last said it was online or
-offline. Frame rate, latency, packet loss, the quality of the picture and gaps
-in a recording are measured by nothing here, and `NOT_MEASURED` says so
-wherever a reading is shown.
+offline.
+
+A CAMERA IS ALSO MEASURED (since 4 November 2026, Phase 6 of the known limits).
+Its streams are listened to for 10 seconds every 15 minutes
+(services/camera_checks.py) and the gaps in what the platform records of it are
+found (services/recording_gaps.py). This reads only what they kept: a latest
+check that broke one of the organisation's limits, and is no older than
+camera_checks.STALE_AFTER_S, makes the camera DEGRADED, as does a recording gap
+over the limit in the last 24 hours. A check that could not run says so where
+it is shown and makes no state. What is still not measured - the quality of the
+picture, packet loss as such, what happens between two checks, a site
+recorder's own gaps - `NOT_MEASURED` says wherever a reading is shown.
 
 WHAT IS NOT KNOWN IS `NOT_KNOWN`, NOT `OK`. A camera with no stream, a recorder
 never probed or not probed for a day, a sensor, drone, gateway or panel that
@@ -50,10 +59,15 @@ STALE_PROBE_S = 24 * 3600
 SILENT_AFTER = 2
 #: How often the scheduler looks. An outage shorter than this can pass unrecorded.
 LOOK_EVERY_S = 300
-NOT_MEASURED = ("Frame rate", "Latency", "Packet loss", "The quality of the picture: darkness, glare, focus",
-                "Gaps in a recording")
-NOTE = ("Each reading is made from what the device or its connection reports to the platform, as listed with it. "
-        "Nothing here measures frame rate, latency, packet loss, the quality of a picture or gaps in a recording.")
+NOT_MEASURED = ("The quality of the picture: darkness, glare, focus",
+                "Packet loss as such: the cameras are read over TCP, which sends a lost packet again, so it is seen "
+                "as a stall or a missed frame",
+                "What happens between two checks: a camera is listened to for 10 seconds every 15 minutes",
+                "Gaps in a site recorder's own recordings")
+NOTE = ("Each reading is made from what the device or its connection reports to the platform and, for a camera, "
+        "from a 10-second check every 15 minutes (its frame rate, stalls, missed frames, answer time and first "
+        "picture) and the gaps in what the platform records of it, as listed with it. Nothing here judges the quality "
+        "of a picture.")
 AVAILABILITY_NOTE = ("Worked out from the state the platform read every five minutes, and kept only when it changed. "
                      "An outage shorter than that can pass unrecorded, and nothing is known from before the first "
                      "reading that was kept.")
@@ -68,10 +82,23 @@ def _age(moment: datetime | None, now: datetime) -> float | None:
     return None if moment is None else (now - moment).total_seconds()
 
 
+def _measured(row: Mapping) -> tuple[str, str]:
+    """What the camera's checks and recording gaps say against its limits (services/camera_checks.py)."""
+    found = row.get("check_breaks") or []
+    found = json.loads(found) if isinstance(found, str) else found
+    broke = [b["text"] for per in found for b in (per or [])]
+    checked = f"At its last check: {'; '.join(broke)}." if broke else ""
+    gaps = row.get("gaps_24h") or 0
+    gapped = ("" if not gaps else "It is not recording now, for longer than its limit." if row.get("gap_open")
+              else f"{gaps} recording gap{'' if gaps == 1 else 's'} longer than its limit in the last 24 hours.")
+    return checked, gapped
+
+
 def camera(row: Mapping, now: datetime) -> dict:
-    """A camera, from its streams and the disconnections recorded of it."""
+    """A camera, from its streams, the disconnections recorded of it, its latest checks and its recording gaps."""
     facts = {"streams": row["n_streams"], "last_frame_at": row["last_frame_at"],
-             "disconnects_24h": row["disconnects_24h"]}
+             "disconnects_24h": row["disconnects_24h"], "last_check_at": row.get("last_check_at"),
+             "recording_gaps_24h": row.get("gaps_24h") or None}
     if not row["is_active"]:
         return _reading("OFF", "Switched off in the platform.", **facts)
     if not row["n_streams"]:
@@ -81,8 +108,10 @@ def camera(row: Mapping, now: datetime) -> dict:
         return _reading("DOWN", "Every stream is offline.", went_offline_at=went, **facts)
     unsteady = (f"It disconnected {row['disconnects_24h']} times in the last 24 hours."
                 if row["disconnects_24h"] >= UNSTEADY_AT else "")
-    if row["n_degraded"] or unsteady:
-        return _reading("DEGRADED", "A stream is degraded." if row["n_degraded"] else "", unsteady, **facts)
+    checked, gapped = _measured(row)
+    if row["n_degraded"] or unsteady or checked or gapped:
+        return _reading("DEGRADED", "A stream is degraded." if row["n_degraded"] else "", unsteady, checked, gapped,
+                        **facts)
     return _reading("OK", **facts)
 
 
@@ -182,7 +211,8 @@ _COMMON = "d.id, d.name, d.site_id, s.name AS site_name, a.id AS asset_id, a.ass
 _SOURCES: dict[str, tuple] = {
     "CAMERA": (camera, "camera_id", f"""
         SELECT {_COMMON}, d.is_active, st.n_streams, st.n_online, st.n_degraded, st.last_frame_at,
-               h.last_event_type, h.last_event_at, x.disconnects_24h
+               h.last_event_type, h.last_event_at, x.disconnects_24h, ck.last_check_at, ck.check_breaks,
+               g.gaps_24h, g.gap_open
           FROM cameras d {_ASSET.format(column='camera_id')}
           LEFT JOIN LATERAL (SELECT count(*) AS n_streams, count(*) FILTER (WHERE status = 'online') AS n_online,
                                     count(*) FILTER (WHERE status = 'degraded') AS n_degraded,
@@ -193,7 +223,16 @@ _SOURCES: dict[str, tuple] = {
                               ORDER BY occurred_at DESC LIMIT 1) h ON TRUE
           LEFT JOIN LATERAL (SELECT count(*) AS disconnects_24h FROM camera_health_events
                               WHERE camera_id = d.id AND event_type = 'stream_disconnected'
-                                AND occurred_at >= :day_ago) x ON TRUE"""),
+                                AND occurred_at >= :day_ago) x ON TRUE
+          LEFT JOIN LATERAL (SELECT max(k.checked_at) AS last_check_at,
+                                    COALESCE(jsonb_agg(k.breaks) FILTER (WHERE k.result = 'OK'
+                                        AND k.checked_at >= :check_fresh AND k.breaks <> '[]'::jsonb),
+                                        '[]'::jsonb) AS check_breaks
+                               FROM (SELECT DISTINCT ON (stream_id) checked_at, result, breaks FROM camera_checks
+                                      WHERE camera_id = d.id ORDER BY stream_id, checked_at DESC) k) ck ON TRUE
+          LEFT JOIN LATERAL (SELECT count(*) AS gaps_24h, bool_or(ended_at IS NULL) AS gap_open FROM recording_gaps
+                              WHERE camera_id = d.id AND over_limit
+                                AND (ended_at IS NULL OR ended_at >= :day_ago)) g ON TRUE"""),
     "SENSOR": (sensor, "iot_sensor_id", f"""
         SELECT {_COMMON}, d.is_active, d.last_reading_at, d.expected_interval_seconds
           FROM iot_sensors d {_ASSET.format(column='iot_sensor_id')}"""),
@@ -242,7 +281,9 @@ async def readings(db: AsyncSession, now: datetime, *, allowed: Sequence[str] | 
                 where.append("d.site_id = CAST(:site AS uuid)")
                 params["site"] = str(site_id)
         if kind == "CAMERA":
+            from app.services.camera_checks import STALE_AFTER_S
             params["day_ago"] = now - timedelta(hours=24)
+            params["check_fresh"] = now - timedelta(seconds=STALE_AFTER_S)
         if device_id is not None:
             where.append("d.id = CAST(:device AS uuid)")
             params["device"] = str(device_id)

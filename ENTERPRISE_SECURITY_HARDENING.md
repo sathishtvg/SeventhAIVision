@@ -82,7 +82,7 @@ and routes; nothing asked the same questions of all of them at once.
 ## 2. The retention statement
 
 `GET /api/v1/data-governance/retention` (`services/retention_statement.py`).
-Nine kinds of record have a period, because a job removes them:
+Ten kinds of record have a period, because a job removes them:
 
 | Kind | Records | The period is | Removed by | A hold |
 |---|---|---|---|---|
@@ -94,6 +94,7 @@ Nine kinds of record have a period, because a job removes them:
 | `FOOTAGE_REVIEW` | Videos uploaded to Footage Review | Fixed in the code: 30 days | The scheduler, once a day | Stops it |
 | `STAFF_FACES` | Faces registered for check-in | Fixed in the code: the night after the account is deactivated | The scheduler, once a day | None applies |
 | `IC_READINGS` | What was read from an IC for a new staff member | Fixed in the code: an hour after the card was read | The AI module's hourly pass, or at once when the new staff member is confirmed | None applies |
+| `CAMERA_CHECKS` | A camera's checks and recording gaps | The organisation's `retention.device_health_changes_days` when it sets one, else fixed in the code: 90 days; a stream's latest check is kept whatever its age (since 4 November 2026, `DEVICE_HEALTH_ARCHITECTURE.md` section 11) | The scheduler, every 15 minutes | None applies |
 | `AUDIT` | The audit log | The installation's, in years; the same for every organisation | The scheduler, once a day | None applies |
 
 - **The audit log is moved, not deleted**: a month at a time, out of the log
