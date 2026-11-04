@@ -217,7 +217,7 @@ def test_the_platform_drafts_a_person_publishes_and_what_is_published_is_held_st
     doc = _flat(_doc())
     migration = MIGRATION.read_text(encoding="utf-8")
     router = _code(briefings_api.__file__)
-    for said in ("The platform drafts; a person publishes.", "Nothing publishes one by itself, and publishing tells nobody",
+    for said in ("The platform drafts; a person publishes.", "Nothing publishes one by itself. Since 4 November 2026",
                  "No model writes a briefing", "The counted lines are not edited.", "A line says when it is true of.",
                  "A published briefing is not changed.", "A trigger refuses it.",
                  "not an API key, not a support session"):
@@ -242,7 +242,10 @@ def test_the_platform_drafts_a_person_publishes_and_what_is_published_is_held_st
         code = _code(path).lower()
         for word in ("redis", "response_notify", "send_expo_push", "smtp", "webhook"):
             assert word not in code, (Path(path).name, word)
-    assert "It sends nothing." in not_done
+    # Since 4 November 2026 a published briefing is emailed - by services/ops_delivery.py, not by the briefing's own
+    # code, which still names no way of sending.
+    assert "It sends nothing to anybody outside the organisation." in not_done
+    assert "ops_delivery.queue_briefing(" in _code(briefings_api.__file__)
     # No model: the service imports nothing that could be one, and reads nothing.
     source = Path(briefing.__file__).read_text(encoding="utf-8")
     for name in ("sklearn", "numpy", "torch", "anthropic", "openai", "transformers", "sqlalchemy"):
@@ -372,7 +375,7 @@ def test_the_files_the_document_names_exist_and_the_gap_analysis_records_the_pha
     assert set(re.findall(r"REFERENCES (\w+)\(", upgrade)) == {"tenants", "sites", "users"}
     not_done = _flat(_doc().split("## 9. What this does not do", 1)[1])
     for said in ("It scores nothing.", "The board and a briefing name nobody.", "It keeps no history of the board.",
-                 "It does not let a line be rewritten.", "It delivers no report on a schedule.",
+                 "It does not let a line be rewritten.", "A scheduled report goes to the organisation's own people only",
                  "The phone reads published briefings and nothing else of this."):
         assert said in not_done, said
     built = GAPS.read_text(encoding="utf-8").split("## 9. As built", 1)[1]
@@ -429,8 +432,8 @@ def test_the_document_gives_each_report_what_it_is_read_under_and_how_a_file_is_
     assert "CREATE TABLE" not in upgrade and "ALTER TABLE" not in upgrade
     # What it does not do, and that the existing reports and exports are as they were.
     not_done = _flat(_doc().split("## 9. What this does not do", 1)[1])
-    for said in ("It delivers no report on a schedule.", "A report is a CSV file.", "It has no report per guard.",
-                 "The existing scheduled reports are unchanged and do not carry these."):
+    for said in ("A scheduled report goes to the organisation's own people only", "A report is a CSV file, and by email a PDF too.",
+                 "It has no report per guard.", "The existing scheduled reports are unchanged and do not carry these."):
         assert said in not_done, said
     routers = REPO_ROOT / "backend" / "app" / "routers"
     assert 'VALID_REPORT_TYPES = {"site_summary", "dob", "incident_summary"}' in (routers / "scheduled_reports.py").read_text(encoding="utf-8")

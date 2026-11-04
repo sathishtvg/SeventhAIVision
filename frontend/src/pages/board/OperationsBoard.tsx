@@ -29,6 +29,7 @@ import { getBoard, getBoardSites, listBriefings } from '@/api/operationsBoard'
 import type { Board, Briefing, Figures, NotRead, SectionKey } from '@/api/operationsBoard'
 import { BriefingDialog, DraftDialog } from '@/components/board/BriefingDialogs'
 import { ReportsTab } from '@/components/board/ReportsTab'
+import { DeliveryTab } from '@/components/board/OpsDelivery'
 import {
   COLUMNS, DEVICE_COLOUR, DEVICE_LABEL, DEVICE_ORDER, PATROL_KINDS, PATROL_LABEL, PERIODS, STATE_COLOUR, STATE_LABEL,
   briefingFor, briefingLine, cell, fmt, fmtDay, lasting, patrolLine, periodLabel,
@@ -36,7 +37,7 @@ import {
 import { ErrorState, RefreshingLine } from '@/components/states'
 
 const shrunk = { select: { displayEmpty: true }, inputLabel: { shrink: true } }
-type Part = 'board' | 'sites' | 'briefings' | 'reports'
+type Part = 'board' | 'sites' | 'briefings' | 'reports' | 'email'
 
 /** One figure with its label. "now" says it is as things stand, not what fell in the period. */
 function Tile({ label, value, now, of }: { label: string; value: ReactNode; now?: boolean; of?: string }) {
@@ -374,6 +375,8 @@ export default function OperationsBoard() {
   const board = usePermission('board:read')
   const briefings = usePermission('briefing:read')
   const reports = usePermission('opsreport:export')
+  // Briefings and reports by email (4 November 2026): set up by report:schedule, Admin and Manager.
+  const email = usePermission('report:schedule')
   const [part, setPart] = useState<Part>(board ? 'board' : briefings ? 'briefings' : 'reports')
   const [siteId, setSiteId] = useState('')
   const [clientId, setClientId] = useState('')
@@ -387,6 +390,7 @@ export default function OperationsBoard() {
         {board && <Tab value="sites" label="Sites and customers" />}
         {briefings && <Tab value="briefings" label="Daily briefing" />}
         {reports && <Tab value="reports" label="Reports" />}
+        {email && <Tab value="email" label="Sent by email" />}
       </Tabs>
       {part === 'board' && board && (
         <BoardTab siteId={siteId} setSiteId={setSiteId} clientId={clientId} setClientId={setClientId} days={days} setDays={setDays} />)}
@@ -394,6 +398,7 @@ export default function OperationsBoard() {
         <SitesTab days={days} setDays={setDays} onOpen={(id) => { setClientId(''); setSiteId(id); setPart('board') }} />)}
       {part === 'briefings' && briefings && <BriefingsTab />}
       {part === 'reports' && reports && <ReportsTab />}
+      {part === 'email' && email && <DeliveryTab />}
     </Box>
   )
 }

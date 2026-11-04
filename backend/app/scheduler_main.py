@@ -987,6 +987,8 @@ AI_MODULE_INTERVAL = int(os.environ.get("AI_MODULE_INTERVAL_SECONDS", "3600"))  
 # Cases that escalate (services/case_escalation.py, 4 November 2026): an overdue task, a quiet case, a close request
 # waiting. The shortest timing is an hour, so a quarter of an hour is close enough.
 CASE_ESCALATION_INTERVAL = int(os.environ.get("CASE_ESCALATION_INTERVAL_SECONDS", "900"))  # 15 min
+# The briefing's emails and the operations reports' schedules (services/ops_delivery.py, 4 November 2026).
+OPS_DELIVERY_INTERVAL = int(os.environ.get("OPS_DELIVERY_INTERVAL_SECONDS", "300"))  # 5 min
 
 
 async def check_contractor_expiry(
@@ -1506,6 +1508,7 @@ async def main() -> None:
     last_device_health = _NOT_YET
     last_ai_module = _NOT_YET
     last_case_escalation = _NOT_YET
+    last_ops_delivery = _NOT_YET
     daily_retries = 0
 
     # Not before the database is up: the first pass after a restart used to run while Postgres was "starting up".
@@ -1796,6 +1799,18 @@ async def main() -> None:
                 except Exception:
                     logger.exception("case escalation pass failed")
                 last_case_escalation = now
+
+            # Briefings and operations reports by email (Phase 4 of the known limits): what fell due is queued,
+            # then sent, to the organisation's own people only. Each organisation is its own session inside.
+            if now - last_ops_delivery >= OPS_DELIVERY_INTERVAL:
+                try:
+                    from app.services import ops_delivery
+                    counts = await ops_delivery.run(AsyncSessionLocal)
+                    if any(counts.values()):
+                        logger.info("operations emails: %s", counts)
+                except Exception:
+                    logger.exception("operations emails pass failed")
+                last_ops_delivery = now
 
             # Fleet tracking: every iteration. A tracked vehicle the clock has made stale or offline is recorded
             # as such, once, and the screens are told which vehicles changed (not where they are).
