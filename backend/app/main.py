@@ -110,6 +110,7 @@ from app.routers import (
     ops_delivery,
     drone_privacy,
     camera_checks,
+    evidence_signatures,
     site_map,
     drone_edge,
     platform_drone_licenses,
@@ -422,6 +423,8 @@ app.include_router(ops_delivery.router)
 app.include_router(drone_privacy.router)
 # A camera's frame rate, delay and recording gaps measured (Phase 6 of the known limits, 4 November 2026).
 app.include_router(camera_checks.router)
+# Checking an evidence export, and the signing keys (Phase 7 of the known limits, 5 November 2026).
+app.include_router(evidence_signatures.router)
 app.include_router(site_map.router)
 app.include_router(incident_responses.router)
 app.include_router(occurrence_book.router)

@@ -549,6 +549,11 @@ persistence:
     storageClass: ""
     accessMode: ReadWriteMany
     keepDaily: 7
+  # The evidence signing key the API makes when secrets.evidenceSigningKey is empty. One small file.
+  signingKeys:
+    size: 16Mi
+    storageClass: ""
+    accessMode: ReadWriteMany
 
 # ─── Application runtime configuration (non-sensitive) ───────────────────────
 config:
@@ -591,6 +596,9 @@ secrets:
   smtpPassword: ""
   twilioAccountSid: ""
   twilioAuthToken: ""
+  # The Ed25519 key evidence is signed with: a PEM private key, or its 32 bytes in base64. Empty: the API makes
+  # one in the signing-keys claim the first time it is needed. Given: that key is used.
+  evidenceSigningKey: ""
 
 # ─── Ingress ──────────────────────────────────────────────────────────────────
 ingress:

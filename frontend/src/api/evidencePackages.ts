@@ -8,6 +8,7 @@
  * custody. No type here carries where a file is stored: the server never says.
  */
 import { apiClient } from './client'
+import type { SealSignature } from './evidenceSignatures'
 
 const BASE = '/api/v1/evidence-packages'
 const HOLDS = '/api/v1/evidence-holds'
@@ -102,6 +103,8 @@ export interface PackageDetail extends PackageRow {
   counts: { items: number; held: number; not_shown: number; without_checksum: number }
   can: { manage: boolean; export: boolean; hold: boolean; custody: boolean }
   max_items: number
+  /** A sealed package's signature (since 5 November 2026); null for a draft. */
+  signature?: SealSignature | null
 }
 
 export interface Candidates {

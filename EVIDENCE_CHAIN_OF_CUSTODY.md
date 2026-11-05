@@ -44,9 +44,10 @@ insurer or the police in a form they could check.
    change the package or its items, whoever issues it. A wrong package is
    superseded by another; it is not corrected.
 4. **The original is not marked.** A watermark changes a file, and a changed
-   file no longer matches its checksum. Originals leave untouched. A picture
-   also gets a second, marked copy for showing to people, which says on its
-   face that it is not the original.
+   file no longer matches its checksum. Originals leave untouched. A picture -
+   and since 5 November 2026 a video (section 12) - also gets a second, marked
+   copy for showing to people, which says on its face that it is not the
+   original.
 5. **A hold is what stops a purge.** Anything under a hold in force is left
    alone by all three retention jobs. A hold is lifted by a person, with a
    reason, and is never deleted.
@@ -120,9 +121,10 @@ package:
 | `manifest.json` | The manifest as sealed: the very bytes whose hash was stored |
 | `manifest.sha256` | That hash |
 | `originals/` | Each file exactly as the platform holds it |
-| `viewing/` | A marked copy of each picture — for showing, not evidence |
+| `viewing/` | A marked copy of each picture, and since 5 November 2026 of each video up to an hour in all — for showing, not evidence |
 | `export.json` | For each item: whether its file is in the archive, the checksum computed from the file now, whether it matches the manifest, and why not if it is left out |
-| `README.txt` | What the archive is and how to check it with `sha256sum` |
+| `README.txt` | What the archive is and how to check it with `sha256sum` — and since 5 November 2026 its signature |
+| `signature.json`, `signature.bin`, `public_key.pem`, `seal_signature.json`, `check_signature.py` | Since 5 November 2026: what was signed, the signature, the key, the seal's own signature, and a script that checks it all (section 12) |
 
 Each original is read once: hashed as it is written into the archive and
 compared with the checksum in the manifest. **A file that does not match is
@@ -307,10 +309,13 @@ under a hold — the one change of behaviour to existing code in this phase);
   the one the platform recorded a checksum for at capture. Recordings carry a
   checksum only once the integrity job has verified them; a manifest says
   which items had none.
-- **It does not sign anything.** The manifest's hash shows the manifest has
-  not changed since sealing; it is not a digital signature and names no
-  certificate authority.
-- **It does not mark video.** A viewing copy is made for pictures only.
+- **It signed nothing when it was built.** The manifest's hash shows the
+  manifest has not changed since sealing; it is not a digital signature. Since
+  5 November 2026 the seal and each export are signed with the installation's
+  own key (section 12); no certificate authority vouches for that key - the
+  organisation gives its fingerprint to whoever checks.
+- **It marked no video when it was built.** Since 5 November 2026 an export
+  carries a marked copy of each video, up to an hour in all (section 12).
 - **It does not protect evidence from anything but the retention jobs.**
   Deleting a camera still deletes its recordings, as it always has; a hold
   does not stop that.
@@ -322,3 +327,52 @@ under a hold — the one change of behaviour to existing code in this phase);
   path of an export is written and tested against a stand-in; it has not been
   run against a real store on the development machine, where MinIO stays
   stopped.
+
+---
+
+## 12. Since 5 November 2026: video marked, evidence signed
+
+Phase 7 of the known limits (`docs/plans/2026-11-05-evidence-watermark-and-signing-design.md`, migration 0181).
+
+**Marked copies of video.** An export's `viewing/` holds, beside each picture's, a copy of each video: re-encoded by
+ffmpeg 640 pixels wide, with a band across the foot naming the package, who exported it and when, and the time within
+the video. The original is only read. Up to an hour of video per export (`EVIDENCE_MARKED_VIDEO_MINUTES`), because an
+export is made while the person waits; a video past that, or one ffmpeg cannot read, has no copy and `export.json`
+says why. `export.json` gives every copy's own checksum, so the signature covers the copies too.
+
+**The key.** One Ed25519 key for the installation: `EVIDENCE_SIGNING_KEY` when the installation gives it (a PEM private
+key, or its 32 bytes in base64); otherwise the API makes one the first time it is needed, in
+`/data/signing/evidence_ed25519.pem` on a volume of its own (`signing_keys`; the chart's `signing-keys` claim), readable
+by its owner alone. The private key is never in the database, never logged and never returned. Its public half,
+fingerprint (the SHA-256 of the raw public key), first use and retirement are kept in `evidence_signing_keys`, so an
+export signed with an older key still checks. `scripts/ops/rotate_evidence_signing_key.py` replaces the key, keeping
+the old file beside it; it never deletes a private key.
+
+**What is signed.** At sealing: the package, its number, the manifest's SHA-256, when, by whom, and the key - kept in
+`evidence_package_signatures` (no column was added to `evidence_packages`). At each export: the package, the manifest's
+SHA-256, the SHA-256 of `export.json`, when, by whom, the seal's state and the key; the export carries
+`signature.json` (exactly what was signed), `signature.bin`, `public_key.pem`, `seal_signature.json` where the package
+has one, and `check_signature.py`. The chain of custody's `SEALED` and `EXPORTED` steps name the key. A package sealed
+before signing began says so; nothing is signed after the fact.
+
+**When the key cannot be read**, sealing and exporting carry on: the package's page, the README and `export.json` say
+"not signed: the signing key could not be read", and the API logs an error. A key problem never holds up evidence.
+
+**Checking.** Offline: `python3 check_signature.py` in the unpacked export (it needs the `cryptography` library or
+openssl 3, and nothing of the platform), or the two openssl commands in the README. On the platform, for whoever has
+`evidence:package:read` as a signed-in person: `POST /evidence-signatures/check` takes an uploaded export, checks it
+in a temporary file it deletes, and says whether the signature is genuine and by which key - in use, retired since a
+date, or never this installation's - whether every file is the one signed, and whether the platform's record of the
+sealed package agrees; six a minute per person, audited as `evidence.export.check` with its result only.
+`GET /evidence-signatures/keys` lists the installation's keys. The script in the export and the page run the same code
+(`backend/app/services/evidence_signature_check.py`).
+
+**Files.** `backend/alembic/versions/0181_evidence_signing.py`, `backend/app/services/evidence_signing.py`,
+`backend/app/services/evidence_signature_check.py`, `backend/app/routers/evidence_signatures.py`,
+`scripts/ops/rotate_evidence_signing_key.py`, `backend/tests/test_evidence_signing.py`; changed:
+`backend/app/services/evidence_packages.py`, `backend/app/routers/evidence_packages.py`, `backend/app/main.py`,
+`docker/backend.Dockerfile`, `docker/docker-compose.yml`, the chart's API deployment, claim, values and secret, and the
+evidence packages screen.
+
+**Still not done:** nothing is drawn over a video while it is watched in the platform; no certificate authority or
+outside timestamp vouches for the key or the time; recording pieces are not signed as they are made.

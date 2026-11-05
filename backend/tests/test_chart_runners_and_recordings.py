@@ -80,10 +80,11 @@ def test_the_recorder_the_player_and_the_verifier_share_one_recordings_disk(temp
 def test_without_minio_the_three_pods_are_given_what_they_were_given_before():
     # Since 24 October 2026 the API and the scheduler also share the attendance photos claim (check-in selfies and
     # registered faces); the recorder's pod is given exactly what it was.
-    # The API alone is also given the staff files, the guardhouse photos and the face model.
+    # The API alone is also given the staff files, the guardhouse photos and the face model - and since 5 November
+    # 2026 the evidence signing key (EVIDENCE_CHAIN_OF_CUSTODY.md, section 12).
     photos = {"/data/attendance_photos": "attendance-photos", "/data/backups": "backups"}
     api_only = {"/data/employee_docs": "employee-docs", "/data/guardhouse": "guardhouse",
-                "/home/appuser/.insightface": "face-models"}
+                "/home/appuser/.insightface": "face-models", "/data/signing": "signing-keys"}
     for template, extra in (("api-deployment.yaml", {**photos, **api_only}), ("ingestion-deployment.yaml", {}),
                             ("scheduler-deployment.yaml", photos)):
         mounts, volumes = _workload(template, _with_minio(False))

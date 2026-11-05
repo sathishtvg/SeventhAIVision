@@ -69,6 +69,11 @@ applies to it.
 ffmpeg copies the video packets without decoding them: only when each one arrived and the camera's own time of it
 are read. No picture is made, given to anybody or kept, so there is nothing to mask.
 
+**A marked copy of an evidence video reads a recording, not a camera** (since 5 November 2026,
+`services/evidence_packages.py`; `EVIDENCE_CHAIN_OF_CUSTODY.md`, section 12). ffmpeg re-encodes a clip or a
+recording the platform already holds - masked when it was recorded - smaller, with a band naming the package. It
+adds a band; it takes nothing away, and it never connects to a camera.
+
 **HLS.** HLS copies the camera's stream without decoding it, so nothing can be
 painted into it. `GET …/hls/index.m3u8` and `GET …/hls/{segment}` answer 409 for
 a camera with an active zone, and a session already running for it is stopped.

@@ -26,6 +26,8 @@ import { fmt } from '@/components/evidence/evidenceFormat'
 import { InvestigationNav } from '@/pages/investigations/InvestigationNav'
 import { ErrorState, RefreshingLine } from '@/components/states'
 import { DueForRemoval, RemovedPackages } from '@/components/evidence/EvidenceDisposal'
+// Checking an export (Phase 7 of the known limits, 5 November 2026).
+import { CheckExportButton } from '@/components/evidence/EvidenceSignatures'
 
 export default function EvidencePackages() {
   const navigate = useNavigate()
@@ -51,9 +53,13 @@ export default function EvidencePackages() {
     <Box sx={{ p: 3 }}>
       <PageHeader title="Evidence Packages"
                   subtitle="The frames, clips and recordings of a matter — sealed, held past retention, and accounted for"
-                  action={canManage ? (
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
-                      Put evidence together</Button>) : undefined} />
+                  action={(
+                    <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                      <CheckExportButton />
+                      {canManage && (
+                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
+                          Put evidence together</Button>)}
+                    </Stack>)} />
       <InvestigationNav />
       <Tabs value={view} onChange={(_, v) => setView(v)} sx={{ mb: 2 }}>
         <Tab value="packages" label="Packages" />

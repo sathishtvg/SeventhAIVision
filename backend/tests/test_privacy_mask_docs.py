@@ -208,10 +208,14 @@ def test_a_cameras_picture_is_read_in_the_known_places_and_nowhere_else():
     assert "A snapshot the site's gateway took at an area" in (REPO_ROOT / "PRIVACY_MASKING.md").read_text(encoding="utf-8")
     # ffmpeg, which reads a camera without this code seeing the frame: HLS (refused when masked), the patrol
     # snapshot (painted afterwards), and two that are only given files and frames that are masked already. Since
-    # 4 November 2026 also the camera check, which copies packets and makes no picture (section 2, "keeps no picture").
+    # 4 November 2026 also the camera check, which copies packets and makes no picture (section 2, "keeps no picture");
+    # since 5 November 2026 the marked copy of an evidence video, made from a recording masked when it was made.
     assert sorted(p for p, text_ in code.items() if "ffmpeg" in text_) == [
-        "main.py", "routers/streams.py", "services/camera_checks.py", "services/hls_stream.py",
-        "services/video_compat.py", "services/vpatrol_snapshot.py"]
+        "main.py", "routers/streams.py", "services/camera_checks.py", "services/evidence_packages.py",
+        "services/hls_stream.py", "services/video_compat.py", "services/vpatrol_snapshot.py"]
+    assert "rtsp" not in code["services/evidence_packages.py"].lower(), "it reads files the platform holds, no camera"
+    assert "A marked copy of an evidence video reads a recording, not a camera" in (
+        REPO_ROOT / "PRIVACY_MASKING.md").read_text(encoding="utf-8")
     check = code["services/camera_checks.py"]
     assert '"-c", "copy"' in check and '"-f", "framecrc"' in check and "imencode" not in check
     assert "The camera check keeps no picture" in (REPO_ROOT / "PRIVACY_MASKING.md").read_text(encoding="utf-8")
