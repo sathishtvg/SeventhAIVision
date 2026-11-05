@@ -122,6 +122,9 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       AI_HOSTED_MODEL: "${AI_HOSTED_MODEL:-claude-opus-5-5}"
       AI_HOSTED_EFFORT: "${AI_HOSTED_EFFORT:-medium}"
+      # The key evidence is signed with (EVIDENCE_CHAIN_OF_CUSTODY.md). Empty: the API makes one the first time
+      # it is needed, in the signing_keys volume below, and keeps using it. Given: that key is used instead.
+      EVIDENCE_SIGNING_KEY: "${EVIDENCE_SIGNING_KEY:-}"
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       PGPASSWORD: "${POSTGRES_PASSWORD:-change_me_dev_only}"
       POSTGRES_DB: "${POSTGRES_DB:-seventh_ai_vision}"
@@ -136,6 +139,8 @@ services:
       # was downloaded again on the first check-in after every rebuild.
       - models_data:/home/appuser/.insightface
       - backups_data:/data/backups
+      # The evidence signing key the API makes when none is given (EVIDENCE_SIGNING_KEY). Never in the database.
+      - signing_keys:/data/signing
     ports: ["8000:8000"]
     restart: unless-stopped
     healthcheck:
@@ -621,3 +626,4 @@ volumes:
   backups_data: {}  # Daily pg_dump backups; keep last BACKUP_KEEP_DAILY (default 7)
   drone_edge_data: {}  # A development site edge gateway's store and recordings
   ollama_data: {}      # The AI module's free chat model (profile ai), downloaded once
+  signing_keys: {}     # The key the API signs evidence with, when the installation gives none

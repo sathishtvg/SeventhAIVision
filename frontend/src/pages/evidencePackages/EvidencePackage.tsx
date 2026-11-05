@@ -24,6 +24,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Stack from '@/components/common/Stack'
 import { GlassCard } from '@/components/common/GlassCard'
 import { PageHeader } from '@/components/common/PageHeader'
+// A sealed package's signature (Phase 7 of the known limits, 5 November 2026).
+import { SealSignatureLine } from '@/components/evidence/EvidenceSignatures'
 import { EvidenceThumb } from '@/components/common/EvidenceThumb'
 import {
   addItems, apiError, downloadOriginal, getCandidates, getCustody, getPackage, releasePackageHolds, removeItem,
@@ -141,6 +143,7 @@ export default function EvidencePackage() {
             ) : (
               <Alert severity="error">The manifest does NOT have the hash it was sealed with. This package is not
                 exported as it is.</Alert>)}
+            <SealSignatureLine signature={file.signature} />
           </Box>)}
         {draft && (
           <Alert severity="info" sx={{ mt: 1.5 }}>

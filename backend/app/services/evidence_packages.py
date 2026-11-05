@@ -11,7 +11,9 @@
                     written one way only, and the SHA-256 of that.
   THE EXPORT        `build_export` — a ZIP of the sealed manifest, each original
                     file byte for byte with its checksum re-computed and
-                    compared, and a marked viewing copy of each picture.
+                    compared, a marked viewing copy of each picture and (since
+                    5 November 2026) of each video up to an hour in all, and
+                    the platform's signature over it (`evidence_signing`).
 
 REFERENCES, NEVER MEDIA, UNTIL AN EXPORT. The platform already keeps evidence
 and keeps it carefully. A package refers to it. The only time bytes are read is
@@ -24,9 +26,13 @@ returns has passed anywhere but through `public()`.
 
 THE ORIGINAL IS NOT MARKED. A watermark changes a file and so changes its
 checksum; an original that no longer matches its checksum is no longer
-evidence. Originals are exported untouched. A picture also gets a second,
-marked copy for showing to people, which says on its face that it is not the
-original.
+evidence. Originals are exported untouched. A picture, and a video, also gets
+a second, marked copy for showing to people, which says on its face that it is
+not the original. A video's copy is made by ffmpeg, 640 pixels wide, with a
+band naming the package, who exported it and when, and the time within it; up
+to MARKED_VIDEO_S of video in one export, because the export is made while the
+person waits. A video past that, or one that cannot be read, has no copy and
+export.json says why.
 
 The wording and the permission each kind needs are the intelligence layer's
 own (`intel_evidence`), so that the two never describe one thing differently.
@@ -64,6 +70,12 @@ MAX_EXPORT_BYTES = int(os.environ.get("EVIDENCE_EXPORT_MAX_MB", "1024")) * 1024 
 RECORDINGS_ROOT = os.environ.get("RECORDINGS_ROOT", "/data/recordings")
 MANIFEST_FORMAT = "seventh-evidence-manifest/1"
 _CHUNK = 1024 * 1024
+#: How much video one export makes marked copies of, in seconds (Phase 7 of the known limits).
+MARKED_VIDEO_S = int(os.environ.get("EVIDENCE_MARKED_VIDEO_MINUTES", "60")) * 60
+#: A video's marked copy is this wide.
+MARKED_VIDEO_WIDTH = 640
+_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+_VIDEO_SUFFIXES = (".mp4", ".mkv", ".mov", ".avi", ".webm", ".ts", ".m4v")
 
 
 @dataclass(frozen=True)
@@ -388,6 +400,62 @@ def watermark(image: bytes, line: str) -> bytes:
     return out.getvalue()
 
 
+def _video_seconds(path: Path) -> float | None:
+    import subprocess
+
+    try:
+        done = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                               "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                              capture_output=True, text=True, timeout=60)
+        seconds = float(done.stdout.strip().splitlines()[0]) if done.returncode == 0 and done.stdout.strip() else None
+    except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
+        return None
+    return seconds if seconds and seconds > 0 else None
+
+
+def watermark_video(source: Path, target: Path, top: str, foot: str, *, workdir: Path,
+                    seconds_left: float) -> tuple[float | None, str | None]:
+    """A marked copy of a video, for showing to people: MARKED_VIDEO_WIDTH wide, with a band across the foot giving
+    `top` and `foot` and the time within the video. (its length in seconds, None) or (None, why there is none). The
+    source is only read. The words are given to ffmpeg as files and drawn as they are, never read as its codes."""
+    import subprocess
+
+    seconds = _video_seconds(source)
+    if seconds is None:
+        return None, "it could not be read"
+    if seconds > seconds_left:
+        return None, f"over the {MARKED_VIDEO_S // 60}-minute limit for marked copies in one export"
+    words = {}
+    for name, line in (("top", top), ("foot", foot)):
+        words[name] = workdir / f"{target.stem}.{name}.txt"
+        words[name].write_text(line, encoding="utf-8")
+    font = f"fontfile={_FONT}:" if Path(_FONT).exists() else ""
+    common = f"{font}fontsize=13:fontcolor=white"
+    vf = (f"scale={MARKED_VIDEO_WIDTH}:-2,pad=iw:ih+44:0:0:black,"
+          f"drawtext={common}:expansion=none:textfile={words['top']}:x=8:y=h-38,"
+          f"drawtext={common}:expansion=none:textfile={words['foot']}:x=8:y=h-18,"
+          f"drawtext={common}:text='%{{pts\\:hms}}':x=w-tw-8:y=h-18")
+    try:
+        done = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(source), "-map", "0:v:0",
+                               "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+                               "-movflags", "+faststart", "-an", str(target)],
+                              capture_output=True, timeout=max(120, int(seconds * 4)))
+    except (OSError, subprocess.TimeoutExpired):
+        target.unlink(missing_ok=True)
+        return None, "it could not be read"
+    finally:
+        for made in words.values():
+            made.unlink(missing_ok=True)
+    if done.returncode != 0 or not target.exists() or target.stat().st_size == 0:
+        target.unlink(missing_ok=True)
+        return None, "it could not be read"
+    return seconds, None
+
+
+def _is_video(thing: Mapping, path: Path) -> bool:
+    return thing.get("media_type") != "image" and path.suffix.lower() in _VIDEO_SUFFIXES
+
+
 def _extension(thing: Mapping) -> str:
     stored = str(thing.get("_path") or "")
     suffix = Path(stored).suffix.lower()
@@ -413,9 +481,12 @@ WHAT IS IN IT
                      whether that matches the checksum in the manifest.
   originals/         The files themselves, byte for byte as the platform holds
                      them. These are the evidence.
-  viewing/           A copy of each picture with a band across the foot naming
-                     this package. These are for showing to people. They are
-                     NOT the originals and will not match any checksum.
+  viewing/           A copy of each picture, and of each video up to an hour
+                     in all, with a band across the foot naming this package
+                     and who exported it. These are for showing to people.
+                     They are NOT the originals and will not match any
+                     checksum in the manifest; export.json gives each copy's
+                     own checksum.
 
 HOW TO CHECK IT
   sha256sum manifest.json        must equal the value in manifest.sha256
@@ -425,21 +496,57 @@ HOW TO CHECK IT
 {summary}
 An item listed in export.json as not included is still held by the platform;
 its checksum is in the manifest, and it is fetched from where it is kept.
+
+{signature}"""
+
+SIGNED = """THE SIGNATURE
+  The platform signed this export with the key
+      {key}
+  {sealed}
+
+  signature.json       What was signed: this package, the checksums of
+                       manifest.json and export.json, who exported it, when.
+  signature.bin        The signature over signature.json (Ed25519).
+  public_key.pem       The public half of the key.
+{seal_file}  check_signature.py   Checks all of it, and every file against its checksum:
+                           python3 check_signature.py
+  Or by hand, with openssl 3:
+      openssl pkeyutl -verify -pubin -inkey public_key.pem -rawin \\
+              -in signature.json -sigfile signature.bin
+      sha256sum export.json manifest.json
+  (the two checksums must be those named in signature.json).
+
+  Anybody can make a key. Before relying on the signature, compare the key
+  above with the one the organisation that sent this export gives you.
 """
+
+UNSIGNED = """NOT SIGNED
+  This export is not signed: {why} when it was made.
+  The checksums above still show whether a file has changed since it was
+  captured; nothing shows that this archive came from the platform unaltered.
+"""
+
 
 
 def build_export(package: Mapping, items: Sequence[Mapping], *, exported_by: str, reason: str,
                  exported_at: datetime, target: Path, marked_copies: bool = True,
-                 max_bytes: int | None = None) -> dict:
+                 max_bytes: int | None = None, signer: Any = None, seal: Mapping | None = None,
+                 not_signed_because: str | None = None) -> dict:
     """Write the export of a sealed package to `target` and say what went into
     it. `items` are the things read now, each carrying its `_path` and its
-    place `n` in the manifest. Synchronous: the caller runs it off the event loop."""
+    place `n` in the manifest. With `signer` (evidence_signing.current()) it is
+    signed; `seal` is the package's seal signature as kept. Synchronous: the
+    caller runs it off the event loop."""
+    from app.services import evidence_signing
+
     budget = MAX_EXPORT_BYTES if max_bytes is None else max_bytes
+    video_left = float(MARKED_VIDEO_S)
     stored = package["manifest"] if not isinstance(package["manifest"], str) else json.loads(package["manifest"])
     sealed = canonical(stored)
     recorded = {(i["kind"], i["id"]): i for i in stored["items"]}
-    line = (f"{package['package_number']} · exported {exported_at.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC "
-            f"by {exported_by} · viewing copy, not the original")
+    when = f"{exported_at.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC"
+    line = f"{package['package_number']} · exported {when} by {exported_by} · viewing copy, not the original"
+    top, foot = f"{package['package_number']} · viewing copy, not the original", f"exported {when} by {exported_by}"
     report: list[dict] = []
     used = 0
     workdir = target.parent / f"{target.name}.parts"
@@ -453,7 +560,8 @@ def build_export(package: Mapping, items: Sequence[Mapping], *, exported_by: str
                 thing = next((i for i in items if (i["kind"], str(i["id"])) == key), None)
                 entry = {"n": listed["n"], "kind": listed["kind"], "id": listed["id"], "included": False,
                          "file": None, "bytes": None, "sha256_now": None, "sha256_in_manifest": listed["checksum_sha256"],
-                         "verified": None, "viewing_copy": None, "why_not": None}
+                         "verified": None, "viewing_copy": None, "viewing_copy_sha256": None,
+                         "viewing_copy_note": None, "why_not": None}
                 report.append(entry)
                 if thing is None:
                     entry["why_not"] = "It is no longer held by the platform."
@@ -484,14 +592,35 @@ def build_export(package: Mapping, items: Sequence[Mapping], *, exported_by: str
                         copy = None
                     if copy is not None:
                         entry["viewing_copy"] = f"viewing/{listed['n']:03d}-{listed['kind'].lower()}-{listed['id']}.jpg"
+                        entry["viewing_copy_sha256"] = hashlib.sha256(copy).hexdigest()
                         archive.writestr(entry["viewing_copy"], copy)
+                elif marked_copies and _is_video(thing, path):
+                    made = workdir / f"marked-{listed['n']:03d}.mp4"
+                    seconds, why = watermark_video(path, made, top, foot, workdir=workdir, seconds_left=video_left)
+                    if seconds is None:
+                        entry["viewing_copy_note"] = f"No marked copy: {why}."
+                    else:
+                        video_left -= seconds
+                        entry["viewing_copy"] = f"viewing/{listed['n']:03d}-{listed['kind'].lower()}-{listed['id']}.mp4"
+                        entry["viewing_copy_sha256"] = sha256_of(made)
+                        archive.write(made, entry["viewing_copy"])
+                        made.unlink(missing_ok=True)
 
             totals = summarise(report)
+            seal_words = evidence_signing.seal_state(seal)
             export = _plain({
                 "package_number": package["package_number"], "manifest_sha256": package["manifest_sha256"],
                 "exported_at": exported_at, "exported_by": exported_by, "reason": reason, "items": report,
-                **totals})
-            archive.writestr("export.json", json.dumps(export, indent=2, ensure_ascii=False), zipfile.ZIP_DEFLATED)
+                "signed_with": signer.fingerprint if signer else None,
+                "not_signed_because": None if signer else (not_signed_because or evidence_signing.NOT_READ),
+                "seal": seal_words["state"], **totals})
+            export_bytes = json.dumps(export, indent=2, ensure_ascii=False).encode("utf-8")
+            archive.writestr("export.json", export_bytes, zipfile.ZIP_DEFLATED)
+            statement = evidence_signing.export_statement(package, signer, seal, export_json=export_bytes,
+                                                          exported_at=exported_at, exported_by=exported_by)
+            files, signature = evidence_signing.export_files(statement, signer, seal)
+            for name, data in files.items():
+                archive.writestr(name, data, zipfile.ZIP_DEFLATED)
             if totals["mismatched"]:
                 summary = (f"WARNING: {totals['mismatched']} file(s) in originals/ DO NOT MATCH the checksum in the "
                            "manifest. See export.json. A file that does not match has changed since it was captured.\n")
@@ -507,13 +636,27 @@ def build_export(package: Mapping, items: Sequence[Mapping], *, exported_by: str
                 number=package["package_number"], title=package["title"],
                 exported_at=f"{exported_at.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC", exported_by=exported_by,
                 reason=reason, sealed_at=stored.get("sealed_at"), sealed_by=stored.get("sealed_by") or "—",
-                summary=summary), zipfile.ZIP_DEFLATED)
+                summary=summary, signature=_signature_words(signer, seal_words, "seal_signature.json" in files,
+                                                            not_signed_because)), zipfile.ZIP_DEFLATED)
     finally:
         for leftover in workdir.glob("*"):
             leftover.unlink(missing_ok=True)
         workdir.rmdir()
     assert set(recorded) == {(r["kind"], r["id"]) for r in report}
-    return {"items": report, **summarise(report), "bytes": used}
+    return {"items": report, **summarise(report), "bytes": used, "statement": statement, "signature": signature}
+
+
+def _signature_words(signer: Any, seal_words: Mapping, seal_file: bool, why: str | None) -> str:
+    from app.services import evidence_signing
+
+    if signer is None:
+        return UNSIGNED.format(why=why or evidence_signing.NOT_READ)
+    sealed = {"SIGNED": "The package was also signed when it was sealed (seal_signature.json).",
+              "BEFORE_SIGNING": "The package was sealed before signing began, so only this export is signed.",
+              "NOT_SIGNED": "The package was sealed without a signature: the signing key could not be read then."}
+    return SIGNED.format(key=evidence_signing.checker.spaced(signer.fingerprint), sealed=sealed[seal_words["state"]],
+                         seal_file=("  seal_signature.json  The package's signature from when it was sealed.\n"
+                                    if seal_file else ""))
 
 
 def summarise(report: Sequence[Mapping]) -> dict:

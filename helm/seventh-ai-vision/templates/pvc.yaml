@@ -136,3 +136,21 @@ spec:
   {{- if .Values.persistence.backups.storageClass }}
   storageClassName: {{ .Values.persistence.backups.storageClass | quote }}
   {{- end }}
+---
+# The key the API signs evidence with when secrets.evidenceSigningKey gives none (EVIDENCE_CHAIN_OF_CUSTODY.md):
+# made by the first API pod that needs it, read by the others. Small; never holds anything else.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seventh-ai-vision.fullname" . }}-signing-keys
+  labels:
+    {{- include "seventh-ai-vision.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.signingKeys.accessMode | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.signingKeys.size | quote }}
+  {{- if .Values.persistence.signingKeys.storageClass }}
+  storageClassName: {{ .Values.persistence.signingKeys.storageClass | quote }}
+  {{- end }}

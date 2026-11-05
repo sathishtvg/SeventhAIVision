@@ -112,6 +112,10 @@ spec:
             # Lists the scheduler's backups and writes an on-demand one (System > Backups).
             - name: backups
               mountPath: /data/backups
+            # The evidence signing key, when secrets.evidenceSigningKey gives none: made once, shared by every
+            # replica, never in the database.
+            - name: signing-keys
+              mountPath: /data/signing
           livenessProbe:
             httpGet:
               path: {{ .Values.api.livenessProbe.path }}
@@ -152,6 +156,9 @@ spec:
         - name: backups
           persistentVolumeClaim:
             claimName: {{ include "seventh-ai-vision.fullname" . }}-backups
+        - name: signing-keys
+          persistentVolumeClaim:
+            claimName: {{ include "seventh-ai-vision.fullname" . }}-signing-keys
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

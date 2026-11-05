@@ -58,6 +58,8 @@ from app.dependencies.permissions import require_permission
 from app.dependencies.sites import get_allowed_site_ids, is_site_allowed, site_scope_clause
 from app.dependencies.tenant import _client_ip, get_db_with_tenant
 from app.services import evidence_packages as packages
+# The seal and each export signed (Phase 7 of the known limits, 5 November 2026).
+from app.services import evidence_signing
 from app.services import intel_audit
 from app.services import investigation_sources as sources
 
@@ -362,6 +364,8 @@ async def get_package(
         "can": {"manage": "evidence:package:manage" in mine, "export": "evidence:package:export" in mine,
                 "hold": "evidence:hold:manage" in mine, "custody": "evidence:custody:read" in mine},
         "max_items": packages.MAX_ITEMS,
+        "signature": (evidence_signing.seal_state(await evidence_signing.seal_of(db, package["id"]))
+                      if package["status"] == "SEALED" else None),
     }
     seen = (await db.execute(text("""
         SELECT 1 FROM evidence_custody_events
@@ -572,6 +576,8 @@ async def seal_package(
                "reason": reason, "who": token.user_id, "now": now})
         await _custody(db, request, token, "LOCKED", package_id=package["id"], kind=item["kind"],
                        ref_id=uuid.UUID(item["id"]), reason=reason)
+    # Signed before the package is sealed in the database - or kept unsigned, saying why. Never held up by a key.
+    signed = await evidence_signing.sign_seal(db, package, sha, now, sealer)
     # Last: once this is written the database refuses everything else.
     await db.execute(text("""
         UPDATE evidence_packages
@@ -582,14 +588,17 @@ async def seal_package(
            "sha": sha, "p": package["id"]})
     await _custody(db, request, token, "SEALED", package_id=package["id"],
                    detail={"manifest_sha256": sha, "items": len(merged),
-                           "without_checksum": document["without_checksum"]})
+                           "without_checksum": document["without_checksum"],
+                           "signed_with": signed["key_fingerprint"], "not_signed_because": signed["not_signed_because"]})
     await intel_audit.record(db, request, token, "evidence.package.seal", "evidence_package", package["id"],
                              site_id=package["site_id"],
                              detail={"number": package["package_number"], "manifest_sha256": sha,
                                      "items": len(merged)})
+    # Read before the commit: after it the organisation is no longer set on this session.
+    seal = evidence_signing.seal_state(await evidence_signing.seal_of(db, package["id"]))
     await db.commit()
     return {"status": "SEALED", "manifest_sha256": sha, "sealed_at": now, "items": len(merged),
-            "without_checksum": document["without_checksum"], "holds": len(merged)}
+            "without_checksum": document["without_checksum"], "holds": len(merged), "signature": seal}
 
 
 class ExportBody(BaseModel):
@@ -597,7 +606,7 @@ class ExportBody(BaseModel):
 
     #: Why the evidence is leaving the platform.
     reason: str = Field(..., min_length=5, max_length=2000)
-    #: A second copy of each picture, marked as a viewing copy.
+    #: A second copy of each picture and video, marked as a viewing copy.
     marked_copies: bool = True
 
 
@@ -630,20 +639,25 @@ async def export_package(
     now_things = list((await packages.things(db, refs, mine, allowed)).values())
     exporter = await _user_name(db, token.user_id)
     at = datetime.now(timezone.utc)
+    signer, not_signed = evidence_signing.current()
+    seal = await evidence_signing.seal_of(db, package["id"])
     workdir = Path(tempfile.mkdtemp(prefix="evidence-export-"))
     target = workdir / f"{package['package_number']}.zip"
     try:
         report = await asyncio.to_thread(
             packages.build_export, package, now_things, exported_by=exporter, reason=body.reason.strip(),
-            exported_at=at, target=target, marked_copies=body.marked_copies)
+            exported_at=at, target=target, marked_copies=body.marked_copies, signer=signer, seal=seal,
+            not_signed_because=not_signed)
     except Exception:
         shutil.rmtree(workdir, ignore_errors=True)
         raise
 
     totals = {k: report[k] for k in ("included", "left_out", "verified", "mismatched", "unverifiable", "bytes")}
+    await evidence_signing.record_export(db, package, report["statement"], report["signature"], signer, not_signed, at)
     await _custody(db, request, token, "EXPORTED", package_id=package["id"], reason=body.reason.strip(),
                    detail={**totals, "manifest_sha256": package["manifest_sha256"],
-                           "marked_copies": body.marked_copies})
+                           "marked_copies": body.marked_copies,
+                           "signed_with": signer.fingerprint if report["signature"] else None})
     for entry in report["items"]:
         # The existing log of who took which frame or clip, written as it always was.
         if entry["included"] and entry["kind"] in ("SNAPSHOT", "CLIP"):
@@ -664,9 +678,10 @@ async def export_package(
         headers={"X-Evidence-Included": str(totals["included"]), "X-Evidence-Left-Out": str(totals["left_out"]),
                  "X-Evidence-Verified": str(totals["verified"]), "X-Evidence-Mismatched": str(totals["mismatched"]),
                  "X-Evidence-Unverifiable": str(totals["unverifiable"]),
+                 "X-Evidence-Signed": signer.fingerprint if report["signature"] else "no",
                  "Access-Control-Expose-Headers": "X-Evidence-Included, X-Evidence-Left-Out, X-Evidence-Verified, "
                                                   "X-Evidence-Mismatched, X-Evidence-Unverifiable, "
-                                                  "Content-Disposition"},
+                                                  "X-Evidence-Signed, Content-Disposition"},
         background=BackgroundTask(shutil.rmtree, workdir, ignore_errors=True))
 
 
