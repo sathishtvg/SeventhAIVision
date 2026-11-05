@@ -33,6 +33,7 @@ from tests.test_drone_api import ADMIN, GUARD, SUPERVISOR, VIEWER, _client, _sql
 from tests.test_evidence_packages import (BASE, _candidates, _export, _investigation, _kept, _package, _post, _refs,
                                           _sha, roots)  # noqa: F401 - roots is a fixture
 from tests.test_investigation_search import _audit, _seed
+from tests._repo import REPO_ROOT, requires_repo_tree
 
 CHECK, KEYS = "/api/v1/evidence-signatures/check", "/api/v1/evidence-signatures/keys"
 
@@ -145,8 +146,17 @@ def test_a_key_is_made_once_for_its_owner_alone_and_a_secret_is_used_instead_whe
         "no disk for the key: not signed, said why"
 
 
+def _in_the_repo(test):
+    """The rotation script is at the repository's root, which the api image does not hold: it runs with the
+    repository-inspection suites."""
+    for mark in requires_repo_tree:
+        test = mark(test)
+    return test
+
+
+@_in_the_repo
 async def test_a_new_key_retires_the_one_before_it_and_the_rotation_script_keeps_the_old_one(key_file, monkeypatch):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "ops"))
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "ops"))
     import rotate_evidence_signing_key as rotate
 
     old, _ = signing.current()
