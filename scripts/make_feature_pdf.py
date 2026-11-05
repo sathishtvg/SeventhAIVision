@@ -43,9 +43,9 @@ from reportlab.platypus import (
 OUT = sys.argv[1] if len(sys.argv) > 1 else "docs/Seventh-AI-Vision-Features.pdf"
 
 # ── What this edition is ────────────────────────────────────────────────────
-GENERATED = "4 November 2026"
-EDITION = "Edition 29"
-HEAD = "0180"
+GENERATED = "5 November 2026"
+EDITION = "Edition 30"
+HEAD = "0181"
 #: Every edition, oldest first. Add a row; never rewrite one.
 EDITIONS = [
     ["Edition 1", "9 September 2026", "0100",
@@ -155,6 +155,8 @@ EDITIONS = [
      "Drone Patrol (module 15): a drone's whole picture withheld while it is at a privacy area."],
     ["Edition 29", "4 November 2026", "0180",
      "Device health (module 24): a camera's frame rate, delay and recording gaps measured."],
+    ["Edition 30", "5 November 2026", "0181",
+     "Evidence packages (module 18): a marked copy of each video; the seal and each export signed."],
 ]
 
 INK = colors.HexColor("#131722")
@@ -283,7 +285,8 @@ def data_table(header, rows, widths, small=False):
     for r in rows:
         data.append([Paragraph(str(c), S["cells" if small else "cell"]) for c in r])
     t = Table(data, colWidths=widths, repeatRows=1)
-    pad = 3.5 if small else 5
+    # The editions table is the one small table; it gains a row each edition and must stay on its page.
+    pad = 3 if small else 5
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BAND),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, RULE),
@@ -347,13 +350,13 @@ story += [
     rule(thickness=3),
     Spacer(1, 10 * mm),
     stat_strip([
-        ("324", "DATABASE TABLES"), ("1,173", "API OPERATIONS"), ("126", "API MODULES"),
+        ("326", "DATABASE TABLES"), ("1,175", "API OPERATIONS"), ("127", "API MODULES"),
         ("124", "WEB ROUTES"), ("59", "MOBILE SCREENS"), ("11", "AI DETECTION MODULES"),
     ]),
     Spacer(1, 6),
     stat_strip([
-        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("180", "MIGRATIONS"),
-        ("7,082", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
+        ("228", "PERMISSIONS"), ("8", "BUILT-IN ROLES"), ("181", "MIGRATIONS"),
+        ("7,098", "AUTOMATED TESTS"), ("4", "LANGUAGES"), ("3", "CLIENT APPS"),
     ]),
     Spacer(1, 10 * mm),
     Paragraph("What this document is", S["h2"]),
@@ -1083,7 +1086,8 @@ story += module(
         "every change.",
         "<b>Export</b> as a ZIP of the manifest as sealed and each original, byte "
         "for byte, with its checksum computed again and compared — plus a marked "
-        "viewing copy of each picture.",
+        "viewing copy of each picture and video. The seal and each export are "
+        "signed; the ZIP carries what checks it. <i>Edition 30.</i>",
         "<b>One chain of custody per package</b>, from capture to release: "
         "captured, collected, accessed, sealed, placed under a hold, exported, "
         "downloaded, shared, released, hold lifted — each with who, in what role, "
@@ -1094,8 +1098,8 @@ story += module(
         "<b>Removed when due, by a person.</b> Past the organisation's period, with "
         "nothing held and its matter over, a package is listed for Admin or Manager "
         "to remove with a reason; its record and chain of custody are kept.",
-        "<i>Documented limitations:</i> video is not watermarked; nothing is "
-        "digitally signed; the platform sends evidence to nobody — sharing and "
+        "<i>Documented limitations:</i> no certificate authority vouches for the "
+        "signing key; the platform sends evidence to nobody — sharing and "
         "release are records of what a person did.",
     ],
     tag="ADDED SINCE EDITION 1 · MIGRATION 0144")
@@ -2153,7 +2157,8 @@ story += bullets([
     "alarm panel or drone was behind them, and none was timed or loaded.",
     "<b>Payroll:</b> CPF's 2027 rates are not loaded; their employer and employee "
     "shares are not yet published.",
-    "<b>Evidence:</b> video is not watermarked and nothing is digitally signed.",
+    "<b>Evidence</b> is signed with the installation's own key; no certificate "
+    "authority or outside timestamp vouches for it.",
     "<b>The phone app</b> needs a pass on a device; <b>the desktop app</b> is not code-signed.",
     "<b>A signed-in browser tab left open keeps the web console it loaded</b> "
     "until it is reloaded. The sign-in page fetches a newer console by itself.",
@@ -2164,10 +2169,10 @@ story.append(Spacer(1, 8))
 story.append(rule(thickness=0.7, color=RULE))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 180 "
-    "database migrations, 324 tables, 126 API modules serving 1,173 operations, 156 backend "
-    "services, 124 web routes and 59 phone screens, covered by 7,082 automated tests "
-    "(backend 4,390, repository inspection 1,406, web 845, phone 441). Capability counts "
+    f"Compiled from the Seventh AI Vision source repository at migration {HEAD} — 181 "
+    "database migrations, 326 tables, 127 API modules serving 1,175 operations, 158 backend "
+    "services, 124 web routes and 59 phone screens, covered by 7,098 automated tests "
+    "(backend 4,401, repository inspection 1,407, web 849, phone 441). Capability counts "
     "reflect what is merged and running, not what is in progress or planned.", S["foot"]))
 
 doc.build(story)
